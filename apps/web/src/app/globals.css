@@ -1,0 +1,14 @@
+/* Canvas badge for clinician-only elements (STR-09). It is a disabled SurveyJS
+   action, so the default disabled styling is overridden. */
+button.sd-action.sj-badge-clinician,
+button.sd-action.sj-badge-clinician:disabled {
+  opacity: 1 !important;
+  background: var(--mantine-color-grape-1) !important;
+  border-radius: 999px;
+  cursor: default;
+}
+button.sd-action.sj-badge-clinician .sd-action__title {
+  color: var(--mantine-color-grape-9) !important;
+  opacity: 1 !important;
+  font-weight: 600;
+}

@@ -5,6 +5,8 @@ import type { NextConfig } from "next";
 const apiUrl = process.env.API_URL ?? "http://localhost:8080";
 
 const nextConfig: NextConfig = {
+  // packages/clinical is TypeScript source shared by the browser code.
+  transpilePackages: ["@sj/clinical"],
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${apiUrl}/api/:path*` }];
   },

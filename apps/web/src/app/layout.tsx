@@ -1,4 +1,5 @@
 import "@mantine/core/styles.css";
+import "./globals.css";
 import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from "@mantine/core";
 
 export const metadata = { title: "Lifebox Authoring" };
