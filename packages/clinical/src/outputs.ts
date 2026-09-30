@@ -1,7 +1,7 @@
 // Where outputs live on a question, how they are validated, and how {answer} is rendered.
-import type { ItemValue, Question } from "survey-core";
-import { outputsOf } from "./properties";
-import type { ClinicalOutput } from "./types";
+import type { ItemValue, Question, SurveyModel } from "survey-core";
+import { isClinicianOnly, outputsOf } from "./properties";
+import type { AsaGrade, ClinicalOutput } from "./types";
 
 /** Select One, Select Many (and any other choice type) carry outputs on their options. */
 export function isChoiceQuestion(q: Question): boolean {
@@ -57,4 +57,77 @@ export function formatDate(iso: string): string {
 
 export function renderNote(template: string, answer: string): string {
   return template.replaceAll("{answer}", answer);
+}
+
+/** One output produced by the current answers (OUT-04). */
+export type ProducedOutput = {
+  questionId: string;
+  questionTitle: string;
+  /** The option that produced it; absent for question-level outputs. */
+  answerId?: string;
+  answerLabel: string;
+  output: ClinicalOutput;
+  /** The note with {answer} filled in. */
+  noteText?: string;
+};
+
+export type ComputedOutputs = {
+  outputs: ProducedOutput[];
+  /** The highest ASA grade among the outputs (CLN-17). */
+  suggestedAsa?: { grade: AsaGrade; emergency: boolean };
+};
+
+const ASA_ORDER: AsaGrade[] = ["I", "II", "III", "IV", "V", "VI"];
+
+/**
+ * The outputs the current answers produce. Only questions the respondent can see
+ * count (LOG-09, CLN-14): `getAllQuestions(true)` skips hidden questions, and
+ * questions in hidden groups and pages, whose answers stay in `survey.data`.
+ * With {viewer} = "patient", clinician-only questions never count, even if present.
+ */
+export function computeOutputs(model: SurveyModel): ComputedOutputs {
+  const patient = model.getVariable("viewer") === "patient";
+  const outputs: ProducedOutput[] = [];
+  for (const q of model.getAllQuestions(true)) {
+    if (q.isEmpty() || (patient && isClinicianOnlyInTree(q))) continue;
+    const answer = formatAnswer(q, q.value);
+    const base = { questionId: q.name, questionTitle: q.title };
+    if (isChoiceQuestion(q)) {
+      const chosen: unknown[] = Array.isArray(q.value) ? q.value : [q.value];
+      for (const item of choicesOf(q)) {
+        if (!chosen.includes(item.value)) continue;
+        for (const output of outputsOf(item)) {
+          outputs.push({ ...base, answerId: String(item.value), answerLabel: item.text, output, noteText: note(output, answer) });
+        }
+      }
+    } else {
+      for (const output of outputsOf(q)) {
+        outputs.push({ ...base, answerLabel: answer, output, noteText: note(output, answer) });
+      }
+    }
+  }
+  return { outputs, suggestedAsa: highestAsa(outputs) };
+}
+
+function note(o: ClinicalOutput, answer: string): string | undefined {
+  return o.note ? renderNote(o.note.text, answer) : undefined;
+}
+
+function isClinicianOnlyInTree(q: Question): boolean {
+  for (let el: unknown = q; el; el = (el as { parent?: unknown }).parent) {
+    if (isClinicianOnly(el as Question)) return true;
+  }
+  return false;
+}
+
+function highestAsa(outputs: ProducedOutput[]): ComputedOutputs["suggestedAsa"] {
+  let best: ComputedOutputs["suggestedAsa"];
+  for (const { output } of outputs) {
+    if (!output.asa) continue;
+    const rank = ASA_ORDER.indexOf(output.asa.grade);
+    const bestRank = best ? ASA_ORDER.indexOf(best.grade) : -1;
+    if (rank > bestRank) best = { ...output.asa };
+    else if (rank === bestRank && output.asa.emergency && best) best.emergency = true;
+  }
+  return best;
 }
