@@ -35,6 +35,13 @@ func NewRouter(pool *pgxpool.Pool, secret []byte) http.Handler {
 	mux.HandleFunc("POST /api/h/{hid}/questionnaires", hosp(s.createQuestionnaire))
 	mux.HandleFunc("GET /api/h/{hid}/questionnaires/{qid}", hosp(s.getQuestionnaire))
 	mux.HandleFunc("DELETE /api/h/{hid}/questionnaires/{qid}", hosp(s.deleteQuestionnaire))
+	mux.HandleFunc("POST /api/h/{hid}/questionnaires/{qid}/chapters", hosp(s.addChapter))
+	mux.HandleFunc("PUT /api/h/{hid}/questionnaires/{qid}/chapter-order", hosp(s.reorderChapters))
+
+	mux.HandleFunc("GET /api/h/{hid}/chapters/{cid}", hosp(s.getChapter))
+	mux.HandleFunc("PATCH /api/h/{hid}/chapters/{cid}", hosp(s.updateChapter))
+	mux.HandleFunc("DELETE /api/h/{hid}/chapters/{cid}", hosp(s.deleteChapter))
+	mux.HandleFunc("PUT /api/h/{hid}/chapters/{cid}/content", hosp(s.saveContent))
 	return mux
 }
 

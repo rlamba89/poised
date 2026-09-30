@@ -132,7 +132,12 @@ func (s *server) getQuestionnaire(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"questionnaire": row})
+	chapters, err := s.q.ListChapters(r.Context(), row.VersionID)
+	if err != nil {
+		serverError(w, "list chapters", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"questionnaire": row, "chapters": chapters})
 }
 
 // deleteQuestionnaire is FRM-06: drafts only, by their creator or a hospital admin.

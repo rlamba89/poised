@@ -19,3 +19,5 @@ sql:
             go_type: github.com/google/uuid.NullUUID
           - db_type: timestamptz
             go_type: time.Time
+          - db_type: jsonb
+            go_type: encoding/json.RawMessage

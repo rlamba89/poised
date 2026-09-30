@@ -5,6 +5,7 @@
 package db
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,17 +18,17 @@ type Category struct {
 }
 
 type Chapter struct {
-	ID          uuid.UUID `json:"id"`
-	VersionID   uuid.UUID `json:"versionId"`
-	Position    int32     `json:"position"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Icon        string    `json:"icon"`
-	Audience    string    `json:"audience"`
-	Content     []byte    `json:"content"`
-	Revision    int32     `json:"revision"`
-	UpdatedBy   uuid.UUID `json:"updatedBy"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID          uuid.UUID       `json:"id"`
+	VersionID   uuid.UUID       `json:"versionId"`
+	Position    int32           `json:"position"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Icon        string          `json:"icon"`
+	Audience    string          `json:"audience"`
+	Content     json.RawMessage `json:"content"`
+	Revision    int32           `json:"revision"`
+	UpdatedBy   uuid.UUID       `json:"updatedBy"`
+	UpdatedAt   time.Time       `json:"updatedAt"`
 }
 
 type Code struct {
