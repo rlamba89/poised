@@ -185,7 +185,7 @@ The chapter JSON is self-contained (OUT-01): anything that reads it can compute 
 - A question's SurveyJS `name` *is* its stable ID. It is generated on add or copy, e.g. `q_7f3k2p`. The author edits `title`, never `name`.
 - A choice's `value` *is* the option's stable ID, e.g. `o_a1b2`, unique within its question. The author edits `text`.
 - Answers are therefore stored by ID, not label, natively.
-- The Creator is set to show question titles, not names, in the Logic tab and in expressions (`showTitlesInExpressions`), so authors never see raw IDs in conditions.
+- The Creator is set to show question titles, not names, in the Logic tab and in expressions (`useElementTitles: true`; `showTitlesInExpressions` is deprecated in v3), so authors never see raw IDs in conditions.
 - The JSON editor tab is **off** because it would bypass the ID guards.
 
 **Custom properties**, registered by `packages/clinical/properties.ts` and all non-translatable (CLN-08):
@@ -194,7 +194,7 @@ The chapter JSON is self-contained (OUT-01): anything that reads it can compute 
 | --- | --- | --- |
 | question, panel | `clinicianOnly` | boolean, shown in a "Clinical" category listed first in the settings panel |
 | question (no-option types) | `clinicalOutputs` | `ClinicalOutput[]`, hidden from the settings panel and edited through the Outputs modal |
-| itemvalue (options, incl. "None" item) | `clinicalOutputs` | same |
+| itemvalue (options, incl. exclusive "None of these") | `clinicalOutputs` | same |
 
 ```jsonc
 // ClinicalOutput
@@ -210,6 +210,12 @@ The chapter JSON is self-contained (OUT-01): anything that reads it can compute 
 - **Validation rule (CLN-06):** at least one code or a note, and a note needs a category. The modal enforces it now; Go enforces it at publish time later.
 - **Denormalised copies:** code `display` and category name are stored in the JSON so the form stands alone. The code library remains the source when picking.
 
+**Decisions from the step 0 spikes (30 Sep 2026)** (details in `spikes/README.md`):
+- **`clinicalOutputs` is held in a wrapper.** In memory, the value is an immutable `{ items: ClinicalOutput[] }` object with the custom type `clinicaloutputs`; in JSON, it is a plain array (`onSerializeValue` / `onSetValue`). A bare array breaks redo: survey-core overwrites an existing array in place. A `string`-typed property would also merge rapid edits into one undo step. All code reads and writes outputs through `outputsOf(obj)` / `setOutputs(obj, items)`.
+- **"None of these" is a normal choice with `isExclusive: true`**, not the built-in `showNoneItem`. The built-in None item saves only its label, so it can't carry outputs. The exclusive choice gets a stable ID like any other option. The built-in None setting is hidden in the settings panel.
+- **"Yes / No" is a Select One preset** (a radiogroup with Yes and No options), not the `boolean` question. Each answer then has a stable ID, outputs and an editable label, and the outputs modal and `computeOutputs` need no special case.
+- **"Don't know" in one click (OPT-04)** is not in the slice. Authors can already add such an option and mark it exclusive.
+
 **`{answer}` in notes (CLN-07, slice subset)** becomes:
 - text → the typed text
 - number → the number
@@ -221,7 +227,7 @@ Other answers and repeating-group rows come later.
 **`computeOutputs(model)`** in `packages/clinical/outputs.ts` works like this:
 1. Walk `model.getAllQuestions(true)`, which respects hidden panels and pages. `isVisible` alone does not, as SurveyJS docs and testing confirmed. This gives LOG-09 and CLN-14.
 2. For each answered question:
-   - choice types: collect the outputs of the selected option(s), including "None"
+   - choice types: collect the outputs of the selected option(s), including "None of these"
    - others: collect the question's own outputs
 3. Render note templates.
 4. Return `{ questionId, questionTitle, answerId?, answerLabel, output }[]` plus the suggested ASA (the highest). This supports CLN-17 later at no extra cost.
@@ -294,7 +300,7 @@ If any spike fails, stop and revisit the design before building on it.
 **Step 5: Clinical outputs.**
 - `packages/clinical` types and properties.
 - `GET /codes` with pg_trgm.
-- An "Outputs (n)" adorner on each question opens a modal listing the question and each option (including "None").
+- An "Outputs (n)" adorner on each question opens a modal listing the question and each option (including "None of these").
 - Per row, authors add, edit and delete outputs: codes picked by search within a code set, a note with a category, ASA, flag.
 - The note editor shows a worked example of `{answer}`.
 
@@ -386,7 +392,7 @@ These **v1 names no longer exist**, so don't use them: `onDefineElementMenuItems
 
 Known traps:
 - **Per-option badges:** there is no public API for a badge on each option. Don't override internal components such as `svc-item-value`; use the question-level badge and modal (section 2).
-- **Unverified option:** `showTitlesInExpressions` (section 6) is not verified for v3. Check it in spike 2. If it doesn't exist, find the v3 way to show titles in the Logic tab, or report back.
+- **Titles in the Logic tab:** `showTitlesInExpressions` is deprecated and hidden in v3. Use `useElementTitles: true` (checked in spike 2).
 - **Hidden values stay in the data:** values of hidden questions remain in `survey.data`. `computeOutputs` must walk only visible questions, not `survey.data`.
 - **Composite questions** (later, clinical panels) store one nested object, and authors can't edit their inner questions.
 - **The UI Preset Editor needs a PRO licence.** Don't use it; use `onPropertyShowing`.
