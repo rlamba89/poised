@@ -1,0 +1,279 @@
+id,code,code_set_id,fsn,synonym,code_category_id,billable,created_by
+13c3ea41-6ca2-47b7-bf6f-721f90a42591,35489007,2773268e-5d3c-4eaa-957c-c861a05effdc,Depressive disorder (disorder),Depressive disorder,a5da2741-641c-4fa2-ada8-620ac684b072,false,SYSTEM
+eaf556de-2a5b-4bff-8656-3f683e575d0b,161882006,2773268e-5d3c-4eaa-957c-c861a05effdc,Stiff neck (finding),Stiff neck,8f6b4670-03cd-4532-99e0-04e738907a29,false,SYSTEM
+a09061e9-b0ab-4bc0-a94e-b9dc591ab16b,13645005,2773268e-5d3c-4eaa-957c-c861a05effdc,Chronic obstructive lung disease (disorder),Chronic obstructive lung disease,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+4d6885de-3e30-4abe-8020-e05df30e3840,897148007,2773268e-5d3c-4eaa-957c-c861a05effdc,Alcoholic beverage intake (observable entity),Alcoholic beverage intake,92a4e678-d6cb-4502-bbea-f9b26266a7ab,false,SYSTEM
+f8d03648-de98-46bf-9479-9c37eb286b3a,840539006,2773268e-5d3c-4eaa-957c-c861a05effdc,Disease caused by severe acute respiratory syndrome coronavirus 2 (disorder),Disease caused by 2019 novel coronavirus,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+e4591456-f947-4b5e-b56b-bcb7644913b2,840544004,2773268e-5d3c-4eaa-957c-c861a05effdc,Suspected disease caused by Severe acute respiratory coronavirus 2 (situation),Suspected disease caused by 2019 novel coronavirus,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+591fd9a2-fde1-4486-954a-8de20c39d46f,73430006,2773268e-5d3c-4eaa-957c-c861a05effdc,Sleep apnea (disorder),Sleep apnea,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+5ceba822-eca4-43d5-aa05-a0737cbf6d1f,8771000175103,2773268e-5d3c-4eaa-957c-c861a05effdc,Uses home continuous positive airway pressure ventilation supply (finding),Home CPAP (continuous positive airway pressure) supply,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+8370e2be-ba16-4f66-a81b-f781d61abead,198301000000109,2773268e-5d3c-4eaa-957c-c861a05effdc,Family history of deep vein thrombosis (situation),Family history of deep vein thrombosis,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+5b403e80-ab2c-4ce6-b0d6-35f04397e380,161941007,2773268e-5d3c-4eaa-957c-c861a05effdc,Dyspnea at rest (finding),Breathless - at rest,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+c16d23e8-896b-453b-be20-351d5a5a3131,1156257007,2773268e-5d3c-4eaa-957c-c861a05effdc,Administration of vaccine product against severe acute respiratory syndrome coronavirus 2 (procedure),SARS-CoV-2 immunization Administration of SARS-CoV-2 vaccine,,false,SYSTEM
+b790cb2b-0998-4a45-9666-47d812ea8493,424131007,2773268e-5d3c-4eaa-957c-c861a05effdc,Easy bruising (finding),Easy bruising,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+38ba7fb9-69e5-4132-862e-a1d3bc512d7c,195967001,2773268e-5d3c-4eaa-957c-c861a05effdc,Asthma (disorder),Asthmatic,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+3dac5054-3684-40ac-a035-660948944b90,9267009,2773268e-5d3c-4eaa-957c-c861a05effdc,Chest pain at rest (finding),Chest pain at rest,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+a1f0032e-b31b-4a92-a9da-5f8276e31647,441769002,2773268e-5d3c-4eaa-957c-c861a05effdc,Cardiac defibrillator in situ (finding),Cardiac defibrillator in situ,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+4b18a6ed-25c9-49f4-a583-14cb0b6d6725,12295008,2773268e-5d3c-4eaa-957c-c861a05effdc,Bronchiectasis (disorder),Bronchiectasis,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+ef7e2277-dbb7-4def-882f-16e619187e1c,84114007,2773268e-5d3c-4eaa-957c-c861a05effdc,Heart failure (disorder),Heart failure,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+c5f1e5fa-6bd4-4f9c-8418-25afd7415fdd,271737000,2773268e-5d3c-4eaa-957c-c861a05effdc,Anemia (disorder),Anemia,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+4667f7cb-ce7b-4b6d-9bc8-f8d92c0d6253,91175000,2773268e-5d3c-4eaa-957c-c861a05effdc,Seizure (finding),Seizure,70b106c5-372f-44d1-9bc5-b919d98244d6,false,SYSTEM
+2ac68cbf-ddd9-4dfd-b486-a70737c02ff5,81953000,2773268e-5d3c-4eaa-957c-c861a05effdc,Chest pain on exertion (finding),Chest pain on exertion,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+fc3aa26f-5f0a-453a-9339-ea096384b1bb,32398004,2773268e-5d3c-4eaa-957c-c861a05effdc,Bronchitis (disorder),Bronchitis,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+f575bd11-42a4-4944-bd37-363d6b8843f5,3723001,2773268e-5d3c-4eaa-957c-c861a05effdc,Arthritis (disorder),Arthritis,8f6b4670-03cd-4532-99e0-04e738907a29,false,SYSTEM
+7310ae3d-7e03-4def-b069-589c664b3d6a,84757009,2773268e-5d3c-4eaa-957c-c861a05effdc,Epilepsy (disorder),Epilepsy,70b106c5-372f-44d1-9bc5-b919d98244d6,false,SYSTEM
+2bd850c3-ee14-4711-a339-1697a3009201,26237000,2773268e-5d3c-4eaa-957c-c861a05effdc,Ankle edema (finding),Ankle edema,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+f9844bc3-b698-48c4-a0fe-ec85fe60082d,59282003,2773268e-5d3c-4eaa-957c-c861a05effdc,Pulmonary embolism (disorder),Pulmonary embolism,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+f9ecf093-21b6-459c-a22a-9f33c5ab87a6,56717001,2773268e-5d3c-4eaa-957c-c861a05effdc,Tuberculosis (disorder),Tuberculosis,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+70bcd9c7-8b6f-41dc-ad10-8d47928dac80,194828000,2773268e-5d3c-4eaa-957c-c861a05effdc,Angina (disorder),Angina,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+ff187344-6b49-4e3f-9568-470694504a4f,162031009,2773268e-5d3c-4eaa-957c-c861a05effdc,Indigestion (finding),Indigestion,76135cd7-0cb8-4004-b408-7538188a97cb,false,SYSTEM
+20b5dea0-d8ce-4c02-9741-8f5498e288a5,886921000000105,2773268e-5d3c-4eaa-957c-c861a05effdc,Allergies and adverse reaction (record artifact),Allergies and adverse reaction,6badfe5d-f761-405a-b6fd-14a611c34928,false,SYSTEM
+340f7209-a4f8-43c8-afd4-e4dfeee9d129,4556007,2773268e-5d3c-4eaa-957c-c861a05effdc,Gastritis (disorder),Gastritis,76135cd7-0cb8-4004-b408-7538188a97cb,false,SYSTEM
+9f551500-f120-445c-96c1-57af54163d61,80313002,2773268e-5d3c-4eaa-957c-c861a05effdc,Palpitations (finding),Palpitations,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+bbcf87b1-a5b3-4f1a-bfe5-39a351cb4f35,40108008,2773268e-5d3c-4eaa-957c-c861a05effdc,Thalassemia (disorder,Thalassemia,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+81c1d701-75f8-4ff2-b410-3be6f92b070c,88610006,2773268e-5d3c-4eaa-957c-c861a05effdc,Heart murmur (finding),Heart murmur,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+dfc71a20-607b-47b3-a3b7-e428023d7a88,1755008,2773268e-5d3c-4eaa-957c-c861a05effdc,Old myocardial infarction (disorder),Old myocardial infarction,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+3decaffa-7031-49ad-806c-dc5beed620c0,275526006,2773268e-5d3c-4eaa-957c-c861a05effdc,History of cerebrovascular accident (situation),H/O: CVA,70b106c5-372f-44d1-9bc5-b919d98244d6,false,SYSTEM
+b9025e17-d48e-45c5-8144-50cc9ec37d03,54587008,2773268e-5d3c-4eaa-957c-c861a05effdc,Simple phobia (disorder),Simple phobia (disorder),a5da2741-641c-4fa2-ada8-620ac684b072,false,SYSTEM
+45659686-c726-4ad8-80cb-7328eb428e3c,197480006,2773268e-5d3c-4eaa-957c-c861a05effdc,Anxiety disorder (disorder),Anxiety disorder,a5da2741-641c-4fa2-ada8-620ac684b072,false,SYSTEM
+3370a364-bfc4-4119-9bfc-4cd3e7f90042,91302008,2773268e-5d3c-4eaa-957c-c861a05effdc,Sepsis (disorder),Sepsis,,false,SYSTEM
+4d88d9f7-f818-48f9-a7b7-09f0602b3be0,225587003,2773268e-5d3c-4eaa-957c-c861a05effdc,Gastric reflux (finding),Gastric reflux,76135cd7-0cb8-4004-b408-7538188a97cb,false,SYSTEM
+fc91d531-3dfc-4cdb-9725-3b19facaa94f,49436004,2773268e-5d3c-4eaa-957c-c861a05effdc,Atrial fibrillation (disorder),Atrial fibrillation,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+84827bb1-8d01-431e-8796-7beedc6a85cc,396347007,2773268e-5d3c-4eaa-957c-c861a05effdc,Umbilical hernia (disorder),Umbilical hernia,76135cd7-0cb8-4004-b408-7538188a97cb,false,SYSTEM
+e2180cdf-5036-4909-b1b8-e4a34c417750,127040003,2773268e-5d3c-4eaa-957c-c861a05effdc,Sickle cell-hemoglobin SS disease (disorder),Sickle cell anemia,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+1acc5087-63c3-4ac3-bb87-dd428017f89c,285466001,2773268e-5d3c-4eaa-957c-c861a05effdc,Difficulty opening mouth (finding),Difficulty opening mouth,8f6b4670-03cd-4532-99e0-04e738907a29,false,SYSTEM
+57ec2b6d-5335-47dd-893b-12486412fea6,46635009,2773268e-5d3c-4eaa-957c-c861a05effdc,Diabetes mellitus type 1 (disorder),Diabetes mellitus type 1,1dd64d88-51f9-41a4-aa41-470e967aefbb,false,SYSTEM
+302e2d7a-d163-40a9-9bb1-47ed1dfae6f6,14304000,2773268e-5d3c-4eaa-957c-c861a05effdc,Disorder of thyroid gland (disorder),Disorder of thyroid gland,,false,SYSTEM
+006a9e1d-4d6a-4305-a526-b6d4a02ea4af,724453005,2773268e-5d3c-4eaa-957c-c861a05effdc,Problem of prostate (finding),Problem of prostate,,false,SYSTEM
+244da7de-f525-4490-901e-61d9b25210ee,84089009,2773268e-5d3c-4eaa-957c-c861a05effdc,Hiatal hernia (disorder),Hiatal hernia,76135cd7-0cb8-4004-b408-7538188a97cb,false,SYSTEM
+f4c7eec9-7e63-4ad6-9c09-0bcfade2b739,60845006,2773268e-5d3c-4eaa-957c-c861a05effdc,Dyspnea on exertion (finding),Exertional dyspnea,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+b165308b-8125-46a8-a6bc-da955f4c9880,14106009,2773268e-5d3c-4eaa-957c-c861a05effdc,Cardiac pacemaker device (physical object),Cardiac pacemaker,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+3c306029-a1d4-4b44-9e4f-886c5fe3edfe,49727002,2773268e-5d3c-4eaa-957c-c861a05effdc,Cough (finding),Cough,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+2b19aada-edd5-4c62-9132-ee5edd1a0c91,233604007,2773268e-5d3c-4eaa-957c-c861a05effdc,Pneumonia (disorder),Pneumonia,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+43265e21-10f1-4d6a-a53c-0f3a116c4145,77176002,2773268e-5d3c-4eaa-957c-c861a05effdc,Smoker (finding),Smoker,92a4e678-d6cb-4502-bbea-f9b26266a7ab,false,SYSTEM
+8f4c2877-459e-4521-9c85-008fd9cd51ba,396232000,2773268e-5d3c-4eaa-957c-c861a05effdc,Inguinal hernia (disorder),Inguinal hernia,76135cd7-0cb8-4004-b408-7538188a97cb,false,SYSTEM
+82e0a633-9e7f-47bb-bf6b-5f11b27f9d97,266257000,2773268e-5d3c-4eaa-957c-c861a05effdc,Transient ischemic attack (disorder),TIA,70b106c5-372f-44d1-9bc5-b919d98244d6,false,SYSTEM
+9f13067a-11d4-4c32-a7a5-64ebcb23dacb,161508001,2773268e-5d3c-4eaa-957c-c861a05effdc,History of deep vein thrombosis (situation),History of deep vein thrombosis,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+bf4336bd-a2ae-4fae-8f76-1115b5ac3fda,29857009,2773268e-5d3c-4eaa-957c-c861a05effdc,Chest pain (finding),Chest pain,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+3f3c1a3d-d076-4b30-8b80-554d7537090b,73211009,2773268e-5d3c-4eaa-957c-c861a05effdc,Diabetes mellitus (disorder),Diabetes mellitus,,false,SYSTEM
+06bca1dc-d4c0-405e-bfb7-190035a02a39,698247007,2773268e-5d3c-4eaa-957c-c861a05effdc,Cardiac arrhythmia (disorder),Arrhythmia,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+e6d33f5d-6319-462f-869e-216be432b508,430801003,2773268e-5d3c-4eaa-957c-c861a05effdc,Family history of pulmonary embolism (situation),Family history of pulmonary embolism,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+abfb71ab-2cc1-4573-9d7c-a722011f8741,161512007,2773268e-5d3c-4eaa-957c-c861a05effdc,History of pulmonary embolus (situation),H/O: pulmonary embolus,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+43472f3d-3d71-45a1-874a-27631f638d77,3962750006,2773268e-5d3c-4eaa-957c-c861a05effdc,not found,not found,8f6b4670-03cd-4532-99e0-04e738907a29,false,SYSTEM
+6d51e87b-e92a-4ecb-a274-fc21da22225e,266096002,2773268e-5d3c-4eaa-957c-c861a05effdc,Methicillin resistant Staphylococcus aureus infection (disorder),Methicillin resistant Staphylococcus aureus infection (disorder),,false,SYSTEM
+8239b0f0-d121-4963-b464-6071eea7a03e,128060009,2773268e-5d3c-4eaa-957c-c861a05effdc,Venous varices (disorder),Varicose veins,76135cd7-0cb8-4004-b408-7538188a97cb,false,SYSTEM
+df550a6f-16f0-45ec-97cf-09df9a5b69d9,38341003,2773268e-5d3c-4eaa-957c-c861a05effdc,Hypertensive disorder systemic arterial (disorder),High blood pressure,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+63dd63d0-6af5-4e31-89ad-33a0522e1586,R07.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Chest pain, unspecified","Chest pain, unspecified",a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+3b37483a-c3cf-40c4-b674-c8a7c7f244fe,Z86.11,85a84ce7-ae57-4781-a40e-4d15ab99133e,Personal history of tuberculosis,Personal history of tuberculosis,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+402592ac-7dc2-4543-9b5c-1dd4f850d7c3,R10.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,Unspecified abdominal pain,Unspecified abdominal pain,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+8a03b216-cf25-4985-b288-5532af2fd02e,E10.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,Type 1 diabetes mellitus without complications,Type 1 diabetes mellitus without complications,,true,SYSTEM
+63803577-187d-4467-8775-4dc7d1ff463b,K73.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Chronic hepatitis, unspecified","Chronic hepatitis, unspecified",,true,SYSTEM
+5e406b38-a36c-485c-ad4f-6f329fffd25f,F41.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Anxiety disorder, unspecified","Anxiety disorder, unspecified",a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+a57ab5d5-b2e2-4aab-95c0-20d4477b88e4,I26.99,85a84ce7-ae57-4781-a40e-4d15ab99133e,Other pulmonary embolism without acute cor pulmonale,Other pulmonary embolism without acute cor pulmonale,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+348c2a8c-733d-4fd5-b2c1-0170f88f02bb,Z72.1,85a84ce7-ae57-4781-a40e-4d15ab99133e,Alcohol use,Alcohol use,92a4e678-d6cb-4502-bbea-f9b26266a7ab,false,SYSTEM
+4c332d2f-bf1f-435e-9868-d8c7f61f6fb7,J45.998,85a84ce7-ae57-4781-a40e-4d15ab99133e,Other asthma,Other asthma,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+dfe7343f-9fe7-4439-9296-65225f9cc830,T78.4,85a84ce7-ae57-4781-a40e-4d15ab99133e,Other and unspecified allergy,Other and unspecified allergy,6badfe5d-f761-405a-b6fd-14a611c34928,false,SYSTEM
+37e9806e-cb16-4285-80da-8b810c9363ae,K42,85a84ce7-ae57-4781-a40e-4d15ab99133e,Umbilical hernia,Umbilical hernia,76135cd7-0cb8-4004-b408-7538188a97cb,false,SYSTEM
+9e8c4fa7-8655-476d-af21-c9654f5970fc,R07.4,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Chest pain, unspecified","Chest pain, unspecified",a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+00617c8a-1292-46f9-8716-b92449bdbd0f,E27.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Disorder of adrenal gland, unspecified","Disorder of adrenal gland, unspecified",,true,SYSTEM
+c14ee689-5a2a-45c1-9f1e-8e657af63c1f,R43.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,Unspecified disturbances of smell and taste,Unspecified disturbances of smell and taste,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+ce214629-7c2d-4833-989d-fa39c0e44cde,M15.0,85a84ce7-ae57-4781-a40e-4d15ab99133e,Primary generalized (osteo)arthritis,Primary generalized (osteo)arthritis,8f6b4670-03cd-4532-99e0-04e738907a29,false,SYSTEM
+7fcdd83f-ab68-41e1-9900-e3f0287f488a,I49.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,Cardiac arrhythmia unspecified,Arrhythmia (cardiac) NOS,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+e411e3c0-5016-4034-9cc5-9224660fc91f,R06.00,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Dyspnea, unspecified","Dyspnea, unspecified",a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+32423ea6-f133-46b9-b7b1-883fe082a0a7,R00.2,85a84ce7-ae57-4781-a40e-4d15ab99133e,Palpitations,Palpitations,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+6e539dcd-adfe-4aab-8514-37e8f56643f1,J18.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Pneumonia, unspecified organism","Pneumonia, unspecified organism",642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+4a8a4acd-1d91-4dee-9e29-f17d9383252c,Z85.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Personal history of malignant neoplasm, unspecified","Personal history of malignant neoplasm, unspecified",,false,SYSTEM
+38000130-39db-410c-8523-94689120d670,D57.80,85a84ce7-ae57-4781-a40e-4d15ab99133e,Other sickle-cell disorders,Other sickle-cell disorders,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+049151a6-2611-4af5-8be6-a6a8051dd4e1,K76.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Liver disease, unspecified","Liver disease, unspecified",,false,SYSTEM
+323f9411-172f-4be9-8217-b767eb0bd80d,N28.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Disorder of kidney and ureter, unspecified","Disorder of kidney and ureter, unspecified",,false,SYSTEM
+653530c9-9b00-41fa-b120-7d57d21fe41d,Z86.16,85a84ce7-ae57-4781-a40e-4d15ab99133e,Personal history of COVID-19,Personal history of COVID-19,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+9e27e4b1-ece1-46d5-a31c-201570508b26,E11.8,85a84ce7-ae57-4781-a40e-4d15ab99133e,Type 2 diabetes mellitus with unspecified complications,Type 2 diabetes mellitus with unspecified complications,,true,SYSTEM
+b9dfa588-43ca-4e07-b472-8c490a620dcb,D56.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Thalassaemia, unspecified","Thalassaemia, unspecified",a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+c489d56c-5d6e-497a-b09e-9fc26ae87df0,M13.80,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Other specified arthritis, unspecified site","Other specified arthritis, unspecified site",8f6b4670-03cd-4532-99e0-04e738907a29,true,SYSTEM
+4d61b10d-b721-4e0f-8ec4-ddf267b90a34,F32.A,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Depression, unspecified","Depression, unspecified",a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+e58c4034-199c-4c46-acbb-8547d337a4c7,Z95.0,85a84ce7-ae57-4781-a40e-4d15ab99133e,Presence of cardiac pacemaker,Presence of cardiac pacemaker,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+dd719330-ce62-46a8-97b5-d9df9ddc21a7,R06.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,Unspecified abnormalities of breathing,Unspecified abnormalities of breathing,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+45a159c6-ca66-4975-9b82-dea226024b3e,K29.7,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Gastritis, unspecified","Gastritis, unspecified",76135cd7-0cb8-4004-b408-7538188a97cb,false,SYSTEM
+f0154e81-f826-4050-b904-b30adb18bb0c,J02.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Acute pharyngitis, unspecified","Acute pharyngitis, unspecified",642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+9386afee-78f3-4b0d-b326-7d717960bae3,G40.909,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Epilepsy, unspecified, not intractable, without status epilepticus","Epilepsy, unspecified, not intractable, without status epilepticus",70b106c5-372f-44d1-9bc5-b919d98244d6,true,SYSTEM
+81911af9-2dcc-4345-901f-97eeb11f1d46,R05,85a84ce7-ae57-4781-a40e-4d15ab99133e,Cough,Cough,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+e88b6bb5-05ce-4b5c-819c-e8a7bf3ba9a7,G47.33,85a84ce7-ae57-4781-a40e-4d15ab99133e,Obstructive sleep apnea (adult) (pediatric),Obstructive sleep apnea (adult) (pediatric),642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+dcd37403-6ede-4b40-956c-cc760608c258,N32.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Bladder disorder, unspecified","Bladder disorder, unspecified",,false,SYSTEM
+519a92bb-d029-4098-8f64-84e363fd2fb7,I25.2,85a84ce7-ae57-4781-a40e-4d15ab99133e,Old myocardial infarction,Old myocardial infarction,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+e81dc394-1bde-48a3-ae0a-f67d8d4cf203,R60.0,85a84ce7-ae57-4781-a40e-4d15ab99133e,Localized edema,Localized edema,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+fc550f92-5a91-4983-87cc-011319ee8fc5,R53.83,85a84ce7-ae57-4781-a40e-4d15ab99133e,Other fatigue,Other fatigue,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+501dd557-f3ab-4780-bd84-358be2e3f6ec,J44.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Chronic obstructive pulmonary disease, unspecified","Chronic obstructive pulmonary disease, unspecified",642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+381835bf-b922-4437-b047-3d7a1774dcff,J47.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Bronchiectasis, uncomplicated","Bronchiectasis, uncomplicated",642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+f383e5df-3e72-4b3e-90bb-794049db8dde,R01.1,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Cardiac murmur, unspecified","Cardiac murmur, unspecified",a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+0c582fa8-3730-4b52-9a7d-41ec190db9ec,R12,85a84ce7-ae57-4781-a40e-4d15ab99133e,Heartburn,Heartburn,76135cd7-0cb8-4004-b408-7538188a97cb,true,SYSTEM
+f3431a48-2a31-41ba-a86b-9879566e2d87,Z83.2,85a84ce7-ae57-4781-a40e-4d15ab99133e,Family history of diseases of the blood and blood-forming organs and certain disorders involving the immune mechanism,Family history of diseases of the blood and blood-forming organs and certain disorders involving the immune mechanism,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+807e41a5-8804-404f-a246-9d969642dd35,G45.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Transient cerebral ischemic attack, unspecified","Transient cerebral ischemic attack, unspecified",70b106c5-372f-44d1-9bc5-b919d98244d6,false,SYSTEM
+f02646f0-247a-4bf9-8daf-4112b10d63d7,R07.89,85a84ce7-ae57-4781-a40e-4d15ab99133e,Other chest pain,Other chest pain,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+ad83cc86-e239-4048-ad42-a5dd6f0ce0f4,B20,85a84ce7-ae57-4781-a40e-4d15ab99133e,Human immunodeficiency virus [HIV] disease resulting in infectious and parasitic diseases,Human immunodeficiency virus [HIV] disease resulting in infectious and parasitic diseases,,true,SYSTEM
+c06f22a8-f0ce-465f-88c4-b3e4d8243da9,A41.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Sepsis, unspecified organism","Sepsis, unspecified organism",,true,SYSTEM
+0f9665f9-088c-4fe8-866b-35d7f0b4b3ac,I50.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,Heart failure unspecified,Heart failure unspecified,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+19e29373-2fce-4787-a7cc-35cafce52f7f,N42.8,85a84ce7-ae57-4781-a40e-4d15ab99133e,Other specified disorders of prostate,Other specified disorders of prostate,,false,SYSTEM
+0944b133-4c1c-488f-bd8f-6044c0987d44,Z86.14,85a84ce7-ae57-4781-a40e-4d15ab99133e,Personal history of Methicillin resistant Staphylococcus aureus infection,Personal history of Methicillin resistant Staphylococcus aureus infection,,true,SYSTEM
+4fedf740-bc8d-45b8-823c-454456f9f0d4,Z95.810,85a84ce7-ae57-4781-a40e-4d15ab99133e,Presence of automatic (implantable) cardiac defibrillator,Presence of automatic (implantable) cardiac defibrillator,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+35952c34-75c9-46ee-865a-c463b283a700,E10.8,85a84ce7-ae57-4781-a40e-4d15ab99133e,Type 1 diabetes mellitus with unspecified complications,Type 1 diabetes mellitus with unspecified complications,,true,SYSTEM
+23b938a2-03b4-4a58-811b-a2f113e4bd95,RO5.3,85a84ce7-ae57-4781-a40e-4d15ab99133e,not found,not found,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+99dcca54-ff20-4397-87c3-00637687d540,I10,85a84ce7-ae57-4781-a40e-4d15ab99133e,Essential (primary) hypertension,Essential (primary) hypertension,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+eb2cf63f-846e-4a86-88f5-3662aabd6820,Z20.82,85a84ce7-ae57-4781-a40e-4d15ab99133e,Contact with and (suspected) exposure to other viral communicable diseases,Contact with and (suspected) exposure to other viral communicable diseases,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+c1fb412d-9884-42e2-8344-19af6cd952b4,I20.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,Angina pectoris unspecified,Angina pectoris unspecified,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+d1dc6d4f-fb03-4ab5-ac57-99cfa46d8ba5,K40,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Bilateral inguinal hernia, with obstruction, without gangrene","Bilateral inguinal hernia, with obstruction, without gangrene",76135cd7-0cb8-4004-b408-7538188a97cb,false,SYSTEM
+7d5dea9c-4574-4886-b647-47cac95e4a5a,I85,85a84ce7-ae57-4781-a40e-4d15ab99133e,Esophageal varices,Esophageal varices,76135cd7-0cb8-4004-b408-7538188a97cb,false,SYSTEM
+e33189b0-84ba-4a7d-bc05-1c6aec52b7eb,Z99.89,85a84ce7-ae57-4781-a40e-4d15ab99133e,Dependence on other enabling machines and devices,Dependence on other enabling machines and devices,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+c9f2f8c4-2529-41b0-82cc-60313422dce2,D64.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Anemia, unspecified","Anemia, unspecified",a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+a42eb158-cbe3-40d4-9a32-d6a0c30d32f8,E35,85a84ce7-ae57-4781-a40e-4d15ab99133e,Disorders of endocrine glands in diseases classified elsewhere,Disorders of endocrine glands in diseases classified elsewhere,,false,SYSTEM
+ca5b2964-e84f-4045-80b5-3ec964748469,R06.02,85a84ce7-ae57-4781-a40e-4d15ab99133e,Shortness of breath,Shortness of breath,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+68542253-54ce-42a1-8357-c1ea6306ccfe,F40.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,Phobic anxiety disorder,Phobic anxiety disorder,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+70aacedd-7267-4821-9145-8e27f80aa07b,R23.3,85a84ce7-ae57-4781-a40e-4d15ab99133e,Spontaneous ecchymoses,Spontaneous ecchymoses,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+57a8b097-8d47-437b-bc00-0035fad7d9d4,I48.2,85a84ce7-ae57-4781-a40e-4d15ab99133e,Chronic atrial fibrillation,Chronic atrial fibrillation,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+1d2931ec-f14c-4f9e-b29c-1917c3f48289,M26.53,85a84ce7-ae57-4781-a40e-4d15ab99133e,Deviation in opening and closing of the mandible,Deviation in opening and closing of the mandible,8f6b4670-03cd-4532-99e0-04e738907a29,true,SYSTEM
+3f8b5aa3-4db2-4a06-8dfd-c2394d0036d3,E11.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,Type 2 diabetes mellitus without complications,Type 2 diabetes mellitus without complications,,true,SYSTEM
+3a2f931a-1277-430d-8081-4eb055c90237,I82.90,85a84ce7-ae57-4781-a40e-4d15ab99133e,Acute embolism and thrombosis of unspecified vein,Acute embolism and thrombosis of unspecified vein,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+5f226201-50c6-4523-b443-27c5730e01ba,J40,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Bronchitis, not specified as acute or chronic","Bronchitis, not specified as acute or chronic",642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+4704a70d-4b26-42ef-813c-cf85e95e05db,G40.901,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Epilepsy, unspecified","Epilepsy, unspecified",70b106c5-372f-44d1-9bc5-b919d98244d6,true,SYSTEM
+d1388156-6f87-43cc-a4a4-aff4b3bd7039,K21,85a84ce7-ae57-4781-a40e-4d15ab99133e,Gastro-esophageal reflux disease,Gastro-esophageal reflux disease,76135cd7-0cb8-4004-b408-7538188a97cb,false,SYSTEM
+ae9d64a1-6992-48c3-b2ce-7df6f8842b71,Z86.711,85a84ce7-ae57-4781-a40e-4d15ab99133e,Personal history of pulmonary embolism,Personal history of pulmonary embolism,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+aac3884f-06fe-4daf-ba2b-204d4fc035bd,J42,85a84ce7-ae57-4781-a40e-4d15ab99133e,Unspecified chronic bronchitis,Unspecified chronic bronchitis,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+d65c5ff4-7e76-4acc-8d8b-f9d7e9d6e67a,E10,85a84ce7-ae57-4781-a40e-4d15ab99133e,Type 1 diabetes mellitus,Type 1 diabetes mellitus,1dd64d88-51f9-41a4-aa41-470e967aefbb,false,SYSTEM
+886139e3-227b-4b17-9cab-843a97354db1,Z95.5,85a84ce7-ae57-4781-a40e-4d15ab99133e,Presence of coronary angioplasty implant and graft,Presence of coronary angioplasty implant and graft,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+77ac33be-4fe8-4185-ac92-885ab695e030,N42.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Disorder of prostate, unspecified","Disorder of prostate, unspecified",4ab3e548-56d3-48ff-8489-e97c7cddc79f,true,SYSTEM
+3902e731-0ac5-456d-a49b-ac47988c0d78,Z97.4,85a84ce7-ae57-4781-a40e-4d15ab99133e,Presence of external hearing-aid,Presence of external hearing-aid,92a4e678-d6cb-4502-bbea-f9b26266a7ab,true,SYSTEM
+8b7845a3-f8ab-43ed-9c54-1d0f3413d47f,Z86.39,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Personal history of other endocrine, nutritional and metabolic disease","Personal history of other endocrine, nutritional and metabolic disease",1dd64d88-51f9-41a4-aa41-470e967aefbb,true,SYSTEM
+8d7406fc-a751-45ca-82d4-b356914109e6,S03.2,85a84ce7-ae57-4781-a40e-4d15ab99133e,Dislocation of tooth,Dislocation of tooth,98c3d55b-c803-49b6-b06f-1a685b751183,true,SYSTEM
+755ff709-20fe-4e78-894a-9bd5ca107545,F79,85a84ce7-ae57-4781-a40e-4d15ab99133e,Unspecified intellectual disabilities,Unspecified intellectual disabilities,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+bc2a9924-1b50-4e69-8515-43965210f1bf,E11,85a84ce7-ae57-4781-a40e-4d15ab99133e,Type 2 diabetes mellitus,Type 2 diabetes mellitus,1dd64d88-51f9-41a4-aa41-470e967aefbb,false,SYSTEM
+e15d646a-7487-493f-8981-7ecf15a86d38,D57.3,85a84ce7-ae57-4781-a40e-4d15ab99133e,Sickle cell trait,Sickle cell trait,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+c804236f-6be2-4570-9bb5-eecd09e32e6f,M19.90,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Unspecified osteoarthritis, unspecified site","Unspecified osteoarthritis, unspecified site",8f6b4670-03cd-4532-99e0-04e738907a29,true,SYSTEM
+e290fbaa-cc8a-40a1-b222-95d1dfa65d82,Z87.09,85a84ce7-ae57-4781-a40e-4d15ab99133e,Personal history of other diseases of the respiratory system (Pneumonia),Personal history of other diseases of the respiratory system (Pneumonia),642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+89507685-abff-48ee-8421-51ad306a3f73,K25.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Gastric ulcer, unspecified as acute or chronic","Gastric ulcer, unspecified as acute or chronic",76135cd7-0cb8-4004-b408-7538188a97cb,true,SYSTEM
+513f0d83-3f6c-4323-a99a-d197615fa7f0,Z79.01,85a84ce7-ae57-4781-a40e-4d15ab99133e,Long term (current) use of anticoagulants,Long term (current) use of anticoagulants,60072bb1-b464-4a9f-83d8-e8fe762d9cc1,false,SYSTEM
+c5178f70-d881-440b-a0ec-d0a4a3331111,F17.1,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Mental,SYSTEM 
+and behavioural disorders due to use of tobacco, harmful use","Mental,SYSTEM
+and behavioural disorders due to use of tobacco, harmful use",92a4e678-d6cb-4502-bbea-f9b26266a7ab,true,SYSTEM
+cf1fa488-531b-4cb0-9ac1-7ee80c061825,Z86.2,85a84ce7-ae57-4781-a40e-4d15ab99133e,Personal history of diseases of the blood and blood-forming organs and certain disorders involving the immune mechanism (Anemia),Personal history of diseases of the blood and blood-forming organs and certain disorders involving the immune mechanism (Anemia),a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+bc94598e-3315-452e-afa3-115d28776175,K59.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Functional intestinal disorder, unspecified","Functional intestinal disorder, unspecified",76135cd7-0cb8-4004-b408-7538188a97cb,true,SYSTEM
+68325ade-0187-4b02-8f97-2ce4cc56c446,F03,85a84ce7-ae57-4781-a40e-4d15ab99133e,Unspecified dementia,Unspecified dementia,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+421a43c4-1c02-4edf-8a04-0fef227a5aea,H91.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Hearing loss, unspecified","Hearing loss, unspecified",92a4e678-d6cb-4502-bbea-f9b26266a7ab,false,SYSTEM
+a730eee1-9ac3-4a16-8bb4-8b8f1b031724,Z20.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,Contact with and (suspected) exposure to unspecified communicable disease,Contact with and (suspected) exposure to unspecified communicable disease,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+c6e38662-60ff-4f3c-8741-fa37b4a60a37,Z86.74,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Personal history of transient ischemic attack (TIA), and cerebral infarction","Personal history of transient ischemic attack (TIA), and cerebral infarction",a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+b00303ee-07c5-40a2-9f8d-02cac9710cda,D57.1,85a84ce7-ae57-4781-a40e-4d15ab99133e,Sickle-cell disease without crisis,Sickle-cell disease without crisis,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+48ac8c6a-198d-49c2-8786-f575c37a5ed8,G35,85a84ce7-ae57-4781-a40e-4d15ab99133e,Multiple sclerosis,Multiple sclerosis,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+8d29ac24-9c05-402b-b352-1e4d84383a7e,z86.79,85a84ce7-ae57-4781-a40e-4d15ab99133e,Personal history of other diseases of the circulatory system (Atrial Fibrillation),Personal history of other diseases of the circulatory system (Atrial Fibrillation),a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+cd21832f-e5d8-4b5c-a637-5502b2f7694a,J45.40,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Moderate persistent asthma, uncomplicated","Moderate persistent asthma, uncomplicated",642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+c00a45f4-1ff5-4f2d-8edc-b0befa6d5424,M81.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Osteoporosis, unspecified","Osteoporosis, unspecified",8f6b4670-03cd-4532-99e0-04e738907a29,true,SYSTEM
+6d1545c9-aa16-453a-af0a-1744592779e1,F50.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Eating disorder, unspecified","Eating disorder, unspecified",a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+95ac57af-5b0a-4c2c-b844-05d6e6ff99e3,G20,85a84ce7-ae57-4781-a40e-4d15ab99133e,Parkinson's disease,Parkinson's disease,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+aab07c8f-57ba-468f-a8a1-42719f8633a8,J45.50,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Severe persistent asthma, uncomplicated","Severe persistent asthma, uncomplicated",642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+df561fc8-f39d-426b-b0b1-dcaf29034660,150.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Heart failure, unspecified","Heart failure, unspecified",a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+450b5615-55e8-4489-8f12-902ab0244a88,Z86.71,85a84ce7-ae57-4781-a40e-4d15ab99133e,Personal history of venous thrombosis and embolism,Personal history of venous thrombosis and embolism,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+7a21f934-03c4-424f-8696-416a9006ad0f,Z99.3,85a84ce7-ae57-4781-a40e-4d15ab99133e,Dependence on wheelchair,Dependence on wheelchair,92a4e678-d6cb-4502-bbea-f9b26266a7ab,true,SYSTEM
+3706d858-1fc6-4980-bf5a-a859f8a98595,105542008,2773268e-5d3c-4eaa-957c-c861a05effdc,Non - drinker,Non - drinker,92a4e678-d6cb-4502-bbea-f9b26266a7ab,false,SYSTEM
+375fe8b2-6369-4582-9d1f-4955bafc71db,417357006,2773268e-5d3c-4eaa-957c-c861a05effdc,Sickle cell disease,Sickle cell disease,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+ce9240c0-2903-410d-bdf4-8e5fae32d794,34486009,2773268e-5d3c-4eaa-957c-c861a05effdc,Hyperthyroidism,Hyperthyroidism,1dd64d88-51f9-41a4-aa41-470e967aefbb,true,SYSTEM
+b8424f87-62c2-4288-95ce-2b83a23a7ecf,30281009,2773268e-5d3c-4eaa-957c-c861a05effdc,Prostate disorder,Prostate disorder,4ab3e548-56d3-48ff-8489-e97c7cddc79f,true,SYSTEM
+cdb1abd0-cd90-4b30-b84f-79da90078cae,397825006,2773268e-5d3c-4eaa-957c-c861a05effdc,Gastric ulcer,Gastric ulcer,76135cd7-0cb8-4004-b408-7538188a97cb,true,SYSTEM
+6d20097e-e0e6-4088-a5e8-bb941224f922,223366009,2773268e-5d3c-4eaa-957c-c861a05effdc,Healthcare worker,Healthcare worker,3e855e84-e9db-4868-a54a-289792ca4fd6,false,SYSTEM
+db05aa34-92d5-47d1-b83a-b5a126b6b7ca,34570004,2773268e-5d3c-4eaa-957c-c861a05effdc,Loosening of tooth,Loosening of tooth,98c3d55b-c803-49b6-b06f-1a685b751183,true,SYSTEM
+5799c5c9-78bc-4d7b-b1e7-6d274603cbe0,234467004,2773268e-5d3c-4eaa-957c-c861a05effdc,Thrombophilia,Thrombophilia,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+e44cc634-7001-45ee-9182-f46ea5b46cc7,4557003,2773268e-5d3c-4eaa-957c-c861a05effdc,Unstable angina,Unstable angina,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+561b4f0f-5829-450c-910d-358229ae042f,1855002,2773268e-5d3c-4eaa-957c-c861a05effdc,Learning disability,Learning disability,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+354033db-e445-4be7-b78e-f4a6aca687f5,309615009,2773268e-5d3c-4eaa-957c-c861a05effdc,Bowel problem,Bowel problem,76135cd7-0cb8-4004-b408-7538188a97cb,true,SYSTEM
+1a0604f3-dd1a-4170-bf7f-5cccc76174bb,115329001,2773268e-5d3c-4eaa-957c-c861a05effdc,MRSA,MRSA,3e855e84-e9db-4868-a54a-289792ca4fd6,true,SYSTEM
+b09be82a-2e44-4ffb-892c-e96980369b93,370221004,2773268e-5d3c-4eaa-957c-c861a05effdc,Severe asthma,Severe asthma,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+64d8768c-c7c0-4d6f-a76e-1a0cc84582fb,16402000,2773268e-5d3c-4eaa-957c-c861a05effdc,Sickle cell trait,Sickle cell trait,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+9de7cb7e-25ce-4bc1-819f-a44e412b84b5,15188001,2773268e-5d3c-4eaa-957c-c861a05effdc,Hearing loss,Hearing loss,92a4e678-d6cb-4502-bbea-f9b26266a7ab,false,SYSTEM
+b57914f0-2072-40a9-b90c-7076c8b81aa2,267039000,2773268e-5d3c-4eaa-957c-c861a05effdc,Ankle swelling,Ankle swelling,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+8a70421a-0e13-4daa-8fe3-64b255bc26e4,430710003,2773268e-5d3c-4eaa-957c-c861a05effdc,Family history of thromboembolic disorder,Family history of thromboembolic disorder,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+7763e505-9b98-4208-aae5-aefc86e8aaf7,161414005,2773268e-5d3c-4eaa-957c-c861a05effdc,History of tuberculosis,History of tuberculosis,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+ccaa7774-749a-45b2-af8b-dc9c5b4067b4,473155009,2773268e-5d3c-4eaa-957c-c861a05effdc,History of angioplasty,History of angioplasty,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+369d08a9-ad06-4fbb-a5a3-2585e6b165e1,72366004,2773268e-5d3c-4eaa-957c-c861a05effdc,Eating disorder,Eating disorder,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+a701c705-c973-4d4f-a909-e41db830dba1,161501007,2773268e-5d3c-4eaa-957c-c861a05effdc,History of hypertension,History of hypertension,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+20ea1a5b-9e13-438b-97c7-3c419aa9c7fe,277037004,2773268e-5d3c-4eaa-957c-c861a05effdc,Denture,Denture,98c3d55b-c803-49b6-b06f-1a685b751183,true,SYSTEM
+47a28206-65c4-4393-a16f-a1851f51ff74,24700007,2773268e-5d3c-4eaa-957c-c861a05effdc,Multiple sclerosis,Multiple sclerosis,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+6dc1ace3-94fb-40fc-82c8-a269d82c2849,16089411000119109,2773268e-5d3c-4eaa-957c-c861a05effdc,History of chest pain,History of chest pain,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+1fb01326-0e5b-4615-8e13-acdaf666a730,312442005,2773268e-5d3c-4eaa-957c-c861a05effdc,History of atrial fibrillation,History of atrial fibrillation,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+697b2b86-9324-4d05-83cb-5363a64a4739,42343007,2773268e-5d3c-4eaa-957c-c861a05effdc,Congestive heart failure,Congestive heart failure,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+30395655-ef71-4411-a936-b040cfcf5fb9,266987004,2773268e-5d3c-4eaa-957c-c861a05effdc,History of cancer,History of cancer,4ab3e548-56d3-48ff-8489-e97c7cddc79f,false,SYSTEM
+e7535e6e-c36a-45e1-8a59-2d3221579156,36202009,2773268e-5d3c-4eaa-957c-c861a05effdc,Broken tooth,Broken tooth,98c3d55b-c803-49b6-b06f-1a685b751183,false,SYSTEM
+fe787ec0-2e3b-414b-886f-d7943bc31677,52448006,2773268e-5d3c-4eaa-957c-c861a05effdc,Dementia,Dementia,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+b4c6ecad-870e-4d09-b0f4-267c546a2659,292508471000119105,2773268e-5d3c-4eaa-957c-c861a05effdc,History of COVID-19,History of COVID-19,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+e0cc0465-5f0c-400e-8522-15a940976e06,285055002,2773268e-5d3c-4eaa-957c-c861a05effdc,Uses hearing aid,Uses hearing aid,92a4e678-d6cb-4502-bbea-f9b26266a7ab,true,SYSTEM
+f9040142-46e0-419d-aab3-e9512bea6817,63480004,2773268e-5d3c-4eaa-957c-c861a05effdc,Chronic Bronchitis,Chronic Bronchitis,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+65c76b71-d58e-4071-8e5c-691213bc61b6,301578005,2773268e-5d3c-4eaa-957c-c861a05effdc,Mobilizes using wheelchair,Mobilizes using wheelchair,92a4e678-d6cb-4502-bbea-f9b26266a7ab,true,SYSTEM
+1c23a3d1-5497-4d7b-bca0-9a165205e4bd,225582009,2773268e-5d3c-4eaa-957c-c861a05effdc,Wears glasses,Wears glasses,92a4e678-d6cb-4502-bbea-f9b26266a7ab,true,SYSTEM
+78eb7160-fd48-44e7-b4b4-1090d4bb8acc,711150003,2773268e-5d3c-4eaa-957c-c861a05effdc,Long-term current use of anticoagulant,Long-term current use of anticoagulant,60072bb1-b464-4a9f-83d8-e8fe762d9cc1,false,SYSTEM
+cdce1779-395b-40f0-814b-54734caea24a,161505003,2773268e-5d3c-4eaa-957c-c861a05effdc,History of heart failure,History of heart failure,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+1b1972a9-8694-4db2-8edf-4c277cd9228b,69896004,2773268e-5d3c-4eaa-957c-c861a05effdc,Rheumatoid arthritis,Rheumatoid arthritis,8f6b4670-03cd-4532-99e0-04e738907a29,true,SYSTEM
+e2ba2b3d-b0a0-4aa5-898d-f982ed6749d4,370218001,2773268e-5d3c-4eaa-957c-c861a05effdc,Mild asthma,Mild asthma,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+14fc85fb-e804-4bc1-87c6-a9f493b5b451,710816000,2773268e-5d3c-4eaa-957c-c861a05effdc,Long-term current use of steroid,Long-term current use of steroid,60072bb1-b464-4a9f-83d8-e8fe762d9cc1,true,SYSTEM
+3f9e9241-abe6-46c2-b5f0-015a22524baf,161614004,2773268e-5d3c-4eaa-957c-c861a05effdc,Allergies,Allergies,92a4e678-d6cb-4502-bbea-f9b26266a7ab,true,SYSTEM
+c99f7074-6879-4dbb-aa9f-c1c11bab9c1a,161504004,2773268e-5d3c-4eaa-957c-c861a05effdc,History of angina pectoris,History of angina pectoris,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+3b4709db-82b4-4f34-9f65-209f634abaf5,275538002,2773268e-5d3c-4eaa-957c-c861a05effdc,History of anemia,History of anemia,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+6ad192cd-6389-40f2-b87d-7e265258ab3a,233819005,2773268e-5d3c-4eaa-957c-c861a05effdc,Stable angina,Stable angina,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+301a8cb6-18b6-4c0a-bd41-f8d0e97563c9,26929004,2773268e-5d3c-4eaa-957c-c861a05effdc,Alzheimer's disease,Alzheimer's disease,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+9c22d2b1-69b9-47f1-9216-4982aabb8397,81000119104,2773268e-5d3c-4eaa-957c-c861a05effdc,Symptomatic HIV (human immunodeficiency virus),Symptomatic HIV (human immunodeficiency virus),3e855e84-e9db-4868-a54a-289792ca4fd6,true,SYSTEM
+181e655d-03e5-4c0d-9f0a-b71ce5082e08,301131000,2773268e-5d3c-4eaa-957c-c861a05effdc,Heart murmur absent,Heart murmur absent,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+4d9554a4-feb0-4d58-9ce9-ea61e13ea3ee,8517006,2773268e-5d3c-4eaa-957c-c861a05effdc,Ex-smoker,Ex-smoker,92a4e678-d6cb-4502-bbea-f9b26266a7ab,true,SYSTEM
+7926a4e1-f613-4057-9239-7912a39f290a,49049000,2773268e-5d3c-4eaa-957c-c861a05effdc,Parkinson's disease,Parkinson's disease,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+0f430d01-357e-486f-a02e-589829ee5930,408856003,2773268e-5d3c-4eaa-957c-c861a05effdc,Autism,Autism,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+a8b79fec-f6e9-4da5-b6b8-087aba3af72b,301572006,2773268e-5d3c-4eaa-957c-c861a05effdc,Mobilizes using mobility aids,Mobilizes using mobility aids,92a4e678-d6cb-4502-bbea-f9b26266a7ab,false,SYSTEM
+c40f2e7d-51f2-43f5-9f28-6828eb95ed5a,161480008,2773268e-5d3c-4eaa-957c-c861a05effdc,History of epilepsy,History of epilepsy,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+4b4d2cb1-8181-4ee6-bc94-be49c923afce,161443002,2773268e-5d3c-4eaa-957c-c861a05effdc,History of hypothyroidism,History of hypothyroidism,1dd64d88-51f9-41a4-aa41-470e967aefbb,true,SYSTEM
+7bcaae73-06dc-4fad-b8c0-444beac33c41,170727003,2773268e-5d3c-4eaa-957c-c861a05effdc,Registered blind,Registered blind,92a4e678-d6cb-4502-bbea-f9b26266a7ab,true,SYSTEM
+d33b0862-f209-4fb2-950b-510372574a49,275531008,2773268e-5d3c-4eaa-957c-c861a05effdc,History of pacemaker in situ,History of pacemaker in situ,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+959b8df0-9481-4c04-a24d-3dbf9e896e39,161535005,2773268e-5d3c-4eaa-957c-c861a05effdc,History of liver disease,History of liver disease,4ab3e548-56d3-48ff-8489-e97c7cddc79f,false,SYSTEM
+fb93f1a1-efb9-4455-becf-83f74b54d62c,131471000119104,2773268e-5d3c-4eaa-957c-c861a05effdc,History of cardiac arrhythmia,History of cardiac arrhythmia,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+9efc5d5b-1ffa-4daf-adf4-d5675367b7dd,40930008,2773268e-5d3c-4eaa-957c-c861a05effdc,Hypothyroidism,Hypothyroidism,1dd64d88-51f9-41a4-aa41-470e967aefbb,true,SYSTEM
+29293ed4-b769-41f8-af08-018e1d3bdeea,370219009,2773268e-5d3c-4eaa-957c-c861a05effdc,Moderate asthma,Moderate asthma,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+4fb2c725-5d9e-49e0-863c-ebf50afc5d2c,396275006,2773268e-5d3c-4eaa-957c-c861a05effdc,Osteoarthritis,Osteoarthritis,8f6b4670-03cd-4532-99e0-04e738907a29,true,SYSTEM
+d77b4ed3-0246-4b8a-b995-377083e52ac2,73901000119107,2773268e-5d3c-4eaa-957c-c861a05effdc,History of renal insufficiency,History of renal insufficiency,4ab3e548-56d3-48ff-8489-e97c7cddc79f,true,SYSTEM
+e713efa1-1533-4331-ad0c-637eb33d9335,473122004,2773268e-5d3c-4eaa-957c-c861a05effdc,History of palpitations,History of palpitations,a84162f3-2e71-48f9-9b6b-e9ffa602201c,false,SYSTEM
+588049b8-f8ec-45dc-b168-f5d943f6e551,64859006,2773268e-5d3c-4eaa-957c-c861a05effdc,Osteoporosis,Osteoporosis,8f6b4670-03cd-4532-99e0-04e738907a29,true,SYSTEM
+9fd8d565-4c01-4c1c-8bc4-09d6b4870ea2,441509002,2773268e-5d3c-4eaa-957c-c861a05effdc,Cardiac pacemaker in situ,Cardiac pacemaker in situ,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+789059c6-ba2a-4358-b42f-b1fd6f1d5e79,161511000,2773268e-5d3c-4eaa-957c-c861a05effdc,History of transient ischemic attack,History of transient ischemic attack,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+6bc92b5d-7acd-4942-84f2-c37b4f26896f,161442007,2773268e-5d3c-4eaa-957c-c861a05effdc,History of hyperthyroidism,History of hyperthyroidism,1dd64d88-51f9-41a4-aa41-470e967aefbb,true,SYSTEM
+63ef3192-553c-4674-891b-5e02946e383e,136611000119100,2773268e-5d3c-4eaa-957c-c861a05effdc,History of sepsis,History of sepsis,4ab3e548-56d3-48ff-8489-e97c7cddc79f,false,SYSTEM
+83e2dd61-ce58-4ff0-94f8-dedbbed25597,Z21,85a84ce7-ae57-4781-a40e-4d15ab99133e,Asymptomatic human immunodeficiency virus [HIV] infection status,Asymptomatic human immunodeficiency virus [HIV] infection status,3e855e84-e9db-4868-a54a-289792ca4fd6,true,SYSTEM
+7a35cf4b-fb24-48d7-89b0-ec15ed236098,G40.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,Epilepsy,Epilepsy,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+4b2d18df-9c62-4cf0-b872-534e9dd32eb0,I20,85a84ce7-ae57-4781-a40e-4d15ab99133e,Unstable angina,Unstable angina,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+9284f43c-a6bc-468c-a32c-a90c7d5dd043,J45.30,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Mild persistent asthma, uncomplicated","Mild persistent asthma, uncomplicated",642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+61cf9093-a60e-48ee-920b-c820ebe12aeb,Z86.79,85a84ce7-ae57-4781-a40e-4d15ab99133e,Personal history of diseases of the circulatory system,Personal history of diseases of the circulatory system,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+3926be36-c9a3-4fd9-ab7e-4b77e4ad960e,M06.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Rheumatoid arthritis, unspecified","Rheumatoid arthritis, unspecified",8f6b4670-03cd-4532-99e0-04e738907a29,true,SYSTEM
+6f3b3da6-75a6-4371-8d00-38e3770c0fa9,H54.7,85a84ce7-ae57-4781-a40e-4d15ab99133e,Unspecified visual loss,Unspecified visual loss,92a4e678-d6cb-4502-bbea-f9b26266a7ab,true,SYSTEM
+5c95a5ed-4f50-44e3-a797-67fe7132ec68,A81,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Creutzfeldt-Jakob disease, unspecified","Creutzfeldt-Jakob disease, unspecified",3e855e84-e9db-4868-a54a-289792ca4fd6,false,SYSTEM
+f435aa3a-c856-45c5-ba36-cda660d58cf8,G47.30,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Sleep apnea, unspecified","Sleep apnea, unspecified",642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+715b44e3-77ca-40fd-bab7-33fed94feaab,Z97.2,85a84ce7-ae57-4781-a40e-4d15ab99133e,Presence of dental prosthetic device (complete) (partial),Presence of dental prosthetic device (complete) (partial),98c3d55b-c803-49b6-b06f-1a685b751183,true,SYSTEM
+84bb9cd7-4ed1-46a5-b8f7-6a925f5bead6,Z79.891,85a84ce7-ae57-4781-a40e-4d15ab99133e,Long term (current) use of opiate analgesic,Long term (current) use of opiate analgesic,60072bb1-b464-4a9f-83d8-e8fe762d9cc1,true,SYSTEM
+2b4f4791-9a70-4889-8dde-bc2628a0c084,K03.8,85a84ce7-ae57-4781-a40e-4d15ab99133e,Other specified diseases of hard tissues of teeth,Other specified diseases of hard tissues of teeth,98c3d55b-c803-49b6-b06f-1a685b751183,false,SYSTEM
+d0a69b67-ccd5-4b6d-83f6-933b9a77c6c8,Z79.5,85a84ce7-ae57-4781-a40e-4d15ab99133e,Long term (current) use of systemic steroids,Long term (current) use of systemic steroids,60072bb1-b464-4a9f-83d8-e8fe762d9cc1,true,SYSTEM
+6fd4fc5d-d9f6-42dd-ba8b-e9e6ce74a3ed,Z86.69,85a84ce7-ae57-4781-a40e-4d15ab99133e,Personal history of other diseases of the nervous system and sense organs (Epilepsy),Personal history of other diseases of the nervous system and sense organs (Epilepsy),a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+e52351c9-e6b3-4da0-a32d-69e1d828263b,z74.09,85a84ce7-ae57-4781-a40e-4d15ab99133e,Reduced mobility,Reduced mobility,92a4e678-d6cb-4502-bbea-f9b26266a7ab,false,SYSTEM
+a16b614e-6a35-4222-853b-92e02eb2c985,G30.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Alzheimer's disease, unspecified","Alzheimer's disease, unspecified",a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+b510d405-3547-4539-9af5-b1c9139ff79c,H54.8,85a84ce7-ae57-4781-a40e-4d15ab99133e,Legal blindness,Legal blindness,92a4e678-d6cb-4502-bbea-f9b26266a7ab,true,SYSTEM
+6fca942b-1cf4-4c9b-89c5-6c111a7ae82a,Z87.447,85a84ce7-ae57-4781-a40e-4d15ab99133e,Personal history of other diseases of urinary system,Personal history of other diseases of urinary system,4ab3e548-56d3-48ff-8489-e97c7cddc79f,true,SYSTEM
+c6998950-75db-4a35-be15-f45fbb475a57,K46.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,Unspecified abdominal hernia without obstruction or gangrene,Unspecified abdominal hernia without obstruction or gangrene,76135cd7-0cb8-4004-b408-7538188a97cb,true,SYSTEM
+823eb673-9a9e-4264-a1c6-9ba1490108d7,E03.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Hypothyroidism, unspecified","Hypothyroidism, unspecified",1dd64d88-51f9-41a4-aa41-470e967aefbb,true,SYSTEM
+38ae70e9-0919-4aa2-aef2-3b9ccfdc2df0,F84,85a84ce7-ae57-4781-a40e-4d15ab99133e,Autistic disorder,Autistic disorder,a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+f10f731f-e6cf-4e8b-9db4-e01348e774e2,Z86.4,85a84ce7-ae57-4781-a40e-4d15ab99133e,Personal history of psychoactive substance abuse,Personal history of psychoactive substance abuse,92a4e678-d6cb-4502-bbea-f9b26266a7ab,true,SYSTEM
+27375862-0c0c-44d1-b46b-b827941910ed,C80.0,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Disseminated malignant neoplasm, unspecified","Disseminated malignant neoplasm, unspecified",4ab3e548-56d3-48ff-8489-e97c7cddc79f,true,SYSTEM
+226daf06-df5f-41f8-a412-06b58e2b1e01,Z99.8,85a84ce7-ae57-4781-a40e-4d15ab99133e,Dependence on other enabling machines and devices,Dependence on other enabling machines and devices,642fcd84-a415-4a91-85bf-00127c40ce89,true,SYSTEM
+8600a826-343c-4752-844a-18692fe7733e,E05.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,Thyrotoxicosis (Hyperthyroidism),Thyrotoxicosis (Hyperthyroidism),1dd64d88-51f9-41a4-aa41-470e967aefbb,true,SYSTEM
+94c784b1-e1bf-49a9-b9e4-13bdb01a22db,K21.9,85a84ce7-ae57-4781-a40e-4d15ab99133e,Gastro-esophageal reflux disease,Gastro-esophageal reflux disease,76135cd7-0cb8-4004-b408-7538188a97cb,true,SYSTEM
+41f3ecfb-a44b-454a-9270-726ea6cc352d,R22.43,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Localized swelling, mass and lump, lower limb, bilateral","Localized swelling, mass and lump, lower limb, bilateral",a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+3f243a02-fe7e-4f4e-8e2a-4b008d18f350,D68.8,85a84ce7-ae57-4781-a40e-4d15ab99133e,Thrombophilia,Thrombophilia,a84162f3-2e71-48f9-9b6b-e9ffa602201c,true,SYSTEM
+8c689ee4-9e3a-4a87-9c9e-bee01b2271c6,Z86.73,85a84ce7-ae57-4781-a40e-4d15ab99133e,"Personal history of transient ischemic attack (TIA), and cerebral infarction","Personal history of transient ischemic attack (TIA), and cerebral infarction",a5da2741-641c-4fa2-ada8-620ac684b072,true,SYSTEM
+952ef902-eb1e-477b-9ce9-3f107aba3bcb,165816005,2773268e-5d3c-4eaa-957c-c861a05effdc,Human immunodeficiency virus positive (finding) ,HTLV-3 antibody positive,3e855e84-e9db-4868-a54a-289792ca4fd6,false,SYSTEM
+6ea4f29b-64e5-4ef6-a525-ce8b6fd7334d,76783007,2773268e-5d3c-4eaa-957c-c861a05effdc,Chronic hepatitis (disorder),Chronic hepatitis,3e855e84-e9db-4868-a54a-289792ca4fd6,false,SYSTEM
+a4039de8-b19d-4d5d-88b4-2fc35731f9bd,170745003,2773268e-5d3c-4eaa-957c-c861a05effdc,Diabetic on diet only (finding),Diabetic on diet only,1dd64d88-51f9-41a4-aa41-470e967aefbb,false,SYSTEM
+fc6b6efa-5707-4656-afa9-0b33fb5eefba,44054006,2773268e-5d3c-4eaa-957c-c861a05effdc,Diabetes mellitus type 2 (disorder),Diabetes mellitus type 2,1dd64d88-51f9-41a4-aa41-470e967aefbb,false,SYSTEM
+26eac64f-6aa8-4fea-b61a-e40730837785,840546002,2773268e-5d3c-4eaa-957c-c861a05effdc,Exposure to severe acute respiratory syndrome coronavirus 2 (event),Exposure to 2019 novel coronavirus,642fcd84-a415-4a91-85bf-00127c40ce89,false,SYSTEM
+859df612-184b-4dc7-a395-98cb974456a5,30171000,2773268e-5d3c-4eaa-957c-c861a05effdc,Disorder of adrenal gland (disorder),Disorder of adrenal gland,1dd64d88-51f9-41a4-aa41-470e967aefbb,false,SYSTEM
+678b8aa0-126f-42c1-acb3-8356c8878dcc,302301000,2773268e-5d3c-4eaa-957c-c861a05effdc,Bladder problem (finding),Bladder problem,4ab3e548-56d3-48ff-8489-e97c7cddc79f,false,SYSTEM
+01d89b0c-c111-4380-9fdf-fe125e867a48,90708001,2773268e-5d3c-4eaa-957c-c861a05effdc,Kidney disease (disorder),Kidney disease,4ab3e548-56d3-48ff-8489-e97c7cddc79f,false,SYSTEM
+06a4ae05-3763-41a0-8412-39b1fc8eb27e,235856003,2773268e-5d3c-4eaa-957c-c861a05effdc,Disorder of liver (disorder),Hepatopathy,4ab3e548-56d3-48ff-8489-e97c7cddc79f,false,SYSTEM
+ecf28fcb-3f18-49c4-87ac-768d5f97f0a1,416805005,2773268e-5d3c-4eaa-957c-c861a05effdc,At risk of variant Creutzfeldt-Jakob disease (finding),At risk of variant Creutzfeldt-Jakob disease,3e855e84-e9db-4868-a54a-289792ca4fd6,false,SYSTEM
+4477798b-0ec9-40ad-8b0d-3dfa90ee7c9b,792004,2773268e-5d3c-4eaa-957c-c861a05effdc,Jakob-Creutzfeldt disease (disorder),Jakob-Creutzfeldt disease,3e855e84-e9db-4868-a54a-289792ca4fd6,false,SYSTEM
+f08897e8-9e40-40d8-902d-6d9231e60bc7,363346000,2773268e-5d3c-4eaa-957c-c861a05effdc,Malignant neoplastic disease (disorder),Malignant tumour,4ab3e548-56d3-48ff-8489-e97c7cddc79f,false,SYSTEM
