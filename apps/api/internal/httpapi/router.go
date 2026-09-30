@@ -12,16 +12,19 @@ import (
 )
 
 type server struct {
-	pool   *pgxpool.Pool
-	q      *db.Queries
+	pool   *pgxpool.Pool // for transactions; queries inside them use db.New(tx)
+	q      db.Querier
 	secret []byte
 }
 
 // NewRouter wires every route. Paths use Go 1.22+ method and wildcard patterns.
 func NewRouter(pool *pgxpool.Pool, secret []byte) http.Handler {
-	s := &server{pool: pool, q: db.New(pool), secret: secret}
-	user := func(h http.HandlerFunc) http.HandlerFunc { return requireUser(secret, h) }
-	hosp := func(h http.HandlerFunc) http.HandlerFunc { return requireUser(secret, requireHospital(s.q, h)) }
+	return routes(&server{pool: pool, q: db.New(pool), secret: secret})
+}
+
+func routes(s *server) http.Handler {
+	user := func(h http.HandlerFunc) http.HandlerFunc { return requireUser(s.secret, h) }
+	hosp := func(h http.HandlerFunc) http.HandlerFunc { return requireUser(s.secret, requireHospital(s.q, h)) }
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)

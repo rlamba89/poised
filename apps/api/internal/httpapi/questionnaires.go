@@ -79,7 +79,7 @@ func (s *server) createQuestionnaire(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(ctx)
-	q := s.q.WithTx(tx)
+	q := db.New(tx)
 	if err := q.LockHospitalQuestionnaires(ctx, hid); err != nil {
 		serverError(w, "lock", err)
 		return

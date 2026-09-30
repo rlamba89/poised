@@ -140,7 +140,7 @@ func (s *server) reorderChapters(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(ctx)
-	qtx := s.q.WithTx(tx)
+	qtx := db.New(tx)
 	current, err := qtx.ListChapters(ctx, q.VersionID)
 	if err != nil {
 		serverError(w, "list chapters", err)
