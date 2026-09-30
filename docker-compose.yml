@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: sj
+      POSTGRES_PASSWORD: sj
+      POSTGRES_DB: sj
+    ports:
+      - "5432:5432"
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sj"]
+      interval: 2s
+      retries: 30
+
+volumes:
+  dbdata:
