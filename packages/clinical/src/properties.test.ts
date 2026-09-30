@@ -50,4 +50,15 @@ describe("clinical properties", () => {
     items.pop();
     expect(outputsOf(q)).toEqual([smoker]);
   });
+
+  it("keeps the value when it is written back through the property (Creator undo/redo)", () => {
+    const survey = new Model({ elements: [{ type: "text", name: "q_a" }] });
+    const q = survey.getQuestionByName("q_a") as unknown as Record<string, unknown>;
+    setOutputs(q as never, [smoker]);
+    const box = q.clinicalOutputs;
+    q.clinicalOutputs = undefined;
+    expect(outputsOf(q as never)).toEqual([]);
+    q.clinicalOutputs = box;
+    expect(outputsOf(q as never)).toEqual([smoker]);
+  });
 });

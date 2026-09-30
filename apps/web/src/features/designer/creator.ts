@@ -2,7 +2,8 @@
 import { ComputedUpdater, Serializer, setLicenseKey, type ItemValue, type PanelModel, type Question } from "survey-core";
 import { SurveyCreator } from "survey-creator-react";
 import {
-  assignGroupId, assignMissingOptionIds, assignOptionId, assignQuestionId, isClinicianOnly, registerClinicalProperties,
+  assignGroupId, assignMissingOptionIds, assignOptionId, assignQuestionId, canHaveOutputs, countOutputs, isClinicianOnly,
+  registerClinicalProperties,
 } from "@sj/clinical";
 
 const licenseKey = process.env.NEXT_PUBLIC_SURVEYJS_KEY;
@@ -42,8 +43,8 @@ for (const name of ["showNoneItem", "showOtherItem", "showDontKnowItem", "showRe
 
 export type ChapterCreatorOptions = {
   readOnly: boolean;
-  /** Extra canvas actions for a question, e.g. the Outputs badge (step 5). */
-  questionActions?: (q: Question) => object[];
+  /** Opens the outputs modal for a question (from its "Outputs (n)" badge). */
+  onOutputsClick: (q: Question) => void;
 };
 
 export function createChapterCreator(opts: ChapterCreatorOptions): SurveyCreator {
@@ -115,7 +116,19 @@ export function createChapterCreator(opts: ChapterCreatorOptions): SurveyCreator
       visible: new ComputedUpdater(() => isClinicianOnly(el)) as unknown as boolean,
       innerCss: "sj-badge-clinician",
     });
-    if (el.isQuestion && opts.questionActions) o.actions.unshift(...opts.questionActions(el));
+    if (el.isQuestion && canHaveOutputs(el)) {
+      o.actions.unshift({
+        id: "clinical-outputs",
+        title: new ComputedUpdater(() => `Outputs (${countOutputs(el)})`) as unknown as string,
+        tooltip: "Codes, notes, ASA and flags this question produces",
+        showTitle: true,
+        disableShrink: true, // otherwise the toolbar shrinks it to an icon, and it has none
+        location: "start",
+        enabled: !opts.readOnly,
+        innerCss: "sj-badge-outputs",
+        action: () => opts.onOutputsClick(el),
+      });
+    }
   });
 
   return creator;

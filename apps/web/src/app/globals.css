@@ -12,3 +12,15 @@ button.sd-action.sj-badge-clinician .sd-action__title {
   opacity: 1 !important;
   font-weight: 600;
 }
+
+/* "Outputs (n)" badge on each question (CLN-12). */
+button.sd-action.sj-badge-outputs {
+  border: 1px solid var(--mantine-color-teal-4);
+  border-radius: 999px;
+}
+button.sd-action.sj-badge-outputs .sd-action__title {
+  font-weight: 600;
+}
+.sj-code-row:hover {
+  background: var(--mantine-color-gray-0);
+}

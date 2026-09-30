@@ -30,6 +30,8 @@ func NewRouter(pool *pgxpool.Pool, secret []byte) http.Handler {
 	mux.HandleFunc("POST /api/dev/login", s.devLogin)
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("GET /api/me", user(s.me))
+	mux.HandleFunc("GET /api/codes", user(s.searchCodes))
+	mux.HandleFunc("GET /api/categories", user(s.listCategories))
 
 	mux.HandleFunc("GET /api/h/{hid}/questionnaires", hosp(s.listQuestionnaires))
 	mux.HandleFunc("POST /api/h/{hid}/questionnaires", hosp(s.createQuestionnaire))

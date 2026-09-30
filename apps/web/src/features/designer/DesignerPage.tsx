@@ -9,6 +9,8 @@ import "survey-core/survey-core.css";
 import "survey-creator-core/survey-creator-core.css";
 import { api, ApiError } from "@/lib/api";
 import { hasRole, useMe } from "@/lib/auth";
+import type { Question } from "survey-core";
+import { OutputsModal } from "@/features/outputs/OutputsModal";
 import { createChapterCreator } from "./creator";
 
 export type ChapterDetail = {
@@ -59,8 +61,9 @@ function Designer({ hospitalId, chapter }: { hospitalId: string; chapter: Chapte
   const [saveError, setSaveError] = useState("");
   const revision = useRef(chapter.revision);
   const queue = useRef<Promise<void>>(Promise.resolve());
+  const [outputsFor, setOutputsFor] = useState<Question | null>(null);
   const [creator] = useState<SurveyCreator>(() => {
-    const c = createChapterCreator({ readOnly });
+    const c = createChapterCreator({ readOnly, onOutputsClick: setOutputsFor });
     c.JSON = chapter.content;
     return c;
   });
@@ -140,6 +143,7 @@ function Designer({ hospitalId, chapter }: { hospitalId: string; chapter: Chapte
       <Box style={{ flex: 1, minHeight: 0 }}>
         <SurveyCreatorComponent creator={creator} />
       </Box>
+      <OutputsModal question={outputsFor} onClose={() => setOutputsFor(null)} />
     </Box>
   );
 }

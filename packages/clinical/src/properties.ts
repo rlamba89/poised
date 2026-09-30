@@ -35,8 +35,9 @@ export function registerClinicalProperties(): void {
       visible: false,
       isLocalizable: false,
       onSerializeValue: (obj: Base) => (obj.getPropertyValue(OUTPUTS) as OutputsBox | undefined)?.items,
+      // From JSON the value is an array; from the Creator's undo/redo it is the box itself.
       onSetValue: (obj: Base, value: unknown) =>
-        obj.setPropertyValue(OUTPUTS, Array.isArray(value) && value.length ? { items: value } : undefined),
+        obj.setPropertyValue(OUTPUTS, Array.isArray(value) ? (value.length ? { items: value } : undefined) : value),
     });
   }
 }
