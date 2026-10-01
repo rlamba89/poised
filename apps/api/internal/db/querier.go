@@ -12,6 +12,7 @@ import (
 
 type Querier interface {
 	AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams) error
+	CompleteReview(ctx context.Context, arg CompleteReviewParams) (int64, error)
 	CreateChapter(ctx context.Context, arg CreateChapterParams) (uuid.UUID, error)
 	// Creates nothing (no row) unless the patient and a published version both belong to the hospital.
 	CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (uuid.UUID, error)
@@ -61,6 +62,10 @@ type Querier interface {
 	PublishVersion(ctx context.Context, arg PublishVersionParams) (int64, error)
 	// Saves only if nobody saved since the caller loaded `revision` (LCY-04).
 	SaveChapterContent(ctx context.Context, arg SaveChapterContentParams) (int32, error)
+	// The clinician's copy of a Question Set's answers, which is final. `validated` stamps it
+	// ("Validated by … on …"); a later save without it clears the stamp. Saves nothing unless the
+	// episode is Ready for review: before that the patient is still filling in, after it the review is complete.
+	SaveClinicianAnswers(ctx context.Context, arg SaveClinicianAnswersParams) (int64, error)
 	// Saves nothing once the patient has submitted: their answers are then frozen.
 	SavePatientAnswers(ctx context.Context, arg SavePatientAnswersParams) (int64, error)
 	// CLN-09: part of the code or description, within one code set, active only.

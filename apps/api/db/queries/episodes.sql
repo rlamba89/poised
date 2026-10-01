@@ -104,3 +104,18 @@ ON CONFLICT (episode_id, chapter_id, actor) DO UPDATE SET data = EXCLUDED.data, 
 -- name: SubmitPatientHQ :execrows
 UPDATE episodes SET patient_submitted_at = now(), status = 'ready_for_review'
 WHERE id = $1 AND patient_submitted_at IS NULL;
+
+-- name: SaveClinicianAnswers :execrows
+-- The clinician's copy of a Question Set's answers, which is final. `validated` stamps it
+-- ("Validated by … on …"); a later save without it clears the stamp. Saves nothing unless the
+-- episode is Ready for review: before that the patient is still filling in, after it the review is complete.
+INSERT INTO episode_answers (episode_id, chapter_id, actor, data, updated_by, validated_at)
+SELECT e.id, sqlc.arg(chapter_id), 'clinician', sqlc.arg(data), sqlc.arg(updated_by),
+       CASE WHEN sqlc.arg(validated)::boolean THEN now() END
+FROM episodes e WHERE e.id = sqlc.arg(episode_id) AND e.status = 'ready_for_review'
+ON CONFLICT (episode_id, chapter_id, actor) DO UPDATE
+SET data = EXCLUDED.data, updated_by = EXCLUDED.updated_by, updated_at = now(), validated_at = EXCLUDED.validated_at;
+
+-- name: CompleteReview :execrows
+UPDATE episodes SET status = 'ready_for_poa', review_completed_by = $2, review_completed_at = now()
+WHERE id = $1 AND status = 'ready_for_review';

@@ -12,10 +12,11 @@ import { Model } from "survey-core";
 import { Survey } from "survey-react-ui";
 import "survey-core/survey-core.css";
 import {
-  computeOutputs, forPatient, showBands, isClinicianOnly, localesIn, refreshClinicalSummaries, registerClinicalProperties, setViewer,
-  withClinicalSummaries, LANGUAGES, SUMMARY_PREFIX, type ChapterJson, type ComputedOutputs, type Viewer,
+  computeOutputs, forPatient, showBands, localesIn, refreshClinicalSummaries, registerClinicalProperties, setViewer,
+  LANGUAGES, type ChapterJson, type ComputedOutputs, type Viewer,
 } from "@sj/clinical";
 import { api } from "@/lib/api";
+import { clinicianModel } from "./clinicianView";
 import { SetCondition } from "./SetCondition";
 import { TestCases } from "./TestCases";
 import { showUnits } from "./units";
@@ -73,23 +74,14 @@ function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: Chapter
   // each Section on its own screen and without page titles (VEW-01, STR-03). Clinicians see whole
   // pages, with each page's Clinical summary box (QT-09).
   const model = useMemo(() => {
-    const m = new Model(viewer === "patient" ? forPatient(content) : withClinicalSummaries(content));
-    setViewer(m, viewer);
-    showUnits(m);
-    showBands(m);
-    if (viewer === "patient") m.showPageTitles = false;
-    else {
-      m.widthMode = "responsive"; // two columns need the room
-      m.questionsOnPageMode = "standard";
-      m.showProgressBar = false;
-    }
-    // Clinician items are marked so the clinician layout can put them in the right-hand column.
-    m.onUpdateQuestionCssClasses.add((_, o) => {
-      if (isClinicianOnly(o.question)) o.cssClasses.root += " sj-clinician";
-    });
-    m.onUpdatePanelCssClasses.add((_, o) => {
-      if (isClinicianOnly(o.panel)) o.cssClasses.panel.container += o.panel.name.startsWith(SUMMARY_PREFIX) ? " sj-clinician sj-summary" : " sj-clinician";
-    });
+    let m: Model;
+    if (viewer === "patient") {
+      m = new Model(forPatient(content));
+      setViewer(m, viewer);
+      showUnits(m);
+      showBands(m);
+      m.showPageTitles = false;
+    } else m = clinicianModel(content);
     m.data = answers.current; // keep answers across the switch
     m.completedHtml = "<p>End of the chapter preview.</p>";
     return m;

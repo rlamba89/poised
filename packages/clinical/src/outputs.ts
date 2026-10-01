@@ -150,7 +150,8 @@ function bands(q: Question): Band | undefined {
   return Array.isArray(list) && list.length ? bandFor(list, q.value) : undefined;
 }
 
-function isClinicianOnlyInTree(q: Question): boolean {
+/** Whether the question, or a group it sits in, is clinician-only. */
+export function isClinicianOnlyInTree(q: Question): boolean {
   // A question in a repeating group's entry has that entry as parent, and the group as parentQuestion.
   for (let el: unknown = q; el; el = (el as { parent?: unknown }).parent ?? (el as { parentQuestion?: unknown }).parentQuestion) {
     if (isClinicianOnly(el as Question)) return true;

@@ -1,17 +1,19 @@
 "use client";
-// One episode: the patient, the procedure, the patient's link, the status and the General notes.
-// Step 4 of plan-workflow.md adds the Question Sets to validate.
+// One episode: the patient, the procedure, the patient's link, the Question Sets to validate
+// (Step 4 of plan-workflow.md), the status and the General notes.
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Alert, Anchor, Button, Card, Center, CopyButton, Group, Loader, SimpleGrid, Stack, Text, TextInput, Title,
+  Alert, Anchor, Badge, Button, Card, Center, CopyButton, Group, Loader, SimpleGrid, Stack, Table, Text, TextInput, Title,
 } from "@mantine/core";
 import { IconArrowLeft, IconCheck, IconCopy } from "@tabler/icons-react";
+import { ageFrom, patientVariables, shownSets } from "@sj/clinical";
+import { AUDIENCE_LABELS } from "@/features/chapters/types";
 import { api } from "@/lib/api";
-import { ageFrom } from "@sj/clinical";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { StatusBadge } from "./EpisodeList";
 import { GeneralNotes } from "./GeneralNotes";
+import { currentAnswers, useEpisodeHQ } from "./hq";
 import { StatusSelect } from "./StatusSelect";
 import { patientName, type Episode, type EpisodeEvent } from "./types";
 
@@ -86,6 +88,8 @@ export function EpisodePage({ hospitalId, episodeId }: { hospitalId: string; epi
         </Card>
       )}
 
+      <QuestionSets hospitalId={hospitalId} episode={e} onReviewed={reload} />
+
       <Card withBorder>
         <StatusSelect path={path} status={e.status} onChanged={reload} />
       </Card>
@@ -104,5 +108,82 @@ function Detail({ label, value }: { label: string; value: string }) {
       <Text size="sm" fw={600} w={170}>{label}</Text>
       <Text size="sm">{value || "—"}</Text>
     </Group>
+  );
+}
+
+/** The Question Sets shown for this patient, each with its validation state, and "Complete HQ review". */
+function QuestionSets({ hospitalId, episode, onReviewed }: { hospitalId: string; episode: Episode; onReviewed: () => void }) {
+  const { hq, error, reload } = useEpisodeHQ(hospitalId, episode.id);
+  const [completing, setCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState("");
+  if (error) return <Alert color="red">{error}</Alert>;
+  if (!hq) return null;
+
+  const answers = Object.fromEntries(hq.chapters.map((c) => [c.id, currentAnswers(hq, c.id)]));
+  const sets = shownSets(hq.chapters, answers, "clinician", patientVariables(episode));
+  const waiting = episode.status === "hq_not_complete";
+  const reviewing = episode.status === "ready_for_review";
+  const allValidated = sets.every((s) => hq.clinician[s.id]?.validatedAt);
+
+  const complete = async () => {
+    setCompleting(true);
+    try {
+      await api(`/h/${hospitalId}/episodes/${episode.id}/complete-review`, { method: "POST" });
+      setCompleteError("");
+      onReviewed();
+      reload();
+    } catch (e) {
+      setCompleteError((e as Error).message);
+    } finally {
+      setCompleting(false);
+    }
+  };
+
+  return (
+    <Card withBorder>
+      <Group justify="space-between" mb="xs">
+        <Title order={4}>Health questionnaire</Title>
+        {reviewing && (
+          <Button onClick={complete} loading={completing} disabled={!allValidated}>Complete HQ review</Button>
+        )}
+      </Group>
+      {waiting && <Text size="sm" c="dimmed" mb="xs">Waiting for the patient to send their answers. Validation starts once they have.</Text>}
+      {reviewing && !allValidated && <Text size="sm" c="dimmed" mb="xs">Validate every Question Set to complete the HQ review.</Text>}
+      {episode.reviewCompletedAt && (
+        <Text size="sm" mb="xs">HQ review completed by {episode.reviewCompletedByName} on {formatDateTime(episode.reviewCompletedAt)}.</Text>
+      )}
+      {completeError && <Alert color="red" mb="xs">{completeError}</Alert>}
+      <Table verticalSpacing="xs">
+        <Table.Tbody>
+          {sets.map((s) => {
+            const row = hq.clinician[s.id];
+            return (
+              <Table.Tr key={s.id} data-testid={`hq-set-${s.name}`}>
+                <Table.Td>
+                  <Text fw={600}>{s.name}</Text>
+                </Table.Td>
+                <Table.Td>
+                  <Badge variant="outline" color={s.audience === "patient" ? "gray" : "violet"} size="sm">{AUDIENCE_LABELS[s.audience]}</Badge>
+                </Table.Td>
+                <Table.Td>
+                  {row?.validatedAt ? (
+                    <Text size="sm" c="green.8">Validated by {row.updatedByName} on {formatDateTime(row.validatedAt)}</Text>
+                  ) : (
+                    <Text size="sm" c="dimmed">{waiting ? "Waiting for the patient" : row ? "In progress" : "Not started"}</Text>
+                  )}
+                </Table.Td>
+                <Table.Td ta="right">
+                  {!waiting && (
+                    <Button size="xs" variant={reviewing && !row?.validatedAt ? "filled" : "default"} component={Link} href={`/h/${hospitalId}/episodes/${episode.id}/sets/${s.id}`}>
+                      {reviewing ? (row?.validatedAt ? "Review" : "Validate") : "View"}
+                    </Button>
+                  )}
+                </Table.Td>
+              </Table.Tr>
+            );
+          })}
+        </Table.Tbody>
+      </Table>
+    </Card>
   );
 }

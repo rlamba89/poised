@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChapterJson } from "./doc";
-import { ageFrom, isSetComplete, patientVariables, shownSets } from "./respondent";
+import { Model } from "survey-core";
+import { ageFrom, describeAnswer, isSetComplete, patientVariables, sameAnswer, shownSets } from "./respondent";
 
 const smoking: ChapterJson = {
   pages: [{ name: "p_1", elements: [{ type: "radiogroup", name: "q_smoke", isRequired: true, choices: [{ value: "o_y", text: "Yes" }, { value: "o_n", text: "No" }] }] }],
@@ -34,5 +35,27 @@ describe("respondent", () => {
     expect(shownSets(sets, { a: { q_smoke: "o_n" } }, "patient", pat).map((s) => s.id)).toEqual(["a"]);
     expect(shownSets(sets, { a: { q_smoke: "o_y" } }, "patient", pat).map((s) => s.id)).toEqual(["a", "b"]);
     expect(shownSets(sets, {}, "patient", { ...pat, age: 70 }).map((s) => s.id)).toEqual(["a", "c"]);
+  });
+});
+
+describe("corrections", () => {
+  it("compares answers ignoring key order and empty values", () => {
+    expect(sameAnswer({ a: 1, b: 2 }, { b: 2, a: 1 })).toBe(true);
+    expect(sameAnswer(undefined, "")).toBe(true);
+    expect(sameAnswer(undefined, [])).toBe(true);
+    expect(sameAnswer("o_y", "o_n")).toBe(false);
+    expect(sameAnswer(["o_a", "o_b"], ["o_b", "o_a"])).toBe(false); // order of ticks is kept as given
+  });
+
+  it("describes answers in words", () => {
+    const m = new Model({
+      elements: [
+        { type: "radiogroup", name: "q_s", choices: [{ value: "o_y", text: "Yes" }] },
+        { type: "matrixdynamic", name: "q_meds", columns: [{ name: "name" }, { name: "dose" }] },
+      ],
+    });
+    expect(describeAnswer(m.getQuestionByName("q_s"), "o_y")).toBe("Yes");
+    expect(describeAnswer(m.getQuestionByName("q_s"), undefined)).toBe("no answer");
+    expect(describeAnswer(m.getQuestionByName("q_meds"), [{ name: "Omeprazole", dose: "20mg" }, { name: "Paracetamol" }])).toBe("Omeprazole 20mg; Paracetamol");
   });
 });

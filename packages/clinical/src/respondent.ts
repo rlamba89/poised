@@ -1,6 +1,8 @@
 // Filling in an episode's HQ (plan-workflow.md Steps 3–4): the patient on their link, and the
 // clinician validating. The same rules decide which Question Sets are shown and when one is done.
+import type { Question } from "survey-core";
 import type { ChapterJson } from "./doc";
+import { formatAnswer, isChoiceQuestion } from "./outputs";
 import { registerClinicalProperties } from "./properties";
 import { isChapterShown } from "./questionSets";
 import { modelFor, type SamplePatient } from "./testcases";
@@ -46,4 +48,30 @@ export function shownSets<T extends { id: string; content: ChapterJson }>(
     values = { ...values, ...answers[s.id] };
     return true;
   });
+}
+
+const isEmpty = (v: unknown) =>
+  v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0) || (typeof v === "object" && Object.keys(v as object).length === 0);
+
+/** Key order doesn't matter; a missing answer equals an empty one. */
+function canonical(v: unknown): unknown {
+  if (isEmpty(v)) return null;
+  if (Array.isArray(v)) return v.map(canonical);
+  if (typeof v === "object") return Object.fromEntries(Object.keys(v as object).sort().map((k) => [k, canonical((v as Answers)[k])]));
+  return v;
+}
+
+/** Whether two answers to a question are the same (a clinician correction is a difference). */
+export function sameAnswer(a: unknown, b: unknown): boolean {
+  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+}
+
+/** An answer in words, for "Patient answered: …". Lists such as medications are one row each. */
+export function describeAnswer(q: Question, value: unknown): string {
+  if (isEmpty(value)) return "no answer";
+  if (!isChoiceQuestion(q) && typeof value === "object") {
+    const rows = Array.isArray(value) ? value : [value];
+    return rows.map((r) => (typeof r === "object" && r ? Object.values(r).filter((x) => !isEmpty(x)).join(" ") : String(r))).join("; ");
+  }
+  return formatAnswer(q, value);
 }

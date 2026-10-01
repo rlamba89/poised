@@ -35,6 +35,24 @@ func (q *Queries) AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams
 	return err
 }
 
+const completeReview = `-- name: CompleteReview :execrows
+UPDATE episodes SET status = 'ready_for_poa', review_completed_by = $2, review_completed_at = now()
+WHERE id = $1 AND status = 'ready_for_review'
+`
+
+type CompleteReviewParams struct {
+	ID                uuid.UUID     `json:"id"`
+	ReviewCompletedBy uuid.NullUUID `json:"reviewCompletedBy"`
+}
+
+func (q *Queries) CompleteReview(ctx context.Context, arg CompleteReviewParams) (int64, error) {
+	result, err := q.db.Exec(ctx, completeReview, arg.ID, arg.ReviewCompletedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createEpisode = `-- name: CreateEpisode :one
 INSERT INTO episodes (hospital_id, patient_id, version_id, procedure, anaesthetic, consultant, patient_token, created_by)
 SELECT $1, p.id, v.id, $2, $3, $4,
@@ -514,6 +532,40 @@ func (q *Queries) ListVersionChapters(ctx context.Context, versionID uuid.UUID) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const saveClinicianAnswers = `-- name: SaveClinicianAnswers :execrows
+INSERT INTO episode_answers (episode_id, chapter_id, actor, data, updated_by, validated_at)
+SELECT e.id, $1, 'clinician', $2, $3,
+       CASE WHEN $4::boolean THEN now() END
+FROM episodes e WHERE e.id = $5 AND e.status = 'ready_for_review'
+ON CONFLICT (episode_id, chapter_id, actor) DO UPDATE
+SET data = EXCLUDED.data, updated_by = EXCLUDED.updated_by, updated_at = now(), validated_at = EXCLUDED.validated_at
+`
+
+type SaveClinicianAnswersParams struct {
+	ChapterID uuid.UUID       `json:"chapterId"`
+	Data      json.RawMessage `json:"data"`
+	UpdatedBy uuid.NullUUID   `json:"updatedBy"`
+	Validated bool            `json:"validated"`
+	EpisodeID uuid.UUID       `json:"episodeId"`
+}
+
+// The clinician's copy of a Question Set's answers, which is final. `validated` stamps it
+// ("Validated by … on …"); a later save without it clears the stamp. Saves nothing unless the
+// episode is Ready for review: before that the patient is still filling in, after it the review is complete.
+func (q *Queries) SaveClinicianAnswers(ctx context.Context, arg SaveClinicianAnswersParams) (int64, error) {
+	result, err := q.db.Exec(ctx, saveClinicianAnswers,
+		arg.ChapterID,
+		arg.Data,
+		arg.UpdatedBy,
+		arg.Validated,
+		arg.EpisodeID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const savePatientAnswers = `-- name: SavePatientAnswers :execrows
