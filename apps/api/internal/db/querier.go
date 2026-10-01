@@ -30,12 +30,16 @@ type Querier interface {
 	GetChapter(ctx context.Context, arg GetChapterParams) (GetChapterRow, error)
 	GetChapterMeta(ctx context.Context, arg GetChapterMetaParams) (GetChapterMetaRow, error)
 	GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpisodeRow, error)
+	// The patient's link: no sign-in, the token is the key.
+	GetEpisodeByToken(ctx context.Context, patientToken string) (GetEpisodeByTokenRow, error)
 	GetQuestionnaire(ctx context.Context, arg GetQuestionnaireParams) (GetQuestionnaireRow, error)
 	GetUser(ctx context.Context, id uuid.UUID) (User, error)
+	GetVersionChapter(ctx context.Context, arg GetVersionChapterParams) (GetVersionChapterRow, error)
 	HasNonDraftVersion(ctx context.Context, questionnaireID uuid.UUID) (bool, error)
 	ListCategories(ctx context.Context) ([]Category, error)
 	// Every chapter lookup joins up to the questionnaire so it is scoped to the hospital.
 	ListChapters(ctx context.Context, versionID uuid.UUID) ([]ListChaptersRow, error)
+	ListEpisodeAnswers(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeAnswersRow, error)
 	ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeEventsRow, error)
 	ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]ListEpisodesRow, error)
 	ListMemberships(ctx context.Context, userID uuid.UUID) ([]ListMembershipsRow, error)
@@ -48,6 +52,7 @@ type Querier interface {
 	ListQuestionnaires(ctx context.Context, arg ListQuestionnairesParams) ([]ListQuestionnairesRow, error)
 	ListRolesInHospital(ctx context.Context, arg ListRolesInHospitalParams) ([]string, error)
 	ListUsers(ctx context.Context) ([]User, error)
+	ListVersionChapters(ctx context.Context, versionID uuid.UUID) ([]ListVersionChaptersRow, error)
 	// Serialises creates in one hospital so the unique-draft-name check can't race.
 	LockHospitalQuestionnaires(ctx context.Context, hospitalID uuid.UUID) error
 	Ping(ctx context.Context) (int32, error)
@@ -56,10 +61,13 @@ type Querier interface {
 	PublishVersion(ctx context.Context, arg PublishVersionParams) (int64, error)
 	// Saves only if nobody saved since the caller loaded `revision` (LCY-04).
 	SaveChapterContent(ctx context.Context, arg SaveChapterContentParams) (int32, error)
+	// Saves nothing once the patient has submitted: their answers are then frozen.
+	SavePatientAnswers(ctx context.Context, arg SavePatientAnswersParams) (int64, error)
 	// CLN-09: part of the code or description, within one code set, active only.
 	// ILIKE '%…%' is served by the pg_trgm GIN indexes.
 	SearchCodes(ctx context.Context, arg SearchCodesParams) ([]SearchCodesRow, error)
 	SetChapterPosition(ctx context.Context, arg SetChapterPositionParams) error
+	SubmitPatientHQ(ctx context.Context, id uuid.UUID) (int64, error)
 	TouchVersion(ctx context.Context, arg TouchVersionParams) error
 	UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) error
 	UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) error

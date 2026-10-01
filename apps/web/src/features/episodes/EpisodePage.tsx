@@ -8,7 +8,8 @@ import {
 } from "@mantine/core";
 import { IconArrowLeft, IconCheck, IconCopy } from "@tabler/icons-react";
 import { api } from "@/lib/api";
-import { ageFrom, formatDate, formatDateTime } from "@/lib/format";
+import { ageFrom } from "@sj/clinical";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { StatusBadge } from "./EpisodeList";
 import { GeneralNotes } from "./GeneralNotes";
 import { StatusSelect } from "./StatusSelect";

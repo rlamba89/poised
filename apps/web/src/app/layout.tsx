@@ -2,7 +2,7 @@ import "@mantine/core/styles.css";
 import "./globals.css";
 import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from "@mantine/core";
 
-export const metadata = { title: "Lifebox Authoring" };
+export const metadata = { title: "Lifebox" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

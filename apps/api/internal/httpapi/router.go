@@ -63,6 +63,11 @@ func routes(s *server) http.Handler {
 	mux.HandleFunc("GET /api/h/{hid}/episodes/{eid}", hosp(s.getEpisode))
 	mux.HandleFunc("PATCH /api/h/{hid}/episodes/{eid}", hosp(s.updateEpisode))
 	mux.HandleFunc("POST /api/h/{hid}/episodes/{eid}/notes", hosp(s.addEpisodeNote))
+
+	// The patient's link: no sign-in (plan-workflow.md Step 3).
+	mux.HandleFunc("GET /api/p/{token}", s.patientHQ)
+	mux.HandleFunc("PUT /api/p/{token}/answers/{cid}", s.savePatientAnswers)
+	mux.HandleFunc("POST /api/p/{token}/submit", s.submitPatientHQ)
 	return mux
 }
 

@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -182,6 +183,112 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 		&i.VersionNo,
 	)
 	return i, err
+}
+
+const getEpisodeByToken = `-- name: GetEpisodeByToken :one
+SELECT e.id, e.status, e.patient_submitted_at, e.version_id,
+       p.first_name, p.last_name, p.date_of_birth, p.sex,
+       q.name AS questionnaire_name
+FROM episodes e
+JOIN patients p ON p.id = e.patient_id
+JOIN questionnaire_versions v ON v.id = e.version_id
+JOIN questionnaires q ON q.id = v.questionnaire_id
+WHERE e.patient_token = $1
+`
+
+type GetEpisodeByTokenRow struct {
+	ID                 uuid.UUID          `json:"id"`
+	Status             string             `json:"status"`
+	PatientSubmittedAt pgtype.Timestamptz `json:"patientSubmittedAt"`
+	VersionID          uuid.UUID          `json:"versionId"`
+	FirstName          string             `json:"firstName"`
+	LastName           string             `json:"lastName"`
+	DateOfBirth        pgtype.Date        `json:"dateOfBirth"`
+	Sex                string             `json:"sex"`
+	QuestionnaireName  string             `json:"questionnaireName"`
+}
+
+// The patient's link: no sign-in, the token is the key.
+func (q *Queries) GetEpisodeByToken(ctx context.Context, patientToken string) (GetEpisodeByTokenRow, error) {
+	row := q.db.QueryRow(ctx, getEpisodeByToken, patientToken)
+	var i GetEpisodeByTokenRow
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.PatientSubmittedAt,
+		&i.VersionID,
+		&i.FirstName,
+		&i.LastName,
+		&i.DateOfBirth,
+		&i.Sex,
+		&i.QuestionnaireName,
+	)
+	return i, err
+}
+
+const getVersionChapter = `-- name: GetVersionChapter :one
+SELECT id, audience, content FROM chapters WHERE id = $1 AND version_id = $2
+`
+
+type GetVersionChapterParams struct {
+	ID        uuid.UUID `json:"id"`
+	VersionID uuid.UUID `json:"versionId"`
+}
+
+type GetVersionChapterRow struct {
+	ID       uuid.UUID       `json:"id"`
+	Audience string          `json:"audience"`
+	Content  json.RawMessage `json:"content"`
+}
+
+func (q *Queries) GetVersionChapter(ctx context.Context, arg GetVersionChapterParams) (GetVersionChapterRow, error) {
+	row := q.db.QueryRow(ctx, getVersionChapter, arg.ID, arg.VersionID)
+	var i GetVersionChapterRow
+	err := row.Scan(&i.ID, &i.Audience, &i.Content)
+	return i, err
+}
+
+const listEpisodeAnswers = `-- name: ListEpisodeAnswers :many
+SELECT a.chapter_id, a.actor, a.data, a.updated_at, a.validated_at, u.name AS updated_by_name
+FROM episode_answers a
+LEFT JOIN users u ON u.id = a.updated_by
+WHERE a.episode_id = $1
+`
+
+type ListEpisodeAnswersRow struct {
+	ChapterID     uuid.UUID          `json:"chapterId"`
+	Actor         string             `json:"actor"`
+	Data          json.RawMessage    `json:"data"`
+	UpdatedAt     time.Time          `json:"updatedAt"`
+	ValidatedAt   pgtype.Timestamptz `json:"validatedAt"`
+	UpdatedByName *string            `json:"updatedByName"`
+}
+
+func (q *Queries) ListEpisodeAnswers(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeAnswersRow, error) {
+	rows, err := q.db.Query(ctx, listEpisodeAnswers, episodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEpisodeAnswersRow{}
+	for rows.Next() {
+		var i ListEpisodeAnswersRow
+		if err := rows.Scan(
+			&i.ChapterID,
+			&i.Actor,
+			&i.Data,
+			&i.UpdatedAt,
+			&i.ValidatedAt,
+			&i.UpdatedByName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listEpisodeEvents = `-- name: ListEpisodeEvents :many
@@ -365,6 +472,83 @@ func (q *Queries) ListPublishedVersions(ctx context.Context, hospitalID uuid.UUI
 		return nil, err
 	}
 	return items, nil
+}
+
+const listVersionChapters = `-- name: ListVersionChapters :many
+SELECT id, name, description, icon, audience, content
+FROM chapters WHERE version_id = $1
+ORDER BY position, name
+`
+
+type ListVersionChaptersRow struct {
+	ID          uuid.UUID       `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Icon        string          `json:"icon"`
+	Audience    string          `json:"audience"`
+	Content     json.RawMessage `json:"content"`
+}
+
+func (q *Queries) ListVersionChapters(ctx context.Context, versionID uuid.UUID) ([]ListVersionChaptersRow, error) {
+	rows, err := q.db.Query(ctx, listVersionChapters, versionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListVersionChaptersRow{}
+	for rows.Next() {
+		var i ListVersionChaptersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Description,
+			&i.Icon,
+			&i.Audience,
+			&i.Content,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const savePatientAnswers = `-- name: SavePatientAnswers :execrows
+INSERT INTO episode_answers (episode_id, chapter_id, actor, data)
+SELECT e.id, $1, 'patient', $2
+FROM episodes e WHERE e.id = $3 AND e.patient_submitted_at IS NULL
+ON CONFLICT (episode_id, chapter_id, actor) DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+`
+
+type SavePatientAnswersParams struct {
+	ChapterID uuid.UUID       `json:"chapterId"`
+	Data      json.RawMessage `json:"data"`
+	EpisodeID uuid.UUID       `json:"episodeId"`
+}
+
+// Saves nothing once the patient has submitted: their answers are then frozen.
+func (q *Queries) SavePatientAnswers(ctx context.Context, arg SavePatientAnswersParams) (int64, error) {
+	result, err := q.db.Exec(ctx, savePatientAnswers, arg.ChapterID, arg.Data, arg.EpisodeID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const submitPatientHQ = `-- name: SubmitPatientHQ :execrows
+UPDATE episodes SET patient_submitted_at = now(), status = 'ready_for_review'
+WHERE id = $1 AND patient_submitted_at IS NULL
+`
+
+func (q *Queries) SubmitPatientHQ(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, submitPatientHQ, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateEpisode = `-- name: UpdateEpisode :exec

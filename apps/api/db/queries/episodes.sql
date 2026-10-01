@@ -68,3 +68,39 @@ FROM episode_events ev
 LEFT JOIN users u ON u.id = ev.user_id
 WHERE ev.episode_id = $1
 ORDER BY ev.created_at, ev.id;
+
+-- name: GetEpisodeByToken :one
+-- The patient's link: no sign-in, the token is the key.
+SELECT e.id, e.status, e.patient_submitted_at, e.version_id,
+       p.first_name, p.last_name, p.date_of_birth, p.sex,
+       q.name AS questionnaire_name
+FROM episodes e
+JOIN patients p ON p.id = e.patient_id
+JOIN questionnaire_versions v ON v.id = e.version_id
+JOIN questionnaires q ON q.id = v.questionnaire_id
+WHERE e.patient_token = $1;
+
+-- name: ListVersionChapters :many
+SELECT id, name, description, icon, audience, content
+FROM chapters WHERE version_id = $1
+ORDER BY position, name;
+
+-- name: GetVersionChapter :one
+SELECT id, audience, content FROM chapters WHERE id = $1 AND version_id = $2;
+
+-- name: ListEpisodeAnswers :many
+SELECT a.chapter_id, a.actor, a.data, a.updated_at, a.validated_at, u.name AS updated_by_name
+FROM episode_answers a
+LEFT JOIN users u ON u.id = a.updated_by
+WHERE a.episode_id = $1;
+
+-- name: SavePatientAnswers :execrows
+-- Saves nothing once the patient has submitted: their answers are then frozen.
+INSERT INTO episode_answers (episode_id, chapter_id, actor, data)
+SELECT e.id, sqlc.arg(chapter_id), 'patient', sqlc.arg(data)
+FROM episodes e WHERE e.id = sqlc.arg(episode_id) AND e.patient_submitted_at IS NULL
+ON CONFLICT (episode_id, chapter_id, actor) DO UPDATE SET data = EXCLUDED.data, updated_at = now();
+
+-- name: SubmitPatientHQ :execrows
+UPDATE episodes SET patient_submitted_at = now(), status = 'ready_for_review'
+WHERE id = $1 AND patient_submitted_at IS NULL;
