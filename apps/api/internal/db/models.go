@@ -53,6 +53,15 @@ type Membership struct {
 	Role       string    `json:"role"`
 }
 
+type OptionList struct {
+	ID         uuid.UUID       `json:"id"`
+	HospitalID uuid.UUID       `json:"hospitalId"`
+	Name       string          `json:"name"`
+	Options    json.RawMessage `json:"options"`
+	UpdatedBy  uuid.UUID       `json:"updatedBy"`
+	UpdatedAt  time.Time       `json:"updatedAt"`
+}
+
 type Questionnaire struct {
 	ID          uuid.UUID `json:"id"`
 	HospitalID  uuid.UUID `json:"hospitalId"`

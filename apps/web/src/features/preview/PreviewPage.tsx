@@ -1,6 +1,7 @@
 "use client";
-// Preview a chapter as a patient or a clinician (PRV-01), with a sample patient (PRV-04)
-// and the outputs the answers produce, live (PRV-03).
+// Preview a chapter as a patient or a clinician (PRV-01), on a phone, tablet or desktop and in
+// any translated language (PRV-02), with a sample patient (PRV-04), the outputs the answers
+// produce, live (PRV-03), and saved test cases (PRV-05/06).
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -11,14 +12,30 @@ import { Model } from "survey-core";
 import { Survey } from "survey-react-ui";
 import "survey-core/survey-core.css";
 import {
-  computeOutputs, registerClinicalProperties, setViewer, stripClinicianOnly, type ComputedOutputs, type Viewer,
+  computeOutputs, forPatient, showBands, isClinicianOnly, localesIn, refreshClinicalSummaries, registerClinicalProperties, setViewer,
+  withClinicalSummaries, LANGUAGES, SUMMARY_PREFIX, type ChapterJson, type ComputedOutputs, type Viewer,
 } from "@sj/clinical";
 import { api } from "@/lib/api";
-import type { ChapterDetail } from "@/features/designer/DesignerPage";
+import { SetCondition } from "./SetCondition";
+import { TestCases } from "./TestCases";
+import { showUnits } from "./units";
 
 registerClinicalProperties();
 
-type SamplePatient = { name: string; age: number | ""; sex: string | null };
+type ChapterDetail = {
+  id: string;
+  name: string;
+  content: object;
+  revision: number;
+  versionStatus: string;
+  questionnaireId: string;
+  questionnaireName: string;
+};
+
+export type SamplePatient = { name: string; age: number | ""; sex: string | null };
+
+const DEVICES = { phone: 390, tablet: 820, desktop: undefined } as const;
+type Device = keyof typeof DEVICES;
 
 export default function PreviewPage({ hospitalId, chapterId }: { hospitalId: string; chapterId: string }) {
   const [chapter, setChapter] = useState<ChapterDetail | null>(null);
@@ -44,16 +61,54 @@ function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: Chapter
   const [viewer, setViewerState] = useState<Viewer>("patient");
   const [patient, setPatient] = useState<SamplePatient>({ name: "Sam Sample", age: 54, sex: "female" });
   const [result, setResult] = useState<ComputedOutputs>({ outputs: [] });
+  const [device, setDevice] = useState<Device>("desktop");
+  const [locale, setLocale] = useState("");
+  // The JSON and revision change when test cases are saved from here.
+  const [content, setContent] = useState(chapter.content as ChapterJson);
+  const [revision, setRevision] = useState(chapter.revision);
   const answers = useRef<Record<string, unknown>>({});
+  const [restored, setRestored] = useState(0);
 
-  // Rebuilt when the viewer changes. Patients get the JSON without clinician-only content.
+  // Rebuilt when the viewer changes. Patients get the JSON without clinician-only content, with
+  // each Section on its own screen and without page titles (VEW-01, STR-03). Clinicians see whole
+  // pages, with each page's Clinical summary box (QT-09).
   const model = useMemo(() => {
-    const m = new Model(viewer === "patient" ? stripClinicianOnly(chapter.content) : chapter.content);
+    const m = new Model(viewer === "patient" ? forPatient(content) : withClinicalSummaries(content));
     setViewer(m, viewer);
+    showUnits(m);
+    showBands(m);
+    if (viewer === "patient") m.showPageTitles = false;
+    else {
+      m.widthMode = "responsive"; // two columns need the room
+      m.questionsOnPageMode = "standard";
+      m.showProgressBar = false;
+    }
+    // Clinician items are marked so the clinician layout can put them in the right-hand column.
+    m.onUpdateQuestionCssClasses.add((_, o) => {
+      if (isClinicianOnly(o.question)) o.cssClasses.root += " sj-clinician";
+    });
+    m.onUpdatePanelCssClasses.add((_, o) => {
+      if (isClinicianOnly(o.panel)) o.cssClasses.panel.container += o.panel.name.startsWith(SUMMARY_PREFIX) ? " sj-clinician sj-summary" : " sj-clinician";
+    });
     m.data = answers.current; // keep answers across the switch
     m.completedHtml = "<p>End of the chapter preview.</p>";
     return m;
-  }, [chapter.content, viewer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content, viewer, restored]);
+
+  // A replaced survey is disposed once the new one is showing, so its resize observers stop
+  // watching removed questions. (Not in the effect's cleanup: React's development mode runs
+  // that straight away, which would dispose the survey on screen.)
+  const shown = useRef<Model | null>(null);
+  useEffect(() => {
+    const old = shown.current;
+    shown.current = model;
+    if (old && old !== model) old.dispose();
+  }, [model]);
+
+  useEffect(() => {
+    model.locale = locale;
+  }, [model, locale]);
 
   // Sample patient details are survey variables: {patientName}, {patientAge}, {patientSex}.
   useEffect(() => {
@@ -66,6 +121,7 @@ function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: Chapter
   useEffect(() => {
     const update = () => {
       answers.current = model.data;
+      refreshClinicalSummaries(model);
       setResult(computeOutputs(model));
     };
     model.onValueChanged.add(update);
@@ -80,6 +136,8 @@ function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: Chapter
   };
 
   const base = `/h/${hospitalId}`;
+  const locales = localesIn(content);
+  const width = DEVICES[device];
   return (
     <Box p="md">
       <Group justify="space-between" mb="md">
@@ -90,6 +148,28 @@ function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: Chapter
           <Text fw={600}>/ {chapter.name} · Preview</Text>
         </Group>
         <Group gap="xs">
+          {locales.length > 0 && (
+            <Select
+              size="xs"
+              aria-label="Language"
+              w={140}
+              data={[{ value: "", label: "English" }, ...locales.map((l) => ({ value: l, label: LANGUAGES[l] ?? l.toUpperCase() }))]}
+              value={locale}
+              onChange={(v) => setLocale(v ?? "")}
+              allowDeselect={false}
+            />
+          )}
+          <SegmentedControl
+            size="xs"
+            aria-label="Screen size"
+            value={device}
+            onChange={(v) => setDevice(v as Device)}
+            data={[
+              { value: "phone", label: "Phone" },
+              { value: "tablet", label: "Tablet" },
+              { value: "desktop", label: "Desktop" },
+            ]}
+          />
           <SegmentedControl
             data-testid="viewer-switch"
             value={viewer}
@@ -100,19 +180,47 @@ function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: Chapter
             ]}
           />
           <Button size="xs" variant="default" onClick={restart}>Clear answers</Button>
-          <Button size="xs" variant="light" component={Link} href={`${base}/chapters/${chapter.id}/design`}>Design</Button>
+          <Button size="xs" variant="light" component={Link} href={`${base}/questionnaires/${chapter.questionnaireId}?set=${chapter.id}`}>Edit</Button>
         </Group>
       </Group>
       <Grid>
         <Grid.Col span={{ base: 12, md: 8 }}>
-          <Card withBorder padding={0}>
-            <Survey model={model} />
-          </Card>
+          <SetCondition
+            hospitalId={hospitalId}
+            questionnaireId={chapter.questionnaireId}
+            chapterId={chapter.id}
+            content={content}
+            variables={{ patientAge: patient.age === "" ? undefined : patient.age, patientSex: patient.sex ?? undefined, viewer }}
+          />
+          <Box maw={width} mx="auto" style={{ transition: "max-width 0.2s" }} className={width ? "sj-device" : undefined}>
+            <Card withBorder padding={0} className={viewer === "clinician" && device === "desktop" ? "sj-clinician-layout" : undefined}>
+              <Survey model={model} />
+            </Card>
+          </Box>
         </Grid.Col>
         <Grid.Col span={{ base: 12, md: 4 }}>
           <Stack>
             <SamplePatientCard value={patient} onChange={setPatient} />
             <OutputsPanel result={result} />
+            <TestCases
+              hospitalId={hospitalId}
+              chapterId={chapter.id}
+              content={content}
+              revision={revision}
+              viewer={viewer}
+              patient={patient}
+              model={model}
+              onSaved={(c, r) => {
+                setContent(c);
+                setRevision(r);
+              }}
+              onLoad={(tc) => {
+                answers.current = tc.answers;
+                setPatient({ name: tc.patient.name, age: tc.patient.age ?? "", sex: tc.patient.sex ?? null });
+                setViewerState(tc.viewer);
+                setRestored((n) => n + 1);
+              }}
+            />
           </Stack>
         </Grid.Col>
       </Grid>

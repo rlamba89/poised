@@ -9,3 +9,5 @@ next-env.d.ts
 *.tsbuildinfo
 apps/web/next-env.d.ts
 spikes/ui-*.ts
+spikes/mt/
+shots/

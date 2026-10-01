@@ -1,12 +1,12 @@
 "use client";
-// FRM-01 list, FRM-04 create, FRM-06 delete.
+// FRM-01 list, FRM-04 create, FRM-06 delete. Laid out like the Lifebox Author list.
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDebouncedValue } from "@mantine/hooks";
 import {
-  Alert, Anchor, Badge, Button, Group, Modal, Pagination, Stack, Table, Text, Textarea, TextInput, Title,
+  ActionIcon, Alert, Badge, Button, Drawer, Group, Menu, Modal, Pagination, Stack, Table, Text, Textarea, TextInput, Title,
 } from "@mantine/core";
+import { IconDots, IconPencil, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
 import { api } from "@/lib/api";
 import { hasRole, useMe } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
@@ -55,9 +55,10 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
     <Stack>
       <Group justify="space-between">
         <Title order={3}>Questionnaires</Title>
-        {isAuthor && <Button onClick={() => setCreating(true)}>New questionnaire</Button>}
+        {isAuthor && <Button leftSection={<IconPlus size={16} />} onClick={() => setCreating(true)}>New Questionnaire</Button>}
       </Group>
       <TextInput
+        leftSection={<IconSearch size={16} />}
         placeholder="Search by name or description"
         value={search}
         onChange={(e) => setSearch(e.currentTarget.value)}
@@ -66,36 +67,55 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
       {error && <Alert color="red">{error}</Alert>}
       {data && data.items.length === 0 && <Text c="dimmed">No questionnaires found.</Text>}
       {data && data.items.length > 0 && (
-        <Table striped highlightOnHover>
+        <Table highlightOnHover verticalSpacing="sm">
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Name</Table.Th>
-              <Table.Th>Description</Table.Th>
               <Table.Th>Version</Table.Th>
-              <Table.Th>Status</Table.Th>
-              <Table.Th>Last changed</Table.Th>
-              <Table.Th>Created by</Table.Th>
-              <Table.Th />
+              <Table.Th>Last Modified</Table.Th>
+              <Table.Th>State</Table.Th>
+              <Table.Th>Created By</Table.Th>
+              <Table.Th w={50} />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {data.items.map((q) => (
-              <Table.Tr key={q.id}>
-                <Table.Td>
-                  <Anchor component={Link} href={`/h/${hospitalId}/questionnaires/${q.id}`}>{q.name}</Anchor>
-                </Table.Td>
-                <Table.Td>{q.description}</Table.Td>
-                <Table.Td>{q.versionNo}</Table.Td>
-                <Table.Td><Badge variant="light">{q.status}</Badge></Table.Td>
-                <Table.Td>{formatDateTime(q.updatedAt)} by {q.updatedByName}</Table.Td>
-                <Table.Td>{q.createdByName}</Table.Td>
-                <Table.Td>
-                  {q.status === "draft" && (q.createdBy === me.user.id || isAdmin) && (
-                    <Button size="xs" variant="subtle" color="red" onClick={() => setDeleting(q)}>Delete</Button>
-                  )}
-                </Table.Td>
-              </Table.Tr>
-            ))}
+            {data.items.map((q) => {
+              const open = () => router.push(`/h/${hospitalId}/questionnaires/${q.id}`);
+              const canDelete = q.status === "draft" && (q.createdBy === me.user.id || isAdmin);
+              return (
+                <Table.Tr key={q.id} onClick={open} style={{ cursor: "pointer" }}>
+                  <Table.Td>
+                    <Text fw={700}>{q.name}</Text>
+                    {q.description && <Text size="sm" c="dimmed">{q.description}</Text>}
+                  </Table.Td>
+                  <Table.Td>{q.versionNo}</Table.Td>
+                  <Table.Td>{formatDateTime(q.updatedAt)} by {q.updatedByName}</Table.Td>
+                  <Table.Td>
+                    <Badge variant="light" color={q.status === "draft" ? "gray" : "green"}>{q.status}</Badge>
+                  </Table.Td>
+                  <Table.Td>{q.createdByName}</Table.Td>
+                  <Table.Td onClick={(e) => e.stopPropagation()}>
+                    <Menu position="bottom-end">
+                      <Menu.Target>
+                        <ActionIcon variant="subtle" color="gray" aria-label={`${q.name} options`}>
+                          <IconDots size={16} />
+                        </ActionIcon>
+                      </Menu.Target>
+                      <Menu.Dropdown>
+                        <Menu.Item leftSection={<IconPencil size={14} />} onClick={open}>
+                          {q.status === "draft" && isAuthor ? "Edit" : "View"}
+                        </Menu.Item>
+                        {canDelete && (
+                          <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={() => setDeleting(q)}>
+                            Delete
+                          </Menu.Item>
+                        )}
+                      </Menu.Dropdown>
+                    </Menu>
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
           </Table.Tbody>
         </Table>
       )}
@@ -146,7 +166,7 @@ function CreateModal(props: { opened: boolean; onClose: () => void; hospitalId: 
   };
 
   return (
-    <Modal opened={props.opened} onClose={props.onClose} title="New questionnaire">
+    <Drawer opened={props.opened} onClose={props.onClose} position="right" title="New Questionnaire">
       <form onSubmit={submit}>
         <Stack>
           {error && <Alert color="red">{error}</Alert>}
@@ -154,11 +174,11 @@ function CreateModal(props: { opened: boolean; onClose: () => void; hospitalId: 
           <Textarea label="Description" required value={description} onChange={(e) => setDescription(e.currentTarget.value)} />
           <Group justify="flex-end">
             <Button variant="default" onClick={props.onClose}>Cancel</Button>
-            <Button type="submit" loading={saving}>Create</Button>
+            <Button type="submit" loading={saving}>Save</Button>
           </Group>
         </Stack>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -179,7 +199,7 @@ function DeleteModal(props: { row: Row | null; hospitalId: string; onClose: () =
       <Stack>
         {error && <Alert color="red">{error}</Alert>}
         <Text>
-          “{props.row?.name}” and all its chapters will be deleted. This can&apos;t be undone.
+          “{props.row?.name}” and all its Question Sets will be deleted. This can&apos;t be undone.
         </Text>
         <Group justify="flex-end">
           <Button variant="default" onClick={props.onClose}>Cancel</Button>

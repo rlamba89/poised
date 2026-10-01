@@ -26,10 +26,10 @@ This document states **what** the tool must do. It does not say how to build it.
 - Preview and testing of forms as a patient and as a clinician.
 - Form lifecycle: draft, review, clinical sign-off, publish, versions, copy, export and import.
 - Hospitals, roles, shared templates, the code library, reports and audit.
+- Added 1 Oct 2026: episodes, patients filling in an HQ, clinician validation and the POA Summary. See [plan-workflow.md](plan-workflow.md).
 
 ### Out of scope
 
-- Patients and clinicians filling in forms inside the Lifebox product, episodes, patient records and generating clinical documents.
 - Integration with any existing Lifebox system. The tool must still output everything a future integration would need (OUT requirements, section 11).
 
 ### How to read the requirement tables

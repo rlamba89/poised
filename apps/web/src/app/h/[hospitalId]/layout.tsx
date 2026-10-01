@@ -18,8 +18,11 @@ function Shell({ children }: { children: React.ReactNode }) {
     await api("/logout", { method: "POST" });
     router.replace("/login");
   };
-  // The designer needs the full width and height, so it gets no page padding.
-  const fullBleed = pathname.includes("/design") || pathname.includes("/preview");
+  // The questionnaire editor has its own header (Lifebox layout), so it gets the whole screen.
+  const editor = /\/questionnaires\/[^/]+$/.test(pathname);
+  // The preview needs the full width and height, so it gets no page padding.
+  const fullBleed = pathname.includes("/preview");
+  if (editor) return member ? <>{children}</> : <Alert color="red" m="md">You don&apos;t have access to this hospital.</Alert>;
 
   return (
     <AppShell header={{ height: 56 }} padding={fullBleed ? 0 : "md"}>

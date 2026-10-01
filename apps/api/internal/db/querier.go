@@ -12,9 +12,11 @@ import (
 
 type Querier interface {
 	CreateChapter(ctx context.Context, arg CreateChapterParams) (uuid.UUID, error)
+	CreateOptionList(ctx context.Context, arg CreateOptionListParams) (uuid.UUID, error)
 	CreateQuestionnaire(ctx context.Context, arg CreateQuestionnaireParams) (uuid.UUID, error)
 	CreateVersion(ctx context.Context, arg CreateVersionParams) (uuid.UUID, error)
 	DeleteChapter(ctx context.Context, id uuid.UUID) error
+	DeleteOptionList(ctx context.Context, arg DeleteOptionListParams) (int64, error)
 	DeleteQuestionnaire(ctx context.Context, arg DeleteQuestionnaireParams) error
 	DraftNameExists(ctx context.Context, arg DraftNameExistsParams) (bool, error)
 	GetChapter(ctx context.Context, arg GetChapterParams) (GetChapterRow, error)
@@ -26,6 +28,8 @@ type Querier interface {
 	// Every chapter lookup joins up to the questionnaire so it is scoped to the hospital.
 	ListChapters(ctx context.Context, versionID uuid.UUID) ([]ListChaptersRow, error)
 	ListMemberships(ctx context.Context, userID uuid.UUID) ([]ListMembershipsRow, error)
+	// Option lists are scoped to a hospital (OPT-07, TEN-01).
+	ListOptionLists(ctx context.Context, hospitalID uuid.UUID) ([]ListOptionListsRow, error)
 	// The slice has one version per questionnaire, so "latest version" is that draft.
 	ListQuestionnaires(ctx context.Context, arg ListQuestionnairesParams) ([]ListQuestionnairesRow, error)
 	ListRolesInHospital(ctx context.Context, arg ListRolesInHospitalParams) ([]string, error)
@@ -41,6 +45,7 @@ type Querier interface {
 	SetChapterPosition(ctx context.Context, arg SetChapterPositionParams) error
 	TouchVersion(ctx context.Context, arg TouchVersionParams) error
 	UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) error
+	UpdateOptionList(ctx context.Context, arg UpdateOptionListParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

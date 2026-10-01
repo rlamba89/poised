@@ -35,3 +35,16 @@ npx tsx spike2.test.ts          # as planned: 3 fails
 FIX=1 npx tsx spike2.test.ts    # with the fix: all pass
 npx tsx spike3.test.ts
 ```
+
+## Headless-browser checks (`ui-*.ts`)
+
+Each script drives the running app (`make dev`) and saves screenshots in `shots/`. They aren't part of `make test`.
+
+```sh
+CHROME_PATH=<chrome-headless-shell> npx tsx spikes/ui-features.ts
+```
+
+- `ui-editor.ts`, `ui-preview.ts`: the redesign demo.
+- `ui-hq.ts`: opens HJE Full HQ.
+- `ui-features.ts`, `ui-features2.ts`: the plan-features.md features.
+- `cleanup.ts`: deletes the test questionnaires the scripts create.

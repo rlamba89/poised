@@ -1,5 +1,6 @@
 // SurveyJS custom properties for clinical metadata. All are non-translatable (CLN-08).
 import { Serializer, type Base } from "survey-core";
+import { registerQuestionTypes } from "./questionTypes";
 import type { ClinicalOutput } from "./types";
 
 const OUTPUTS = "clinicalOutputs";
@@ -13,6 +14,7 @@ type OutputsBox = { items: ClinicalOutput[] };
 
 /** Registers the properties once. Call before creating any survey or Creator. */
 export function registerClinicalProperties(): void {
+  registerQuestionTypes();
   if (Serializer.findProperty("question", "clinicianOnly")) return;
 
   for (const cls of ["question", "panel"]) {

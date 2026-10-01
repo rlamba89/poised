@@ -1,26 +1,67 @@
-/* Canvas badge for clinician-only elements (STR-09). It is a disabled SurveyJS
-   action, so the default disabled styling is overridden. */
-button.sd-action.sj-badge-clinician,
-button.sd-action.sj-badge-clinician:disabled {
-  opacity: 1 !important;
-  background: var(--mantine-color-grape-1) !important;
-  border-radius: 999px;
-  cursor: default;
+/* Clinician view of the preview (Lifebox Clinician layout): patient items on the left,
+   clinician items beside them on the right as tinted boxes, the Clinical summary in yellow. */
+@media (min-width: 900px) {
+  .sj-clinician-layout .sd-page__content {
+    display: grid;
+    /* minmax(0, …) lets both columns shrink to half; plain 1fr grows to fit wide content. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 24px;
+    align-items: start;
+  }
+  .sj-clinician-layout .sd-page__content > .sd-row {
+    grid-column: 1;
+  }
+  .sj-clinician-layout .sd-page__content > .sd-row:has(.sj-clinician) {
+    grid-column: 2;
+  }
 }
-button.sd-action.sj-badge-clinician .sd-action__title {
-  color: var(--mantine-color-grape-9) !important;
-  opacity: 1 !important;
-  font-weight: 600;
+.sj-clinician-layout .sj-clinician {
+  background: var(--mantine-color-violet-0) !important;
+  border-radius: 6px;
+  box-shadow: none !important;
 }
-
-/* "Outputs (n)" badge on each question (CLN-12). */
-button.sd-action.sj-badge-outputs {
-  border: 1px solid var(--mantine-color-teal-4);
-  border-radius: 999px;
+.sj-clinician-layout .sj-clinician:not(.sd-element--with-frame) {
+  padding: 16px 20px;
 }
-button.sd-action.sj-badge-outputs .sd-action__title {
-  font-weight: 600;
+.sj-clinician-layout .sj-summary {
+  background: var(--mantine-color-yellow-0) !important;
+  border: 1px solid var(--mantine-color-yellow-5);
+}
+.sj-summary-notes {
+  margin: 0;
+  padding-left: 18px;
+}
+.sj-summary-empty {
+  color: var(--mantine-color-gray-6);
+  margin: 0;
+}
+.sj-profile p {
+  margin: 0 0 4px;
+}
+.sj-profile {
+  background: var(--mantine-color-gray-1);
+  border-radius: 4px;
+  padding: 12px 16px;
+}
+.sj-profile-note {
+  font-size: 13px;
+  color: var(--mantine-color-gray-7);
 }
 .sj-code-row:hover {
   background: var(--mantine-color-gray-0);
+}
+/* Number units after the box (QT-06). */
+.sj-has-unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sj-unit {
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* Phone and tablet widths in the preview (PRV-02). */
+.sj-device {
+  border: 8px solid var(--mantine-color-gray-3);
+  border-radius: 18px;
 }

@@ -1,0 +1,390 @@
+/* Layout copied from the Lifebox Author editor (docs/lifebox-ui-notes.md). Colours are ours. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--mantine-color-gray-3);
+  background: var(--mantine-color-white);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) 2fr;
+}
+
+/* Left column: the Structure tree, or the Settings panel in its place. */
+.side {
+  border-right: 1px solid var(--mantine-color-gray-3);
+  background: var(--mantine-color-white);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.sideTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--mantine-color-gray-3);
+  font-weight: 700;
+}
+
+.setRow,
+.pageRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 20px;
+  cursor: pointer;
+  border-radius: 6px;
+  user-select: none;
+}
+
+.setRow:hover,
+.pageRow:hover {
+  background: var(--mantine-color-gray-0);
+}
+
+.setRowActive {
+  font-weight: 600;
+}
+
+.pageRow {
+  margin: 2px 12px 2px 32px;
+  padding-left: 10px;
+}
+
+.pageRowActive,
+.pageRowActive:hover {
+  background: var(--mantine-color-dark-7);
+  color: var(--mantine-color-white);
+}
+
+.rowName {
+  flex: 1;
+  min-width: 0;
+}
+
+.dropBefore {
+  box-shadow: 0 -2px 0 var(--mantine-color-blue-5);
+}
+
+/* Right column: the grey canvas. */
+.canvas {
+  background: var(--mantine-color-gray-0);
+  overflow-y: auto;
+  min-height: 0;
+  padding: 20px 24px 60px;
+}
+
+.canvasHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.cards {
+  max-width: 680px;
+  margin: 16px auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  position: relative;
+  background: var(--mantine-color-white);
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: 4px;
+  padding: 16px;
+  cursor: pointer;
+}
+
+.card:hover {
+  border-color: var(--mantine-color-gray-5);
+}
+
+.cardSelected,
+.cardSelected:hover {
+  border: 2px solid var(--mantine-color-dark-6);
+  padding: 15px;
+  background: var(--mantine-color-gray-0);
+}
+
+/* A conditional element: orange left border (Lifebox .hasVisibleIf). */
+.conditional {
+  border-left: 4px solid var(--mantine-color-orange-6);
+  padding-left: 13px;
+}
+
+.cardSelected.conditional {
+  border-left-width: 4px;
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 26px;
+  margin-bottom: 10px;
+}
+
+.cardActions {
+  display: flex;
+  gap: 2px;
+  visibility: hidden;
+}
+
+.card:hover > .cardTop .cardActions,
+.cardSelected > .cardTop .cardActions {
+  visibility: visible;
+}
+
+.badgePatient,
+.badgeClinician {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  border-radius: 3px;
+}
+
+.badgePatient {
+  background: var(--mantine-color-gray-1);
+  color: var(--mantine-color-gray-7);
+}
+
+.badgeClinician {
+  background: var(--mantine-color-violet-7);
+  color: var(--mantine-color-white);
+}
+
+.title {
+  font-weight: 700;
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.optional {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--mantine-color-gray-6);
+}
+
+.branch {
+  color: var(--mantine-color-orange-6);
+  flex: none;
+  margin-top: 2px;
+}
+
+.description {
+  margin-top: 4px;
+  white-space: pre-wrap;
+}
+
+.control {
+  margin-top: 10px;
+}
+
+/* Yes / No and Select One options: small bordered blocks with a radio circle. */
+.radioBlock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-width: 72px;
+  padding: 6px 10px;
+  border: 1px solid var(--mantine-color-gray-4);
+  border-radius: 4px;
+  background: var(--mantine-color-white);
+}
+
+.radioCircle {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--mantine-color-gray-5);
+  border-radius: 50%;
+  flex: none;
+}
+
+.optionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.checkboxBox {
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--mantine-color-gray-5);
+  border-radius: 2px;
+  flex: none;
+}
+
+.fakeInput {
+  width: 170px;
+  height: 30px;
+  border: 1px solid var(--mantine-color-gray-4);
+  border-radius: 4px;
+  background: var(--mantine-color-white);
+}
+
+.fakeTextarea {
+  width: 190px;
+  height: 54px;
+  border: 1px solid var(--mantine-color-gray-4);
+  border-radius: 4px;
+  background: var(--mantine-color-white);
+}
+
+.greyPanel {
+  background: var(--mantine-color-gray-1);
+  border-radius: 4px;
+  padding: 20px;
+  text-align: center;
+}
+
+/* The disclosure count chip: green outline with a link icon (Lifebox DisclosureIndicator). */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: 1px solid var(--mantine-color-green-7);
+  border-radius: 3px;
+  color: var(--mantine-color-green-8);
+  font-size: 12px;
+  background: var(--mantine-color-white);
+  cursor: pointer;
+}
+
+.displaysWhen {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 6px 10px;
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--mantine-color-white);
+  cursor: pointer;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.pageLogic {
+  margin-top: 8px;
+}
+
+.groupBody {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section {
+  border-style: dashed;
+}
+
+.sectionBody {
+  background: var(--mantine-color-gray-0);
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.emptyGroup {
+  border: 1px dashed var(--mantine-color-gray-4);
+  border-radius: 4px;
+  padding: 14px;
+  text-align: center;
+  color: var(--mantine-color-gray-6);
+  font-size: 13px;
+}
+
+.addBar {
+  max-width: 1000px;
+  margin: 20px auto 0;
+}
+
+.addButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.dropTarget {
+  outline: 2px dashed var(--mantine-color-blue-4);
+  outline-offset: 2px;
+}
+
+.statementText p {
+  margin: 0 0 6px;
+}
+
+/* An option's score (OPT-03). */
+.score {
+  font-size: 11px;
+  color: var(--mantine-color-blue-8);
+  background: var(--mantine-color-blue-0);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+/* Rating boxes (QT-11). */
+.ratingBox {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--mantine-color-gray-4);
+  border-radius: 4px;
+  background: var(--mantine-color-white);
+  font-size: 13px;
+}
+
+/* Upload and signature areas. */
+.dropZone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 14px;
+  border: 1px dashed var(--mantine-color-gray-5);
+  border-radius: 4px;
+  background: var(--mantine-color-white);
+}
+
+/* Grid (QT-10). */
+.grid {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.grid th,
+.grid td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+}
+.grid th {
+  font-weight: 500;
+  color: var(--mantine-color-gray-7);
+}
