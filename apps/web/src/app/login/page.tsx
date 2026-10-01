@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Card, Container, Stack, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
-import type { Me } from "@/lib/auth";
+import { homePath, type Me } from "@/lib/auth";
 
 type User = { id: string; name: string; email: string };
 
@@ -22,7 +22,7 @@ export default function LoginPage() {
     try {
       await api("/dev/login", { method: "POST", body: JSON.stringify({ userId }) });
       const me = await api<Me>("/me");
-      router.push(me.hospitals.length ? `/h/${me.hospitals[0].id}/questionnaires` : "/");
+      router.push(me.hospitals.length ? homePath(me.hospitals[0]) : "/");
     } catch (e) {
       setError((e as Error).message);
     }

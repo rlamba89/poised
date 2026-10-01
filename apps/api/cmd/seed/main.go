@@ -26,7 +26,15 @@ var demoUsers = []struct{ id, name, email, hospital, role string }{
 	{"00000000-0000-4000-8000-0000000000a1", "Alex Author", "alex.author@hospital-a.example", hospitalA, "author"},
 	{"00000000-0000-4000-8000-0000000000a1", "Alex Author", "alex.author@hospital-a.example", hospitalA, "publisher"},
 	{"00000000-0000-4000-8000-0000000000a2", "Val Viewer", "val.viewer@hospital-a.example", hospitalA, "viewer"},
+	{"00000000-0000-4000-8000-0000000000a3", "Cara Clinician", "cara.clinician@hospital-a.example", hospitalA, "clinician"},
 	{"00000000-0000-4000-8000-0000000000b1", "Bea Author", "bea.author@hospital-b.example", hospitalB, "author"},
+}
+
+// Made-up patients only (NFR-03), all in hospital A.
+var demoPatients = []struct{ id, first, last, dob, sex, number, phone string }{
+	{"00000000-0000-4000-8000-0000000000c1", "Jo", "Bloggs", "1974-12-11", "male", "TEST0001", "07700 900001"},
+	{"00000000-0000-4000-8000-0000000000c2", "Pat", "Example", "1961-03-02", "female", "TEST0002", "07700 900002"},
+	{"00000000-0000-4000-8000-0000000000c3", "Robin", "Sample", "1990-07-21", "other", "TEST0003", "07700 900003"},
 }
 
 func main() {
@@ -134,7 +142,14 @@ func seedDemo(ctx context.Context, tx pgx.Tx) error {
 			return fmt.Errorf("membership %s: %w", u.name, err)
 		}
 	}
-	fmt.Printf("hospitals: 2, users: %d\n", len(demoUsers))
+	for _, p := range demoPatients {
+		if _, err := tx.Exec(ctx, `INSERT INTO patients (id, hospital_id, first_name, last_name, date_of_birth, sex, hospital_number, phone)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (id) DO NOTHING`,
+			p.id, hospitalA, p.first, p.last, p.dob, p.sex, p.number, p.phone); err != nil {
+			return fmt.Errorf("patient %s: %w", p.last, err)
+		}
+	}
+	fmt.Printf("hospitals: 2, users: %d, patients: %d\n", len(demoUsers), len(demoPatients))
 	return nil
 }
 

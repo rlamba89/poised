@@ -11,11 +11,16 @@ import (
 )
 
 type Querier interface {
+	AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams) error
 	CreateChapter(ctx context.Context, arg CreateChapterParams) (uuid.UUID, error)
+	// Creates nothing (no row) unless the patient and a published version both belong to the hospital.
+	CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (uuid.UUID, error)
 	// A new draft copied from version `from_version_id` (LCY-06/07): same chapters, same content,
 	// so stable IDs and test cases carry over. Chapters get new row ids.
 	CreateNextVersion(ctx context.Context, arg CreateNextVersionParams) (uuid.UUID, error)
 	CreateOptionList(ctx context.Context, arg CreateOptionListParams) (uuid.UUID, error)
+	// Every episode lookup is scoped to the hospital.
+	CreatePatient(ctx context.Context, arg CreatePatientParams) (uuid.UUID, error)
 	CreateQuestionnaire(ctx context.Context, arg CreateQuestionnaireParams) (uuid.UUID, error)
 	CreateVersion(ctx context.Context, arg CreateVersionParams) (uuid.UUID, error)
 	DeleteChapter(ctx context.Context, id uuid.UUID) error
@@ -24,15 +29,21 @@ type Querier interface {
 	DraftNameExists(ctx context.Context, arg DraftNameExistsParams) (bool, error)
 	GetChapter(ctx context.Context, arg GetChapterParams) (GetChapterRow, error)
 	GetChapterMeta(ctx context.Context, arg GetChapterMetaParams) (GetChapterMetaRow, error)
+	GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpisodeRow, error)
 	GetQuestionnaire(ctx context.Context, arg GetQuestionnaireParams) (GetQuestionnaireRow, error)
 	GetUser(ctx context.Context, id uuid.UUID) (User, error)
 	HasNonDraftVersion(ctx context.Context, questionnaireID uuid.UUID) (bool, error)
 	ListCategories(ctx context.Context) ([]Category, error)
 	// Every chapter lookup joins up to the questionnaire so it is scoped to the hospital.
 	ListChapters(ctx context.Context, versionID uuid.UUID) ([]ListChaptersRow, error)
+	ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeEventsRow, error)
+	ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]ListEpisodesRow, error)
 	ListMemberships(ctx context.Context, userID uuid.UUID) ([]ListMembershipsRow, error)
 	// Option lists are scoped to a hospital (OPT-07, TEN-01).
 	ListOptionLists(ctx context.Context, hospitalID uuid.UUID) ([]ListOptionListsRow, error)
+	ListPatients(ctx context.Context, hospitalID uuid.UUID) ([]ListPatientsRow, error)
+	// The HQs an episode can be given: each questionnaire's published version.
+	ListPublishedVersions(ctx context.Context, hospitalID uuid.UUID) ([]ListPublishedVersionsRow, error)
 	// A questionnaire shows its latest version: the draft if there is one, else the last published.
 	ListQuestionnaires(ctx context.Context, arg ListQuestionnairesParams) ([]ListQuestionnairesRow, error)
 	ListRolesInHospital(ctx context.Context, arg ListRolesInHospitalParams) ([]string, error)
@@ -51,6 +62,7 @@ type Querier interface {
 	SetChapterPosition(ctx context.Context, arg SetChapterPositionParams) error
 	TouchVersion(ctx context.Context, arg TouchVersionParams) error
 	UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) error
+	UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) error
 	UpdateOptionList(ctx context.Context, arg UpdateOptionListParams) (int64, error)
 }
 

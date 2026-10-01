@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Center, Loader } from "@mantine/core";
 import { api, ApiError } from "./api";
 
-export type Role = "viewer" | "author" | "reviewer" | "publisher" | "hospital_admin";
+export type Role = "viewer" | "author" | "reviewer" | "publisher" | "hospital_admin" | "clinician";
 export type Hospital = { id: string; name: string; roles: Role[] };
 export type Me = { user: { id: string; name: string; email: string }; hospitals: Hospital[] };
 
@@ -39,4 +39,9 @@ export function useMe(): Me {
 
 export function hasRole(me: Me, hospitalId: string, role: Role): boolean {
   return me.hospitals.some((h) => h.id === hospitalId && h.roles.includes(role));
+}
+
+/** Where a user starts in a hospital: Episodes for clinicians only, otherwise Questionnaires. */
+export function homePath(h: Hospital): string {
+  return h.roles.every((r) => r === "clinician") ? `/h/${h.id}/episodes` : `/h/${h.id}/questionnaires`;
 }

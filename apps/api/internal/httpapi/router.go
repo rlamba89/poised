@@ -54,6 +54,15 @@ func routes(s *server) http.Handler {
 	mux.HandleFunc("POST /api/h/{hid}/option-lists", hosp(s.createOptionList))
 	mux.HandleFunc("PUT /api/h/{hid}/option-lists/{lid}", hosp(s.updateOptionList))
 	mux.HandleFunc("DELETE /api/h/{hid}/option-lists/{lid}", hosp(s.deleteOptionList))
+
+	mux.HandleFunc("GET /api/h/{hid}/patients", hosp(s.listPatients))
+	mux.HandleFunc("POST /api/h/{hid}/patients", hosp(s.createPatient))
+	mux.HandleFunc("GET /api/h/{hid}/published-hqs", hosp(s.listPublishedHQs))
+	mux.HandleFunc("GET /api/h/{hid}/episodes", hosp(s.listEpisodes))
+	mux.HandleFunc("POST /api/h/{hid}/episodes", hosp(s.createEpisode))
+	mux.HandleFunc("GET /api/h/{hid}/episodes/{eid}", hosp(s.getEpisode))
+	mux.HandleFunc("PATCH /api/h/{hid}/episodes/{eid}", hosp(s.updateEpisode))
+	mux.HandleFunc("POST /api/h/{hid}/episodes/{eid}/notes", hosp(s.addEpisodeNote))
 	return mux
 }
 

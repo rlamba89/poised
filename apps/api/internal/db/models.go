@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Category struct {
@@ -42,6 +43,44 @@ type Code struct {
 	Status      string        `json:"status"`
 }
 
+type Episode struct {
+	ID                 uuid.UUID          `json:"id"`
+	HospitalID         uuid.UUID          `json:"hospitalId"`
+	PatientID          uuid.UUID          `json:"patientId"`
+	VersionID          uuid.UUID          `json:"versionId"`
+	Status             string             `json:"status"`
+	Procedure          string             `json:"procedure"`
+	Anaesthetic        string             `json:"anaesthetic"`
+	Consultant         string             `json:"consultant"`
+	NurseAsa           *int32             `json:"nurseAsa"`
+	AnaesthetistAsa    *int32             `json:"anaesthetistAsa"`
+	PatientToken       string             `json:"patientToken"`
+	PatientSubmittedAt pgtype.Timestamptz `json:"patientSubmittedAt"`
+	ReviewCompletedBy  uuid.NullUUID      `json:"reviewCompletedBy"`
+	ReviewCompletedAt  pgtype.Timestamptz `json:"reviewCompletedAt"`
+	CreatedBy          uuid.UUID          `json:"createdBy"`
+	CreatedAt          time.Time          `json:"createdAt"`
+}
+
+type EpisodeAnswer struct {
+	EpisodeID   uuid.UUID          `json:"episodeId"`
+	ChapterID   uuid.UUID          `json:"chapterId"`
+	Actor       string             `json:"actor"`
+	Data        json.RawMessage    `json:"data"`
+	UpdatedBy   uuid.NullUUID      `json:"updatedBy"`
+	UpdatedAt   time.Time          `json:"updatedAt"`
+	ValidatedAt pgtype.Timestamptz `json:"validatedAt"`
+}
+
+type EpisodeEvent struct {
+	ID        uuid.UUID     `json:"id"`
+	EpisodeID uuid.UUID     `json:"episodeId"`
+	Kind      string        `json:"kind"`
+	Text      string        `json:"text"`
+	UserID    uuid.NullUUID `json:"userId"`
+	CreatedAt time.Time     `json:"createdAt"`
+}
+
 type Hospital struct {
 	ID   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
@@ -60,6 +99,18 @@ type OptionList struct {
 	Options    json.RawMessage `json:"options"`
 	UpdatedBy  uuid.UUID       `json:"updatedBy"`
 	UpdatedAt  time.Time       `json:"updatedAt"`
+}
+
+type Patient struct {
+	ID             uuid.UUID   `json:"id"`
+	HospitalID     uuid.UUID   `json:"hospitalId"`
+	FirstName      string      `json:"firstName"`
+	LastName       string      `json:"lastName"`
+	DateOfBirth    pgtype.Date `json:"dateOfBirth"`
+	Sex            string      `json:"sex"`
+	HospitalNumber string      `json:"hospitalNumber"`
+	Phone          string      `json:"phone"`
+	Email          string      `json:"email"`
 }
 
 type Questionnaire struct {

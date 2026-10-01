@@ -130,10 +130,12 @@ Each step is committed on its own, with Go handler tests and Vitest tests as bef
 ### Step 2: patients and episodes
 - **Routes:**
   - `GET` / `POST /api/h/{hid}/patients`
+  - `GET /api/h/{hid}/published-hqs`: the HQs an episode can be given
   - `GET` / `POST /api/h/{hid}/episodes`
   - `GET /api/h/{hid}/episodes/{eid}`
   - `PATCH /api/h/{hid}/episodes/{eid}`: status, ASA grades, procedure details
   - `POST /api/h/{hid}/episodes/{eid}/notes`
+- All of these are for the new `clinician` role (Cara Clinician in the seed data). Clinicians land on Episodes; the header links Questionnaires and Episodes by role.
 - **Episodes screen** (`/h/[hospitalId]/episodes`): a table of patient, HQ, status and date created, with a status filter.
 - **"New episode":**
   - Pick a patient or add one.
