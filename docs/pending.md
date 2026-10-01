@@ -4,12 +4,30 @@ State on 1 Oct 2026. Plans: [plan-redesign.md](plan-redesign.md), [plan-features
 
 ## 1. Blocking now
 
-| Item | Why it matters | Next step |
-| --- | --- | --- |
-| Docker Desktop doesn't start its engine, and `docker` commands hang | Postgres is down, so the app can't run | Open Docker Desktop and answer whatever it's waiting for (update, sign-in or licence) |
-| Migration 00003 (`option_lists`) is not applied | Saved option lists fail until it is | `make migrate` |
-| The last four features haven't been tried in a browser: nested logic, Question Set conditions, Move into group, saved option lists | Only unit and handler tests cover them so far | `make dev`, then run `spikes/ui-features3.ts`, then [manual-test-plan.md](manual-test-plan.md) |
-| Nothing is committed (redesign, phase 1, phase 2 and the follow-ups) | A large working tree is at risk | Commit when the checks above pass |
+Nothing. The episode workflow ([plan-workflow.md](plan-workflow.md)) is built and committed.
+
+**After a full disk:** if Postgres won't start and logs `bogus data in lock file`, remove the stale lock and recreate the container. The data is safe in its volume:
+
+```sh
+docker run --rm -v sj-demo_dbdata:/data alpine rm /data/postmaster.pid
+docker compose up -d --force-recreate db
+```
+
+## 1a. Episode workflow: next items
+
+- **POA Summary sections not built yet:**
+  - Audit log and Work plan
+  - comments per section
+  - Observations, Investigation results, Assessments
+  - Files, and Send to EPR
+  - hospital-reported BMI
+  - a suggested ASA from disclosures
+- **Statuses:** admitted, discharged, recovery and archive are not built yet.
+- **Patients:**
+  - accounts, and invitations by email or SMS
+  - patient search
+  - Short HQ
+- **Re-opening:** a review can't be re-opened after it is complete.
 
 ## 2. Waiting on input
 

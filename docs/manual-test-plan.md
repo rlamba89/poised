@@ -1,6 +1,6 @@
-# Manual test plan: questionnaire editor and preview
+# Manual test plan: questionnaire editor, preview and episode workflow
 
-Work through these cases in Chrome, on the running app, the way a careful manual tester would. Record a result for every case. Background on the product: [plan-redesign.md](plan-redesign.md) and [plan-features.md](plan-features.md).
+Work through these cases in Chrome, on the running app, the way a careful manual tester would. Record a result for every case. Background on the product: [plan-redesign.md](plan-redesign.md), [plan-features.md](plan-features.md) and [plan-workflow.md](plan-workflow.md).
 
 ## Before you start
 
@@ -11,8 +11,9 @@ Work through these cases in Chrome, on the running app, the way a careful manual
 
   | User | Hospital | Role |
   | --- | --- | --- |
-  | Alex Author | Hospital A | author (can edit) |
+  | Alex Author | Hospital A | author and publisher |
   | Val Viewer | Hospital A | viewer (read-only) |
+  | Cara Clinician | Hospital A | clinician (episodes) |
   | Bea Author | Hospital B | author |
 
 - **Data rules:**
@@ -523,10 +524,75 @@ Click **Preview** in the editor header, with a Question Set selected.
 1. Change a text box and immediately try to close the tab or navigate away.
 2. Expected: the browser asks whether to leave, while the save is still pending.
 
+## M. Episode workflow
+
+These cases follow one patient from a published HQ to the POA Summary. Use a separate, small questionnaire named `Manual test <today's date> <time> workflow`. It will be published, and published questionnaires can't be deleted, so keep it small.
+
+**MT-64: Publish**
+1. As Alex Author, make the workflow questionnaire with one Question Set **About you**, which has two pages:
+   - Page **Lifestyle**, with Clinical summary on:
+     - Yes / No "Do you smoke?". Give **Yes** a disclosure note "Current smoker".
+     - A **Clinical** Text question "Cessation advice given?".
+   - Page **Heart**, with Clinical summary on:
+     - Yes / No "Do you have angina?". Give **Yes** a disclosure note "Angina".
+2. Add a Question Set **Assessment**, set to **Clinician** on the Question Set screen, with one Long text question "Plan".
+3. Click **Publish**. Expected:
+   - A dialog lists any problems, and Publish stays disabled while there are some.
+   - With none, Publish works, the header shows "v1 · published" and "Read only", and nothing can be edited.
+4. Click **Create new version**. Expected: "v2 · draft", with the same content.
+
+**MT-65: Create an episode**
+1. Sign in as **Cara Clinician**. Expected: you land on **Episodes**, and the header shows only the Episodes link.
+2. **New episode**, choose **Jo Bloggs**, pick the workflow HQ **v1**, and enter the procedure "Knee replacement". Create.
+3. Expected:
+   - The episode page shows "HQ not complete" and a **Patient link** with Copy.
+   - The status dropdown is disabled.
+   - General notes say "Episode created".
+
+**MT-66: The patient fills in the HQ**
+1. Open the patient link in a **private window**, so you are not signed in.
+2. Expected:
+   - "Hello Jo", and only **About you** is listed. The clinician Question Set never appears.
+   - "Cessation advice given?" is never shown.
+3. Answer **Yes** to smoking, then **Next**, then **No** to angina, then **Finish this section**.
+4. Leave and reopen the link. Expected: the answers are still there.
+5. **Send my answers** and confirm. Expected:
+   - "Thank you, Jo".
+   - Reopening the link shows the thank-you page, not the form.
+
+**MT-67: The clinician validates**
+1. As Cara, reload the episode. Expected:
+   - The status is **Ready for review**.
+   - Both Question Sets are listed as "Not started".
+   - **Complete HQ review** is disabled.
+2. **Validate** About you. Expected:
+   - The two-column clinician view, pre-filled with Jo's answers.
+   - The clinician question and the summary box are on the right.
+3. Fill in the advice and the Lifestyle clinical comments. Go **Next**, change angina to **Yes**, and add a comment. Expected:
+   - "Patient answered: No" appears under the angina question.
+   - "Angina" appears in the summary box.
+4. **Validate**. Expected: back on the episode, the set shows "Validated by Cara Clinician on …".
+5. Validate **Assessment**, after filling in the Plan.
+6. **Complete HQ review**. Expected:
+   - The status is **Ready for POA**.
+   - The notes say "HQ review completed by Cara Clinician".
+   - The sets now open read-only.
+
+**MT-68: POA Summary**
+1. Open **POA Summary**. On **Validated summary**, expected:
+   - The patient details.
+   - General notes.
+   - **About you** with "Lifestyle Summary" (Current smoker, and your comment) and "Heart Summary" (Angina, with a **Changed by clinician** badge, and your comment).
+   - An orange box saying "Patient answered “No”, now “Yes”".
+2. Set **Nurse ASA grade** to ASA II and Save. Expected: the details show "ASA II", and the notes say "Nurse ASA grade set to 2".
+3. Change **Episode status** to **Ready for admission**. Expected: the badge changes, and a note is added.
+4. Open **Patient answers**. Expected: "Current smoker" only. There's no Angina, no clinician comments and no corrections.
+5. Click **Print**. Expected: the print preview shows the summary without the app header or buttons.
+
 ## Clean-up
 
 **MT-63: Delete what you created**
-1. As Alex Author, delete every `Manual test …` questionnaire from the list (⋯ → Delete → confirm).
+1. As Alex Author, delete every `Manual test …` questionnaire from the list (⋯ → Delete → confirm). The published workflow questionnaire from MT-64 can't be deleted, so leave it.
 2. Also delete your saved option lists if MT-33 left any.
 3. Report the names you deleted.
 
@@ -536,7 +602,11 @@ Click **Preview** in the editor header, with a Question Set selected.
 
 - **Question Set conditions in a one-set preview:** the preview can't see answers from earlier Question Sets. It explains the condition but doesn't apply it, unless the condition tests only the patient.
 - **"Other (please specify)"** can't carry disclosures.
-- **No publishing:** there's no publish, versions or sign-off yet. Every questionnaire stays a draft.
+- **Publishing has no sign-off yet:** a publisher publishes in one click. Published questionnaires can't be deleted.
+- **Episodes:**
+  - Once the HQ review is complete, answers are read-only.
+  - The POA Summary has no Audit log, Work plan, Observations, Files or Send to EPR yet.
+  - Patients use a link, and there are no patient accounts.
 - **Questionnaire list:** no status filter or sorting.
 - **HJE Full HQ** has only Question Sets 1–4 and no disclosures (transcribed from screenshots).
 - **Skip rules saved before 1 Oct 2026** have no page recorded, so they're listed under the latest page they test, not the page they were added on.

@@ -202,9 +202,18 @@ Each step is committed on its own, with Go handler tests and Vitest tests as bef
 **Not in this step:** Audit log, Work plan, Observations, Investigation results, Assessments, Files, Patient files, Send to EPR, the per-section Comment buttons, and hospital-reported BMI.
 
 ### Step 6: demo script and checks
-- `docs/demo-workflow.md` walks the whole workflow with the HJE Full HQ (sets 1–4 until the real export arrives).
-- `spikes/ui-workflow.ts` drives it in a headless browser.
-- [manual-test-plan.md](manual-test-plan.md) gets a workflow section.
+- The walkthrough is section M of [manual-test-plan.md](manual-test-plan.md) (MT-64 to MT-68).
+- `spikes/ui-workflow.ts` drives the whole workflow in a headless browser. It is a local check, like the other `ui-*.ts` scripts, and isn't committed.
+
+## Status (1 Oct 2026)
+
+Steps 0–6 are built, each committed on its own. `make test` and `make lint` pass, and `spikes/ui-workflow.ts` runs the whole workflow in a browser with no page errors.
+
+Differences from the plan:
+- **Routes:** publishing is `POST …/questionnaires/{qid}/publish` with `{versionId}`, not `…/versions/{vid}/publish`. Validation is one route, `PUT …/answers/{cid}` with `{data, validated}`.
+- **Read-only after review:** once the HQ review is complete, the clinician's answers can't be changed.
+- **Notes on every page:** the POA Summary shows a page's disclosure notes even when the page has no Clinical summary box, so none are lost. Lifebox shows them only in the box.
+- **Corrections on the POA Summary:** each page also lists the answers the clinician changed, with what the patient said.
 
 ## Later
 
