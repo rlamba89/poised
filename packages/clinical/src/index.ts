@@ -13,3 +13,4 @@ export * from "./translations";
 export * from "./questionSets";
 export * from "./publish";
 export * from "./respondent";
+export * from "./poa";

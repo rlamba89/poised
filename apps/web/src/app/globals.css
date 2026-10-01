@@ -75,3 +75,14 @@
   font-size: 13px;
   color: var(--mantine-color-orange-9);
 }
+
+/* POA Summary: Print shows only the summary. */
+@media print {
+  .sj-no-print,
+  .mantine-AppShell-header {
+    display: none !important;
+  }
+  .mantine-AppShell-main {
+    padding-top: 0 !important;
+  }
+}
