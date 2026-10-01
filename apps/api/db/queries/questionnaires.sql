@@ -1,4 +1,4 @@
--- The slice has one version per questionnaire, so "latest version" is that draft.
+-- A questionnaire shows its latest version: the draft if there is one, else the last published.
 
 -- name: ListQuestionnaires :many
 SELECT q.id, q.name, q.description, q.created_by, q.created_at,
@@ -68,3 +68,34 @@ DELETE FROM questionnaires WHERE id = $1 AND hospital_id = $2;
 
 -- name: TouchVersion :exec
 UPDATE questionnaire_versions SET updated_by = $2, updated_at = now() WHERE id = $1;
+
+-- name: PublishVersion :one
+-- Publishes the draft and retires the version published before it (LCY-01), in one statement.
+-- Returns 0 when the version is no longer a draft.
+WITH pub AS (
+    UPDATE questionnaire_versions qv
+    SET status = 'published', updated_by = sqlc.arg(updated_by), updated_at = now()
+    WHERE qv.id = sqlc.arg(version_id) AND qv.status = 'draft'
+    RETURNING qv.questionnaire_id
+), retired AS (
+    UPDATE questionnaire_versions
+    SET status = 'retired'
+    WHERE questionnaire_id IN (SELECT questionnaire_id FROM pub) AND status = 'published'
+)
+SELECT count(*) FROM pub;
+
+-- name: CreateNextVersion :one
+-- A new draft copied from version `from_version_id` (LCY-06/07): same chapters, same content,
+-- so stable IDs and test cases carry over. Chapters get new row ids.
+WITH v AS (
+    INSERT INTO questionnaire_versions (questionnaire_id, version_no, status, updated_by)
+    SELECT prev.questionnaire_id, prev.version_no + 1, 'draft', sqlc.arg(updated_by)
+    FROM questionnaire_versions prev WHERE prev.id = sqlc.arg(from_version_id)
+    RETURNING questionnaire_versions.id
+), c AS (
+    INSERT INTO chapters (version_id, position, name, description, icon, audience, content, updated_by)
+    SELECT v.id, ch.position, ch.name, ch.description, ch.icon, ch.audience, ch.content, sqlc.arg(updated_by)
+    FROM chapters ch, v
+    WHERE ch.version_id = sqlc.arg(from_version_id)
+)
+SELECT id FROM v;

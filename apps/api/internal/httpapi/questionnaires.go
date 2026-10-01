@@ -165,3 +165,79 @@ func (s *server) deleteQuestionnaire(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// publishQuestionnaire publishes the latest version, which must be a draft (LCY-01). There is
+// no sign-off yet (SGN comes later). The browser has already checked logic problems and test
+// cases (plan 2.1). `versionId` is the version it checked, so a newer one isn't published by mistake.
+func (s *server) publishQuestionnaire(w http.ResponseWriter, r *http.Request) {
+	if !hasRole(r, "publisher") {
+		writeError(w, http.StatusForbidden, "Only publishers can publish questionnaires.")
+		return
+	}
+	row, ok := s.loadQuestionnaire(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		VersionID uuid.UUID `json:"versionId"`
+	}
+	if !readJSON(w, r, 1<<10, &in) {
+		return
+	}
+	if in.VersionID != row.VersionID || row.Status != "draft" {
+		writeError(w, http.StatusConflict, "This version has changed since you opened it. Reload and try again.")
+		return
+	}
+	chapters, err := s.q.ListChapters(r.Context(), row.VersionID)
+	if err != nil {
+		serverError(w, "list chapters", err)
+		return
+	}
+	if len(chapters) == 0 {
+		writeError(w, http.StatusBadRequest, "Add at least one Question Set before publishing.")
+		return
+	}
+	n, err := s.q.PublishVersion(r.Context(), db.PublishVersionParams{VersionID: row.VersionID, UpdatedBy: currentUser(r).ID})
+	if err != nil {
+		serverError(w, "publish", err)
+		return
+	}
+	if n == 0 {
+		writeError(w, http.StatusConflict, "This version has changed since you opened it. Reload and try again.")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// createVersion starts a new draft from the latest published version (LCY-06/07). Its chapters
+// are copied unchanged, so stable IDs and test cases carry over.
+func (s *server) createVersion(w http.ResponseWriter, r *http.Request) {
+	if !hasRole(r, "author") {
+		writeError(w, http.StatusForbidden, "Only authors can create versions.")
+		return
+	}
+	row, ok := s.loadQuestionnaire(w, r)
+	if !ok {
+		return
+	}
+	if row.Status == "draft" {
+		writeError(w, http.StatusConflict, "This questionnaire already has a draft.")
+		return
+	}
+	ctx := r.Context()
+	taken, err := s.q.DraftNameExists(ctx, db.DraftNameExistsParams{HospitalID: row.HospitalID, Name: row.Name, ExcludeID: row.ID})
+	if err != nil {
+		serverError(w, "check name", err)
+		return
+	}
+	if taken {
+		writeError(w, http.StatusConflict, draftNameTaken)
+		return
+	}
+	id, err := s.q.CreateNextVersion(ctx, db.CreateNextVersionParams{FromVersionID: row.VersionID, UpdatedBy: currentUser(r).ID})
+	if err != nil {
+		serverError(w, "create version", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]uuid.UUID{"id": id})
+}

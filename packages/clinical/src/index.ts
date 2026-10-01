@@ -11,3 +11,4 @@ export * from "./fields";
 export * from "./testcases";
 export * from "./translations";
 export * from "./questionSets";
+export * from "./publish";

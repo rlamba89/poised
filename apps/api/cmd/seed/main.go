@@ -24,6 +24,7 @@ const (
 
 var demoUsers = []struct{ id, name, email, hospital, role string }{
 	{"00000000-0000-4000-8000-0000000000a1", "Alex Author", "alex.author@hospital-a.example", hospitalA, "author"},
+	{"00000000-0000-4000-8000-0000000000a1", "Alex Author", "alex.author@hospital-a.example", hospitalA, "publisher"},
 	{"00000000-0000-4000-8000-0000000000a2", "Val Viewer", "val.viewer@hospital-a.example", hospitalA, "viewer"},
 	{"00000000-0000-4000-8000-0000000000b1", "Bea Author", "bea.author@hospital-b.example", hospitalB, "author"},
 }

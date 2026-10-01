@@ -12,6 +12,9 @@ import (
 
 type Querier interface {
 	CreateChapter(ctx context.Context, arg CreateChapterParams) (uuid.UUID, error)
+	// A new draft copied from version `from_version_id` (LCY-06/07): same chapters, same content,
+	// so stable IDs and test cases carry over. Chapters get new row ids.
+	CreateNextVersion(ctx context.Context, arg CreateNextVersionParams) (uuid.UUID, error)
 	CreateOptionList(ctx context.Context, arg CreateOptionListParams) (uuid.UUID, error)
 	CreateQuestionnaire(ctx context.Context, arg CreateQuestionnaireParams) (uuid.UUID, error)
 	CreateVersion(ctx context.Context, arg CreateVersionParams) (uuid.UUID, error)
@@ -30,13 +33,16 @@ type Querier interface {
 	ListMemberships(ctx context.Context, userID uuid.UUID) ([]ListMembershipsRow, error)
 	// Option lists are scoped to a hospital (OPT-07, TEN-01).
 	ListOptionLists(ctx context.Context, hospitalID uuid.UUID) ([]ListOptionListsRow, error)
-	// The slice has one version per questionnaire, so "latest version" is that draft.
+	// A questionnaire shows its latest version: the draft if there is one, else the last published.
 	ListQuestionnaires(ctx context.Context, arg ListQuestionnairesParams) ([]ListQuestionnairesRow, error)
 	ListRolesInHospital(ctx context.Context, arg ListRolesInHospitalParams) ([]string, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	// Serialises creates in one hospital so the unique-draft-name check can't race.
 	LockHospitalQuestionnaires(ctx context.Context, hospitalID uuid.UUID) error
 	Ping(ctx context.Context) (int32, error)
+	// Publishes the draft and retires the version published before it (LCY-01), in one statement.
+	// Returns 0 when the version is no longer a draft.
+	PublishVersion(ctx context.Context, arg PublishVersionParams) (int64, error)
 	// Saves only if nobody saved since the caller loaded `revision` (LCY-04).
 	SaveChapterContent(ctx context.Context, arg SaveChapterContentParams) (int32, error)
 	// CLN-09: part of the code or description, within one code set, active only.

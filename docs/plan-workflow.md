@@ -114,12 +114,18 @@ Each step is committed on its own, with Go handler tests and Vitest tests as bef
 [pending.md §1](pending.md): start Docker, run `make migrate`, do the browser checks, then commit the current work.
 
 ### Step 1: publish and new version (LCY-01/06/07, minimal)
-- `POST /api/h/{hid}/versions/{vid}/publish`: draft → published, for the `publisher` role. It is refused when any chapter has logic problems.
-- `POST /api/h/{hid}/questionnaires/{qid}/versions`: a new draft copied from the latest published version, with the same stable IDs.
-- Go refuses every content write to a version that isn't a draft.
+- **Publishing:**
+  - `POST /api/h/{hid}/questionnaires/{qid}/publish` with `{versionId}` publishes the latest version.
+  - It is for the `publisher` role, and only works on a draft that has at least one Question Set.
+  - The version published before is retired, in the same statement.
+- **New version:** `POST /api/h/{hid}/questionnaires/{qid}/versions` copies the published version's Question Sets into a new draft. The content is unchanged, so stable IDs and test cases carry over.
+- Go already refuses content writes to a version that isn't a draft.
+- **Publish checks:** `publishProblems()` in `packages/clinical` runs in the browser. It blocks publishing on logic problems, Question Set condition problems, failing test cases, or unsaved changes.
 - **UI:**
-  - a Publish button and a status badge on the questionnaire;
-  - the editor is read-only when the version is published, with a "Create new version" button.
+  - a version and status badge in the editor header;
+  - Publish, with a modal that lists the problems;
+  - a "Create new version" button on published versions.
+- Alex Author gets the `publisher` role in the seed data.
 
 ### Step 2: patients and episodes
 - **Routes:**

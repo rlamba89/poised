@@ -12,6 +12,35 @@ import (
 	"github.com/google/uuid"
 )
 
+const createNextVersion = `-- name: CreateNextVersion :one
+WITH v AS (
+    INSERT INTO questionnaire_versions (questionnaire_id, version_no, status, updated_by)
+    SELECT prev.questionnaire_id, prev.version_no + 1, 'draft', $1
+    FROM questionnaire_versions prev WHERE prev.id = $2
+    RETURNING questionnaire_versions.id
+), c AS (
+    INSERT INTO chapters (version_id, position, name, description, icon, audience, content, updated_by)
+    SELECT v.id, ch.position, ch.name, ch.description, ch.icon, ch.audience, ch.content, $1
+    FROM chapters ch, v
+    WHERE ch.version_id = $2
+)
+SELECT id FROM v
+`
+
+type CreateNextVersionParams struct {
+	UpdatedBy     uuid.UUID `json:"updatedBy"`
+	FromVersionID uuid.UUID `json:"fromVersionId"`
+}
+
+// A new draft copied from version `from_version_id` (LCY-06/07): same chapters, same content,
+// so stable IDs and test cases carry over. Chapters get new row ids.
+func (q *Queries) CreateNextVersion(ctx context.Context, arg CreateNextVersionParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createNextVersion, arg.UpdatedBy, arg.FromVersionID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const createQuestionnaire = `-- name: CreateQuestionnaire :one
 INSERT INTO questionnaires (hospital_id, name, description, created_by)
 VALUES ($1, $2, $3, $4)
@@ -203,7 +232,7 @@ type ListQuestionnairesRow struct {
 	Total         int64     `json:"total"`
 }
 
-// The slice has one version per questionnaire, so "latest version" is that draft.
+// A questionnaire shows its latest version: the draft if there is one, else the last published.
 func (q *Queries) ListQuestionnaires(ctx context.Context, arg ListQuestionnairesParams) ([]ListQuestionnairesRow, error) {
 	rows, err := q.db.Query(ctx, listQuestionnaires,
 		arg.HospitalID,
@@ -249,6 +278,34 @@ SELECT pg_advisory_xact_lock(hashtext($1::uuid::text))
 func (q *Queries) LockHospitalQuestionnaires(ctx context.Context, hospitalID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, lockHospitalQuestionnaires, hospitalID)
 	return err
+}
+
+const publishVersion = `-- name: PublishVersion :one
+WITH pub AS (
+    UPDATE questionnaire_versions qv
+    SET status = 'published', updated_by = $1, updated_at = now()
+    WHERE qv.id = $2 AND qv.status = 'draft'
+    RETURNING qv.questionnaire_id
+), retired AS (
+    UPDATE questionnaire_versions
+    SET status = 'retired'
+    WHERE questionnaire_id IN (SELECT questionnaire_id FROM pub) AND status = 'published'
+)
+SELECT count(*) FROM pub
+`
+
+type PublishVersionParams struct {
+	UpdatedBy uuid.UUID `json:"updatedBy"`
+	VersionID uuid.UUID `json:"versionId"`
+}
+
+// Publishes the draft and retires the version published before it (LCY-01), in one statement.
+// Returns 0 when the version is no longer a draft.
+func (q *Queries) PublishVersion(ctx context.Context, arg PublishVersionParams) (int64, error) {
+	row := q.db.QueryRow(ctx, publishVersion, arg.UpdatedBy, arg.VersionID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const touchVersion = `-- name: TouchVersion :exec

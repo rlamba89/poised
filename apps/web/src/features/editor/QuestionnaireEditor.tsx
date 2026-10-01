@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Alert, Anchor, Avatar, Badge, Button, Center, Group, Loader, Menu, Modal, Popover, Stack, Text } from "@mantine/core";
-import { IconAlertTriangle, IconArrowLeft, IconEye, IconLanguage, IconLogout } from "@tabler/icons-react";
+import { IconAlertTriangle, IconArrowLeft, IconCopyPlus, IconEye, IconLanguage, IconLogout, IconSend } from "@tabler/icons-react";
 import {
   addElement, addPage, chapterConditionProblems, combineChapters, copyPage, deleteElement, deletePage, dependentsOf, elementLabel,
   findElement, findPage, logicProblems, movePage, movePageTo, pageTitle, pagesOf, type ChapterJson, type Kind, type Target,
@@ -18,6 +18,7 @@ import { PageCanvas, SetCanvas } from "./Canvas";
 import { EditorContext, type EditorContextValue } from "./context";
 import { DisclosureModal, type DisclosureTarget } from "./DisclosureModal";
 import { PageLogic } from "./LogicEditor";
+import { PublishModal } from "./PublishModal";
 import { SettingsPanel, type PanelTab } from "./SettingsPanel";
 import { StructurePanel, type Selection } from "./StructurePanel";
 import { TranslateView } from "./TranslateView";
@@ -25,7 +26,7 @@ import { useChapters, type SaveStatus } from "./useChapters";
 import css from "./editor.module.css";
 
 type Detail = {
-  questionnaire: { id: string; name: string; description: string; versionNo: number; status: string };
+  questionnaire: { id: string; name: string; description: string; versionId: string; versionNo: number; status: string };
   chapters: Chapter[];
 };
 
@@ -56,6 +57,7 @@ export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalI
   const [dragging, setDragging] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [translating, setTranslating] = useState(false);
+  const [publishing, setPublishing] = useState(false);
 
   const reload = useCallback(
     () =>
@@ -263,6 +265,14 @@ export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalI
     },
   };
 
+  // A new version has new Question Set ids, so start again from the Structure tree.
+  const createVersion = () =>
+    run(async () => {
+      await api(`${base}/questionnaires/${questionnaireId}/versions`, { method: "POST" });
+      setSelection(null);
+      setSelected(null);
+    });
+
   if (!data) {
     return error ? <Alert color="red" m="md">{error}</Alert> : <Center h="60vh"><Loader /></Center>;
   }
@@ -286,7 +296,9 @@ export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalI
           <IconArrowLeft size={16} />
           <Anchor component={Link} href={`${base}/questionnaires`} underline="always" c="dark">Questionnaires</Anchor>
           <Text>/ {q.name}</Text>
-          <Badge variant="light" color={q.status === "draft" ? "gray" : "green"} size="sm">{q.status}</Badge>
+          <Badge variant="light" color={q.status === "published" ? "green" : "gray"} size="sm">
+            v{q.versionNo} · {q.status}
+          </Badge>
           {readOnly && <Badge variant="outline" color="gray" size="sm">Read only</Badge>}
           {!readOnly && <Text size="sm" c={status.color} data-testid="save-status">{status.text}</Text>}
         </Group>
@@ -339,6 +351,16 @@ export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalI
               }}
             >
               Translate
+            </Button>
+          )}
+          {q.status === "draft" && hasRole(me, hospitalId, "publisher") && (
+            <Button size="xs" leftSection={<IconSend size={14} />} onClick={() => setPublishing(true)}>
+              Publish
+            </Button>
+          )}
+          {q.status !== "draft" && hasRole(me, hospitalId, "author") && (
+            <Button size="xs" variant="default" leftSection={<IconCopyPlus size={14} />} onClick={createVersion}>
+              Create new version
             </Button>
           )}
           {chapterId && (
@@ -438,6 +460,20 @@ export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalI
       {doc && (
         <DisclosureModal doc={doc} target={disclosure} readOnly={readOnly} onChange={change} onClose={() => setDisclosure(null)} />
       )}
+
+      <PublishModal
+        opened={publishing}
+        onClose={() => setPublishing(false)}
+        onPublished={() => {
+          setSelected(null);
+          reload();
+        }}
+        path={`${base}/questionnaires/${questionnaireId}`}
+        versionId={q.versionId}
+        versionNo={q.versionNo}
+        sets={data.chapters.every((c) => store.get(c.id)) ? data.chapters.map((c) => ({ name: c.name, doc: store.get(c.id)!.doc })) : null}
+        unsaved={store.overall !== "saved"}
+      />
 
       <Modal opened={!!confirm} onClose={() => setConfirm(null)} title={confirm?.title}>
         <Stack>
