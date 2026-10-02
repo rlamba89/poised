@@ -1,5 +1,5 @@
 {
-  "name": "sj-demo",
+  "name": "poised",
   "private": true,
   "workspaces": ["apps/web", "packages/*"]
 }

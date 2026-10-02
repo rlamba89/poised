@@ -9,7 +9,7 @@ import {
   Title, Tooltip,
 } from "@mantine/core";
 import { IconPrinter } from "@tabler/icons-react";
-import { ageFrom, patientVariables, poaSummary, reportedBmi, type PoaCapture, type PoaSet } from "@sj/clinical";
+import { ageFrom, patientVariables, poaSummary, reportedBmi, type PoaCapture, type PoaSet } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { StatusBadge } from "./EpisodeList";

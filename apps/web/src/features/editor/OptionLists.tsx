@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ActionIcon, Alert, Badge, Button, Group, Modal, Paper, SegmentedControl, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
-import { applySavedOptions, toSavedOptions, type ChapterJson, type ElementJson, type SavedOption } from "@sj/clinical";
+import { applySavedOptions, toSavedOptions, type ChapterJson, type ElementJson, type SavedOption } from "@poised/clinical";
 import { api } from "@/lib/api";
 
 type OptionList = { id: string; name: string; options: SavedOption[]; updatedAt: string; updatedByName: string };

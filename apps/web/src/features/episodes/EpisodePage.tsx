@@ -7,7 +7,7 @@ import {
   Alert, Anchor, Badge, Button, Card, Center, CopyButton, Group, Loader, SimpleGrid, Stack, Table, Text, TextInput, Title,
 } from "@mantine/core";
 import { IconArrowLeft, IconCheck, IconCopy } from "@tabler/icons-react";
-import { ageFrom, patientVariables, shownSets } from "@sj/clinical";
+import { ageFrom, patientVariables, shownSets } from "@poised/clinical";
 import { AUDIENCE_LABELS } from "@/features/chapters/types";
 import { api } from "@/lib/api";
 import { formatDate, formatDateTime } from "@/lib/format";

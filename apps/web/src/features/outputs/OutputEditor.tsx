@@ -2,7 +2,7 @@
 // Edit one clinical output: codes, a note with a category, ASA grade and review flag (CLN-06).
 import { useState } from "react";
 import { Alert, Button, Checkbox, Group, Paper, SegmentedControl, Select, Stack, Text, Textarea } from "@mantine/core";
-import { renderNote, validateOutput, type AsaGrade, type ClinicalOutput, type ReviewFlag } from "@sj/clinical";
+import { renderNote, validateOutput, type AsaGrade, type ClinicalOutput, type ReviewFlag } from "@poised/clinical";
 import { CodePicker } from "./CodePicker";
 import type { Category } from "./useCategories";
 

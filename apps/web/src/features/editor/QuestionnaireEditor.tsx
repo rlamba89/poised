@@ -10,7 +10,7 @@ import { IconAlertTriangle, IconArrowLeft, IconCopyPlus, IconEye, IconLanguage, 
 import {
   addElement, addPage, chapterConditionProblems, combineChapters, copyPage, deleteElement, deletePage, dependentsOf, elementLabel,
   findElement, findPage, logicProblems, movePage, movePageTo, pageTitle, pagesOf, type ChapterJson, type Kind, type Target,
-} from "@sj/clinical";
+} from "@poised/clinical";
 import { api } from "@/lib/api";
 import { hasRole, useMe } from "@/lib/auth";
 import type { Chapter } from "@/features/chapters/types";

@@ -16,3 +16,5 @@ services:
 
 volumes:
   dbdata:
+    # Kept from before the rename to Poised, so existing local data survives the folder rename.
+    name: sj-demo_dbdata

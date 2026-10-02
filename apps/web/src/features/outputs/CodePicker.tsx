@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useDebouncedValue } from "@mantine/hooks";
 import { Badge, CloseButton, Group, Paper, SegmentedControl, Stack, Text, TextInput, UnstyledButton } from "@mantine/core";
-import type { CodeRef, CodeSet } from "@sj/clinical";
+import type { CodeRef, CodeSet } from "@poised/clinical";
 import { api } from "@/lib/api";
 
 type CodeRow = { id: string; codeSet: CodeSet; code: string; description: string; categoryName: string | null };

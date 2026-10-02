@@ -1,6 +1,6 @@
 # HJE Full HQ: content transcribed from screenshots
 
-This is the source for rebuilding the HQ in sj-demo. It was transcribed on 1 Oct 2026 from Rahul's screenshots of the Training Author tool.
+This is the source for rebuilding the HQ in Poised. It was transcribed on 1 Oct 2026 from Rahul's screenshots of the Training Author tool.
 
 **Key:**
 - `[P]` patient, `[C]` clinician.

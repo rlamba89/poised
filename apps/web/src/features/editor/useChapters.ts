@@ -2,7 +2,7 @@
 // Each Question Set's (chapter's) SurveyJS JSON, loaded on demand, with autosave (LCY-03),
 // undo and redo (LCY-05) and the stale-revision guard (LCY-04).
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChapterJson } from "@sj/clinical";
+import type { ChapterJson } from "@poised/clinical";
 import { api, ApiError } from "@/lib/api";
 
 export type SaveStatus = "saved" | "modified" | "saving" | "error" | "conflict";

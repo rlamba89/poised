@@ -1,7 +1,7 @@
 "use client";
 // What every part of the page canvas needs: the chapter being edited and the editor's actions.
 import { createContext, useContext } from "react";
-import type { ChapterJson, Kind, Target } from "@sj/clinical";
+import type { ChapterJson, Kind, Target } from "@poised/clinical";
 
 export type EditorContextValue = {
   doc: ChapterJson;

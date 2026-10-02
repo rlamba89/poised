@@ -1,7 +1,7 @@
 // Marks answers the clinician has changed with what the patient said ("Patient answered: …"),
 // under the question, as the clinician validates. Rendering only, so it lives here.
 import type { Question, SurveyModel } from "survey-core";
-import { describeAnswer, isClinicianOnlyInTree, sameAnswer, type Answers } from "@sj/clinical";
+import { describeAnswer, isClinicianOnlyInTree, sameAnswer, type Answers } from "@poised/clinical";
 
 export function showCorrections(model: SurveyModel, patient: Answers): void {
   const rendered = new Map<string, HTMLElement>();

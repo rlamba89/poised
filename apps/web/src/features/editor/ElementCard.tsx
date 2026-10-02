@@ -13,7 +13,7 @@ import {
   findElement, groupsToMoveInto, hasQuestionOutputs, isLocked, kindOf, moveElement, moveElementTo, moveOutOfGroup, numberSettingsOf, optionsOf, pageTitle, pagesOf, plainText,
   repeatSettingsOf, textFormatOf, textOf, updateElement, DATE_FORMATS, TEXT_FORMATS, type ChoiceJson, type ElementJson, type Part,
   type Target,
-} from "@sj/clinical";
+} from "@poised/clinical";
 import { AddContentBar } from "./AddContentBar";
 import { useEditor } from "./context";
 import css from "./editor.module.css";

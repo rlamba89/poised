@@ -1,6 +1,6 @@
 # Plan: the episode workflow (publish → patient → clinician → POA Summary)
 
-Agreed 1 Oct 2026. This makes sj-demo a Lifebox-like app, not only an authoring tool. Until now, [requirements.md](requirements.md) left episodes, patients filling in forms and clinical documents out of scope; they are now in.
+Agreed 1 Oct 2026. This makes Poised a Lifebox-like app, not only an authoring tool. Until now, [requirements.md](requirements.md) left episodes, patients filling in forms and clinical documents out of scope; they are now in.
 
 The goal is one thin, working pass through the whole workflow. Auth, hospital setup, user and patient accounts come after it ([Later](#later)).
 

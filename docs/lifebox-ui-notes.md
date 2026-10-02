@@ -10,7 +10,7 @@ These notes describe the current Lifebox Author tool, which we are copying. They
 
 ## 1. Naming
 
-| Lifebox | sj-demo today | Notes |
+| Lifebox | Poised today | Notes |
 | --- | --- | --- |
 | Questionnaire, "HQ" (Health Questionnaire) | Questionnaire | HQ *is* the questionnaire, not a template. |
 | Question Set (the patient app calls it a "chapter") | Chapter | Has a name, description, icon and sequence. |
@@ -183,7 +183,7 @@ These notes describe the current Lifebox Author tool, which we are copying. They
 | Profile | Read-only patient details |
 | Statement | Paragraphs |
 
-## 6. Gaps against sj-demo (to confirm with screenshots)
+## 6. Gaps against Poised (to confirm with screenshots)
 
 1. **Questionnaire page:** replace the chapter list and modal with the **Structure tree + canvas** editor. Question Set = chapter; pages and sections are in the tree.
 2. **Canvas:** replace the stock SurveyJS Creator canvas with **cards** showing a Patient/Clinician badge, the disclosure chip `[🔗 n]` and a "Displays when" chip.

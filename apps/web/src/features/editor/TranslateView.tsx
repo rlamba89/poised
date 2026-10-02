@@ -6,7 +6,7 @@ import { Alert, Badge, Button, Group, SegmentedControl, Select, Stack, Table, Te
 import { IconDownload, IconUpload, IconX } from "@tabler/icons-react";
 import {
   LANGUAGES, fromCsv, localesIn, missingCount, plainText, setTranslation, textEntries, toCsv, translationOf, type ChapterJson,
-} from "@sj/clinical";
+} from "@poised/clinical";
 import { BlurTextarea } from "./inputs";
 
 export function TranslateView(props: {

@@ -10,7 +10,7 @@ import {
   isValidExpression, kindOf, optionsOf, pageOfTrigger, pageTitle, pagesOf, readOnlyToEnableIf, setTriggers,
   triggersOf, triggerTarget, unknownReferences, updateElement, updatePage, countDisclosures, type ChapterJson, type ElementJson,
   type TriggerJson,
-} from "@sj/clinical";
+} from "@poised/clinical";
 import { ConditionBuilder, type Scope } from "./ConditionBuilder";
 import { DisplaysWhen } from "./ElementCard";
 

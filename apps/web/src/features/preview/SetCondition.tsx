@@ -6,7 +6,7 @@ import { Alert, Text } from "@mantine/core";
 import { IconGitBranch } from "@tabler/icons-react";
 import {
   chapterConditionOf, combineChapters, describeLogic, isChapterShown, testsOnlyThePatient, type ChapterJson, type Viewer,
-} from "@sj/clinical";
+} from "@poised/clinical";
 import { api } from "@/lib/api";
 import { DisplaysWhen } from "@/features/editor/ElementCard";
 

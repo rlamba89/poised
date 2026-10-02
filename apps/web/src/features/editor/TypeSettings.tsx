@@ -9,7 +9,7 @@ import {
   kindOf, newId, numberSettingsOf, optionsOf, repeatSettingsOf, setChoiceDisplay, setDateSettings, setNumberSettings,
   setRepeating, setTextFormat, textFormatOf, textOf, unknownReferences, updateElement, type Band, type CalcForm, type ChapterJson,
   type DateFormat, type DateRange, type ElementJson, type TextFormat,
-} from "@sj/clinical";
+} from "@poised/clinical";
 import { BlurNumber, BlurText, BlurTextarea } from "./inputs";
 import { ItemList, OptionsEditor } from "./OptionsEditor";
 

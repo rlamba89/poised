@@ -9,7 +9,7 @@ import { IconArrowDown, IconArrowUp, IconBooks, IconDeviceFloppy, IconList, Icon
 import {
   addChoice, kindOf, newId, optionsOf, orderOptions, setNoneOption, setSpecialOption, textOf, updateElement, SPECIAL_OPTIONS,
   type ChapterJson, type ChoiceJson, type CodeRef, type ElementJson, type SpecialOption,
-} from "@sj/clinical";
+} from "@poised/clinical";
 import { CodePicker } from "@/features/outputs/CodePicker";
 import { BlurNumber, BlurText } from "./inputs";
 import { SaveOptionList, UseOptionList } from "./OptionLists";

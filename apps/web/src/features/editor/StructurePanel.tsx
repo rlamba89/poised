@@ -6,7 +6,7 @@ import {
   IconArrowBackUp, IconArrowForwardUp, IconArrowDown, IconArrowUp, IconChevronDown, IconChevronRight, IconCopy, IconDots, IconFile,
   IconGitBranch, IconPlus, IconTrash,
 } from "@tabler/icons-react";
-import { chapterConditionOf, pageTitle, pagesOf } from "@sj/clinical";
+import { chapterConditionOf, pageTitle, pagesOf } from "@poised/clinical";
 import type { Chapter } from "@/features/chapters/types";
 import type { Chapters } from "./useChapters";
 import css from "./editor.module.css";

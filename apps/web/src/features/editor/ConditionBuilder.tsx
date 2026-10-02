@@ -8,7 +8,7 @@ import { IconPlus, IconTrash } from "@tabler/icons-react";
 import {
   OPS, builderCanShow, formatLogic, isAllComplete, isGroup, opChoiceOf, parseLogic, subjectsFor, type ChapterJson, type Group as LogicGroup,
   type OpChoice, type Rule, type Subject,
-} from "@sj/clinical";
+} from "@poised/clinical";
 
 export type Scope = { element: string } | { page: string } | { upToPage: string };
 

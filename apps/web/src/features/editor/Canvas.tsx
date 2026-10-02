@@ -1,10 +1,10 @@
 "use client";
 // The right-hand column: a Question Set's settings, or a page's cards.
 import { Group, Paper, Select, Switch, Text, Textarea } from "@mantine/core";
-import { chapterConditionOf, pagesOf as pagesIn, setChapterCondition, type ChapterJson } from "@sj/clinical";
+import { chapterConditionOf, pagesOf as pagesIn, setChapterCondition, type ChapterJson } from "@poised/clinical";
 import { Toggle } from "./LogicEditor";
 import { IconFile, IconGitBranch } from "@tabler/icons-react";
-import { describeLogic, pageTitle, pagesOf, updatePage, type PageJson } from "@sj/clinical";
+import { describeLogic, pageTitle, pagesOf, updatePage, type PageJson } from "@poised/clinical";
 import { CHAPTER_ICONS, chapterIcon } from "@/features/chapters/icons";
 import { AUDIENCE_LABELS, type Audience, type Chapter } from "@/features/chapters/types";
 import { AddContentBar } from "./AddContentBar";

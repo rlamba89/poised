@@ -71,7 +71,7 @@ An author can:
 ## 3. Repository layout
 
 ```
-sj-demo/
+poised/
 ├── Makefile                 # dev, test, lint, db-up, migrate, seed, sqlc
 ├── docker-compose.yml       # postgres only
 ├── package.json             # npm workspaces: apps/web, packages/*

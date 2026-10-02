@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button, Group, Modal, Stack, Text } from "@mantine/core";
 import {
   bandsOf, findElement, kindOf, newId, optionsOf, renderNote, textOf, updateElement, type ChapterJson, type ClinicalOutput, type ElementJson,
-} from "@sj/clinical";
+} from "@poised/clinical";
 import { OutputEditor } from "@/features/outputs/OutputEditor";
 import { OutputSummary } from "@/features/outputs/OutputSummary";
 import { useCategories } from "@/features/outputs/useCategories";

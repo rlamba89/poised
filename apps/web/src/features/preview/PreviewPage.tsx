@@ -14,7 +14,7 @@ import "survey-core/survey-core.css";
 import {
   computeOutputs, forPatient, showBands, localesIn, refreshClinicalSummaries, registerClinicalProperties, setViewer,
   LANGUAGES, type ChapterJson, type ComputedOutputs, type Viewer,
-} from "@sj/clinical";
+} from "@poised/clinical";
 import { api } from "@/lib/api";
 import { clinicianModel } from "./clinicianView";
 import { SetCondition } from "./SetCondition";

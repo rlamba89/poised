@@ -6,7 +6,7 @@ import { IconChevronDown, IconLink, IconPlus, IconX } from "@tabler/icons-react"
 import {
   KIND_LABEL, bandsOf, convertKind, convertibleKinds, findElement, hasQuestionOutputs, isAnswerKind, isChoiceKind, kindOf,
   optionsOf, plainText, textOf, textToHtml, updateElement, type ChapterJson, type ElementJson,
-} from "@sj/clinical";
+} from "@poised/clinical";
 import { KIND_ICON } from "./AddContentBar";
 import { outputsAt, type DisclosureTarget } from "./DisclosureModal";
 import { BlurText, BlurTextarea } from "./inputs";

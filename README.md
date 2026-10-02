@@ -1,6 +1,8 @@
-# Lifebox Authoring on SurveyJS: demo slice
+# Poised
 
-A clinical questionnaire authoring tool. Content is stored as SurveyJS JSON, and the editor is laid out like the Lifebox Author tool:
+Poised is a pre-operative assessment platform for hospitals and their patients. The plans and requirements are in [docs/plans/](docs/plans/README.md) and [docs/saas-requirements.md](docs/saas-requirements.md).
+
+What's built so far is a clinical questionnaire authoring tool and one pass of the episode workflow. Content is stored as SurveyJS JSON, and the editor is laid out like the Lifebox Author tool:
 - **Editor:** a Structure tree of Question Sets and pages on the left, and the selected page's question cards on the right. Clicking a card opens its **Settings | Disclosures | Logic** panel in place of the tree. Every change saves automatically.
 - **Disclosures (clinical outputs):** codes, a note with a category, an ASA grade and a review flag. They can sit on an answer, a grid cell or a score band.
 - **Logic:** a builder with no code to type.

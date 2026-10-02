@@ -4,7 +4,7 @@
 import { Model } from "survey-core";
 import {
   isClinicianOnly, setViewer, showBands, withClinicalSummaries, SUMMARY_PREFIX, type ChapterJson, type SamplePatient,
-} from "@sj/clinical";
+} from "@poised/clinical";
 import { showUnits } from "./units";
 
 export function clinicianModel(content: ChapterJson, patient?: SamplePatient): Model {

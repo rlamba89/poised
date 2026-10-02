@@ -3,7 +3,7 @@
 // block it (SGN-04); review and sign-off come later.
 import { useState } from "react";
 import { Alert, Button, Group, List, Modal, Stack, Text } from "@mantine/core";
-import { publishProblems, type ChapterJson } from "@sj/clinical";
+import { publishProblems, type ChapterJson } from "@poised/clinical";
 import { api } from "@/lib/api";
 
 type Props = {

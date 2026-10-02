@@ -6,7 +6,7 @@ import {
   IconNumbers, IconPill, IconScale, IconSeparatorHorizontal, IconSignature, IconSquareCheck, IconStar, IconToggleLeft, IconUpload,
   IconUser, type Icon,
 } from "@tabler/icons-react";
-import { KINDS, KIND_LABEL, kindOf, type ElementJson, type Kind, type Target } from "@sj/clinical";
+import { KINDS, KIND_LABEL, kindOf, type ElementJson, type Kind, type Target } from "@poised/clinical";
 import { useEditor } from "./context";
 import css from "./editor.module.css";
 

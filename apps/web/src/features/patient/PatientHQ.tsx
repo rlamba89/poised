@@ -10,7 +10,7 @@ import { Survey } from "survey-react-ui";
 import "survey-core/survey-core.css";
 import {
   isSetComplete, modelFor, patientVariables, registerClinicalProperties, shownSets, type Answers, type ChapterJson, type EpisodePatient,
-} from "@sj/clinical";
+} from "@poised/clinical";
 import { api, ApiError } from "@/lib/api";
 import { showUnits } from "@/features/preview/units";
 

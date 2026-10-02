@@ -1,5 +1,5 @@
 {
-  "name": "@sj/clinical",
+  "name": "@poised/clinical",
   "version": "0.0.0",
   "private": true,
   "description": "Clinical metadata on SurveyJS JSON: properties, stable IDs, viewer rules and output calculation. Plain TS, no React.",

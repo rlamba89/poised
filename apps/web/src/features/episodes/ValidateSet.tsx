@@ -11,7 +11,7 @@ import { IconArrowLeft, IconCircleCheck } from "@tabler/icons-react";
 import type { Model } from "survey-core";
 import { Survey } from "survey-react-ui";
 import "survey-core/survey-core.css";
-import { patientVariables, refreshClinicalSummaries, registerClinicalProperties, sameAnswer, type Answers } from "@sj/clinical";
+import { patientVariables, refreshClinicalSummaries, registerClinicalProperties, sameAnswer, type Answers } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { clinicianModel } from "@/features/preview/clinicianView";

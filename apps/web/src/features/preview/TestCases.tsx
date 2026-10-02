@@ -8,7 +8,7 @@ import type { SurveyModel } from "survey-core";
 import {
   computeOutputs, newId, outputLines, runTestCase, setTestCases, testCasesOf, type ChapterJson, type TestCase, type TestResult,
   type Viewer,
-} from "@sj/clinical";
+} from "@poised/clinical";
 import { api, ApiError } from "@/lib/api";
 import type { SamplePatient } from "./PreviewPage";
 
