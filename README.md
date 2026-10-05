@@ -2,6 +2,8 @@
 
 Poised is a pre-operative assessment platform for hospitals and their patients. The plans and requirements are in [docs/plans/](docs/plans/README.md) and [docs/saas-requirements.md](docs/saas-requirements.md).
 
+**New here (person or Claude)?** Read [CLAUDE.md](CLAUDE.md), then [docs/decisions.md](docs/decisions.md). The decisions doc records every decision, preference and gotcha from the project's history.
+
 What's built so far is a clinical questionnaire authoring tool and one pass of the episode workflow. Content is stored as SurveyJS JSON, and the editor is laid out like the Lifebox Author tool:
 - **Editor:** a Structure tree of Question Sets and pages on the left, and the selected page's question cards on the right. Clicking a card opens its **Settings | Disclosures | Logic** panel in place of the tree. Every change saves automatically.
 - **Disclosures (clinical outputs):** codes, a note with a category, an ASA grade and a review flag. They can sit on an answer, a grid cell or a score band.
@@ -48,8 +50,9 @@ Open http://localhost:3000 and sign in as a seeded user:
 
 | User | Hospital | Role |
 | --- | --- | --- |
-| Alex Author | Hospital A | author |
+| Alex Author | Hospital A | author, publisher |
 | Val Viewer | Hospital A | viewer |
+| Cara Clinician | Hospital A | clinician |
 | Bea Author | Hospital B | author |
 
 - **Environment:** `make` creates `.env` from `.env.example` on first run. No SurveyJS licence is needed: survey-core and survey-react-ui are MIT, and the Creator is no longer used.
@@ -150,6 +153,6 @@ These are from the first slice. The SurveyJS Creator rows no longer apply: the C
 - **Not built yet:** disclosures on "Other (please specify)".
 - **Saved option lists are copies.** Using a list copies its options into the question, with new IDs. Changing or deleting the list later doesn't change questions that already used it.
 - **Question Set conditions in the preview:** a one-set preview can't see earlier sets' answers. It decides a condition only when it tests just the patient, and otherwise explains it above the form.
-- **Publishing:** there is no publish workflow yet. Logic problems and failing test cases are shown, but they can't block publishing until one exists (LOG-08, PRV-06).
+- **Publishing:** one-click Publish (publisher role) is blocked by logic problems, failing test cases and unsaved changes. There's no review or sign-off step yet (SGN).
 - **Skip rules:** a skip rule stays on the page whose Logic panel it was added on, and may test that page and earlier ones. Rules saved before 1 Oct (without a page) are listed under the latest page they test.
 - **Test coverage:** tests are unit-level, as agreed. The headless-browser checks in `spikes/ui-*.ts` drive the editor and the preview end to end, but they are not part of `make test`.
