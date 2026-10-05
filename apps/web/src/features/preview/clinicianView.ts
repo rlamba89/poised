@@ -21,7 +21,8 @@ export function clinicianModel(content: ChapterJson, patient?: SamplePatient): M
   m.questionsOnPageMode = "standard";
   m.showProgressBar = false;
   m.onUpdateQuestionCssClasses.add((_, o) => {
-    if (isClinicianOnly(o.question)) o.cssClasses.root += " sj-clinician";
+    // mainRoot is the question's box; root is only its input (e.g. the textarea wrapper).
+    if (isClinicianOnly(o.question)) o.cssClasses.mainRoot += " sj-clinician";
   });
   m.onUpdatePanelCssClasses.add((_, o) => {
     if (isClinicianOnly(o.panel)) o.cssClasses.panel.container += o.panel.name.startsWith(SUMMARY_PREFIX) ? " sj-clinician sj-summary" : " sj-clinician";
