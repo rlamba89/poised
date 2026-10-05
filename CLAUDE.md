@@ -33,7 +33,7 @@ The next work is turning it into a multi-trust SaaS on AWS.
   - External services (SMS, email, S3, Cognito, the clock, the `evaluate` Lambda) are recording fakes behind Go interfaces. There are no other integration tests.
   - **End-to-end:** Playwright + Python (pytest) in `e2e/`, written as user journeys. Patient journeys run at phone size.
 - **Commits:** one commit per plan step, each with its tests. Update the plan's Status section, and record any differences from the plan.
-- **Record decisions in the repo, not in Claude memory.** Claude's memory and chat history stay on one machine. Add every new decision, preference or gotcha to [docs/decisions.md](docs/decisions.md) in the same session.
+- **Record decisions in the repo, not in Claude memory.** Claude's memory and chat history stay on one machine. Add every new decision, preference or gotcha to [docs/decisions.md](docs/decisions.md) in the same session. The project skill **`/update-wiki`** (`.claude/skills/update-wiki/`) does this: run it whenever a decision is made or a plan step finishes, and before ending a session.
 - **`spikes/ui-*.ts` and `spikes/mt/` are gitignored local scripts**, so don't rely on them existing. Committed browser tests go in `e2e/` (plan F1).
 - **No real patient data** goes into this system before go-live (plan C10). Seed and test data are made up.
 - **The remote is Rahul's personal GitHub** (`github.com/rlamba89/poised`, private). Never push to a Lifebox organisation, and never put the Lifebox company's GitHub organisation name anywhere in the repo, including module paths, docs and commit messages. It was scrubbed from the history on 2 Oct.
