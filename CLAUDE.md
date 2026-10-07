@@ -13,7 +13,7 @@ Today it's a working local prototype:
 The next work is turning it into a multi-trust SaaS on AWS.
 
 **Read before starting any work:**
-1. [docs/plans/README.md](docs/plans/README.md): the roadmap. Foundation plans F1–F4, then core plans C1–C10, with a status table. **Keep the table current.** Work in plan order unless Rahul says otherwise.
+1. [docs/plans/README.md](docs/plans/README.md): the roadmap. **Current work (6 Oct): [docs/plans/auth-first.md](docs/plans/auth-first.md)**, which runs ahead of F1. Foundation plans F1–F4, then core plans C1–C10, with a status table. **Keep the table current.** Work in plan order unless Rahul says otherwise.
 2. [docs/decisions.md](docs/decisions.md): every decision so far, with dates and reasons, plus Rahul's working preferences and the environment gotchas.
 3. [docs/saas-requirements.md](docs/saas-requirements.md): the SaaS requirements and architecture. Its §0 is the decision log. Items marked *Proposed* aren't agreed, so ask before building them.
 4. Background, as needed:
@@ -56,13 +56,16 @@ make migrate-down           # roll back the last migration
 - **Go:** `cd apps/api && go test ./internal/httpapi -run TestSaveContentRevision -v`
 - **TypeScript (`packages/clinical`):** `cd packages/clinical && npx vitest run src/outputs.test.ts -t "computeOutputs"`
 
-**Signing in locally:** use the stub login page at http://localhost:3000. The seeded users are:
-- Alex Author (author + publisher, Hospital A)
-- Val Viewer (Hospital A)
+**Signing in locally:** use the stub login page at http://localhost:3000 (on only when `DEV_LOGIN=true`, which `make dev` sets). With the `COGNITO_*` settings in `.env`, the same page also offers real sign-in through Cognito; see [docs/cognito.md](docs/cognito.md). Roles are the ladder clinician < super_clinician < admin. The seeded users are:
+- Alex Author (super_clinician, Hospital A in Trust A)
+- Val Clinician (clinician, the whole of Trust A)
 - Cara Clinician (clinician, Hospital A)
-- Bea Author (Hospital B)
+- Ada Admin (admin, the whole of Trust A)
+- Bea Author (super_clinician, Hospital B in Trust B)
 
-**Planned targets that don't exist yet:** `make test-integration` (API→database, `-tags integration`), `make e2e-setup` and `make e2e` (Playwright). They arrive with plan F1.
+**Integration tests:** `make test-integration` runs `go test -tags integration ./...` against the compose Postgres. Each test gets its own database copied from a migrated template (`apps/api/internal/apitest`). Run one with `cd apps/api && TEST_DATABASE_URL=postgres://sj:sj@localhost:5432/postgres?sslmode=disable go test -tags integration ./internal/apitest -run TestRoleLadder -v`.
+
+**Planned targets that don't exist yet:** `make e2e-setup` and `make e2e` (Playwright). They arrive with plan F1.
 
 ## Architecture
 
@@ -81,7 +84,11 @@ npm workspaces monorepo (`apps/web`, `packages/*`), plus a separate Go module in
   - `src/lib/api.ts` is a thin fetch wrapper.
   - **Plan F2 replaces Next.js with React + Vite + React Router**, because Amplify Hosting supports only Next.js ≤ 15. `apps/web/AGENTS.md` (the Next.js agent rules) goes away then.
 - **`apps/api`** is Go with stdlib `net/http` (Go 1.22+ method/wildcard patterns), pgx v5, **sqlc** (`internal/db` is generated, so don't edit it) and **goose** migrations (`db/migrations`). sqlc and goose run as Go tools.
-  - `internal/httpapi/router.go` lists every route. Middleware: `requireUser` (a dev HS256 JWT in an httpOnly cookie) and `requireHospital` (role check per hospital; routes are `/api/h/{hid}/…`).
+  - `internal/httpapi/router.go` lists every route. Middleware:
+    - `requireUser`: a database session (the `poised_session` cookie holds a random id, and the table keeps its hash);
+    - `requireMembership`: the trust and hospital in the path, and the highest role that applies there (`internal/role`). Routes are `/api/o/{oid}/h/{hid}/…`; anything outside the caller's trust answers 404.
+    - Writes from another site are refused (`http.CrossOriginProtection`, with `APP_ORIGIN` trusted).
+    - Patients: `/api/p/links/{token}/continue` then `/dob` (5 wrong dates of birth lock the link) start a patient session (`poised_patient` cookie), which `/api/p/hq…` needs. Links are stored hashed and sealed with `LINK_KEY`.
   - `internal/chapter` holds the content rules. `chapter.ForPatient` strips clinician-only elements, `clinicalOutputs` and `testCases` before patient JSON leaves the server, and `FilterAnswers` drops non-patient answer keys.
   - `internal/episode` handles episode statuses. `internal/lifebox` + `cmd/import-lifebox` import a Lifebox HQ export.
 - **Content model:**

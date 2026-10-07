@@ -91,4 +91,5 @@ Leave the existing fake-querier tests (`fakeQ`) alone. Per rule 4, they're repla
 
 ## Status
 
-Not started.
+- **Step 1 done 6 Oct 2026** as Step 0 of [auth first](auth-first.md) (not committed yet): `apps/api/internal/apitest`, `make test-integration`, `TEST_DATABASE_URL` in `.env.example`. As planned, except that the client is an `httptest.Server` with a cookie jar, and fixtures for trusts were added (`Org`, `HospitalIn`, `TrustUser`, `Member`).
+- Steps 2–4: not started. The auth work added integration tests for its own routes and for sign-in and trust checks on every hospital route; the other five-case tests per route are still to do.

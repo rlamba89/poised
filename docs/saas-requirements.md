@@ -38,6 +38,8 @@ Drafted 2 Oct 2026 with Rahul and revised the same day after his answers. Status
 | D-3 | PDF rendering | Browser print first; a headless-Chromium Lambda later. | Proposed |
 | D-4 | Lambda layout | **Four functions from one Go codebase**, split by audience and job: staff API, patient API, jobs, and evaluate (Node). Not one Lambda, and not one per route (section 13). | Agreed |
 | D-5 | Frontend | A **plain React SPA (React + Vite + React Router)** on **AWS Amplify Hosting**, replacing Next.js. The Mantine UI and `packages/clinical` stay (section 13). | Agreed |
+| D-6 | Sessions | **Sessions in Postgres** for staff and (later) patients. The cookie holds a random id, and the table keeps only its hash. Logout and idle timeout therefore end a session at once. Staff: 8 h maximum, 30 min idle. Built 6 Oct ([plans/auth-first.md](plans/auth-first.md)). | Proposed (built; Rahul to confirm) |
+| D-7 | MFA timing | **Staff MFA off until before real patient data** (C10). This departs from A-12 for now. | Proposed |
 
 ---
 

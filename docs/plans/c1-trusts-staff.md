@@ -65,4 +65,8 @@
 
 ## Status
 
-Not started.
+**Partly done 6 Oct 2026 via [auth first](auth-first.md) Step 3** (not committed yet): `orgs`, `hospitals.org_id`, memberships on the ladder (trust-wide or one hospital), `internal/role`, routes under `/api/o/{oid}/h/{hid}/…` and pages under `/o/:oid/h/:hid/…`, the hospital picker grouped by trust, and a `forOrg` stub for `store.ForOrg`. Sessions are database rows, not just a cookie (auth first Step 2).
+
+**Cognito sign-in and invites done 6 Oct via auth first Step 4** (MFA **off** for now, *pending* sign-off): [cognito.md](../cognito.md), the Staff page, `GET /api/o/{oid}/staff` and `POST …/staff/invites` (admins of the whole trust only).
+
+Not done yet: changing or removing roles, `platform_admins` and the admin screens, `staff_invites`, `audit_log` (auth first Step 6), settings inheritance and opt-ins, and trust-owned content.

@@ -9,14 +9,16 @@ Agreed 2 Oct 2026. These plans turn [../saas-requirements.md](../saas-requiremen
 
 ## Order and status
 
+**6 Oct 2026: [auth first](auth-first.md) is running ahead of F1** (Rahul's sign-off pending; see [decisions.md](../decisions.md) §2). It takes F1 Step 1 and the sign-in parts of C1 and C2. Steps 0–5 are done and not committed yet.
+
 | # | Plan | Delivers | Status |
 | --- | --- | --- | --- |
-| F1 | [Test foundation](f1-test-foundation.md) | API→database integration tests, a Playwright (Python) end-to-end suite covering today's workflow, and make targets | Not started |
+| F1 | [Test foundation](f1-test-foundation.md) | API→database integration tests, a Playwright (Python) end-to-end suite covering today's workflow, and make targets | Step 1 (the harness) done 6 Oct via [auth first](auth-first.md); Steps 2–4 not started |
 | F2 | [Frontend: React + Vite + React Router](f2-react-vite.md) | Next.js replaced. F1's end-to-end suite proves nothing broke. | Not started |
 | F3 | [Go API: Lambda entry points](f3-lambda-entrypoints.md) | staff-api, patient-api and jobs entry points over one shared router; local dev unchanged | Not started |
 | F4 | [AWS and pipeline](f4-aws-pipeline.md) | CDK (Python), Neon, Amplify, API Gateway, Lambdas, CodePipeline with test gates, the QA environment, and the idle cost measured | Not started |
-| C1 | [Trusts and staff](c1-trusts-staff.md) | Trusts, hospitals, opt-ins, Cognito staff sign-in with MFA, roles, invites, audit log, `store.ForOrg` | Not started |
-| C2 | [Patients and sign-in](c2-patients-signin.md) | Patient records by NHS number, magic-link sign-in, invites by SMS/email, patient home, jobs and reminders | Not started |
+| C1 | [Trusts and staff](c1-trusts-staff.md) | Trusts, hospitals, opt-ins, Cognito staff sign-in with MFA, roles, invites, audit log, `store.ForOrg` | Partly done 6 Oct via [auth first](auth-first.md): trusts, role ladder, routes under `/o/`, Cognito sign-in and invites; audit, admin screens and settings not yet |
+| C2 | [Patients and sign-in](c2-patients-signin.md) | Patient records by NHS number, magic-link sign-in, invites by SMS/email, patient home, jobs and reminders | Sign-in part done 6 Oct via [auth first](auth-first.md) Step 5 (link + date of birth, lock); the rest not started |
 | C3 | [Episode lifecycle](c3-episode-lifecycle.md) | Procedures, `episode_forms`, every status, worklists, tasks, cancel, archive | Not started |
 | C4 | [Question keys and pre-fill](c4-question-keys-prefill.md) | Keys, question library, "Same as…", pre-fill and confirmation screens | Not started |
 | C5 | [Authoring additions](c5-authoring-additions.md) | Capture blocks, Summary element, Video and Information elements, content library | Not started |

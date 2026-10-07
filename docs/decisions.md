@@ -28,6 +28,22 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 6 Oct 2026: auth first — sign-in, sessions and trusts
+
+Agreed with the developer (Siddharth); **Rahul's sign-off is pending** for the items marked *pending*. The plan and its status are in [plans/auth-first.md](plans/auth-first.md). Not committed yet.
+
+- **Auth before F1–F4** (*pending*). The developer was asked to deliver sign-in first. Only F1 Step 1 (the integration harness) was pulled forward, because the testing rules need it.
+- **MFA off for now** (*pending*; departs from A-12 and STF-05). The aim is to keep the first sign-in simple. MFA is a Cognito setting that can be switched on without code changes; the proposal is to switch it on before any real patient data (C10).
+- **Sessions in Postgres** (*pending*; C1/C2 only said "our own cookie"). The cookie holds 32 random bytes; the `sessions` table keeps only their SHA-256. This means logout, idle timeout and suspending a trust take effect immediately. Staff limits are 8 h maximum and 30 min idle, configurable with `SESSION_MAX_AGE` / `SESSION_IDLE`. JWT and `TOKEN_SECRET` are gone.
+- **`super_clinician` authors, reviews and publishes** (follows `saas-requirements.md` §2, which was *Proposed*). The old author / publisher / reviewer roles map to it, and `hospital_admin` maps to `admin`.
+- **No read-only role: `viewer` removed.** A-5 says every member sees all of a hospital's data, so the lowest role is clinician. The seed's Val Viewer is now Val Clinician (trust-wide).
+- **Routes moved under the trust now**: the API is at `/api/o/{oid}/h/{hid}/…` and pages are at `/o/:oid/h/:hid/…`, as C1 planned. The developer chose "do it properly, no shortcut". A hospital is only reachable through its own trust; anything else answers 404.
+- **Dev login off unless `DEV_LOGIN=true`; cookies `Secure` unless `COOKIE_SECURE=false`; CSRF via the standard library's `http.CrossOriginProtection`, with `APP_ORIGIN` trusted.** `make dev` sets the local values. Run without `make`, the API starts with the safe defaults.
+- **The patient link stays viewable, sealed, not stored in plain text** (the developer's choice; *pending*). Clinicians keep seeing and copying it, as today. The database keeps the token's hash (to find it) and an AES-GCM copy whose key, `LINK_KEY`, lives outside it. A copy of the database alone can't open a link. "Make a new link" replaces a lost or mis-sent one. The rejected options were "show once" (simplest, but clinicians lose the link) and plain text (anyone who can read the database has every link).
+- **Patients sign in with link + Continue + date of birth; 5 wrong dates lock the link** (A-4, PAT-04/05). Built as auth-first Step 5. There's no per-IP rate limit: behind the proxy it would count everyone as one address. Throttling goes at API Gateway (F4).
+- **Cognito will be used** (A-12 stands). The development pool was created on 6 Oct, in the AWS account the developer confirmed (`eu-west-2`, tagged `Project=poised`). The account also holds other projects' resources. All settings are in [cognito.md](cognito.md). Ask before creating or changing AWS resources.
+- **Only an admin of the whole trust lists staff and invites** (STF-01). It's the simplest rule; a hospital-scoped admin can be allowed later.
+
 ### 2 Oct 2026: SaaS productionisation (session bf5d9b3a)
 
 All of these are in [saas-requirements.md](saas-requirements.md) §0 and [plans/](plans/README.md).
@@ -209,12 +225,21 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
 - **Playwright selectors:** Mantine `Select` isn't exposed as a textbox, so find it by label or placeholder. The code picker needs a short pause after selecting.
 - **Expected console noise:** two 401s from `/api/me` on the login page, and 409s in the duplicate-name and two-editor tests.
 - **The exact headless Chrome path used:** `CHROME_PATH=$HOME/Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell npx tsx spikes/ui-<name>.ts`.
+- **After pulling the auth work (6 Oct):** run `make migrate seed`, then sign in again. The old `sj_token` cookie no longer works; the session cookie is now `poised_session`.
+- **Shell scripts with variables:** the Bash tool runs zsh, which doesn't split `$VAR` into words, so `aws … $OPTS` fails with "Unknown options". Put multi-step scripts in a file and run it with `bash`.
+- **AWS from Claude:** the claude.ai AWS connector can need re-authorising (`/mcp`). Locally, the developer's SSO profile works (`aws sso login --profile <name>` when it expires); invites read it from `AWS_PROFILE` in `.env`.
+- **`LINK_KEY` is required** (32 bytes, base64). `make dev` sets a local one, and the API won't start without it. If it changes, existing patient links can no longer be shown (they still work); use "Make a new link". Never reuse the local key in a deployed stage.
+- **Moving Next.js routes breaks `make lint`** with "Cannot find module … src/app/h/…" from stale generated types in `apps/web/.next/`. Delete `apps/web/.next` (it's gitignored) and run again.
+- **Don't stop dev servers with `pkill -f 'make dev'` from the same shell command that started them.** It matches its own command line and kills that shell. Kill by PID, or by port: `lsof -ti tcp:3000 -sTCP:LISTEN`.
+- **The API sits behind the web app's `/api` proxy, so it sees `Host: localhost:8080`, not the page's origin.** Without `APP_ORIGIN`, a browser that sends only `Origin` (no `Sec-Fetch-Site`) has its writes refused as cross-site. The same applies on Amplify (F4).
+- **A native Postgres on port 5432 hides the Docker one** (`role "sj" does not exist`). `localhost` reaches the one bound to `127.0.0.1` first. Check with `lsof -nP -iTCP:5432 -sTCP:LISTEN`. On Siddharth's Mac it was Homebrew's `postgresql@14`.
 - **Leftover test data:** published "Workflow test …" questionnaires stay in Hospital A, because published versions can't be deleted. Reset the local database if it gets cluttered.
 
-## 5. Open items (as of 5 Oct 2026)
+## 5. Open items (as of 6 Oct 2026)
 
-- **Next work:** plan **F1** ([plans/f1-test-foundation.md](plans/f1-test-foundation.md)).
-- **Uncommitted** in Rahul's working tree: the clinician box colour fix in `apps/web/src/features/preview/clinicianView.ts` (`root` → `mainRoot`).
+- **Next work:** [plans/auth-first.md](plans/auth-first.md) Step 6, then F1. Steps 0–5 are done but **not committed**.
+- **Waiting on Rahul:** sign-off for the 6 Oct *pending* decisions (auth first, MFA off, DB sessions), and auth-first open question 6: when MFA goes on.
+- **Auth first Step 6 (audit log)** is the last step.
 - **App branding** still says "Lifebox" in the UI (`apps/web/src/app/layout.tsx`, `h/[hospitalId]/layout.tsx`, `PatientHQ.tsx`). Rename it to Poised.
 - **Unanswered:** should clinician-only Question Sets render full width in `ValidateSet.tsx`, rather than in an empty two-column grid?
 - **Unconfirmed:** whether saved option lists should be copied (as built) or linked.
@@ -224,5 +249,6 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
   - "Years since a date" opens with an empty list and no message.
   - The Medication, Admissions and date-list disclosure fixes have no test-plan cases.
 - **Stale docs:**
+  - `manual-test-plan.md` still uses the old roles. Its users table, MT-01's header and MT-60 (Val Viewer is read-only) need rewriting for the ladder; the read-only checks would now apply to a clinician.
   - README says there's no publish workflow, and its seed-user table lacks Cara Clinician and Alex's publisher role.
   - `pending.md` §4 lists Versions and publish as not started.

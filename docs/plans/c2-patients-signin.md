@@ -77,4 +77,6 @@
 
 ## Status
 
-Not started.
+**The sign-in part was done 6 Oct 2026 as [auth first](auth-first.md) Step 5** (not committed yet): the link + Continue + date of birth, the lock after 5 wrong dates, patient sessions in the shared `sessions` table, and links stored hashed and sealed (not only hashed: clinicians can see them again). The routes are `/api/p/links/{token}/…` and `/api/p/hq…`, and the page stays `/p/:token`.
+
+Not done yet: patient accounts, NHS number, sign-in links by mobile or email, the patient home, SMS/email, jobs and reminders.
