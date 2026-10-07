@@ -1,5 +1,5 @@
 // Command seed loads Lifebox's categories and codes from db/seed/lifebox/*.csv,
-// plus the demo hospitals and users. It is safe to run more than once.
+// plus the demo trusts, hospitals and users. It is safe to run more than once.
 package main
 
 import (
@@ -18,16 +18,29 @@ import (
 const (
 	unassignedCategoryID = "00000000-0000-4000-8000-000000000001"
 
+	trustA    = "00000000-0000-4000-8000-0000000000fa"
+	trustB    = "00000000-0000-4000-8000-0000000000fb"
 	hospitalA = "00000000-0000-4000-8000-00000000000a"
 	hospitalB = "00000000-0000-4000-8000-00000000000b"
+
+	// preTrusts is the placeholder trust migration 00006 put existing hospitals in.
+	preTrusts = "00000000-0000-4000-8000-0000000000f0"
 )
 
-var demoUsers = []struct{ id, name, email, hospital, role string }{
-	{"00000000-0000-4000-8000-0000000000a1", "Alex Author", "alex.author@hospital-a.example", hospitalA, "author"},
-	{"00000000-0000-4000-8000-0000000000a1", "Alex Author", "alex.author@hospital-a.example", hospitalA, "publisher"},
-	{"00000000-0000-4000-8000-0000000000a2", "Val Viewer", "val.viewer@hospital-a.example", hospitalA, "viewer"},
-	{"00000000-0000-4000-8000-0000000000a3", "Cara Clinician", "cara.clinician@hospital-a.example", hospitalA, "clinician"},
-	{"00000000-0000-4000-8000-0000000000b1", "Bea Author", "bea.author@hospital-b.example", hospitalB, "author"},
+// Two trusts with one hospital each, so trust isolation can be tried by hand.
+var demoTrusts = []struct{ id, name, code, hospital, hospitalName string }{
+	{trustA, "Trust A", "TRUST-A", hospitalA, "Hospital A"},
+	{trustB, "Trust B", "TRUST-B", hospitalB, "Hospital B"},
+}
+
+// Roles are on the ladder clinician < super_clinician < admin (A-5). An empty hospital means
+// the membership covers the whole trust.
+var demoUsers = []struct{ id, name, email, trust, hospital, role string }{
+	{"00000000-0000-4000-8000-0000000000a1", "Alex Author", "alex.author@hospital-a.example", trustA, hospitalA, "super_clinician"},
+	{"00000000-0000-4000-8000-0000000000a2", "Val Clinician", "val.clinician@trust-a.example", trustA, "", "clinician"},
+	{"00000000-0000-4000-8000-0000000000a3", "Cara Clinician", "cara.clinician@hospital-a.example", trustA, hospitalA, "clinician"},
+	{"00000000-0000-4000-8000-0000000000a4", "Ada Admin", "ada.admin@trust-a.example", trustA, "", "admin"},
+	{"00000000-0000-4000-8000-0000000000b1", "Bea Author", "bea.author@hospital-b.example", trustB, hospitalB, "super_clinician"},
 }
 
 // Made-up patients only (NFR-03), all in hospital A.
@@ -126,19 +139,30 @@ func seedCodes(ctx context.Context, tx pgx.Tx, dir string) error {
 }
 
 func seedDemo(ctx context.Context, tx pgx.Tx) error {
-	for id, name := range map[string]string{hospitalA: "Hospital A", hospitalB: "Hospital B"} {
-		if _, err := tx.Exec(ctx, `INSERT INTO hospitals (id, name) VALUES ($1, $2)
-			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`, id, name); err != nil {
-			return fmt.Errorf("hospital %s: %w", name, err)
+	for _, t := range demoTrusts {
+		if _, err := tx.Exec(ctx, `INSERT INTO orgs (id, name, code) VALUES ($1, $2, $3)
+			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, code = EXCLUDED.code`, t.id, t.name, t.code); err != nil {
+			return fmt.Errorf("trust %s: %w", t.name, err)
 		}
+		// Moving a hospital to its trust moves its memberships too (ON UPDATE CASCADE).
+		if _, err := tx.Exec(ctx, `INSERT INTO hospitals (id, name, org_id) VALUES ($1, $2, $3)
+			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, org_id = EXCLUDED.org_id`, t.hospital, t.hospitalName, t.id); err != nil {
+			return fmt.Errorf("hospital %s: %w", t.hospitalName, err)
+		}
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM orgs o WHERE o.id = $1
+		AND NOT EXISTS (SELECT 1 FROM hospitals h WHERE h.org_id = o.id)`, preTrusts); err != nil {
+		return fmt.Errorf("remove the empty placeholder trust: %w", err)
 	}
 	for _, u := range demoUsers {
 		if _, err := tx.Exec(ctx, `INSERT INTO users (id, name, email) VALUES ($1, $2, $3)
 			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email`, u.id, u.name, u.email); err != nil {
 			return fmt.Errorf("user %s: %w", u.name, err)
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO memberships (user_id, hospital_id, role) VALUES ($1, $2, $3)
-			ON CONFLICT DO NOTHING`, u.id, u.hospital, u.role); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO memberships (user_id, org_id, hospital_id, role)
+			VALUES ($1, $2, NULLIF($3, '')::uuid, $4)
+			ON CONFLICT ON CONSTRAINT memberships_scope_key DO UPDATE SET role = EXCLUDED.role`,
+			u.id, u.trust, u.hospital, u.role); err != nil {
 			return fmt.Errorf("membership %s: %w", u.name, err)
 		}
 	}
@@ -149,7 +173,7 @@ func seedDemo(ctx context.Context, tx pgx.Tx) error {
 			return fmt.Errorf("patient %s: %w", p.last, err)
 		}
 	}
-	fmt.Printf("hospitals: 2, users: %d, patients: %d\n", len(demoUsers), len(demoPatients))
+	fmt.Printf("trusts: %d, hospitals: %d, users: %d, patients: %d\n", len(demoTrusts), len(demoTrusts), len(demoUsers), len(demoPatients))
 	return nil
 }
 

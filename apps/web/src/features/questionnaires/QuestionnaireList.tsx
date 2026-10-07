@@ -8,7 +8,7 @@ import {
 } from "@mantine/core";
 import { IconDots, IconPencil, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
 import { api } from "@/lib/api";
-import { hasRole, useMe } from "@/lib/auth";
+import { atLeast, useMe } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 
 type Row = {
@@ -25,7 +25,7 @@ type Row = {
 };
 type ListResponse = { items: Row[]; total: number; page: number; pageSize: number };
 
-export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
+export function QuestionnaireList({ hospitalId, base }: { hospitalId: string; base: string }) {
   const me = useMe();
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -35,18 +35,18 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<Row | null>(null);
-  const isAuthor = hasRole(me, hospitalId, "author");
-  const isAdmin = hasRole(me, hospitalId, "hospital_admin");
+  const canAuthor = atLeast(me, hospitalId, "super_clinician");
+  const isAdmin = atLeast(me, hospitalId, "admin");
 
   const load = useCallback(() => {
     const params = new URLSearchParams({ q: debounced, page: String(page) });
-    api<ListResponse>(`/h/${hospitalId}/questionnaires?${params}`)
+    api<ListResponse>(`${base}/questionnaires?${params}`)
       .then((d) => {
         setData(d);
         setError("");
       })
       .catch((e: Error) => setError(e.message));
-  }, [hospitalId, debounced, page]);
+  }, [base, debounced, page]);
 
   useEffect(load, [load]);
   useEffect(() => setPage(1), [debounced]);
@@ -55,7 +55,7 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
     <Stack>
       <Group justify="space-between">
         <Title order={3}>Questionnaires</Title>
-        {isAuthor && <Button leftSection={<IconPlus size={16} />} onClick={() => setCreating(true)}>New Questionnaire</Button>}
+        {canAuthor && <Button leftSection={<IconPlus size={16} />} onClick={() => setCreating(true)}>New Questionnaire</Button>}
       </Group>
       <TextInput
         leftSection={<IconSearch size={16} />}
@@ -80,7 +80,7 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
           </Table.Thead>
           <Table.Tbody>
             {data.items.map((q) => {
-              const open = () => router.push(`/h/${hospitalId}/questionnaires/${q.id}`);
+              const open = () => router.push(`${base}/questionnaires/${q.id}`);
               const canDelete = q.status === "draft" && (q.createdBy === me.user.id || isAdmin);
               return (
                 <Table.Tr key={q.id} onClick={open} style={{ cursor: "pointer" }}>
@@ -103,7 +103,7 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
                       </Menu.Target>
                       <Menu.Dropdown>
                         <Menu.Item leftSection={<IconPencil size={14} />} onClick={open}>
-                          {q.status === "draft" && isAuthor ? "Edit" : "View"}
+                          {q.status === "draft" && canAuthor ? "Edit" : "View"}
                         </Menu.Item>
                         {canDelete && (
                           <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={() => setDeleting(q)}>
@@ -126,12 +126,12 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
       <CreateModal
         opened={creating}
         onClose={() => setCreating(false)}
-        hospitalId={hospitalId}
-        onCreated={(id) => router.push(`/h/${hospitalId}/questionnaires/${id}`)}
+        base={base}
+        onCreated={(id) => router.push(`${base}/questionnaires/${id}`)}
       />
       <DeleteModal
         row={deleting}
-        hospitalId={hospitalId}
+        base={base}
         onClose={() => setDeleting(null)}
         onDeleted={() => {
           setDeleting(null);
@@ -142,7 +142,7 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
   );
 }
 
-function CreateModal(props: { opened: boolean; onClose: () => void; hospitalId: string; onCreated: (id: string) => void }) {
+function CreateModal(props: { opened: boolean; onClose: () => void; base: string; onCreated: (id: string) => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
@@ -153,7 +153,7 @@ function CreateModal(props: { opened: boolean; onClose: () => void; hospitalId: 
     setSaving(true);
     setError("");
     try {
-      const res = await api<{ id: string }>(`/h/${props.hospitalId}/questionnaires`, {
+      const res = await api<{ id: string }>(`${props.base}/questionnaires`, {
         method: "POST",
         body: JSON.stringify({ name, description }),
       });
@@ -182,12 +182,12 @@ function CreateModal(props: { opened: boolean; onClose: () => void; hospitalId: 
   );
 }
 
-function DeleteModal(props: { row: Row | null; hospitalId: string; onClose: () => void; onDeleted: () => void }) {
+function DeleteModal(props: { row: Row | null; base: string; onClose: () => void; onDeleted: () => void }) {
   const [error, setError] = useState("");
   const confirm = async () => {
     if (!props.row) return;
     try {
-      await api(`/h/${props.hospitalId}/questionnaires/${props.row.id}`, { method: "DELETE" });
+      await api(`${props.base}/questionnaires/${props.row.id}`, { method: "DELETE" });
       setError("");
       props.onDeleted();
     } catch (err) {

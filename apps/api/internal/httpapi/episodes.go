@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -12,20 +13,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/rlamba89/poised/apps/api/internal/auth"
 	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/episode"
 )
 
 const episodeNotFound = "Episode not found."
-
-// clinicianOnly writes 403 itself unless the caller is a clinician in this hospital.
-func clinicianOnly(w http.ResponseWriter, r *http.Request) bool {
-	if !hasRole(r, "clinician") {
-		writeError(w, http.StatusForbidden, "Only clinicians can see patients and episodes.")
-		return false
-	}
-	return true
-}
 
 var sexes = map[string]bool{"female": true, "male": true, "other": true, "unknown": true}
 
@@ -57,10 +50,7 @@ func (in *patientInput) validate(now time.Time) (time.Time, string) {
 }
 
 func (s *server) listPatients(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
-	rows, err := s.q.ListPatients(r.Context(), hospitalID(r))
+	rows, err := s.forOrg(orgID(r)).ListPatients(r.Context(), hospitalID(r))
 	if err != nil {
 		serverError(w, "list patients", err)
 		return
@@ -69,9 +59,6 @@ func (s *server) listPatients(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) createPatient(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	var in patientInput
 	if !readJSON(w, r, 8<<10, &in) {
 		return
@@ -81,7 +68,7 @@ func (s *server) createPatient(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
-	id, err := s.q.CreatePatient(r.Context(), db.CreatePatientParams{
+	id, err := s.forOrg(orgID(r)).CreatePatient(r.Context(), db.CreatePatientParams{
 		HospitalID: hospitalID(r), FirstName: in.FirstName, LastName: in.LastName,
 		DateOfBirth: pgtype.Date{Time: dob, Valid: true}, Sex: in.Sex,
 		HospitalNumber: in.HospitalNumber, Phone: in.Phone, Email: in.Email,
@@ -95,10 +82,7 @@ func (s *server) createPatient(w http.ResponseWriter, r *http.Request) {
 
 // listPublishedHQs lists the questionnaires an episode can be given: their published versions.
 func (s *server) listPublishedHQs(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
-	rows, err := s.q.ListPublishedVersions(r.Context(), hospitalID(r))
+	rows, err := s.forOrg(orgID(r)).ListPublishedVersions(r.Context(), hospitalID(r))
 	if err != nil {
 		serverError(w, "list published", err)
 		return
@@ -107,10 +91,7 @@ func (s *server) listPublishedHQs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) listEpisodes(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
-	rows, err := s.q.ListEpisodes(r.Context(), db.ListEpisodesParams{HospitalID: hospitalID(r), Status: r.URL.Query().Get("status")})
+	rows, err := s.forOrg(orgID(r)).ListEpisodes(r.Context(), db.ListEpisodesParams{HospitalID: hospitalID(r), Status: r.URL.Query().Get("status")})
 	if err != nil {
 		serverError(w, "list episodes", err)
 		return
@@ -120,9 +101,6 @@ func (s *server) listEpisodes(w http.ResponseWriter, r *http.Request) {
 
 // createEpisode gives a patient a published HQ and a link to fill it in.
 func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	var in struct {
 		PatientID   uuid.UUID `json:"patientId"`
 		VersionID   uuid.UUID `json:"versionId"`
@@ -133,15 +111,19 @@ func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, 8<<10, &in) {
 		return
 	}
-	token, err := episode.NewToken()
+	// The episode and its link are made together. (One trust's store: s.pool is forOrg's pool today.)
+	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		serverError(w, "token", err)
+		serverError(w, "begin", err)
 		return
 	}
-	id, err := s.q.CreateEpisode(r.Context(), db.CreateEpisodeParams{
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	id, err := q.CreateEpisode(ctx, db.CreateEpisodeParams{
 		HospitalID: hospitalID(r), PatientID: in.PatientID, VersionID: in.VersionID,
 		Procedure: strings.TrimSpace(in.Procedure), Anaesthetic: strings.TrimSpace(in.Anaesthetic),
-		Consultant: strings.TrimSpace(in.Consultant), PatientToken: token, CreatedBy: currentUser(r).ID,
+		Consultant: strings.TrimSpace(in.Consultant), CreatedBy: currentUser(r).ID,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusBadRequest, "Choose a patient and a published HQ.")
@@ -149,6 +131,14 @@ func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		serverError(w, "create episode", err)
+		return
+	}
+	if _, err := s.createLink(ctx, q, id); err != nil {
+		serverError(w, "create link", err)
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		serverError(w, "commit", err)
 		return
 	}
 	s.event(r, id, "Episode created", currentUser(r).ID)
@@ -161,7 +151,7 @@ func (s *server) loadEpisode(w http.ResponseWriter, r *http.Request) (db.GetEpis
 	if !ok {
 		return db.GetEpisodeRow{}, false
 	}
-	row, err := s.q.GetEpisode(r.Context(), db.GetEpisodeParams{ID: eid, HospitalID: hospitalID(r)})
+	row, err := s.forOrg(orgID(r)).GetEpisode(r.Context(), db.GetEpisodeParams{ID: eid, HospitalID: hospitalID(r)})
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, episodeNotFound)
 		return row, false
@@ -173,29 +163,91 @@ func (s *server) loadEpisode(w http.ResponseWriter, r *http.Request) (db.GetEpis
 	return row, true
 }
 
-// getEpisode returns the episode with its patient and its General notes.
+// getEpisode returns the episode with its patient, its General notes and its patient link
+// token (null when the link was made before links were sealed and so can't be shown).
 func (s *server) getEpisode(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return
 	}
-	events, err := s.q.ListEpisodeEvents(r.Context(), e.ID)
+	q := s.forOrg(orgID(r))
+	events, err := q.ListEpisodeEvents(r.Context(), e.ID)
 	if err != nil {
 		serverError(w, "list events", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"episode": e, "events": events})
+	var token *string
+	sealed, err := q.GetEpisodeLinkSealed(r.Context(), e.ID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		serverError(w, "get link", err)
+		return
+	}
+	if len(sealed) > 0 && s.sealer != nil {
+		t, err := s.sealer.Open(sealed)
+		if err != nil {
+			log.Printf("episode %s: open patient link: %v", e.ID, err) // e.g. LINK_KEY changed: make a new link
+		} else {
+			token = &t
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"episode": e, "events": events, "patientToken": token})
+}
+
+// newPatientLink replaces the episode's patient link: the old one stops working and anyone
+// signed in with it is signed out. Use it when a link was sent to the wrong person or lost.
+func (s *server) newPatientLink(w http.ResponseWriter, r *http.Request) {
+	e, ok := s.loadEpisode(w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		serverError(w, "begin", err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	if err := q.DeleteEpisodeLinks(ctx, e.ID); err != nil {
+		serverError(w, "delete links", err)
+		return
+	}
+	if err := q.DeleteEpisodeSessions(ctx, uuid.NullUUID{UUID: e.ID, Valid: true}); err != nil {
+		serverError(w, "end patient sessions", err)
+		return
+	}
+	token, err := s.createLink(ctx, q, e.ID)
+	if err != nil {
+		serverError(w, "create link", err)
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		serverError(w, "commit", err)
+		return
+	}
+	u := currentUser(r)
+	s.event(r, e.ID, "New patient link made by "+u.Name+"; the old one no longer works", u.ID)
+	writeJSON(w, http.StatusOK, map[string]string{"patientToken": token})
+}
+
+// createLink makes a patient link for the episode and returns its token. Only the token's hash
+// and its sealed copy are stored.
+func (s *server) createLink(ctx context.Context, q db.Querier, episodeID uuid.UUID) (string, error) {
+	token, err := episode.NewToken()
+	if err != nil {
+		return "", err
+	}
+	sealed, err := s.sealer.Seal(token)
+	if err != nil {
+		return "", err
+	}
+	err = q.CreateLoginLink(ctx, db.CreateLoginLinkParams{TokenHash: auth.HashToken(token), TokenSealed: sealed, EpisodeID: episodeID})
+	return token, err
 }
 
 // updateEpisode changes the status (by hand, see episode.CanSetStatus), the procedure details
 // and the ASA grades. Fields left out keep their value; an ASA grade of 0 clears it.
 func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return
@@ -223,7 +275,7 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Choose an ASA grade from 1 to 6.")
 		return
 	}
-	err := s.q.UpdateEpisode(r.Context(), db.UpdateEpisodeParams{
+	err := s.forOrg(orgID(r)).UpdateEpisode(r.Context(), db.UpdateEpisodeParams{
 		ID: e.ID, Status: *in.Status, Procedure: strings.TrimSpace(*in.Procedure),
 		Anaesthetic: strings.TrimSpace(*in.Anaesthetic), Consultant: strings.TrimSpace(*in.Consultant),
 		NurseAsa: nurse, AnaesthetistAsa: anaes,
@@ -265,9 +317,6 @@ func asaChange(current, requested *int32, who string) (next *int32, msg string, 
 
 // addEpisodeNote adds a clinician's comment to the General notes.
 func (s *server) addEpisodeNote(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return
@@ -284,7 +333,7 @@ func (s *server) addEpisodeNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uid := currentUser(r).ID
-	err := s.q.AddEpisodeEvent(r.Context(), db.AddEpisodeEventParams{EpisodeID: e.ID, Kind: "comment", Text: text, UserID: uuid.NullUUID{UUID: uid, Valid: true}})
+	err := s.forOrg(orgID(r)).AddEpisodeEvent(r.Context(), db.AddEpisodeEventParams{EpisodeID: e.ID, Kind: "comment", Text: text, UserID: uuid.NullUUID{UUID: uid, Valid: true}})
 	if err != nil {
 		serverError(w, "add note", err)
 		return

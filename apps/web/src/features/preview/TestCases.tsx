@@ -13,7 +13,7 @@ import { api, ApiError } from "@/lib/api";
 import type { SamplePatient } from "./PreviewPage";
 
 export function TestCases(props: {
-  hospitalId: string;
+  base: string;
   chapterId: string;
   content: ChapterJson;
   revision: number;
@@ -36,7 +36,7 @@ export function TestCases(props: {
     setError("");
     const doc = setTestCases(content, next);
     try {
-      const res = await api<{ revision: number }>(`/h/${props.hospitalId}/chapters/${props.chapterId}/content`, {
+      const res = await api<{ revision: number }>(`${props.base}/chapters/${props.chapterId}/content`, {
         method: "PUT",
         body: JSON.stringify({ content: doc, revision }),
       });

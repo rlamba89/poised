@@ -20,30 +20,19 @@ type episodeFake struct {
 	*fakeQ
 	episode  db.GetEpisodeRow
 	patients []db.CreatePatientParams
-	created  []db.CreateEpisodeParams
 	updates  []db.UpdateEpisodeParams
 	events   []db.AddEpisodeEventParams
-	// CreateEpisode finds no row unless the version is this one (published, in the hospital).
-	published uuid.UUID
 }
 
 func newEpisodeFake(status string, roles ...string) *episodeFake {
 	f := newFake()
 	f.roles[hospitalA] = roles
-	return &episodeFake{fakeQ: f, episode: db.GetEpisodeRow{ID: episodeID, Status: status}, published: versionID}
+	return &episodeFake{fakeQ: f, episode: db.GetEpisodeRow{ID: episodeID, Status: status}}
 }
 
 func (f *episodeFake) CreatePatient(_ context.Context, arg db.CreatePatientParams) (uuid.UUID, error) {
 	f.patients = append(f.patients, arg)
 	return uuid.New(), nil
-}
-
-func (f *episodeFake) CreateEpisode(_ context.Context, arg db.CreateEpisodeParams) (uuid.UUID, error) {
-	if arg.VersionID != f.published {
-		return uuid.Nil, pgx.ErrNoRows
-	}
-	f.created = append(f.created, arg)
-	return episodeID, nil
 }
 
 func (f *episodeFake) GetEpisode(_ context.Context, arg db.GetEpisodeParams) (db.GetEpisodeRow, error) {
@@ -63,14 +52,7 @@ func (f *episodeFake) AddEpisodeEvent(_ context.Context, arg db.AddEpisodeEventP
 	return nil
 }
 
-func hospitalPath(suffix string) string { return "/api/h/" + hospitalA.String() + suffix }
-
-func TestEpisodesNeedClinician(t *testing.T) {
-	f := newEpisodeFake(episode.HQNotComplete, "author", "publisher")
-	if rec := call(t, f, "GET", hospitalPath("/episodes/"+episodeID.String()), ""); rec.Code != http.StatusForbidden {
-		t.Errorf("author: got %d, want 403", rec.Code)
-	}
-}
+func hospitalPath(suffix string) string { return hp(hospitalA) + suffix }
 
 func TestCreatePatient(t *testing.T) {
 	tomorrow := time.Now().AddDate(0, 0, 1).Format(time.DateOnly)
@@ -94,25 +76,6 @@ func TestCreatePatient(t *testing.T) {
 				t.Errorf("first name %q was not trimmed", f.patients[0].FirstName)
 			}
 		})
-	}
-}
-
-func TestCreateEpisode(t *testing.T) {
-	f := newEpisodeFake("", "clinician")
-	body := `{"patientId":"` + uuid.NewString() + `","versionId":"` + versionID.String() + `","procedure":"Knee replacement"}`
-	if rec := call(t, f, "POST", hospitalPath("/episodes"), body); rec.Code != http.StatusCreated {
-		t.Fatalf("got %d (%s)", rec.Code, rec.Body.String())
-	}
-	if len(f.created[0].PatientToken) != 43 {
-		t.Errorf("token %q: want 43 characters", f.created[0].PatientToken)
-	}
-	if len(f.events) != 1 || f.events[0].Text != "Episode created" {
-		t.Errorf("events = %+v", f.events)
-	}
-
-	body = `{"patientId":"` + uuid.NewString() + `","versionId":"` + uuid.NewString() + `"}`
-	if rec := call(t, f, "POST", hospitalPath("/episodes"), body); rec.Code != http.StatusBadRequest {
-		t.Errorf("unpublished version: got %d, want 400", rec.Code)
 	}
 }
 

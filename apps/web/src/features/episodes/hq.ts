@@ -25,12 +25,12 @@ export type EpisodeHQ = {
 /** The answers that count for a Question Set: the clinician's if they've started, else the patient's. */
 export const currentAnswers = (hq: EpisodeHQ, id: string): Answers => hq.clinician[id]?.data ?? hq.patient[id] ?? {};
 
-export function useEpisodeHQ(hospitalId: string, episodeId: string) {
+export function useEpisodeHQ(base: string, episodeId: string) {
   const [hq, setHq] = useState<EpisodeHQ | null>(null);
   const [error, setError] = useState("");
   const reload = useCallback(
     () =>
-      api<{ chapters: HQSet[]; answers: AnswerRow[] }>(`/h/${hospitalId}/episodes/${episodeId}/hq`)
+      api<{ chapters: HQSet[]; answers: AnswerRow[] }>(`${base}/episodes/${episodeId}/hq`)
         .then(({ chapters, answers }) => {
           const patient: Record<string, Answers> = {};
           const clinician: Record<string, AnswerRow> = {};
@@ -41,7 +41,7 @@ export function useEpisodeHQ(hospitalId: string, episodeId: string) {
           setHq({ chapters, patient, clinician });
         })
         .catch((e: Error) => setError(e.message)),
-    [hospitalId, episodeId],
+    [base, episodeId],
   );
   useEffect(() => {
     reload();

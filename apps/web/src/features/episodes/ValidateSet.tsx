@@ -22,23 +22,23 @@ import { patientName, type Episode } from "./types";
 
 registerClinicalProperties();
 
-export default function ValidateSet({ hospitalId, episodeId, chapterId }: { hospitalId: string; episodeId: string; chapterId: string }) {
-  const { data, error: episodeError } = useEpisode(hospitalId, episodeId);
-  const { hq, error: hqError } = useEpisodeHQ(hospitalId, episodeId);
+export default function ValidateSet({ base, episodeId, chapterId }: { base: string; episodeId: string; chapterId: string }) {
+  const { data, error: episodeError } = useEpisode(base, episodeId);
+  const { hq, error: hqError } = useEpisodeHQ(base, episodeId);
   const error = episodeError || hqError;
   if (error) return <Alert color="red">{error}</Alert>;
   if (!data || !hq) return <Center h="40vh"><Loader /></Center>;
   const set = hq.chapters.find((c) => c.id === chapterId);
   if (!set) return <Alert color="red">This Question Set isn&apos;t part of the episode.</Alert>;
-  return <Validate hospitalId={hospitalId} episode={data.episode} hq={hq} set={set} />;
+  return <Validate base={base} episode={data.episode} hq={hq} set={set} />;
 }
 
 const SAVE_DELAY_MS = 600;
 
-function Validate({ hospitalId, episode, hq, set }: { hospitalId: string; episode: Episode; hq: EpisodeHQ; set: HQSet }) {
+function Validate({ base, episode, hq, set }: { base: string; episode: Episode; hq: EpisodeHQ; set: HQSet }) {
   const router = useRouter();
-  const back = `/h/${hospitalId}/episodes/${episode.id}`;
-  const path = `/h/${hospitalId}/episodes/${episode.id}/answers/${set.id}`;
+  const back = `${base}/episodes/${episode.id}`;
+  const path = `${base}/episodes/${episode.id}/answers/${set.id}`;
   const editable = episode.status === "ready_for_review";
   const row = hq.clinician[set.id];
   const patient = hq.patient[set.id];

@@ -13,36 +13,64 @@ import (
 type Querier interface {
 	AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams) error
 	CompleteReview(ctx context.Context, arg CompleteReviewParams) (int64, error)
+	CountActiveMemberships(ctx context.Context, userID uuid.UUID) (int64, error)
+	// Any membership in the trust, trust-wide or for one of its hospitals.
+	CountTrustMemberships(ctx context.Context, arg CountTrustMembershipsParams) (int64, error)
 	CreateChapter(ctx context.Context, arg CreateChapterParams) (uuid.UUID, error)
 	// Creates nothing (no row) unless the patient and a published version both belong to the hospital.
 	CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (uuid.UUID, error)
+	CreateInvitedUser(ctx context.Context, arg CreateInvitedUserParams) (uuid.UUID, error)
+	CreateLoginLink(ctx context.Context, arg CreateLoginLinkParams) error
+	// Adds a membership; none when the user already has one for that scope.
+	CreateMembership(ctx context.Context, arg CreateMembershipParams) (int64, error)
 	// A new draft copied from version `from_version_id` (LCY-06/07): same chapters, same content,
 	// so stable IDs and test cases carry over. Chapters get new row ids.
 	CreateNextVersion(ctx context.Context, arg CreateNextVersionParams) (uuid.UUID, error)
 	CreateOptionList(ctx context.Context, arg CreateOptionListParams) (uuid.UUID, error)
 	// Every episode lookup is scoped to the hospital.
 	CreatePatient(ctx context.Context, arg CreatePatientParams) (uuid.UUID, error)
+	CreatePatientSession(ctx context.Context, arg CreatePatientSessionParams) error
 	CreateQuestionnaire(ctx context.Context, arg CreateQuestionnaireParams) (uuid.UUID, error)
+	CreateSession(ctx context.Context, arg CreateSessionParams) error
 	CreateVersion(ctx context.Context, arg CreateVersionParams) (uuid.UUID, error)
 	DeleteChapter(ctx context.Context, id uuid.UUID) error
+	DeleteEpisodeLinks(ctx context.Context, episodeID uuid.UUID) error
+	// Signs out every patient session of an episode, e.g. when its link is replaced.
+	DeleteEpisodeSessions(ctx context.Context, episodeID uuid.NullUUID) error
 	DeleteOptionList(ctx context.Context, arg DeleteOptionListParams) (int64, error)
 	DeleteQuestionnaire(ctx context.Context, arg DeleteQuestionnaireParams) error
+	DeleteSession(ctx context.Context, idHash []byte) error
 	DraftNameExists(ctx context.Context, arg DraftNameExistsParams) (bool, error)
 	GetChapter(ctx context.Context, arg GetChapterParams) (GetChapterRow, error)
 	GetChapterMeta(ctx context.Context, arg GetChapterMetaParams) (GetChapterMetaRow, error)
 	GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpisodeRow, error)
-	// The patient's link: no sign-in, the token is the key.
-	GetEpisodeByToken(ctx context.Context, patientToken string) (GetEpisodeByTokenRow, error)
+	// The newest link of an episode, sealed (NULL when made before sealing).
+	GetEpisodeLinkSealed(ctx context.Context, episodeID uuid.UUID) ([]byte, error)
+	// A patient link by its hash, with the date of birth it must be confirmed with.
+	GetLoginLink(ctx context.Context, tokenHash []byte) (GetLoginLinkRow, error)
+	// The episode of a signed-in patient (their session names it).
+	GetPatientEpisode(ctx context.Context, id uuid.UUID) (GetPatientEpisodeRow, error)
+	// A live patient session: before its expiry, and used within the idle limit.
+	GetPatientSession(ctx context.Context, arg GetPatientSessionParams) (GetPatientSessionRow, error)
 	GetQuestionnaire(ctx context.Context, arg GetQuestionnaireParams) (GetQuestionnaireRow, error)
-	GetUser(ctx context.Context, id uuid.UUID) (User, error)
+	// A live staff session: before its expiry, and used within the idle limit. (A patient
+	// session has no user, so the join leaves it out.)
+	GetSession(ctx context.Context, arg GetSessionParams) (GetSessionRow, error)
+	GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error)
+	GetUserByCognitoSub(ctx context.Context, cognitoSub *string) (GetUserByCognitoSubRow, error)
+	// Emails are compared in lower case; Cognito gives them in the case the person typed.
+	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetVersionChapter(ctx context.Context, arg GetVersionChapterParams) (GetVersionChapterRow, error)
 	HasNonDraftVersion(ctx context.Context, questionnaireID uuid.UUID) (bool, error)
+	HospitalInOrg(ctx context.Context, arg HospitalInOrgParams) (bool, error)
 	ListCategories(ctx context.Context) ([]Category, error)
 	// Every chapter lookup joins up to the questionnaire so it is scoped to the hospital.
 	ListChapters(ctx context.Context, versionID uuid.UUID) ([]ListChaptersRow, error)
 	ListEpisodeAnswers(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeAnswersRow, error)
 	ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeEventsRow, error)
 	ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]ListEpisodesRow, error)
+	// Every hospital the user can open, once per membership that covers it: a trust-wide
+	// membership covers all the trust's hospitals. Suspended trusts are left out.
 	ListMemberships(ctx context.Context, userID uuid.UUID) ([]ListMembershipsRow, error)
 	// Option lists are scoped to a hospital (OPT-07, TEN-01).
 	ListOptionLists(ctx context.Context, hospitalID uuid.UUID) ([]ListOptionListsRow, error)
@@ -51,8 +79,14 @@ type Querier interface {
 	ListPublishedVersions(ctx context.Context, hospitalID uuid.UUID) ([]ListPublishedVersionsRow, error)
 	// A questionnaire shows its latest version: the draft if there is one, else the last published.
 	ListQuestionnaires(ctx context.Context, arg ListQuestionnairesParams) ([]ListQuestionnairesRow, error)
-	ListRolesInHospital(ctx context.Context, arg ListRolesInHospitalParams) ([]string, error)
-	ListUsers(ctx context.Context) ([]User, error)
+	// The user's roles that apply to one hospital reached through one trust: trust-wide ones and
+	// ones for that hospital. None when the hospital isn't in that trust or the trust isn't active.
+	ListRolesAt(ctx context.Context, arg ListRolesAtParams) ([]string, error)
+	// The user's trust-wide roles in an active trust (memberships for the whole trust only).
+	ListTrustRoles(ctx context.Context, arg ListTrustRolesParams) ([]string, error)
+	// Everyone with a membership in the trust, one row per membership.
+	ListTrustStaff(ctx context.Context, orgID uuid.UUID) ([]ListTrustStaffRow, error)
+	ListUsers(ctx context.Context) ([]ListUsersRow, error)
 	ListVersionChapters(ctx context.Context, versionID uuid.UUID) ([]ListVersionChaptersRow, error)
 	// Serialises creates in one hospital so the unique-draft-name check can't race.
 	LockHospitalQuestionnaires(ctx context.Context, hospitalID uuid.UUID) error
@@ -60,6 +94,10 @@ type Querier interface {
 	// Publishes the draft and retires the version published before it (LCY-01), in one statement.
 	// Returns 0 when the version is no longer a draft.
 	PublishVersion(ctx context.Context, arg PublishVersionParams) (int64, error)
+	// Counts a wrong date of birth and locks the link at @max_attempts. Atomic, so tries sent in
+	// parallel can't get past the limit.
+	RecordWrongDateOfBirth(ctx context.Context, arg RecordWrongDateOfBirthParams) (bool, error)
+	ResetDateOfBirthTries(ctx context.Context, id uuid.UUID) error
 	// Saves only if nobody saved since the caller loaded `revision` (LCY-04).
 	SaveChapterContent(ctx context.Context, arg SaveChapterContentParams) (int32, error)
 	// The clinician's copy of a Question Set's answers, which is final. `validated` stamps it
@@ -72,7 +110,10 @@ type Querier interface {
 	// ILIKE '%…%' is served by the pg_trgm GIN indexes.
 	SearchCodes(ctx context.Context, arg SearchCodesParams) ([]SearchCodesRow, error)
 	SetChapterPosition(ctx context.Context, arg SetChapterPositionParams) error
+	// Saves the subject at a first sign-in, only if none is saved yet.
+	SetCognitoSub(ctx context.Context, arg SetCognitoSubParams) (int64, error)
 	SubmitPatientHQ(ctx context.Context, id uuid.UUID) (int64, error)
+	TouchSession(ctx context.Context, idHash []byte) error
 	TouchVersion(ctx context.Context, arg TouchVersionParams) error
 	UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) error
 	UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) error

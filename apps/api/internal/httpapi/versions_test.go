@@ -6,12 +6,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/rlamba89/poised/apps/api/internal/auth"
 	"github.com/rlamba89/poised/apps/api/internal/db"
 )
 
@@ -69,18 +67,14 @@ func (f *versionFake) CreateNextVersion(_ context.Context, arg db.CreateNextVers
 func call(t *testing.T, q db.Querier, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
-	token, err := auth.Issue(secret, userA, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: token})
+	signedIn(req)
 	rec := httptest.NewRecorder()
-	routes(&server{q: q, secret: secret}).ServeHTTP(rec, req)
+	routes(&server{q: q}).ServeHTTP(rec, req)
 	return rec
 }
 
 func questionnairePath(suffix string) string {
-	return "/api/h/" + hospitalA.String() + "/questionnaires/" + questionnaireID.String() + suffix
+	return hp(hospitalA) + "/questionnaires/" + questionnaireID.String() + suffix
 }
 
 // LCY-01: the publisher publishes the draft they checked.
@@ -94,11 +88,11 @@ func TestPublish(t *testing.T) {
 		body     string
 		want     int
 	}{
-		{"publisher publishes the draft", "draft", []string{"publisher"}, 2, body, http.StatusNoContent},
-		{"author alone can't publish", "draft", []string{"author"}, 2, body, http.StatusForbidden},
-		{"already published", "published", []string{"publisher"}, 2, body, http.StatusConflict},
-		{"a different version was checked", "draft", []string{"publisher"}, 2, `{"versionId":"` + uuid.NewString() + `"}`, http.StatusConflict},
-		{"no Question Sets", "draft", []string{"publisher"}, 0, body, http.StatusBadRequest},
+		{"super clinician publishes the draft", "draft", []string{"super_clinician"}, 2, body, http.StatusNoContent},
+		{"clinician can't publish", "draft", []string{"clinician"}, 2, body, http.StatusForbidden},
+		{"already published", "published", []string{"super_clinician"}, 2, body, http.StatusConflict},
+		{"a different version was checked", "draft", []string{"super_clinician"}, 2, `{"versionId":"` + uuid.NewString() + `"}`, http.StatusConflict},
+		{"no Question Sets", "draft", []string{"super_clinician"}, 0, body, http.StatusBadRequest},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -127,10 +121,10 @@ func TestCreateVersion(t *testing.T) {
 		nameTaken bool
 		want      int
 	}{
-		{"from published", "published", []string{"author"}, false, http.StatusCreated},
-		{"a draft already exists", "draft", []string{"author"}, false, http.StatusConflict},
-		{"viewer can't", "published", []string{"viewer"}, false, http.StatusForbidden},
-		{"another draft has the name", "published", []string{"author"}, true, http.StatusConflict},
+		{"from published", "published", []string{"super_clinician"}, false, http.StatusCreated},
+		{"a draft already exists", "draft", []string{"super_clinician"}, false, http.StatusConflict},
+		{"clinician can't", "published", []string{"clinician"}, false, http.StatusForbidden},
+		{"another draft has the name", "published", []string{"super_clinician"}, true, http.StatusConflict},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

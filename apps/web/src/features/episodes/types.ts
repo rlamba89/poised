@@ -19,7 +19,6 @@ export type Episode = EpisodeRow & {
   consultant: string;
   nurseAsa: number | null;
   anaesthetistAsa: number | null;
-  patientToken: string;
   patientSubmittedAt: string | null;
   reviewCompletedAt: string | null;
   reviewCompletedByName: string | null;

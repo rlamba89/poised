@@ -54,7 +54,6 @@ type Episode struct {
 	Consultant         string             `json:"consultant"`
 	NurseAsa           *int32             `json:"nurseAsa"`
 	AnaesthetistAsa    *int32             `json:"anaesthetistAsa"`
-	PatientToken       string             `json:"patientToken"`
 	PatientSubmittedAt pgtype.Timestamptz `json:"patientSubmittedAt"`
 	ReviewCompletedBy  uuid.NullUUID      `json:"reviewCompletedBy"`
 	ReviewCompletedAt  pgtype.Timestamptz `json:"reviewCompletedAt"`
@@ -82,14 +81,27 @@ type EpisodeEvent struct {
 }
 
 type Hospital struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	OrgID uuid.UUID `json:"orgId"`
+}
+
+type LoginLink struct {
+	ID                uuid.UUID          `json:"id"`
+	TokenHash         []byte             `json:"tokenHash"`
+	TokenSealed       []byte             `json:"tokenSealed"`
+	EpisodeID         uuid.UUID          `json:"episodeId"`
+	FailedDobAttempts int32              `json:"failedDobAttempts"`
+	LockedAt          pgtype.Timestamptz `json:"lockedAt"`
+	CreatedAt         time.Time          `json:"createdAt"`
 }
 
 type Membership struct {
-	UserID     uuid.UUID `json:"userId"`
-	HospitalID uuid.UUID `json:"hospitalId"`
-	Role       string    `json:"role"`
+	ID         uuid.UUID     `json:"id"`
+	UserID     uuid.UUID     `json:"userId"`
+	OrgID      uuid.UUID     `json:"orgId"`
+	HospitalID uuid.NullUUID `json:"hospitalId"`
+	Role       string        `json:"role"`
 }
 
 type OptionList struct {
@@ -99,6 +111,15 @@ type OptionList struct {
 	Options    json.RawMessage `json:"options"`
 	UpdatedBy  uuid.UUID       `json:"updatedBy"`
 	UpdatedAt  time.Time       `json:"updatedAt"`
+}
+
+type Org struct {
+	ID         uuid.UUID       `json:"id"`
+	Name       string          `json:"name"`
+	Code       string          `json:"code"`
+	Status     string          `json:"status"`
+	DataRegion string          `json:"dataRegion"`
+	Settings   json.RawMessage `json:"settings"`
 }
 
 type Patient struct {
@@ -131,8 +152,18 @@ type QuestionnaireVersion struct {
 	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
+type Session struct {
+	IDHash     []byte        `json:"idHash"`
+	UserID     uuid.NullUUID `json:"userId"`
+	CreatedAt  time.Time     `json:"createdAt"`
+	LastSeenAt time.Time     `json:"lastSeenAt"`
+	ExpiresAt  time.Time     `json:"expiresAt"`
+	EpisodeID  uuid.NullUUID `json:"episodeId"`
+}
+
 type User struct {
-	ID    uuid.UUID `json:"id"`
-	Name  string    `json:"name"`
-	Email string    `json:"email"`
+	ID         uuid.UUID `json:"id"`
+	Name       string    `json:"name"`
+	Email      string    `json:"email"`
+	CognitoSub *string   `json:"cognitoSub"`
 }

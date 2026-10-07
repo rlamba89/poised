@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/role"
 )
 
 const (
@@ -105,8 +106,8 @@ func (s *server) deleteOptionList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !hasRole(r, "author") {
-		writeError(w, http.StatusForbidden, "Only authors can change option lists.")
+	if !atLeast(r, role.SuperClinician) {
+		writeError(w, http.StatusForbidden, "Only super clinicians and admins can change option lists.")
 		return
 	}
 	n, err := s.q.DeleteOptionList(r.Context(), db.DeleteOptionListParams{ID: id, HospitalID: hospitalID(r)})
@@ -120,11 +121,11 @@ func (s *server) deleteOptionList(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// readOptionList checks the caller is an author and reads a valid list, answering errors itself.
+// readOptionList checks the caller is a super clinician (or above) and reads a valid list, answering errors itself.
 func readOptionList(w http.ResponseWriter, r *http.Request) (optionListInput, bool) {
 	var in optionListInput
-	if !hasRole(r, "author") {
-		writeError(w, http.StatusForbidden, "Only authors can change option lists.")
+	if !atLeast(r, role.SuperClinician) {
+		writeError(w, http.StatusForbidden, "Only super clinicians and admins can change option lists.")
 		return in, false
 	}
 	if !readJSON(w, r, maxOptionListBytes, &in) {

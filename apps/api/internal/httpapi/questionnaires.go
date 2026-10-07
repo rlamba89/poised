@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/role"
 )
 
 const pageSize = 20
@@ -59,8 +60,8 @@ const draftNameTaken = "A draft questionnaire with this name already exists."
 // createQuestionnaire is FRM-04: a questionnaire and its draft version 1.
 // Two drafts in one hospital can't share a name.
 func (s *server) createQuestionnaire(w http.ResponseWriter, r *http.Request) {
-	if !hasRole(r, "author") {
-		writeError(w, http.StatusForbidden, "Only authors can create questionnaires.")
+	if !atLeast(r, role.SuperClinician) {
+		writeError(w, http.StatusForbidden, "Only super clinicians and admins can create questionnaires.")
 		return
 	}
 	var in questionnaireInput
@@ -140,14 +141,14 @@ func (s *server) getQuestionnaire(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"questionnaire": row, "chapters": chapters})
 }
 
-// deleteQuestionnaire is FRM-06: drafts only, by their creator or a hospital admin.
+// deleteQuestionnaire is FRM-06: drafts only, by their creator or an admin.
 func (s *server) deleteQuestionnaire(w http.ResponseWriter, r *http.Request) {
 	row, ok := s.loadQuestionnaire(w, r)
 	if !ok {
 		return
 	}
-	if row.CreatedBy != currentUser(r).ID && !hasRole(r, "hospital_admin") {
-		writeError(w, http.StatusForbidden, "Only the person who created this questionnaire or a hospital admin can delete it.")
+	if row.CreatedBy != currentUser(r).ID && !atLeast(r, role.Admin) {
+		writeError(w, http.StatusForbidden, "Only the person who created this questionnaire or an admin can delete it.")
 		return
 	}
 	published, err := s.q.HasNonDraftVersion(r.Context(), row.ID)
@@ -170,8 +171,8 @@ func (s *server) deleteQuestionnaire(w http.ResponseWriter, r *http.Request) {
 // no sign-off yet (SGN comes later). The browser has already checked logic problems and test
 // cases (plan 2.1). `versionId` is the version it checked, so a newer one isn't published by mistake.
 func (s *server) publishQuestionnaire(w http.ResponseWriter, r *http.Request) {
-	if !hasRole(r, "publisher") {
-		writeError(w, http.StatusForbidden, "Only publishers can publish questionnaires.")
+	if !atLeast(r, role.SuperClinician) {
+		writeError(w, http.StatusForbidden, "Only super clinicians and admins can publish questionnaires.")
 		return
 	}
 	row, ok := s.loadQuestionnaire(w, r)
@@ -212,8 +213,8 @@ func (s *server) publishQuestionnaire(w http.ResponseWriter, r *http.Request) {
 // createVersion starts a new draft from the latest published version (LCY-06/07). Its chapters
 // are copied unchanged, so stable IDs and test cases carry over.
 func (s *server) createVersion(w http.ResponseWriter, r *http.Request) {
-	if !hasRole(r, "author") {
-		writeError(w, http.StatusForbidden, "Only authors can create versions.")
+	if !atLeast(r, role.SuperClinician) {
+		writeError(w, http.StatusForbidden, "Only super clinicians and admins can create versions.")
 		return
 	}
 	row, ok := s.loadQuestionnaire(w, r)

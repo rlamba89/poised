@@ -4,7 +4,6 @@
 // selected Question Set or page on the right. Every change saves automatically.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Alert, Anchor, Avatar, Badge, Button, Center, Group, Loader, Menu, Modal, Popover, Stack, Text } from "@mantine/core";
 import { IconAlertTriangle, IconArrowLeft, IconCopyPlus, IconEye, IconLanguage, IconLogout, IconSend } from "@tabler/icons-react";
 import {
@@ -12,7 +11,8 @@ import {
   findElement, findPage, logicProblems, movePage, movePageTo, pageTitle, pagesOf, type ChapterJson, type Kind, type Target,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
-import { hasRole, useMe } from "@/lib/auth";
+import { atLeast, useMe } from "@/lib/auth";
+import { signOut } from "@/lib/signin";
 import type { Chapter } from "@/features/chapters/types";
 import { PageCanvas, SetCanvas } from "./Canvas";
 import { EditorContext, type EditorContextValue } from "./context";
@@ -40,14 +40,12 @@ const STATUS: Record<SaveStatus, { text: string; color: string }> = {
 
 type Confirm = { title: string; body: string; dependents?: string[]; onConfirm: () => void };
 
-export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalId: string; questionnaireId: string }) {
+export function QuestionnaireEditor({ hospitalId, base, questionnaireId }: { hospitalId: string; base: string; questionnaireId: string }) {
   const me = useMe();
-  const router = useRouter();
-  const base = `/h/${hospitalId}`;
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
-  const store = useChapters(hospitalId);
-  const readOnly = !hasRole(me, hospitalId, "author") || (data ? data.questionnaire.status !== "draft" : true);
+  const store = useChapters(base);
+  const readOnly = !atLeast(me, hospitalId, "super_clinician") || (data ? data.questionnaire.status !== "draft" : true);
 
   const [selection, setSelection] = useState<Selection>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -353,12 +351,12 @@ export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalI
               Translate
             </Button>
           )}
-          {q.status === "draft" && hasRole(me, hospitalId, "publisher") && (
+          {q.status === "draft" && atLeast(me, hospitalId, "super_clinician") && (
             <Button size="xs" leftSection={<IconSend size={14} />} onClick={() => setPublishing(true)}>
               Publish
             </Button>
           )}
-          {q.status !== "draft" && hasRole(me, hospitalId, "author") && (
+          {q.status !== "draft" && atLeast(me, hospitalId, "super_clinician") && (
             <Button size="xs" variant="default" leftSection={<IconCopyPlus size={14} />} onClick={createVersion}>
               Create new version
             </Button>
@@ -378,10 +376,7 @@ export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalI
               <Menu.Label>{me.user.name}</Menu.Label>
               <Menu.Item
                 leftSection={<IconLogout size={14} />}
-                onClick={async () => {
-                  await api("/logout", { method: "POST" });
-                  router.replace("/login");
-                }}
+                onClick={signOut}
               >
                 Sign out
               </Menu.Item>

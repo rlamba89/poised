@@ -13,28 +13,28 @@ import { DisplaysWhen } from "@/features/editor/ElementCard";
 type Detail = { chapters: { id: string; name: string }[] };
 
 export function SetCondition(props: {
-  hospitalId: string;
+  base: string;
   questionnaireId: string;
   chapterId: string;
   content: ChapterJson;
   variables: { patientAge?: number; patientSex?: string; viewer: Viewer };
 }) {
-  const { hospitalId, questionnaireId, chapterId, content, variables } = props;
+  const { base, questionnaireId, chapterId, content, variables } = props;
   const expr = chapterConditionOf(content);
   const [earlier, setEarlier] = useState<ChapterJson | null>(null);
   useEffect(() => {
     if (!expr) return;
     let current = true;
     (async () => {
-      const d = await api<Detail>(`/h/${hospitalId}/questionnaires/${questionnaireId}`);
+      const d = await api<Detail>(`${base}/questionnaires/${questionnaireId}`);
       const before = d.chapters.slice(0, d.chapters.findIndex((c) => c.id === chapterId));
-      const docs = await Promise.all(before.map((c) => api<{ content: ChapterJson }>(`/h/${hospitalId}/chapters/${c.id}`)));
+      const docs = await Promise.all(before.map((c) => api<{ content: ChapterJson }>(`${base}/chapters/${c.id}`)));
       if (current) setEarlier(combineChapters(before.map((c, i) => ({ name: c.name, doc: docs[i].content ?? {} }))));
     })().catch(() => current && setEarlier({}));
     return () => {
       current = false;
     };
-  }, [expr, hospitalId, questionnaireId, chapterId]);
+  }, [expr, base, questionnaireId, chapterId]);
 
   if (!expr) return null;
   const described = describeLogic(earlier ?? {}, expr);

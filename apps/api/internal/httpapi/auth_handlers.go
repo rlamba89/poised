@@ -3,12 +3,13 @@ package httpapi
 import (
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/rlamba89/poised/apps/api/internal/auth"
+	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/role"
 )
 
 // devUsers lists seeded users for the stub login page.
@@ -21,7 +22,8 @@ func (s *server) devUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, users)
 }
 
-// devLogin signs in as a seeded user and sets the token cookie. Replaced by SSO later.
+// devLogin signs in as a seeded user: it starts a session and sets its cookie. Replaced by
+// Cognito sign-in (auth plan Step 4) everywhere but local development and QA.
 func (s *server) devLogin(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		UserID uuid.UUID `json:"userId"`
@@ -38,30 +40,69 @@ func (s *server) devLogin(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "get user", err)
 		return
 	}
-	token, err := auth.Issue(s.secret, auth.User{ID: u.ID, Name: u.Name}, time.Now())
+	id, hash, err := auth.NewSessionID()
 	if err != nil {
-		serverError(w, "issue token", err)
+		serverError(w, "new session", err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name: auth.CookieName, Value: token, Path: "/",
-		HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: int(auth.TTL.Seconds()),
-	})
+	err = s.q.CreateSession(r.Context(), db.CreateSessionParams{IDHash: hash, UserID: u.ID, MaxAgeSeconds: s.sessionMaxAge.Seconds()})
+	if err != nil {
+		serverError(w, "create session", err)
+		return
+	}
+	http.SetCookie(w, s.cookie(s.cookieName(), id, int(s.sessionMaxAge.Seconds())))
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// logout ends the session in the database, so its cookie stops working even if it was copied,
+// then clears the cookie.
 func (s *server) logout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{Name: auth.CookieName, Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
+	if c, err := r.Cookie(s.cookieName()); err == nil {
+		if err := s.q.DeleteSession(r.Context(), auth.HashToken(c.Value)); err != nil {
+			serverError(w, "delete session", err)
+			return
+		}
+	}
+	http.SetCookie(w, s.cookie(s.cookieName(), "", -1))
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type hospitalRoles struct {
-	ID    uuid.UUID `json:"id"`
-	Name  string    `json:"name"`
-	Roles []string  `json:"roles"`
+// cookieName is the staff session cookie's name: with the __Host- prefix whenever it is Secure.
+func (s *server) cookieName() string {
+	if s.secureCookies {
+		return auth.SecureCookieName
+	}
+	return auth.CookieName
 }
 
-// me returns the signed-in user and their hospitals with roles.
+// patientCookieName is the patient session cookie's name, chosen the same way.
+func (s *server) patientCookieName() string {
+	if s.secureCookies {
+		return auth.SecurePatientCookieName
+	}
+	return auth.PatientCookieName
+}
+
+// cookie is a session cookie with the same attributes when it is set and when it is cleared,
+// so the browser treats both as one cookie. maxAge < 0 deletes it.
+func (s *server) cookie(name, value string, maxAge int) *http.Cookie {
+	return &http.Cookie{
+		Name: name, Value: value, Path: "/", MaxAge: maxAge,
+		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: s.secureCookies,
+	}
+}
+
+// hospitalAccess is one hospital the user can open, its trust, and the highest role that
+// applies there (a trust-wide role and a hospital role can both cover it).
+type hospitalAccess struct {
+	ID      uuid.UUID `json:"id"`
+	Name    string    `json:"name"`
+	OrgID   uuid.UUID `json:"orgId"`
+	OrgName string    `json:"orgName"`
+	Role    role.Role `json:"role"`
+}
+
+// me returns the signed-in user and every hospital they can open, by trust.
 func (s *server) me(w http.ResponseWriter, r *http.Request) {
 	u, err := s.q.GetUser(r.Context(), currentUser(r).ID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -77,13 +118,17 @@ func (s *server) me(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "list memberships", err)
 		return
 	}
-	hospitals := []hospitalRoles{}
+	hospitals := []hospitalAccess{}
+	at := map[uuid.UUID]int{} // hospital → its index in hospitals
 	for _, m := range rows {
-		if n := len(hospitals); n > 0 && hospitals[n-1].ID == m.HospitalID {
-			hospitals[n-1].Roles = append(hospitals[n-1].Roles, m.Role)
+		if i, ok := at[m.HospitalID]; ok {
+			hospitals[i].Role = role.Highest(hospitals[i].Role, role.Role(m.Role))
 			continue
 		}
-		hospitals = append(hospitals, hospitalRoles{ID: m.HospitalID, Name: m.HospitalName, Roles: []string{m.Role}})
+		at[m.HospitalID] = len(hospitals)
+		hospitals = append(hospitals, hospitalAccess{
+			ID: m.HospitalID, Name: m.HospitalName, OrgID: m.OrgID, OrgName: m.OrgName, Role: role.Role(m.Role),
+		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"user": u, "hospitals": hospitals})
 }

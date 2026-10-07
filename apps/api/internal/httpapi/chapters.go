@@ -13,6 +13,7 @@ import (
 
 	"github.com/rlamba89/poised/apps/api/internal/chapter"
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/role"
 )
 
 var (
@@ -29,8 +30,8 @@ const (
 // canEdit writes 403/409 itself and reports whether the caller may change a chapter
 // of a version with this status.
 func canEdit(w http.ResponseWriter, r *http.Request, versionStatus string) bool {
-	if !hasRole(r, "author") {
-		writeError(w, http.StatusForbidden, "Only authors can change chapters.")
+	if !atLeast(r, role.SuperClinician) {
+		writeError(w, http.StatusForbidden, "Only super clinicians and admins can change chapters.")
 		return false
 	}
 	if versionStatus != "draft" {

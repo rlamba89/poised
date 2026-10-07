@@ -3,17 +3,16 @@
 // copy a saved list into another question. Copies get new IDs, so a question never changes
 // when the list does.
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
 import { ActionIcon, Alert, Badge, Button, Group, Modal, Paper, SegmentedControl, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { applySavedOptions, toSavedOptions, type ChapterJson, type ElementJson, type SavedOption } from "@poised/clinical";
 import { api } from "@/lib/api";
+import { useHospitalPath } from "@/lib/paths";
 
 type OptionList = { id: string; name: string; options: SavedOption[]; updatedAt: string; updatedByName: string };
 
 function useOptionLists() {
-  const { hospitalId } = useParams<{ hospitalId: string }>();
-  const base = `/h/${hospitalId}/option-lists`;
+  const base = `${useHospitalPath()}/option-lists`;
   const [lists, setLists] = useState<OptionList[] | null>(null);
   const [error, setError] = useState("");
   const reload = useCallback(

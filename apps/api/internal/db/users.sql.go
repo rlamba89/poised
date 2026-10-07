@@ -11,31 +11,164 @@ import (
 	"github.com/google/uuid"
 )
 
+const countActiveMemberships = `-- name: CountActiveMemberships :one
+SELECT count(*) FROM memberships m JOIN orgs o ON o.id = m.org_id AND o.status = 'active'
+WHERE m.user_id = $1
+`
+
+func (q *Queries) CountActiveMemberships(ctx context.Context, userID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveMemberships, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countTrustMemberships = `-- name: CountTrustMemberships :one
+SELECT count(*) FROM memberships WHERE user_id = $1 AND org_id = $2
+`
+
+type CountTrustMembershipsParams struct {
+	UserID uuid.UUID `json:"userId"`
+	OrgID  uuid.UUID `json:"orgId"`
+}
+
+// Any membership in the trust, trust-wide or for one of its hospitals.
+func (q *Queries) CountTrustMemberships(ctx context.Context, arg CountTrustMembershipsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countTrustMemberships, arg.UserID, arg.OrgID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const createInvitedUser = `-- name: CreateInvitedUser :one
+INSERT INTO users (name, email, cognito_sub) VALUES ($1, $2, $3) RETURNING id
+`
+
+type CreateInvitedUserParams struct {
+	Name       string  `json:"name"`
+	Email      string  `json:"email"`
+	CognitoSub *string `json:"cognitoSub"`
+}
+
+func (q *Queries) CreateInvitedUser(ctx context.Context, arg CreateInvitedUserParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createInvitedUser, arg.Name, arg.Email, arg.CognitoSub)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const createMembership = `-- name: CreateMembership :execrows
+INSERT INTO memberships (user_id, org_id, hospital_id, role) VALUES ($1, $2, $3, $4)
+ON CONFLICT ON CONSTRAINT memberships_scope_key DO NOTHING
+`
+
+type CreateMembershipParams struct {
+	UserID     uuid.UUID     `json:"userId"`
+	OrgID      uuid.UUID     `json:"orgId"`
+	HospitalID uuid.NullUUID `json:"hospitalId"`
+	Role       string        `json:"role"`
+}
+
+// Adds a membership; none when the user already has one for that scope.
+func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipParams) (int64, error) {
+	result, err := q.db.Exec(ctx, createMembership,
+		arg.UserID,
+		arg.OrgID,
+		arg.HospitalID,
+		arg.Role,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getUser = `-- name: GetUser :one
 SELECT id, name, email FROM users WHERE id = $1
 `
 
-func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
+type GetUserRow struct {
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	Email string    `json:"email"`
+}
+
+func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error) {
 	row := q.db.QueryRow(ctx, getUser, id)
-	var i User
+	var i GetUserRow
 	err := row.Scan(&i.ID, &i.Name, &i.Email)
 	return i, err
 }
 
+const getUserByCognitoSub = `-- name: GetUserByCognitoSub :one
+SELECT id, name, email FROM users WHERE cognito_sub = $1
+`
+
+type GetUserByCognitoSubRow struct {
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	Email string    `json:"email"`
+}
+
+func (q *Queries) GetUserByCognitoSub(ctx context.Context, cognitoSub *string) (GetUserByCognitoSubRow, error) {
+	row := q.db.QueryRow(ctx, getUserByCognitoSub, cognitoSub)
+	var i GetUserByCognitoSubRow
+	err := row.Scan(&i.ID, &i.Name, &i.Email)
+	return i, err
+}
+
+const getUserByEmail = `-- name: GetUserByEmail :one
+SELECT id, name, email, cognito_sub FROM users WHERE lower(email) = lower($1)
+`
+
+// Emails are compared in lower case; Cognito gives them in the case the person typed.
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByEmail, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.CognitoSub,
+	)
+	return i, err
+}
+
+const hospitalInOrg = `-- name: HospitalInOrg :one
+SELECT EXISTS (SELECT 1 FROM hospitals WHERE id = $1 AND org_id = $2)
+`
+
+type HospitalInOrgParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"orgId"`
+}
+
+func (q *Queries) HospitalInOrg(ctx context.Context, arg HospitalInOrgParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hospitalInOrg, arg.ID, arg.OrgID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listMemberships = `-- name: ListMemberships :many
-SELECT m.hospital_id, h.name AS hospital_name, m.role
+SELECT o.id AS org_id, o.name AS org_name, h.id AS hospital_id, h.name AS hospital_name, m.role
 FROM memberships m
-JOIN hospitals h ON h.id = m.hospital_id
+JOIN orgs o ON o.id = m.org_id AND o.status = 'active'
+JOIN hospitals h ON h.org_id = m.org_id AND (m.hospital_id IS NULL OR h.id = m.hospital_id)
 WHERE m.user_id = $1
-ORDER BY h.name, m.role
+ORDER BY o.name, h.name
 `
 
 type ListMembershipsRow struct {
+	OrgID        uuid.UUID `json:"orgId"`
+	OrgName      string    `json:"orgName"`
 	HospitalID   uuid.UUID `json:"hospitalId"`
 	HospitalName string    `json:"hospitalName"`
 	Role         string    `json:"role"`
 }
 
+// Every hospital the user can open, once per membership that covers it: a trust-wide
+// membership covers all the trust's hospitals. Suspended trusts are left out.
 func (q *Queries) ListMemberships(ctx context.Context, userID uuid.UUID) ([]ListMembershipsRow, error) {
 	rows, err := q.db.Query(ctx, listMemberships, userID)
 	if err != nil {
@@ -45,7 +178,13 @@ func (q *Queries) ListMemberships(ctx context.Context, userID uuid.UUID) ([]List
 	items := []ListMembershipsRow{}
 	for rows.Next() {
 		var i ListMembershipsRow
-		if err := rows.Scan(&i.HospitalID, &i.HospitalName, &i.Role); err != nil {
+		if err := rows.Scan(
+			&i.OrgID,
+			&i.OrgName,
+			&i.HospitalID,
+			&i.HospitalName,
+			&i.Role,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -56,17 +195,26 @@ func (q *Queries) ListMemberships(ctx context.Context, userID uuid.UUID) ([]List
 	return items, nil
 }
 
-const listRolesInHospital = `-- name: ListRolesInHospital :many
-SELECT role FROM memberships WHERE user_id = $1 AND hospital_id = $2
+const listRolesAt = `-- name: ListRolesAt :many
+SELECT m.role
+FROM memberships m
+JOIN orgs o ON o.id = m.org_id AND o.status = 'active'
+JOIN hospitals h ON h.id = $1 AND h.org_id = m.org_id
+WHERE m.user_id = $2
+  AND m.org_id = $3
+  AND (m.hospital_id IS NULL OR m.hospital_id = $1)
 `
 
-type ListRolesInHospitalParams struct {
-	UserID     uuid.UUID `json:"userId"`
+type ListRolesAtParams struct {
 	HospitalID uuid.UUID `json:"hospitalId"`
+	UserID     uuid.UUID `json:"userId"`
+	OrgID      uuid.UUID `json:"orgId"`
 }
 
-func (q *Queries) ListRolesInHospital(ctx context.Context, arg ListRolesInHospitalParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, listRolesInHospital, arg.UserID, arg.HospitalID)
+// The user's roles that apply to one hospital reached through one trust: trust-wide ones and
+// ones for that hospital. None when the hospital isn't in that trust or the trust isn't active.
+func (q *Queries) ListRolesAt(ctx context.Context, arg ListRolesAtParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listRolesAt, arg.HospitalID, arg.UserID, arg.OrgID)
 	if err != nil {
 		return nil, err
 	}
@@ -85,19 +233,105 @@ func (q *Queries) ListRolesInHospital(ctx context.Context, arg ListRolesInHospit
 	return items, nil
 }
 
+const listTrustRoles = `-- name: ListTrustRoles :many
+SELECT m.role FROM memberships m JOIN orgs o ON o.id = m.org_id AND o.status = 'active'
+WHERE m.user_id = $1 AND m.org_id = $2 AND m.hospital_id IS NULL
+`
+
+type ListTrustRolesParams struct {
+	UserID uuid.UUID `json:"userId"`
+	OrgID  uuid.UUID `json:"orgId"`
+}
+
+// The user's trust-wide roles in an active trust (memberships for the whole trust only).
+func (q *Queries) ListTrustRoles(ctx context.Context, arg ListTrustRolesParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listTrustRoles, arg.UserID, arg.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var role string
+		if err := rows.Scan(&role); err != nil {
+			return nil, err
+		}
+		items = append(items, role)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTrustStaff = `-- name: ListTrustStaff :many
+SELECT u.id AS user_id, u.name, u.email, (u.cognito_sub IS NOT NULL)::boolean AS has_account,
+       m.hospital_id, h.name AS hospital_name, m.role
+FROM memberships m
+JOIN users u ON u.id = m.user_id
+LEFT JOIN hospitals h ON h.id = m.hospital_id
+WHERE m.org_id = $1
+ORDER BY u.name, h.name NULLS FIRST
+`
+
+type ListTrustStaffRow struct {
+	UserID       uuid.UUID     `json:"userId"`
+	Name         string        `json:"name"`
+	Email        string        `json:"email"`
+	HasAccount   bool          `json:"hasAccount"`
+	HospitalID   uuid.NullUUID `json:"hospitalId"`
+	HospitalName *string       `json:"hospitalName"`
+	Role         string        `json:"role"`
+}
+
+// Everyone with a membership in the trust, one row per membership.
+func (q *Queries) ListTrustStaff(ctx context.Context, orgID uuid.UUID) ([]ListTrustStaffRow, error) {
+	rows, err := q.db.Query(ctx, listTrustStaff, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTrustStaffRow{}
+	for rows.Next() {
+		var i ListTrustStaffRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Name,
+			&i.Email,
+			&i.HasAccount,
+			&i.HospitalID,
+			&i.HospitalName,
+			&i.Role,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
 SELECT id, name, email FROM users ORDER BY name
 `
 
-func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
+type ListUsersRow struct {
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	Email string    `json:"email"`
+}
+
+func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 	rows, err := q.db.Query(ctx, listUsers)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []User{}
+	items := []ListUsersRow{}
 	for rows.Next() {
-		var i User
+		var i ListUsersRow
 		if err := rows.Scan(&i.ID, &i.Name, &i.Email); err != nil {
 			return nil, err
 		}
@@ -107,4 +341,22 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const setCognitoSub = `-- name: SetCognitoSub :execrows
+UPDATE users SET cognito_sub = $1 WHERE id = $2 AND cognito_sub IS NULL
+`
+
+type SetCognitoSubParams struct {
+	CognitoSub *string   `json:"cognitoSub"`
+	ID         uuid.UUID `json:"id"`
+}
+
+// Saves the subject at a first sign-in, only if none is saved yet.
+func (q *Queries) SetCognitoSub(ctx context.Context, arg SetCognitoSubParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setCognitoSub, arg.CognitoSub, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

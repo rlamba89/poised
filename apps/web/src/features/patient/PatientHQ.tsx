@@ -1,5 +1,5 @@
 "use client";
-// Step 3 of plan-workflow.md: the patient fills in their HQ through their link (no sign-in).
+// Step 3 of plan-workflow.md: the signed-in patient fills in their HQ (PatientSignIn comes first).
 // Question Sets are listed as tiles; each opens in the patient view, answers save as they go
 // (PX-05), and "Send my answers" submits the whole HQ once every set is complete.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -27,7 +27,7 @@ type HQ = {
 
 const SAVE_DELAY_MS = 600;
 
-export default function PatientHQ({ token }: { token: string }) {
+export default function PatientHQ({ onSignedOut }: { onSignedOut: () => void }) {
   const [hq, setHq] = useState<HQ | null>(null);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -35,10 +35,10 @@ export default function PatientHQ({ token }: { token: string }) {
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    api<HQ>(`/p/${token}`)
+    api<HQ>("/p/hq")
       .then(setHq)
-      .catch((e: Error) => setError(e.message));
-  }, [token]);
+      .catch((e: Error) => (e instanceof ApiError && e.status === 401 ? onSignedOut() : setError(e.message)));
+  }, [onSignedOut]);
 
   const vars = useMemo(() => (hq ? patientVariables(hq.patient) : null), [hq]);
 
@@ -58,7 +58,7 @@ export default function PatientHQ({ token }: { token: string }) {
   const send = async () => {
     setSending(true);
     try {
-      await api(`/p/${token}/submit`, { method: "POST" });
+      await api("/p/hq/submit", { method: "POST" });
       setHq({ ...hq, submitted: true });
       setConfirming(false);
     } catch (e) {
@@ -84,7 +84,6 @@ export default function PatientHQ({ token }: { token: string }) {
         ) : open ? (
           <SetForm
             key={open.id}
-            token={token}
             set={open}
             data={hq.answers[open.id] ?? {}}
             vars={vars}
@@ -144,7 +143,6 @@ export default function PatientHQ({ token }: { token: string }) {
 }
 
 type SetFormProps = {
-  token: string;
   set: QuestionSet;
   data: Answers;
   vars: ReturnType<typeof patientVariables>;
@@ -154,7 +152,7 @@ type SetFormProps = {
 };
 
 /** One Question Set in the patient view. Answers save shortly after each change. */
-function SetForm({ token, set, data, vars, onChange, onError, onClose }: SetFormProps) {
+function SetForm({ set, data, vars, onChange, onError, onClose }: SetFormProps) {
   const [saving, setSaving] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const latest = useRef(data);
@@ -174,13 +172,13 @@ function SetForm({ token, set, data, vars, onChange, onError, onClose }: SetForm
     clearTimeout(timer.current);
     setSaving(true);
     try {
-      await api(`/p/${token}/answers/${set.id}`, { method: "PUT", body: JSON.stringify({ data: latest.current }) });
+      await api(`/p/hq/answers/${set.id}`, { method: "PUT", body: JSON.stringify({ data: latest.current }) });
     } catch (e) {
       onError(e instanceof ApiError && e.status === 409 ? `${e.message} Reload the page to see them.` : (e as Error).message);
     } finally {
       setSaving(false);
     }
-  }, [token, set.id, onError]);
+  }, [set.id, onError]);
 
   useEffect(() => {
     const changed = () => {

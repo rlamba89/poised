@@ -21,19 +21,19 @@ import { patientName, type Episode, type EpisodeEvent } from "./types";
 
 type Tab = "validated" | "patient";
 
-export default function PoaSummary({ hospitalId, episodeId }: { hospitalId: string; episodeId: string }) {
-  const { data, error, reload } = useEpisode(hospitalId, episodeId);
-  const { hq, error: hqError } = useEpisodeHQ(hospitalId, episodeId);
+export default function PoaSummary({ base, episodeId }: { base: string; episodeId: string }) {
+  const { data, error, reload } = useEpisode(base, episodeId);
+  const { hq, error: hqError } = useEpisodeHQ(base, episodeId);
   const [tab, setTab] = useState<Tab>("validated");
   if (error || hqError) return <Alert color="red">{error || hqError}</Alert>;
   if (!data || !hq) return <Center h="40vh"><Loader /></Center>;
   const e = data.episode;
-  const path = `/h/${hospitalId}/episodes/${episodeId}`;
+  const path = `${base}/episodes/${episodeId}`;
 
   return (
     <Stack maw={960} mx="auto">
       <Breadcrumbs className="sj-no-print">
-        <Anchor component={Link} href={`/h/${hospitalId}/episodes`} size="sm">Episodes</Anchor>
+        <Anchor component={Link} href={`${base}/episodes`} size="sm">Episodes</Anchor>
         <Anchor component={Link} href={path} size="sm">Episode</Anchor>
         <Text size="sm" fw={600}>POA summary</Text>
       </Breadcrumbs>

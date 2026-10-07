@@ -19,20 +19,17 @@ import (
 // episodeHQ returns every Question Set of the episode's version, in full, with both actors'
 // answers: the patient's (frozen once submitted) and the clinician's (final).
 func (s *server) episodeHQ(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return
 	}
 	ctx := r.Context()
-	chapters, err := s.q.ListVersionChapters(ctx, e.VersionID)
+	chapters, err := s.forOrg(orgID(r)).ListVersionChapters(ctx, e.VersionID)
 	if err != nil {
 		serverError(w, "list chapters", err)
 		return
 	}
-	answers, err := s.q.ListEpisodeAnswers(ctx, e.ID)
+	answers, err := s.forOrg(orgID(r)).ListEpisodeAnswers(ctx, e.ID)
 	if err != nil {
 		serverError(w, "list answers", err)
 		return
@@ -43,9 +40,6 @@ func (s *server) episodeHQ(w http.ResponseWriter, r *http.Request) {
 // saveClinicianAnswers saves the clinician's answers for one Question Set, and stamps it as
 // validated when `validated` is true. The browser has checked required questions (plan 2.1).
 func (s *server) saveClinicianAnswers(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return
@@ -54,7 +48,7 @@ func (s *server) saveClinicianAnswers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, err := s.q.GetVersionChapter(r.Context(), db.GetVersionChapterParams{ID: cid, VersionID: e.VersionID}); errors.Is(err, pgx.ErrNoRows) {
+	if _, err := s.forOrg(orgID(r)).GetVersionChapter(r.Context(), db.GetVersionChapterParams{ID: cid, VersionID: e.VersionID}); errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, chapterNotFound)
 		return
 	} else if err != nil {
@@ -76,7 +70,7 @@ func (s *server) saveClinicianAnswers(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "encode answers", err)
 		return
 	}
-	n, err := s.q.SaveClinicianAnswers(r.Context(), db.SaveClinicianAnswersParams{
+	n, err := s.forOrg(orgID(r)).SaveClinicianAnswers(r.Context(), db.SaveClinicianAnswersParams{
 		EpisodeID: e.ID, ChapterID: cid, Data: raw, Validated: in.Validated,
 		UpdatedBy: uuid.NullUUID{UUID: currentUser(r).ID, Valid: true},
 	})
@@ -94,15 +88,12 @@ func (s *server) saveClinicianAnswers(w http.ResponseWriter, r *http.Request) {
 // completeReview moves the episode to Ready for POA. The browser enables it once every
 // Question Set shown is validated (plan 2.1: Go doesn't evaluate Question Set conditions).
 func (s *server) completeReview(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return
 	}
 	uid := currentUser(r).ID
-	n, err := s.q.CompleteReview(r.Context(), db.CompleteReviewParams{ID: e.ID, ReviewCompletedBy: uuid.NullUUID{UUID: uid, Valid: true}})
+	n, err := s.forOrg(orgID(r)).CompleteReview(r.Context(), db.CompleteReviewParams{ID: e.ID, ReviewCompletedBy: uuid.NullUUID{UUID: uid, Valid: true}})
 	if err != nil {
 		serverError(w, "complete review", err)
 		return

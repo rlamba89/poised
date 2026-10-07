@@ -20,9 +20,9 @@ ORDER BY q.name;
 
 -- name: CreateEpisode :one
 -- Creates nothing (no row) unless the patient and a published version both belong to the hospital.
-INSERT INTO episodes (hospital_id, patient_id, version_id, procedure, anaesthetic, consultant, patient_token, created_by)
+INSERT INTO episodes (hospital_id, patient_id, version_id, procedure, anaesthetic, consultant, created_by)
 SELECT sqlc.arg(hospital_id), p.id, v.id, sqlc.arg(procedure), sqlc.arg(anaesthetic), sqlc.arg(consultant),
-       sqlc.arg(patient_token), sqlc.arg(created_by)
+       sqlc.arg(created_by)
 FROM patients p, questionnaire_versions v
 JOIN questionnaires q ON q.id = v.questionnaire_id
 WHERE p.id = sqlc.arg(patient_id) AND p.hospital_id = sqlc.arg(hospital_id)
@@ -43,7 +43,7 @@ ORDER BY e.created_at DESC;
 
 -- name: GetEpisode :one
 SELECT e.id, e.status, e.procedure, e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
-       e.patient_token, e.patient_submitted_at, e.review_completed_at, e.created_at, e.version_id,
+       e.patient_submitted_at, e.review_completed_at, e.created_at, e.version_id,
        reviewer.name AS review_completed_by_name,
        p.id AS patient_id, p.first_name, p.last_name, p.date_of_birth, p.sex, p.hospital_number, p.phone, p.email,
        q.name AS questionnaire_name, v.version_no
@@ -69,8 +69,8 @@ LEFT JOIN users u ON u.id = ev.user_id
 WHERE ev.episode_id = $1
 ORDER BY ev.created_at, ev.id;
 
--- name: GetEpisodeByToken :one
--- The patient's link: no sign-in, the token is the key.
+-- name: GetPatientEpisode :one
+-- The episode of a signed-in patient (their session names it).
 SELECT e.id, e.status, e.patient_submitted_at, e.version_id,
        p.first_name, p.last_name, p.date_of_birth, p.sex,
        q.name AS questionnaire_name
@@ -78,7 +78,7 @@ FROM episodes e
 JOIN patients p ON p.id = e.patient_id
 JOIN questionnaire_versions v ON v.id = e.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE e.patient_token = $1;
+WHERE e.id = $1;
 
 -- name: ListVersionChapters :many
 SELECT id, name, description, icon, audience, content

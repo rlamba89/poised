@@ -38,14 +38,14 @@ export type SamplePatient = { name: string; age: number | ""; sex: string | null
 const DEVICES = { phone: 390, tablet: 820, desktop: undefined } as const;
 type Device = keyof typeof DEVICES;
 
-export default function PreviewPage({ hospitalId, chapterId }: { hospitalId: string; chapterId: string }) {
+export default function PreviewPage({ base, chapterId }: { base: string; chapterId: string }) {
   const [chapter, setChapter] = useState<ChapterDetail | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
-    api<ChapterDetail>(`/h/${hospitalId}/chapters/${chapterId}`)
+    api<ChapterDetail>(`${base}/chapters/${chapterId}`)
       .then(setChapter)
       .catch((e: Error) => setError(e.message));
-  }, [hospitalId, chapterId]);
+  }, [base, chapterId]);
 
   if (error) return <Alert color="red" m="md">{error}</Alert>;
   if (!chapter) {
@@ -55,10 +55,10 @@ export default function PreviewPage({ hospitalId, chapterId }: { hospitalId: str
       </Center>
     );
   }
-  return <Preview hospitalId={hospitalId} chapter={chapter} />;
+  return <Preview base={base} chapter={chapter} />;
 }
 
-function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: ChapterDetail }) {
+function Preview({ base, chapter }: { base: string; chapter: ChapterDetail }) {
   const [viewer, setViewerState] = useState<Viewer>("patient");
   const [patient, setPatient] = useState<SamplePatient>({ name: "Sam Sample", age: 54, sex: "female" });
   const [result, setResult] = useState<ComputedOutputs>({ outputs: [] });
@@ -127,7 +127,6 @@ function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: Chapter
     setResult(computeOutputs(model));
   };
 
-  const base = `/h/${hospitalId}`;
   const locales = localesIn(content);
   const width = DEVICES[device];
   return (
@@ -178,7 +177,7 @@ function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: Chapter
       <Grid>
         <Grid.Col span={{ base: 12, md: 8 }}>
           <SetCondition
-            hospitalId={hospitalId}
+            base={base}
             questionnaireId={chapter.questionnaireId}
             chapterId={chapter.id}
             content={content}
@@ -195,7 +194,7 @@ function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: Chapter
             <SamplePatientCard value={patient} onChange={setPatient} />
             <OutputsPanel result={result} />
             <TestCases
-              hospitalId={hospitalId}
+              base={base}
               chapterId={chapter.id}
               content={content}
               revision={revision}

@@ -23,7 +23,7 @@ type Entry = {
 const SAVE_DELAY_MS = 600;
 const UNDO_LIMIT = 100;
 
-export function useChapters(hospitalId: string) {
+export function useChapters(base: string) {
   const entries = useRef(new Map<string, Entry>());
   const loading = useRef(new Set<string>());
   const [, setTick] = useState(0);
@@ -34,7 +34,7 @@ export function useChapters(hospitalId: string) {
     (id: string) => {
       if (entries.current.has(id) || loading.current.has(id)) return;
       loading.current.add(id);
-      api<{ content: ChapterJson; revision: number }>(`/h/${hospitalId}/chapters/${id}`)
+      api<{ content: ChapterJson; revision: number }>(`${base}/chapters/${id}`)
         .then((c) => {
           entries.current.set(id, { doc: c.content ?? {}, revision: c.revision, undo: [], redo: [], status: "saved", queue: Promise.resolve() });
           rerender();
@@ -42,7 +42,7 @@ export function useChapters(hospitalId: string) {
         .catch((e: Error) => setLoadError(e.message))
         .finally(() => loading.current.delete(id));
     },
-    [hospitalId, rerender],
+    [base, rerender],
   );
 
   const save = useCallback(
@@ -55,7 +55,7 @@ export function useChapters(hospitalId: string) {
         e.status = "saving";
         rerender();
         try {
-          const res = await api<{ revision: number }>(`/h/${hospitalId}/chapters/${id}/content`, {
+          const res = await api<{ revision: number }>(`${base}/chapters/${id}/content`, {
             method: "PUT",
             body: JSON.stringify({ content: doc, revision: e.revision }),
           });
@@ -69,7 +69,7 @@ export function useChapters(hospitalId: string) {
         rerender();
       });
     },
-    [hospitalId, rerender],
+    [base, rerender],
   );
 
   /** Replaces a chapter's JSON with an edited copy, records undo and schedules a save. */

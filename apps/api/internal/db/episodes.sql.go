@@ -54,25 +54,24 @@ func (q *Queries) CompleteReview(ctx context.Context, arg CompleteReviewParams) 
 }
 
 const createEpisode = `-- name: CreateEpisode :one
-INSERT INTO episodes (hospital_id, patient_id, version_id, procedure, anaesthetic, consultant, patient_token, created_by)
+INSERT INTO episodes (hospital_id, patient_id, version_id, procedure, anaesthetic, consultant, created_by)
 SELECT $1, p.id, v.id, $2, $3, $4,
-       $5, $6
+       $5
 FROM patients p, questionnaire_versions v
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE p.id = $7 AND p.hospital_id = $1
-  AND v.id = $8 AND v.status = 'published' AND q.hospital_id = $1
+WHERE p.id = $6 AND p.hospital_id = $1
+  AND v.id = $7 AND v.status = 'published' AND q.hospital_id = $1
 RETURNING id
 `
 
 type CreateEpisodeParams struct {
-	HospitalID   uuid.UUID `json:"hospitalId"`
-	Procedure    string    `json:"procedure"`
-	Anaesthetic  string    `json:"anaesthetic"`
-	Consultant   string    `json:"consultant"`
-	PatientToken string    `json:"patientToken"`
-	CreatedBy    uuid.UUID `json:"createdBy"`
-	PatientID    uuid.UUID `json:"patientId"`
-	VersionID    uuid.UUID `json:"versionId"`
+	HospitalID  uuid.UUID `json:"hospitalId"`
+	Procedure   string    `json:"procedure"`
+	Anaesthetic string    `json:"anaesthetic"`
+	Consultant  string    `json:"consultant"`
+	CreatedBy   uuid.UUID `json:"createdBy"`
+	PatientID   uuid.UUID `json:"patientId"`
+	VersionID   uuid.UUID `json:"versionId"`
 }
 
 // Creates nothing (no row) unless the patient and a published version both belong to the hospital.
@@ -82,7 +81,6 @@ func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (u
 		arg.Procedure,
 		arg.Anaesthetic,
 		arg.Consultant,
-		arg.PatientToken,
 		arg.CreatedBy,
 		arg.PatientID,
 		arg.VersionID,
@@ -129,7 +127,7 @@ func (q *Queries) CreatePatient(ctx context.Context, arg CreatePatientParams) (u
 
 const getEpisode = `-- name: GetEpisode :one
 SELECT e.id, e.status, e.procedure, e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
-       e.patient_token, e.patient_submitted_at, e.review_completed_at, e.created_at, e.version_id,
+       e.patient_submitted_at, e.review_completed_at, e.created_at, e.version_id,
        reviewer.name AS review_completed_by_name,
        p.id AS patient_id, p.first_name, p.last_name, p.date_of_birth, p.sex, p.hospital_number, p.phone, p.email,
        q.name AS questionnaire_name, v.version_no
@@ -154,7 +152,6 @@ type GetEpisodeRow struct {
 	Consultant            string             `json:"consultant"`
 	NurseAsa              *int32             `json:"nurseAsa"`
 	AnaesthetistAsa       *int32             `json:"anaesthetistAsa"`
-	PatientToken          string             `json:"patientToken"`
 	PatientSubmittedAt    pgtype.Timestamptz `json:"patientSubmittedAt"`
 	ReviewCompletedAt     pgtype.Timestamptz `json:"reviewCompletedAt"`
 	CreatedAt             time.Time          `json:"createdAt"`
@@ -183,7 +180,6 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 		&i.Consultant,
 		&i.NurseAsa,
 		&i.AnaesthetistAsa,
-		&i.PatientToken,
 		&i.PatientSubmittedAt,
 		&i.ReviewCompletedAt,
 		&i.CreatedAt,
@@ -203,7 +199,7 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 	return i, err
 }
 
-const getEpisodeByToken = `-- name: GetEpisodeByToken :one
+const getPatientEpisode = `-- name: GetPatientEpisode :one
 SELECT e.id, e.status, e.patient_submitted_at, e.version_id,
        p.first_name, p.last_name, p.date_of_birth, p.sex,
        q.name AS questionnaire_name
@@ -211,10 +207,10 @@ FROM episodes e
 JOIN patients p ON p.id = e.patient_id
 JOIN questionnaire_versions v ON v.id = e.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE e.patient_token = $1
+WHERE e.id = $1
 `
 
-type GetEpisodeByTokenRow struct {
+type GetPatientEpisodeRow struct {
 	ID                 uuid.UUID          `json:"id"`
 	Status             string             `json:"status"`
 	PatientSubmittedAt pgtype.Timestamptz `json:"patientSubmittedAt"`
@@ -226,10 +222,10 @@ type GetEpisodeByTokenRow struct {
 	QuestionnaireName  string             `json:"questionnaireName"`
 }
 
-// The patient's link: no sign-in, the token is the key.
-func (q *Queries) GetEpisodeByToken(ctx context.Context, patientToken string) (GetEpisodeByTokenRow, error) {
-	row := q.db.QueryRow(ctx, getEpisodeByToken, patientToken)
-	var i GetEpisodeByTokenRow
+// The episode of a signed-in patient (their session names it).
+func (q *Queries) GetPatientEpisode(ctx context.Context, id uuid.UUID) (GetPatientEpisodeRow, error) {
+	row := q.db.QueryRow(ctx, getPatientEpisode, id)
+	var i GetPatientEpisodeRow
 	err := row.Scan(
 		&i.ID,
 		&i.Status,

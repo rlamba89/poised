@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -17,10 +18,11 @@ import (
 )
 
 var (
-	secret    = []byte("test-secret")
 	userA     = auth.User{ID: uuid.MustParse("00000000-0000-4000-8000-0000000000a1"), Name: "Alex Author"}
 	hospitalA = uuid.MustParse("00000000-0000-4000-8000-00000000000a")
 	hospitalB = uuid.MustParse("00000000-0000-4000-8000-00000000000b")
+	orgA      = uuid.MustParse("00000000-0000-4000-8000-0000000000fa")
+	orgB      = uuid.MustParse("00000000-0000-4000-8000-0000000000fb")
 	chapterID = uuid.MustParse("11111111-1111-4111-8111-111111111111")
 )
 
@@ -35,8 +37,19 @@ type fakeQ struct {
 	saved    []db.SaveChapterContentParams
 }
 
-func (f *fakeQ) ListRolesInHospital(_ context.Context, arg db.ListRolesInHospitalParams) ([]string, error) {
+// orgOf is each test hospital's trust.
+var orgOf = map[uuid.UUID]uuid.UUID{hospitalA: orgA, hospitalB: orgB}
+
+func (f *fakeQ) ListRolesAt(_ context.Context, arg db.ListRolesAtParams) ([]string, error) {
+	if orgOf[arg.HospitalID] != arg.OrgID {
+		return nil, nil // the hospital isn't in that trust
+	}
 	return f.roles[arg.HospitalID], nil
+}
+
+// hp is the API path prefix of a test hospital, under its trust.
+func hp(h uuid.UUID) string {
+	return "/api/o/" + orgOf[h].String() + "/h/" + h.String()
 }
 
 func (f *fakeQ) GetChapterMeta(_ context.Context, arg db.GetChapterMetaParams) (db.GetChapterMetaRow, error) {
@@ -57,9 +70,26 @@ func (f *fakeQ) SaveChapterContent(_ context.Context, arg db.SaveChapterContentP
 
 func (f *fakeQ) TouchVersion(context.Context, db.TouchVersionParams) error { return nil }
 
+// testSession is the session cookie these tests sign in with; the fake knows only its hash.
+const testSession = "test-session"
+
+func (f *fakeQ) GetSession(_ context.Context, arg db.GetSessionParams) (db.GetSessionRow, error) {
+	if !bytes.Equal(arg.IDHash, auth.HashToken(testSession)) {
+		return db.GetSessionRow{}, pgx.ErrNoRows
+	}
+	return db.GetSessionRow{UserID: userA.ID, Name: userA.Name, LastSeenAt: time.Now()}, nil
+}
+
+func (f *fakeQ) TouchSession(context.Context, []byte) error { return nil }
+
+// signedIn adds userA's session cookie to req.
+func signedIn(req *http.Request) {
+	req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: testSession})
+}
+
 func newFake() *fakeQ {
 	return &fakeQ{
-		roles:    map[uuid.UUID][]string{hospitalA: {"author"}},
+		roles:    map[uuid.UUID][]string{hospitalA: {"super_clinician"}},
 		chapter:  &db.GetChapterMetaRow{ID: chapterID, VersionStatus: "draft"},
 		revision: 3,
 	}
@@ -69,14 +99,10 @@ func do(t *testing.T, q *fakeQ, method, path, body string, withCookie bool) *htt
 	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	if withCookie {
-		token, err := auth.Issue(secret, userA, time.Now())
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: token})
+		signedIn(req)
 	}
 	rec := httptest.NewRecorder()
-	routes(&server{q: q, secret: secret}).ServeHTTP(rec, req)
+	routes(&server{q: q}).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -90,7 +116,7 @@ func errorOf(t *testing.T, rec *httptest.ResponseRecorder) string {
 }
 
 func contentPath(h uuid.UUID) string {
-	return "/api/h/" + h.String() + "/chapters/" + chapterID.String() + "/content"
+	return hp(h) + "/chapters/" + chapterID.String() + "/content"
 }
 
 func TestRequireUser(t *testing.T) {
@@ -102,9 +128,9 @@ func TestRequireUser(t *testing.T) {
 	req := httptest.NewRequest("PUT", contentPath(hospitalA), strings.NewReader(`{}`))
 	req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "forged"})
 	rec := httptest.NewRecorder()
-	routes(&server{q: q, secret: secret}).ServeHTTP(rec, req)
+	routes(&server{q: q}).ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("bad token: got %d, want 401", rec.Code)
+		t.Errorf("unknown session: got %d, want 401", rec.Code)
 	}
 }
 
@@ -117,7 +143,8 @@ func TestHospitalScope(t *testing.T) {
 		{"member", contentPath(hospitalA), http.StatusOK},
 		{"not a member", contentPath(hospitalB), http.StatusNotFound},
 		{"unknown hospital", contentPath(uuid.New()), http.StatusNotFound},
-		{"not a uuid", "/api/h/abc/chapters/" + chapterID.String() + "/content", http.StatusNotFound},
+		{"not a uuid", "/api/o/" + orgA.String() + "/h/abc/chapters/" + chapterID.String() + "/content", http.StatusNotFound},
+		{"hospital under another trust", "/api/o/" + orgB.String() + "/h/" + hospitalA.String() + "/chapters/" + chapterID.String() + "/content", http.StatusNotFound},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -131,7 +158,7 @@ func TestHospitalScope(t *testing.T) {
 
 func TestChapterFromAnotherHospitalIsNotFound(t *testing.T) {
 	q := newFake()
-	q.roles[hospitalB] = []string{"author"} // member of both, but the chapter is in A
+	q.roles[hospitalB] = []string{"super_clinician"} // member of both, but the chapter is in A
 	rec := do(t, q, "PUT", contentPath(hospitalB), `{"content":{},"revision":3}`, true)
 	if rec.Code != http.StatusNotFound || len(q.saved) != 0 {
 		t.Errorf("got %d with %d saves, want 404 and no save", rec.Code, len(q.saved))
@@ -167,7 +194,7 @@ func TestSaveContentRules(t *testing.T) {
 		body  string
 		want  int
 	}{
-		{"viewer can't edit", func(q *fakeQ) { q.roles[hospitalA] = []string{"viewer"} }, `{"content":{},"revision":3}`, http.StatusForbidden},
+		{"clinician can't edit", func(q *fakeQ) { q.roles[hospitalA] = []string{"clinician"} }, `{"content":{},"revision":3}`, http.StatusForbidden},
 		{"only drafts", func(q *fakeQ) { q.chapter.VersionStatus = "published" }, `{"content":{},"revision":3}`, http.StatusConflict},
 		{"content not a survey", func(*fakeQ) {}, `{"content":[1,2],"revision":3}`, http.StatusBadRequest},
 		{"unreadable body", func(*fakeQ) {}, `{"content":`, http.StatusBadRequest},

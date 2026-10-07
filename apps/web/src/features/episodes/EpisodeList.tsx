@@ -11,7 +11,7 @@ import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { patientName, STATUS_COLORS, STATUS_LABELS, type EpisodeRow, type EpisodeStatus, type Patient } from "./types";
 
-export function EpisodeList({ hospitalId }: { hospitalId: string }) {
+export function EpisodeList({ base }: { base: string }) {
   const router = useRouter();
   const [status, setStatus] = useState<string | null>(null);
   const [rows, setRows] = useState<EpisodeRow[] | null>(null);
@@ -19,13 +19,13 @@ export function EpisodeList({ hospitalId }: { hospitalId: string }) {
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(() => {
-    api<EpisodeRow[]>(`/h/${hospitalId}/episodes?${new URLSearchParams({ status: status ?? "" })}`)
+    api<EpisodeRow[]>(`${base}/episodes?${new URLSearchParams({ status: status ?? "" })}`)
       .then((r) => {
         setRows(r);
         setError("");
       })
       .catch((e: Error) => setError(e.message));
-  }, [hospitalId, status]);
+  }, [base, status]);
   useEffect(load, [load]);
 
   return (
@@ -58,7 +58,7 @@ export function EpisodeList({ hospitalId }: { hospitalId: string }) {
           </Table.Thead>
           <Table.Tbody>
             {rows.map((e) => (
-              <Table.Tr key={e.id} onClick={() => router.push(`/h/${hospitalId}/episodes/${e.id}`)} style={{ cursor: "pointer" }}>
+              <Table.Tr key={e.id} onClick={() => router.push(`${base}/episodes/${e.id}`)} style={{ cursor: "pointer" }}>
                 <Table.Td>
                   <Text fw={700}>{patientName(e)}</Text>
                   {e.hospitalNumber && <Text size="sm" c="dimmed">{e.hospitalNumber}</Text>}
@@ -75,10 +75,10 @@ export function EpisodeList({ hospitalId }: { hospitalId: string }) {
         </Table>
       )}
       <NewEpisode
-        hospitalId={hospitalId}
+        base={base}
         opened={creating}
         onClose={() => setCreating(false)}
-        onCreated={(id) => router.push(`/h/${hospitalId}/episodes/${id}`)}
+        onCreated={(id) => router.push(`${base}/episodes/${id}`)}
       />
     </Stack>
   );
@@ -88,8 +88,8 @@ type Published = { versionId: string; versionNo: number; name: string };
 const EMPTY_PATIENT = { firstName: "", lastName: "", dateOfBirth: "", sex: "", hospitalNumber: "", phone: "" };
 const ANAESTHETICS = ["General", "Regional", "Local", "Sedation"];
 
-function NewEpisode(props: { hospitalId: string; opened: boolean; onClose: () => void; onCreated: (id: string) => void }) {
-  const base = `/h/${props.hospitalId}`;
+function NewEpisode(props: { base: string; opened: boolean; onClose: () => void; onCreated: (id: string) => void }) {
+  const base = props.base;
   const [patients, setPatients] = useState<Patient[]>([]);
   const [hqs, setHqs] = useState<Published[]>([]);
   const [mode, setMode] = useState<"existing" | "new">("existing");
