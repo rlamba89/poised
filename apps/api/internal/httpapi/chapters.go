@@ -84,6 +84,31 @@ func (s *server) addChapter(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]uuid.UUID{"id": id})
 }
 
+// chapterDetails is what updateChapter changes. A field sent as null decodes to a nil pointer.
+type chapterDetails struct {
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
+	Icon        *string `json:"icon"`
+	Audience    *string `json:"audience"`
+}
+
+// validate trims the name and description and returns a plain-language problem, or "".
+func (in *chapterDetails) validate() string {
+	if in.Name == nil || in.Description == nil || in.Icon == nil || in.Audience == nil {
+		return "The request could not be read."
+	}
+	*in.Name, *in.Description = strings.TrimSpace(*in.Name), strings.TrimSpace(*in.Description)
+	switch {
+	case *in.Name == "":
+		return "Enter a name for the chapter."
+	case !iconName.MatchString(*in.Icon):
+		return "Choose an icon from the list."
+	case !audiences[*in.Audience]:
+		return "Choose who the chapter is for: patient, clinician or clinician document."
+	}
+	return ""
+}
+
 // updateChapter renames, describes, and sets the icon and audience (FRM-07).
 func (s *server) updateChapter(w http.ResponseWriter, r *http.Request) {
 	c, ok := s.loadChapterMeta(w, r)
@@ -91,29 +116,16 @@ func (s *server) updateChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Fields left out keep their current value.
-	in := struct {
-		Name        *string `json:"name"`
-		Description *string `json:"description"`
-		Icon        *string `json:"icon"`
-		Audience    *string `json:"audience"`
-	}{&c.Name, &c.Description, &c.Icon, &c.Audience}
+	in := chapterDetails{Name: &c.Name, Description: &c.Description, Icon: &c.Icon, Audience: &c.Audience}
 	if !readJSON(w, r, 8<<10, &in) {
 		return
 	}
-	name, desc := strings.TrimSpace(*in.Name), strings.TrimSpace(*in.Description)
-	switch {
-	case name == "":
-		writeError(w, http.StatusBadRequest, "Enter a name for the chapter.")
-		return
-	case !iconName.MatchString(*in.Icon):
-		writeError(w, http.StatusBadRequest, "Choose an icon from the list.")
-		return
-	case !audiences[*in.Audience]:
-		writeError(w, http.StatusBadRequest, "Choose who the chapter is for: patient, clinician or clinician document.")
+	if msg := in.validate(); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 	err := s.q.UpdateChapterMeta(r.Context(), db.UpdateChapterMetaParams{
-		ID: c.ID, Name: name, Description: desc, Icon: *in.Icon, Audience: *in.Audience, UpdatedBy: currentUser(r).ID,
+		ID: c.ID, Name: *in.Name, Description: *in.Description, Icon: *in.Icon, Audience: *in.Audience, UpdatedBy: currentUser(r).ID,
 	})
 	if err != nil {
 		serverError(w, "update chapter", err)
