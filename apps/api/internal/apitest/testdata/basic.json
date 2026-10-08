@@ -1,0 +1,42 @@
+{
+  "name": "Basic HQ",
+  "description": "Two Question Sets, for tests.",
+  "chapters": [
+    {
+      "name": "About you",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_lifestyle",
+            "elements": [
+              { "type": "boolean", "name": "q_smokes", "title": "Do you smoke?" },
+              {
+                "type": "radiogroup",
+                "name": "q_alcohol",
+                "title": "How often do you drink alcohol?",
+                "choices": [
+                  { "value": "o_nevr", "text": "Never" },
+                  { "value": "o_some", "text": "Sometimes" },
+                  { "value": "o_ofte", "text": "Often" }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Nurse checks",
+      "audience": "clinician",
+      "content": {
+        "pages": [
+          {
+            "name": "p_checks",
+            "elements": [{ "type": "text", "name": "q_bpread", "title": "Blood pressure" }]
+          }
+        ]
+      }
+    }
+  ]
+}

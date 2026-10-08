@@ -5,7 +5,7 @@ export
 API := apps/api
 GOOSE := cd $(API) && go tool goose -dir db/migrations postgres "$(DATABASE_URL)"
 
-.PHONY: dev test lint db-up migrate migrate-down seed sqlc
+.PHONY: dev test test-integration lint db-up migrate migrate-down seed sqlc
 
 node_modules: package-lock.json
 	npm install
@@ -42,6 +42,13 @@ test: node_modules
 	cd $(API) && go test ./...
 	npm test --workspaces --if-present
 
+# API → database tests (-tags integration, apps/api/internal/apitest). Each test gets its own
+# database, copied from a template that every migration is run into first.
+TEST_DATABASE_URL ?= postgres://sj:sj@localhost:5432/postgres?sslmode=disable
+test-integration: .env db-up
+	cd $(API) && go test -tags integration -count=1 ./...
+
+# The integration tag adds the integration test files to the vet.
 lint: node_modules
-	cd $(API) && go vet ./...
+	cd $(API) && go vet -tags integration ./...
 	npm run lint --workspaces --if-present
