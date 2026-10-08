@@ -24,10 +24,29 @@ Related:
 - **Messages he'll send on** (e.g. IT tickets) shouldn't mention Claude.
 - **Healthcare: nothing may break silently.** Hence the testing rules (§2, 2 Oct).
 - **Ready, not built** (8 Oct). Don't build for a market or feature before a customer needs it. But don't hardcode anything that would make it a rewrite later: another country must be config, not code.
+- **The local dev database is disposable** (8 Oct). Rahul is the only developer and nothing is in production, so a builder may drop and rebuild the local `sj` database to match the code, and needn't keep other branches working. Copy back anything that can't be recreated from the repo (today: HJE Full HQ, see §4).
 
 ## 2. Decision log (newest first)
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
+
+### 8 Oct 2026: S01, the integration test harness (session a8c9de3a)
+
+All of these are detailed in [sessions/S01-integration-harness/build-notes.md](sessions/S01-integration-harness/build-notes.md) and the F1 Status section.
+
+- **Integration tests: one Postgres database per test, copied from a template.** `apitest.Main` migrates `sj_test_template` with goose (as a library); `apitest.New(t)` copies it (about 0.3 s) and serves the real router over `httptest`.
+  - **Reason:** every test starts clean and tests run in parallel, with no clean-up code in the tests.
+- **A Postgres advisory lock is held while a test package runs, and leftover `sj_test_…` test databases are dropped at the start.**
+  - **Reason:** `go test ./...` runs packages in parallel, and two packages would otherwise drop each other's template. Killed runs would otherwise leave databases filling the disk.
+- **`make test-integration` uses `-count=1`, and `make lint` vets with `-tags integration`.**
+  - **Reason:** Go's test cache doesn't know the database changed, and untagged vet would skip the integration test files.
+- **How the five cases apply where one can't exist** (agreed by Rahul, 8 Oct):
+  - for a read route, the "wrong role" case asserts that a viewer **can** read;
+  - for codes and categories (reference data shared by every hospital), the "another hospital" case asserts a user in another hospital gets the same results;
+  - every refusal also asserts that nothing was written.
+- **A bug found by the integration tests is fixed with a unit test of a small pure function, and committed before the route tests.**
+  - **Reason:** each commit must pass on its own, and the route-test commit already contains the case that exposed the bug.
+  - S01 found two bugs: a 500 on `?page=99999999999` in the questionnaire list, and a crash on a `null` field in a chapter PATCH.
 
 ### 7–8 Oct 2026: countries, superadmin and the platform features (session ae16fe2f)
 
@@ -262,10 +281,25 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
 - **Expected console noise:** two 401s from `/api/me` on the login page, and 409s in the duplicate-name and two-editor tests.
 - **The exact headless Chrome path used:** `CHROME_PATH=$HOME/Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell npx tsx spikes/ui-<name>.ts`.
 - **Leftover test data:** published "Workflow test …" questionnaires stay in Hospital A, because published versions can't be deleted. Reset the local database if it gets cluttered.
+- **After using another branch, master's tools break** (found 8 Oct, after the `dev` branch ran on 7 Oct).
+  - **The local `sj` database keeps that branch's schema** (its migrations 5–8), so `make seed` and the app fail. Rebuild it:
+    ```sh
+    docker compose exec -T db psql -U sj -d postgres -c "DROP DATABASE sj WITH (FORCE)" -c "CREATE DATABASE sj OWNER sj"
+    make migrate seed
+    ```
+  - **`apps/web/.next/dev/types/` keeps that branch's routes,** so `tsc` in `make lint` fails with "Cannot find module '…/page.js'". Delete the folder; `next dev` regenerates it.
+- **HJE Full HQ can't be recreated from the repo:** it was transcribed from screenshots. Before rebuilding the database, save it, then load it back after `make migrate seed`:
+  ```sh
+  docker compose exec -T db pg_dump -U sj --data-only -t questionnaires -t questionnaire_versions -t chapters sj > hje.sql
+  ```
+  (This works while the database holds only HJE Full HQ; otherwise filter the rows.)
+- **On Rahul's Mac, the `docker` CLI isn't on the PATH of Claude's shells** (builder and tester sessions). Docker itself runs; Claude prefixes `PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"` for `make test-integration`.
+- **The Claude in Chrome network log shows every `204 No Content` as 503** (found in S01 testing, 8 Oct). `fetch` and `curl` both return the real 204. Testers should ignore a 503 on a route that answers 204, such as a DELETE, publish or logout. Other error codes are reported correctly.
 
 ## 5. Open items (as of 8 Oct 2026)
 
-- **Next work:** plan **F1** ([plans/f1-test-foundation.md](plans/f1-test-foundation.md)).
+- **Next work:** plan **F1** ([plans/f1-test-foundation.md](plans/f1-test-foundation.md)). Session S01 is verified (8 Oct); S02 is next.
+- **The `dev` branch** (on `origin` too; commit `557be2c` "Auth first: sessions, trusts, Cognito staff sign-in, patient link sign-in", 7 Oct) isn't mentioned in the plans or sessions. Decide whether sessions S08–S15 supersede it or should reuse parts of it.
 - **Build order, undecided:** the roadmap order (F1 → F2 → F3 → F4 → C1 → C2), or F1 and F2, then C1 and C2 before the AWS work (F3, F4). The roadmap order stands until Rahul decides.
 - **No domain chosen yet.** `<domain>` in the docs is a placeholder.
 - **Research files:** `research_notes/` and `reports/` at the repo root are untracked. Either keep them (e.g. move them to `docs/research/` and fix the links in saas-requirements §0 and §13 and in this file) or delete them.
@@ -273,7 +307,9 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
 - **App branding** still says "Lifebox" in the UI (`apps/web/src/app/layout.tsx`, `h/[hospitalId]/layout.tsx`, `PatientHQ.tsx`). Rename it to Poised.
 - **Unanswered:** should clinician-only Question Sets render full width in `ValidateSet.tsx`, rather than in an empty two-column grid?
 - **Unconfirmed:** whether saved option lists should be copied (as built) or linked.
-- **Unsaved test data:** the comprehensive test HQ exists only in Rahul's local database. Export it with the API, or rebuild it once plan F1's fixtures exist, before moving machines.
+- **Unsaved test data:**
+  - **The comprehensive test HQ is gone.** On 8 Oct the local database held only HJE Full HQ. Rebuild it from `apps/api/internal/apitest/testdata` fixtures if it's needed again.
+  - **HJE Full HQ exists only in local databases.** Consider saving it as a file in the repo (§4 has the commands).
 - **Content:** HJE Full HQ sets 5–11 and their disclosures still wait on a real Lifebox export (`tools/export-lifebox-hq.js`). Low priority (functionality over content).
 - **Small issues:**
   - "Years since a date" opens with an empty list and no message.

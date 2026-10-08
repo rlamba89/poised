@@ -24,6 +24,9 @@ Integration tests with the five cases, plus F1's "must also cover" items, for:
   - it's read-only afterwards.
 - **notes:** append-only, with the user and time recorded.
 - **F1's check:** removing the clinician-content strip in `chapter/patient.go` makes a test fail. Try it, then revert.
+- **Fix a known crash, found by S01's code review** (added 8 Oct with Rahul's yes):
+  - `PATCH /api/h/{hid}/episodes/{eid}` with `status`, `procedure`, `anaesthetic` or `consultant` set to `null` dereferences a nil pointer, and the connection drops with no response. Refuse it with a 400, test-first, as in S01's chapter fix.
+  - Add a small **recover middleware** in `router.go`, so any handler panic is logged and answered with the plain-language 500 (`writeError`), not a dropped connection.
 
 Bugs found are handled as in S01.
 

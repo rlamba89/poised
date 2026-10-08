@@ -50,14 +50,16 @@ Requires Docker, Go 1.26+ and Node 20.9+.
 docker compose up -d db     # Postgres 17 on :5432 (user/password/db: sj)
 make migrate seed           # goose migrations, then Lifebox codes + demo hospitals/users (idempotent)
 make dev                    # Go API on :8080 + web on :3000 (web proxies /api/* to the API); Ctrl-C stops both
-make test                   # go test ./... + Vitest in every workspace
-make lint                   # go vet + tsc --noEmit
+make test                   # go test ./... + Vitest in every workspace (no database needed)
+make test-integration       # API → database tests (-tags integration): a fresh database per test
+make lint                   # go vet (with the integration tag) + tsc --noEmit
 make sqlc                   # regenerate apps/api/internal/db after editing apps/api/db/queries/*.sql
 make migrate-down           # roll back the last migration
 ```
 
 **Running one test:**
 - **Go:** `cd apps/api && go test ./internal/httpapi -run TestSaveContentRevision -v`
+- **Go integration:** `cd apps/api && TEST_DATABASE_URL='postgres://sj:sj@localhost:5432/postgres?sslmode=disable' go test -tags integration -count=1 ./internal/httpapi -run TestSaveChapterContent -v`. The harness is `internal/apitest` (see its package comment); route tests are `internal/httpapi/*_integration_test.go`.
 - **TypeScript (`packages/clinical`):** `cd packages/clinical && npx vitest run src/outputs.test.ts -t "computeOutputs"`
 
 **Signing in locally:** use the stub login page at http://localhost:3000. The seeded users are:
@@ -66,7 +68,7 @@ make migrate-down           # roll back the last migration
 - Cara Clinician (clinician, Hospital A)
 - Bea Author (Hospital B)
 
-**Planned targets that don't exist yet:** `make test-integration` (API→database, `-tags integration`), `make e2e-setup` and `make e2e` (Playwright). They arrive with plan F1.
+**Planned targets that don't exist yet:** `make e2e-setup` and `make e2e` (Playwright). They arrive with plan F1 (session S03).
 
 ## Architecture
 

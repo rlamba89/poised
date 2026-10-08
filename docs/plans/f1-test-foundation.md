@@ -91,4 +91,15 @@ Leave the existing fake-querier tests (`fakeQ`) alone. Per rule 4, they're repla
 
 ## Status
 
-Not started.
+**In progress.** Session S01 (Step 1, and Step 2 for the authoring routes) is built, passed manual testing (report 1, 8 Oct: 19 of 19) and is verified ([build notes](../sessions/S01-integration-harness/build-notes.md), [verify](../sessions/S01-integration-harness/verify.md)). S02 and S03 are next.
+
+**Differences from the plan (S01):**
+- **Fixtures:** `fx.DraftHQ` / `fx.PublishedHQ(t, hospital, by, file)` take the creating user and a `testdata/` file name; `fx.DraftHQ` was added. `c.LoginAs(t, user)` returns a new signed-in client, so a test can hold several users.
+- **A Postgres advisory lock** is held while a test package runs, so packages run in parallel by `go test ./...` don't drop each other's template. Test databases left by killed runs are dropped at the start.
+- **`make test-integration` uses `-count=1`,** and `make lint` vets with `-tags integration`.
+
+**Bugs found by the integration tests (S01), each fixed in its own commit with its test:**
+1. `GET /api/h/{hid}/questionnaires?page=99999999999` gave a 500: the row offset overflowed int32. The page is now clamped to the last valid one.
+2. `PATCH /api/h/{hid}/chapters/{cid}` with a field set to `null` crashed the handler, and the connection dropped with no response. It's now a 400.
+
+**Found by the S01 code review, for S02 to fix:** `PATCH /api/h/{hid}/episodes/{eid}` with `status`, `procedure`, `anaesthetic` or `consultant` set to `null` crashes in the same way. S02 fixes it test-first, and adds a recover middleware so any handler panic becomes a logged, plain-language 500 (Rahul, 8 Oct).

@@ -11,7 +11,7 @@ Agreed 2 Oct 2026. These plans turn [../saas-requirements.md](../saas-requiremen
 
 | # | Plan | Delivers | Status |
 | --- | --- | --- | --- |
-| F1 | [Test foundation](f1-test-foundation.md) | API→database integration tests, a Playwright (Python) end-to-end suite covering today's workflow, and make targets | Not started |
+| F1 | [Test foundation](f1-test-foundation.md) | API→database integration tests, a Playwright (Python) end-to-end suite covering today's workflow, and make targets | In progress: S01 verified |
 | F2 | [Frontend: React + Vite + React Router](f2-react-vite.md) | Next.js replaced. F1's end-to-end suite proves nothing broke. | Not started |
 | F3 | [Go API: Lambda entry points](f3-lambda-entrypoints.md) | staff-api, patient-api and jobs entry points over one shared router; local dev unchanged | Not started |
 | F4 | [AWS and pipeline](f4-aws-pipeline.md) | CDK (Python), Neon, Amplify, API Gateway, Lambdas, CodePipeline with test gates, the QA environment, the per-country config and "add a country" runbook (A-20), and the idle cost measured | Not started |

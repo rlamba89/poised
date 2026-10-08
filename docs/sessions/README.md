@@ -69,7 +69,7 @@ you: /verify-session S08 ─► verifier: review + tests + spot-check → verify
 
 | ID | Plan | Builds | Needs from you first | Status |
 | --- | --- | --- | --- | --- |
-| [S01](S01-integration-harness/brief.md) | F1 | Integration test harness, plus tests for the authoring routes | Docker running | Not started |
+| [S01](S01-integration-harness/brief.md) | F1 | Integration test harness, plus tests for the authoring routes | Docker running | Verified |
 | [S02](S02-workflow-route-tests/brief.md) | F1 | Integration tests for the episode, patient and clinician routes | — | Not started |
 | [S03](S03-e2e-journeys/brief.md) | F1 | Playwright journeys J1–J5 and `make e2e` | Python 3.12+ | Not started |
 | [S04](S04-react-vite/brief.md) | F2 | Next.js → React + Vite + React Router | Answer: rename the UI to Poised now? | Not started |

@@ -43,6 +43,16 @@ docker compose up -d --force-recreate db
   - The one-set preview can't see answers from earlier sets. It explains the condition but decides it only when it tests just the patient.
   - There is no whole-questionnaire preview yet.
 - **Questionnaire list:** no status filter or sorting (FRM-02). Search and paging work.
+- **Found by the S01 manual test, 8 Oct** (all older than S01; details in [test-report-1.md](sessions/S01-integration-harness/test-report-1.md)):
+  - **The delete dialog shows the previous error.** After a refused delete ("Only drafts can be deleted…"), opening Delete on another questionnaire still shows that message. The delete itself works.
+  - **The list API's `total` is 0 on a page past the last one,** and every item carries a stray `total`. Both come from `count(*) OVER ()` in `ListQuestionnaires`.
+  - **The access-error pages are dead ends.** "You don't have access to this hospital." and "Questionnaire not found." have no header, no Sign out and no way back.
+  - **"chapter" shows in user-facing text:** the two-editor conflict message says "Someone else changed this chapter…" under a "Question Set" title.
+  - **Small:**
+    - Enter doesn't submit "Save these options as a list".
+    - A saved list is deleted with one click, with no confirmation.
+    - The viewer's ⋯ → View uses the pencil icon.
+    - The State badge truncates to "D…" below about 760 px.
 - **Lifebox import:**
   - Conditions that cross Question Sets on pages and questions are still dropped with a warning.
   - Lifebox has no Question Set-level conditions to import.
