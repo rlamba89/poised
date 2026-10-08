@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,8 +18,7 @@ const pageSize = 20
 // listQuestionnaires is FRM-01: the hospital's questionnaires, searchable by name
 // and description, newest change first, 20 per page.
 func (s *server) listQuestionnaires(w http.ResponseWriter, r *http.Request) {
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	page = max(page, 1)
+	page := pageNumber(r.URL.Query().Get("page"))
 	rows, err := s.q.ListQuestionnaires(r.Context(), db.ListQuestionnairesParams{
 		HospitalID: hospitalID(r),
 		Search:     strings.TrimSpace(r.URL.Query().Get("q")),
@@ -34,6 +34,13 @@ func (s *server) listQuestionnaires(w http.ResponseWriter, r *http.Request) {
 		total = rows[0].Total
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": rows, "total": total, "page": page, "pageSize": pageSize})
+}
+
+// pageNumber reads ?page=. Anything that isn't a page number is page 1, and a huge one is
+// capped so the row offset, (page-1)*pageSize, fits the query's int32.
+func pageNumber(s string) int {
+	page, _ := strconv.Atoi(s)
+	return min(max(page, 1), math.MaxInt32/pageSize)
 }
 
 type questionnaireInput struct {
