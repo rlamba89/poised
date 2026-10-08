@@ -6,13 +6,13 @@ The architecture is in [saas-requirements.md §13](../saas-requirements.md). Tra
 
 **Depends on:** F1–F3.
 
-**Not in F4:** Cognito (C1), SES/SMS (C2), the files bucket (C8), RDS (C10).
+**Not in F4:** Cognito (C1), SES/SMS (C2), the files bucket (C8), RDS (C10), and any country other than the UK (A-20). F4 still builds the country groundwork (Step 1).
 
 ## Step 0: one-off manual setup (Rahul, about 30 minutes)
 
 These can't or shouldn't be done by CDK:
 
-1. **An AWS account for QA**, in region `eu-west-2`. Turn on MFA for the root user, and create an admin user/role for deploying.
+1. **An AWS account for QA**, using the UK's region, `eu-west-2`. Turn on MFA for the root user, and create an admin user/role for deploying.
 2. **Bootstrap CDK:** `cdk bootstrap aws://<account>/eu-west-2`.
 3. **Connect GitHub:** create an AWS CodeConnections connection to the GitHub repo and approve it in the console. Note its ARN.
 4. **Neon:** a free account, a project in **AWS London (`aws-eu-west-2`)**, and a database `sj`. Copy the **direct** (not pooled) connection string.
@@ -24,6 +24,11 @@ These can't or shouldn't be done by CDK:
 ## Step 1: CDK app (Python), in `infra/`
 
 - **Files:** `infra/app.py`, `requirements.txt` (pinned `aws-cdk-lib`, `constructs`), `cdk.json`, and `infra/README.md`.
+- **`infra/countries.py` (A-20):** the only place a region, account, web address or country default is written.
+  - It holds one entry per country and environment, a small dataclass with the region, account, `app_url`, time zone, locale and phone country.
+  - It starts with one entry, `uk-qa`.
+  - Every stack takes an entry as input and passes its values to the Lambdas as environment variables. Nothing in a stack names `eu-west-2` or a domain.
+- **CDK test (pytest + `aws_cdk.assertions`), written first:** synthesise the stages for a made-up second country (e.g. `ca-qa` in `ca-central-1`) and fail if any template contains `eu-west-2` or the UK address. Run it in the synth step.
 - **`ApiStack`** (per stage):
   - Two Lambda functions, `staff-api` and `patient-api`: `provided.al2023`, **arm64**, 512 MB, code from `apps/api/dist/<fn>`.
   - Environment: `DATABASE_URL_PARAM`, `TOKEN_SECRET_PARAM`, and `DEV_LOGIN=true` **in QA only**. A CDK check fails the synth if `DEV_LOGIN` is set on any other stage.
@@ -61,7 +66,12 @@ These can't or shouldn't be done by CDK:
   - The end-to-end step failing marks the run failed.
   - Later stages (C10) can't be promoted from a failed run.
 
-## Step 3: idle cost
+## Step 3: the "add a country" runbook
+
+- Write it in `infra/README.md`: the country entry, then the one-off steps in the new region (CDK bootstrap, SSM secrets, DNS; later SES, SMS and the superadmin), then a push. The full list is in [§13 Countries](../saas-requirements.md).
+- ***Proposed* proof, once:** follow the runbook to deploy a throwaway QA copy in a second region that Neon also offers (e.g. `us-east-1`), run J1–J5 against it, then destroy it. Record how long it took under Status. That's the evidence that a new country is quick.
+
+## Step 4: idle cost
 
 - After a week of normal use, read Cost Explorer and record the monthly figure under Status.
 - **Target:** under £1/month for QA, excluding pipeline build minutes.
@@ -78,6 +88,7 @@ These can't or shouldn't be done by CDK:
 - The QA URL works: the dev login, J1–J5 via the pipeline, and a reloaded deep link.
 - A deliberately failing unit test stops the pipeline before deploy. Try it on a branch pipeline, or revert at once.
 - The idle cost is recorded.
+- The CDK test for a made-up second country passes, and the runbook exists.
 
 ## Status
 

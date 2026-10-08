@@ -7,11 +7,12 @@
 ## Infrastructure
 
 - **Separate AWS accounts** for Training and Production, added as stages in the pipeline, with a **manual approval** before Production. QA must be green, including the end-to-end tests, before Training can be promoted.
+- **Countries (A-20):** Production has one stage per country, each from its entry in `infra/countries.py`. Only the UK exists at go-live. Another country is added with the runbook in `infra/README.md`.
 - **Database:**
-  - **RDS for PostgreSQL** in our own account (`DataStack`, eu-west-2): the smallest Graviton instance, encrypted, with point-in-time restore. Multi-AZ if the contract needs it.
+  - **RDS for PostgreSQL** in our own account (`DataStack`, in the deployment's region; eu-west-2 for the UK): the smallest Graviton instance, encrypted, with point-in-time restore. Multi-AZ if the contract needs it.
   - Production **starts empty on RDS**. QA can stay on Neon.
   - The Lambdas move into the VPC, and outbound traffic goes through VPC endpoints or a NAT gateway (this fixed cost is accepted now).
-- **Domains:** custom domains with TLS (ACM). The cookie domain is settled in F4.
+- **Domains:** custom domains with TLS (ACM), one per country: `uk.<domain>` for the UK (A-20). The cookie domain is settled in F4.
 - **Off in Training and Production:** `DEV_LOGIN` and `MESSAGING=capture` (CDK checks this). SES production access and the SMS sender ID must be approved (started in C2).
 
 ## Operations

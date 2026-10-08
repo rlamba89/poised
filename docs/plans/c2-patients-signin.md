@@ -2,21 +2,21 @@
 
 **Goal:** real patients. A clinician creates a patient record (identified by NHS number) and an episode. The patient gets an SMS and email with a magic link, confirms their date of birth, and sees every episode from every trust on one home page. Reminders go out on schedule.
 
-**Requirements:** PAT-01…11, PX-08, PX-11, A-3, A-4, A-13. **Depends on:** C1.
+**Requirements:** PAT-01…11, PX-08, PX-11, A-3, A-4, A-13, A-20. **Depends on:** C1.
 
 **Not in C2:** pre-fill (C4), procedures and the other statuses (C3).
 
 ## Data
 
-- **Control plane (London):**
-  - `patient_accounts`: id, mobile, email;
-  - `account_records`: account_id, org_id. A pointer only, with no clinical data.
-- **Data cell (per trust):**
-  - `patients`: org_id, account_id NULL, nhs_number NULL, name, dob, sex, mobile, email. Unique `(org_id, nhs_number)` where it's set.
-  - `episodes.hospital_number` (a label).
-  - `login_links`: token_hash, kind invite|signin, patient or account, expires_at, used_at, failed_dob_attempts.
-  - `jobs`: run_at, kind, payload, done_at, attempts.
-  - `sent_messages`: QA capture mode only.
+All of these are in the deployment's one database. *(On 8 Oct the London control-plane / data-cell split and the `account_records` table were dropped: A-20.)*
+
+- `patient_accounts`: id, mobile (E.164), email.
+- `patients`: org_id, account_id NULL, nhs_number NULL, name, dob, sex, mobile, email. Unique `(org_id, nhs_number)` where it's set.
+  - *Proposed (A-20):* `national_id` + `national_id_type` instead of `nhs_number`, so another country's identifier needs only a new validator. Only the NHS number is built.
+- `episodes.hospital_number` (a label).
+- `login_links`: token_hash, kind invite|signin, patient or account, expires_at, used_at, failed_dob_attempts.
+- `jobs`: run_at, kind, payload, done_at, attempts.
+- `sent_messages`: QA capture mode only.
 
 ## Design
 
@@ -29,7 +29,7 @@
   - **QA uses `MESSAGING=capture`:** messages go into `sent_messages`, and a QA-only `GET /api/qa/messages?to=` lets the end-to-end tests read the link.
   - CDK fails the synth if capture mode is set on any other stage.
 - **Jobs:**
-  - The **jobs** Lambda, run every 5 minutes by EventBridge Scheduler (CDK). It loops over data regions; today that's only London.
+  - The **jobs** Lambda, run every 5 minutes by EventBridge Scheduler (CDK). It serves its own deployment only; each country has its own schedule (A-20).
   - Job kinds: send the invite, a reminder on day 2 and day 5, and flagging "not responding" on day 7.
   - **Testing jobs:** each job's *decision* is a pure function (`due(episode, now) → actions`) with unit tests. Its database writes reuse store functions already covered by the API integration tests. This follows the README's integration-test rule.
 - **NHS number:** the Modulus 11 check (written TDD). Without an NHS number, staff are warned about possible duplicates with the same name and date of birth.

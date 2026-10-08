@@ -2,25 +2,27 @@
 
 **Goal:** real tenancy and real staff sign-in. A platform admin creates a trust and its hospitals and invites the trust's first admin. The admin invites staff, and staff sign in through Cognito with MFA.
 
-**Requirements:** ORG-01…06, STF-01…06, A-5, A-12, A-19 (groundwork only). **Depends on:** F1–F4.
+**Requirements:** ORG-01…06, STF-01…06, A-5, A-12, A-20 (nothing hardcoded for the UK), A-21 (superadmin). **Depends on:** F1–F4.
 
-**Not in C1:** patients (C2), and other data regions (only the groundwork is built).
+**Not in C1:** patients (C2), and other countries. Only the config groundwork is built (A-20).
 
 ## Data (a reshape is fine, because it's a fresh app: A-1)
 
-- `orgs`: id, name, code, status, **`data_region`** (default `eu-west-2`, the only value for now), `settings jsonb`.
-- `hospitals`: + `org_id`, status, `settings jsonb`.
+- `orgs`: id, name, code, status, `settings jsonb`. *(The `data_region` column was dropped on 8 Oct, because each country is its own deployment: A-20.)*
+- `hospitals`: + `org_id`, status, `settings jsonb`, and **`timezone`** (defaults to the deployment's; *Proposed*, A-20).
 - `users`: + `cognito_sub`.
 - `memberships`: user_id, org_id, `hospital_id NULL` (NULL = the whole trust), `role` ∈ `clinician < super_clinician < admin`. This replaces today's roles.
 - `platform_admins`, `staff_invites`, and `audit_log` (append-only).
+  - **`platform_admins` is filled by hand (A-21):** only Rahul, with no screen. A small command (`cmd/platform-admin add <email>`) creates the Cognito user and the row. Run it once in each environment and country. Locally, the seed adds a dev superadmin.
 - Questionnaires and other content get an `org_id` + `hospital_id NULL` owner.
 
 ## Design
 
-- **`store.ForOrg(orgID)`** returns the trust's store. Today that's always the London pool. Every patient-data handler goes through it.
-  - **No SQL joins of patient data across trusts.**
-  - Control-plane tables hold no patient data.
-  - These are the rules in [§13](../saas-requirements.md).
+- **Tenant isolation:** every patient-data query is scoped by `org_id`, and the "another trust's data" integration case proves it on every route. *(`store.ForOrg` and its region routing were dropped on 8 Oct: A-20.)*
+- **Nothing hardcoded for the UK (A-20):**
+  - per-country values (web address, Cognito pool and client, time zone, locale) come from `internal/config`;
+  - the web app reads them from `GET /api/config`;
+  - the rules are in [§13 Countries](../saas-requirements.md).
 - **Routes move** to `/api/o/{oid}/…`, with `hospital_id` on rows. A hospital-scoped user sees only their hospital; a trust-scoped user sees every hospital in the trust. The frontend becomes `/o/:oid/h/:hid/…`.
 - **Staff sign-in:**
   - A Cognito staff user pool (CDK `AuthStack`): email as the username, **TOTP MFA required**, no self sign-up. Cognito's **managed login pages** handle the password, MFA and reset screens, so we build none of them.
@@ -42,7 +44,7 @@
 
 ## Screens
 
-- Platform admin: Trusts list → New trust (name, code, contact, logo, first admin email, opt-ins; region fixed to London for now) → Hospitals.
+- Platform admin: Trusts list → New trust (name, code, contact, logo, first admin email, opt-ins) → Hospitals (with a time zone, defaulting to the deployment's).
 - Hospital picker, and a header showing the trust and hospital.
 - Staff list and invite.
 - Trust settings, with per-hospital overrides.
@@ -57,7 +59,11 @@
   - a removed membership → 403 on the next request;
   - audit rows are written for patient-data reads;
   - a suspended trust → sign-in refused.
-- **Unit:** effective settings, the role ladder, and ID-token verification (with a fake key set).
+- **Unit:**
+  - effective settings;
+  - the role ladder;
+  - ID-token verification (with a fake key set);
+  - `internal/config` refuses to start outside local dev when a per-country value is missing.
 - **End-to-end:**
   - **J6:** the platform admin creates a trust and hospital, and invites an admin; the admin invites a clinician; the clinician signs in.
   - **J1–J5** move to `/o/…` URLs.

@@ -6,7 +6,7 @@
 
 ## Data and storage
 
-- An S3 bucket **per data region** (CDK `DataStack`; London only for now), with keys `{org_id}/{episode_id}/{uuid}`.
+- One S3 bucket **per country deployment** (CDK `DataStack`; the bucket name comes from config, A-20), with keys `{org_id}/{episode_id}/{uuid}`.
 - Locally, MinIO in docker-compose.
 - `files`: id, org_id, episode_id, name, content_type, size, visibility hospital|shared, uploaded_by_user, uploaded_by_patient, created_at.
 

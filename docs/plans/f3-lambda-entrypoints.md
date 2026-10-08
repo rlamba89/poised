@@ -40,7 +40,11 @@ F3 adds **staff-api** and **patient-api**. The other two functions come with the
 - **`internal/config`:**
   - reads environment variables;
   - if `DATABASE_URL_PARAM` / `TOKEN_SECRET_PARAM` are set, it fetches those **SSM Parameter Store** SecureStrings once, at cold start (AWS SDK for Go v2). The standard tier is free.
-  - Unit-test it with a fake SSM client.
+  - **Per-country values come only from here (A-20):** the web address (`APP_URL`), default time zone and locale, phone country, and later the Cognito, SES, SMS and bucket names.
+    - Local dev has UK defaults.
+    - On Lambda, a missing value stops the function at start-up, so there's no silent fallback to the UK.
+    - No other package may contain a region, domain, time zone or locale literal.
+  - Unit-test it with a fake SSM client, including the missing-value case.
 - **Pool settings on Lambda:** `MaxConns=2` (each Lambda instance serves one request at a time), and a short `MaxConnIdleTime`.
 - **Neon (F4) connection:** use Neon's **direct** endpoint, not the pooled one. At our low concurrency it's simpler, and the pooled endpoint needs pgx changes for prepared statements.
 

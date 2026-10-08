@@ -16,7 +16,11 @@ The next work is turning it into a multi-trust SaaS on AWS.
 1. [docs/plans/README.md](docs/plans/README.md): the roadmap. Foundation plans F1–F4, then core plans C1–C10, with a status table. **Keep the table current.** Work in plan order unless Rahul says otherwise.
 2. [docs/decisions.md](docs/decisions.md): every decision so far, with dates and reasons, plus Rahul's working preferences and the environment gotchas.
 3. [docs/saas-requirements.md](docs/saas-requirements.md): the SaaS requirements and architecture. Its §0 is the decision log. Items marked *Proposed* aren't agreed, so ask before building them.
-4. Background, as needed:
+4. [docs/sessions/README.md](docs/sessions/README.md): the plans split into **work sessions** (S01…), each with a brief. The three project skills run them:
+   - **`/build-session <id>`:** builds the session test-first and writes a manual test plan.
+   - **`/manual-test <id>`:** a separate session that tests in Chrome like a manual tester. It never edits code.
+   - **`/verify-session <id>`:** reviews and verifies before Rahul commits.
+5. Background, as needed:
    - [docs/requirements.md](docs/requirements.md) (authoring requirement IDs such as PNL-07);
    - [docs/plan-workflow.md](docs/plan-workflow.md) (how the episode workflow is built);
    - [docs/pending.md](docs/pending.md) (known gaps).
@@ -95,11 +99,15 @@ npm workspaces monorepo (`apps/web`, `packages/*`), plus a separate Go module in
 
 ## Target architecture (plans F3–F4, C1+)
 
-AWS **eu-west-2**, serverless, near-£0 when idle before the first customer. The details are in [docs/saas-requirements.md §13](docs/saas-requirements.md).
+AWS, serverless, near-£0 when idle before the first customer. The details are in [docs/saas-requirements.md §13](docs/saas-requirements.md).
 - **Compute:** four Lambdas from one Go codebase (`staff-api`, `patient-api`, `jobs`) plus the Node `evaluate`, behind API Gateway HTTP API.
 - **Frontend:** a React SPA on **Amplify Hosting**. Rewrites send `/api/*` to API Gateway and deep links to the SPA.
 - **Database:** **Postgres on Neon** until the first customer, then **RDS** (plain Postgres throughout).
 - **Sign-in:** Cognito for staff (managed login + TOTP MFA → our own session cookie). Patients sign in by **magic link + date of birth**, built in Go.
 - **Messaging:** SES for email and AWS End User Messaging for SMS.
 - **Infrastructure:** **CDK in Python** (`infra/`) and **CodePipeline** (CDK Pipelines). No SAM.
-- **Tenancy:** a **trust** (`org_id`) owns many hospitals, and every patient-data query is scoped to one trust. All patient-data access goes through `store.ForOrg(orgID)`, so a trust's data can later live in another AWS region (code stays in London).
+- **Tenancy:** a **trust** (`org_id`) owns many hospitals, and every patient-data query is scoped to one trust.
+- **Countries (A-20, agreed 8 Oct):** **one deployment per country**, each at its own web address (`uk.<domain>`) in its own AWS region. Only the UK (eu-west-2) runs now.
+  - **Never hardcode the UK or London** (region, domain, time zone, locale, phone country, NHS-only identifiers).
+  - Per-country values live only in `infra/countries.py` and Go's `internal/config`, and the web app reads them from `GET /api/config`.
+  - A new country must be config plus a runbook, never a code change.

@@ -32,7 +32,9 @@ Drafted 2 Oct 2026 with Rahul and revised the same day after his answers. Status
 | A-16 | Infrastructure and delivery | **AWS CDK in Python**, deployed by **AWS CodePipeline**. No SAM, and Lifebox's architecture isn't the reference. | Agreed |
 | A-17 | MMSE | Not now. | Agreed |
 | A-18 | Licensed instruments | **Build them now** (EQ-5D-5L, Oxford Hip and Knee Scores). Licence costs are decided later and can be a paid add-on. Each is **opt-in, set when a trust or hospital is added**: a trust opts in or out, and each hospital can follow the trust or decide differently (PRM-08). Licensors aren't contacted for now. | Agreed |
-| A-19 | Data regions | **London (eu-west-2) for now.** The architecture must let a trust's **data** live in another AWS region later. Code and the control plane stay in London (section 13). Not built this session. | Agreed |
+| A-19 | Data regions | **London (eu-west-2) for now.** The architecture must let a trust's **data** live in another AWS region later. Code and the control plane stay in London (section 13). Not built this session. | **Superseded 8 Oct by A-20** |
+| A-20 | Countries | **One deployment per country, each at its own web address** (`uk.<domain>`, `ca.<domain>`…). Each runs in that country's AWS region, with its own database, files bucket, Cognito pool, email and SMS. It's the same code and the same pipeline.<ul><li>**Only the UK runs for now.**</li><li>**Nothing is hardcoded for the UK or London.** Every per-country value is deployment config, so a new country is config plus a runbook, never a code change (section 13).</li></ul>**Why:** residency rules that bite usually cover where data is *processed and accessed*, not only where it's stored, so only a full in-country stack reliably meets them ([research, 8 Oct](../reports/Health%20data%20residency%20storage%20vs%20processing.md)). | Agreed 8 Oct |
+| A-21 | Superadmin | **Only the owner (Rahul).** Created by hand in each deployment and environment: a Cognito user plus a `platform_admins` row. There's no screen for creating superadmins. | Agreed 8 Oct |
 | D-1 | Server-side form evaluation | A small **Node Lambda** runs `packages/clinical` to compute disclosures, ASA and triage when a patient submits (section 10). This **reverses the 30 Sep "no Node service" decision**. | **Agreed 2 Oct** |
 | D-2 | Database | **Plain Postgres throughout.**<ul><li>**Neon** (AWS London) until the first customer: free tier, sleeps when idle, wakes in under a second.</li><li>**RDS for PostgreSQL** in our own AWS account from the first customer.</li></ul>Both are plain Postgres, so the move is a dump and restore (section 13). | Agreed |
 | D-3 | PDF rendering | Browser print first; a headless-Chromium Lambda later. | Proposed |
@@ -53,7 +55,7 @@ Drafted 2 Oct 2026 with Rahul and revised the same day after his answers. Status
 3. **The trust is the tenant.**
    - `org_id` is on every row and checked in Go middleware.
    - `hospital_id` narrows access within a trust.
-   - There's one shared database.
+   - There's one shared database per country deployment (A-20).
 4. **Question keys link answers across forms** (section 6). One idea powers four features: pre-fill, assessments, risk scores and PROMs baselines.
 5. **Platform content is just data with no owner.** Built-in videos, validated scores, PROMs, the question library, default ASA rules and document templates have `org_id IS NULL`.
 6. **Defaults over settings.**
@@ -72,7 +74,7 @@ Drafted 2 Oct 2026 with Rahul and revised the same day after his answers. Status
 | Episode status names | Built (plan-workflow) | **Keep:** this is product vocabulary hospitals already know. The keys and transitions are ours (section 5). |
 | Editor, clinician view and POA screen layouts | Built (plan-redesign) | **Keep:** a product/UI decision taken on 1 Oct, not a technical one. |
 | Observation fields and assessment list | Section 9 | **Keep:** the standard pre-op clinical set. Our storage design is our own. |
-| SAM, video hosting, STOP-Bang first, Cognito, AWS London | Earlier drafts | **Settled 2 Oct:**<ul><li>SAM is dropped;</li><li>videos are hosted on YouTube or Vimeo;</li><li>STOP-Bang stays first;</li><li>Cognito stays for staff;</li><li>London is the default region, with other data regions possible later (A-19).</li></ul> |
+| SAM, video hosting, STOP-Bang first, Cognito, AWS London | Earlier drafts | **Settled 2 Oct:**<ul><li>SAM is dropped;</li><li>videos are hosted on YouTube or Vimeo;</li><li>STOP-Bang stays first;</li><li>Cognito stays for staff;</li><li>London is the default region, with other data regions possible later (A-19).</li></ul>**Changed 8 Oct:** London is the UK deployment's region; other countries get their own deployments (A-20). |
 
 ---
 
@@ -108,7 +110,7 @@ This replaces today's `viewer / author / reviewer / publisher / hospital_admin /
 | --- | --- | --- |
 | ORG-01 | Only a platform admin can create a trust or a hospital. There's no public sign-up. | Must |
 | ORG-02 | **Creating a trust** takes its name, short code, contact details, logo and the first trust admin's email (they get an invite). **Creating a hospital** takes the trust, name, address, patient-facing phone and email, and an optional logo. | Must |
-| ORG-06 | **Data region.** When a trust is created, the platform admin picks its data region (default London). All of the trust's patient data is stored in that region. The region can't be changed later without a planned migration. Not built yet (A-19); the architecture allows it (section 13). | Could |
+| ORG-06 | **Countries.** Each country runs as its own deployment at its own web address (A-20). A trust is created in its country's deployment, and all its data stays there. Moving a trust to another country is a planned migration. Adding a country needs config and the runbook, never a code change. Only the UK runs for now. *(Changed 8 Oct; it was a per-trust data region, A-19.)* | Must |
 | ORG-03 | A trust or hospital can be suspended (no logins, data kept) and re-activated. | Must |
 | ORG-04 | **Settings**, by level:<ul><li>**trust-only:** retention period, cross-trust pre-fill allowed;</li><li>**hospital can override:** feature switches and opt-ins (ORG-05), branding, contact details, default HQ, reminder schedule, auto-archive periods, the "what happens next" text and patient message templates.</li></ul> | Must |
 | ORG-05 | **Feature switches and opt-ins:** assessments, PROMs, files, observations, and **each licensed instrument** (PRM-08). They're set when a trust or hospital is added, and can be changed later. The trust sets the default, and each hospital either follows it or opts in or out on its own, so some hospitals in a trust can have a feature and others not. | Must |
@@ -155,7 +157,7 @@ This replaces today's `viewer / author / reviewer / publisher / hospital_admin /
 | PAT-08 | A carer or parent can manage more than one person from one login. Each record is still verified by that person's date of birth (PAT-04). | Should |
 | PAT-09 | Staff can complete the HQ **on the patient's behalf**, e.g. on the phone. The answers are marked "entered by <staff member>". | Must |
 | PAT-10 | Patients can update their contact details. Name, date of birth and NHS number come from the hospital, with a "contact your hospital" note (PNL-04). | Should |
-| PAT-11 | Sending sign-in links is rate-limited per number and per email. SMS goes only to UK mobile numbers, which blocks SMS-pumping fraud. | Must |
+| PAT-11 | Sending sign-in links is rate-limited per number and per email. SMS goes only to mobile numbers in the deployment's country (the UK for now), which blocks SMS-pumping fraud. | Must |
 
 ### Approach (*Proposed*)
 
@@ -474,7 +476,7 @@ In Lifebox, the eight assessments in the screenshot are hardcoded SurveyJS JSON 
 
 | ID | Requirement |
 | --- | --- |
-| OPS-01 | AWS **London (eu-west-2)**. UK data stays in the UK. Other data regions can come later (A-19). |
+| OPS-01 | The UK deployment runs in AWS **London (eu-west-2)**, and UK data stays in the UK. Each other country gets its own deployment in its own region (A-20). |
 | OPS-02 | Separate QA, Training and Production AWS accounts or stacks (NFR-13). Non-production environments scale to zero. |
 | OPS-03 | NHS DSPT, Cyber Essentials Plus, a DPIA template for customers, a data processing agreement (the trust is the controller, we are the processor), and a pen test (NFR-05). |
 | OPS-04 | Clinical safety: DCB0129 hazard log (NFR-01), extended to cover:<ul><li>patient identity linking;</li><li>pre-fill (old answers accepted without being read; answers never expire);</li><li>**auto-triage straight to Ready for admission, with no clinician involved**. The "Auto-triaged" worklist is the mitigation;</li><li>ASA rules;</li><li>notifications;</li><li>no virus scanning.</li></ul>Customers do DCB0160. |
@@ -488,6 +490,8 @@ Billing is out of scope. A monthly episode count per trust is enough for invoici
 
 ## 13. AWS architecture (*Proposed*, serverless, near-zero cost when idle)
 
+**The picture below is one country's deployment (A-20).** The UK runs it in eu-west-2. Each other country gets an identical copy in its own region, from the same code and pipeline.
+
 ```
 Browser ─► Amplify Hosting (React app, no server compute) ─┬─ /*        → the app (SPA rewrite to index.html)
                                                            └─ /api/*    → reverse-proxy rewrite to API Gateway
@@ -497,7 +501,7 @@ staff-api, patient-api ─► Postgres (Neon now, RDS later) · S3 files (presig
                        └► evaluate Lambda (Node, packages/clinical): on submit and on complete review
 EventBridge Scheduler, every 5 min ─► jobs Lambda (Go) ─► jobs table: reminders, PROMs, auto-archive
 Cognito: staff user pool, managed login (password + TOTP MFA; Entra SSO later) → our own session cookie. Patients use our own magic links.
-CodePipeline (CDK Pipelines, Python): GitHub → test + build → QA → Training → approval → Production
+CodePipeline (CDK Pipelines, Python): GitHub → test + build → QA → Training → approval → Production (one stage per country)
 ```
 
 ### Lambda layout (D-4): four functions, one Go codebase
@@ -524,36 +528,84 @@ CodePipeline (CDK Pipelines, Python): GitHub → test + build → QA → Trainin
   - API Gateway times out after 29 s by default, so PDF generation will run as a job later.
 - **Same code locally and on Lambda:** each `cmd/<function>/main.go` wraps the same `net/http` handlers. It uses an adapter (e.g. `algnhsa`) on Lambda and `ListenAndServe` locally. For local development, one process serves both routers.
 
-### Data regions (A-19): possible later, not built now
+### Countries (A-20): one deployment per country, only the UK for now
 
-**Goal:** a trust outside the UK can have its patient data stored in its own AWS region, while the code keeps running in London.
+Agreed 8 Oct 2026. This replaces the A-19 design, in which the code stayed in London and only a trust's data moved to another region.
 
-**What lives where:**
+**Why:** research covering Canada, the US, the EU, Ireland, Australia and New Zealand ([report](../reports/Health%20data%20residency%20storage%20vs%20processing.md)) found the following:
+- Most laws and hospital contracts that restrict location cover where data is **processed and accessed**, not only where it's stored.
+- A database abroad with the code in London helps only in Texas, Florida and France.
+- A full stack in the country meets every rule found, except where support access from the UK is itself barred (see "Support access" below).
 
-| Where | What |
-| --- | --- |
-| **London, always** (the control plane) | All code (Lambdas, Amplify, `evaluate`), Cognito staff accounts, the platform admin data, trusts and hospitals (each with its `data_region`), staff memberships, platform content, and published questionnaires. Also **patient login accounts** (`patient_accounts`: mobile or email only) and an `account_records (account_id, org_id)` pointer that holds no clinical data. |
-| **The trust's region** (a data cell) | Patient records, episodes, answers, observations, tasks, files (an S3 bucket in that region), the patient-data audit log, and the trust's jobs. |
+**What a deployment is:** everything in the diagram above, in one AWS region, at its own web address:
+- the web app (Amplify) at `<country>.<domain>`, e.g. `uk.<domain>`;
+- API Gateway, the four Lambdas and the jobs schedule;
+- one Postgres database and one S3 files bucket;
+- one Cognito staff pool, one SES sending domain and one SMS sender.
 
-**Rules to follow from now on**, so that adding a region later is configuration rather than a rewrite:
-1. **One store per trust.** Go gets the database pool and S3 bucket through `store.ForOrg(orgID)`. Today it returns the one London pool and bucket for every trust. Later it looks up the trust's `data_region`.
-2. **No SQL joins of patient data across trusts.** Every patient-data query is scoped to one trust. Anything that spans trusts loops over trusts in Go:
-   - the patient's home lists records from each trust in `account_records`;
-   - platform reports do the same.
-3. **Control-plane tables never hold patient data.** They may hold only IDs that point into a data cell.
-4. **The jobs worker loops over regions.** Each data cell has its own `jobs` table.
-5. **Pre-fill across trusts in different regions** moves data between regions. It's allowed only with the patient's on-screen consent (section 6), or it's switched off for that trust.
-6. **The region is chosen per trust, not per hospital.** A trust's patient record is shared by all its hospitals, so it can't be split. A hospital that needs a different region is set up as its own trust.
+Inside a deployment, trusts and hospitals work exactly as section 3 describes. Deployments know nothing about each other: there's no shared database, and no calls between countries.
 
-**Cost of keeping the door open today:**
-- a `data_region` column;
-- the `store.ForOrg` function;
-- the discipline of rules 2 and 3.
+**What's set per country:** one list in CDK (`infra/countries.py`), with an entry per country and environment.
 
-**When a second region is added:**
-- the CDK stack deploys a data cell (a Postgres database and an S3 bucket) in that region;
-- `store.ForOrg` routes to it;
-- queries from London to a far region are slower, and deploying the API Lambdas into that region too is a later option.
+| Value | UK | How the app gets it |
+| --- | --- | --- |
+| AWS account and region | `eu-west-2` | CDK stage |
+| Web address | `uk.<domain>` | Env var; Go uses it for links in emails and SMS |
+| Database URL, token secret | Per deployment | SSM parameters |
+| Files bucket, Cognito pool and client, SES from-address, SMS sender | Per deployment | Env vars |
+| Phone country for SMS (PAT-11) | `GB` | Env var |
+| Default time zone and locale | `Europe/London`, `en-GB` | Env var; the web app reads them from `GET /api/config` |
+| Patient identifier scheme | NHS number | Env var |
+
+**Rules that keep a new country config-only:**
+1. **Build once, deploy everywhere.** The same Lambda binaries and the same web bundle go to every country. Nothing country-specific is compiled in.
+2. **No region, domain, country, time zone or locale literals in code.** They live only in the CDK country list and in the local dev defaults. Go reads them through `internal/config` and refuses to start if one is missing outside local dev.
+3. **The web app has no per-country values.** It calls `/api/*` on its own domain, and gets the locale, time zone and sign-in URL from `GET /api/config`.
+4. **CDK stacks take the country entry as input.** A CDK test synthesises a made-up second country and fails if anything references `eu-west-2` or the UK address (F4).
+5. **Every deployment runs the same migrations and seeds.** Platform content (codes, question library) is seeded into each, so a country could later have its own code set.
+6. **One pipeline, one place to watch.** A fix is one push: after QA, the pipeline deploys every country's Production in one wave. Every deployment's alarms go to the same email.
+
+**Product assumptions that differ by country (*Proposed*: confirm when C1 and C2 start):**
+- **Patient identifier:** store `national_id` + `national_id_type` rather than an `nhs_number` column, with one validator per type. Only the NHS number is built now; others come later (e.g. a Canadian provincial health card, Australia's IHI, New Zealand's NHI).
+- **Time zone per hospital,** defaulting to the deployment's. Canada, the US and Australia span several zones, and reminders and "day 2" rules depend on local time. Times are stored in UTC.
+- **Phone numbers in E.164** (the international format), with SMS only to the deployment's country (PAT-11).
+- **Dates formatted in the deployment's locale.** Today `en-GB` is hardcoded in `apps/web/src/lib/format.ts` and `apps/web/src/features/editor/OptionLists.tsx`.
+- **The UK uses its country address from day one** (`uk.<domain>`), so no link changes when a second country arrives.
+- **One AWS account per environment, one region per country.** The Production account holds every country's Production stack. A country gets its own account only if a customer requires it.
+
+**Adding a country** (the runbook goes in `infra/README.md` in F4):
+1. A local lawyer confirms the rules. The report lists the open questions for each country.
+2. Add the country's entry to `infra/countries.py`.
+3. One-off manual steps in that region:
+   - CDK bootstrap;
+   - SSM secrets;
+   - SES domain verification and production access;
+   - SMS sender registration;
+   - DNS for `<country>.<domain>`.
+4. Push. The pipeline deploys it and runs the migrations and seeds.
+5. Create the superadmin (A-21).
+6. A new country starts on RDS, because it only exists once it has a customer (D-2).
+
+**What we give up:**
+- A patient or staff member in two countries has two logins.
+- There's no pre-fill across countries.
+- Platform reports are per country.
+
+All three are rare, and residency rules would forbid the cross-country cases anyway.
+
+**A-19 groundwork that's dropped:**
+- `data_region` on trusts;
+- the region routing in `store.ForOrg`;
+- the London control-plane / data-cell table split;
+- the `account_records` pointer table;
+- the jobs loop over regions.
+
+A patient's home page is now one query over their records in every trust. Every query is still scoped by `org_id`, because that's tenant isolation, not residency.
+
+**Support access (*Proposed*):**
+- **The problem:** the strictest rules also stop *people* outside the country from seeing the data, and that includes support from the UK. Examples are Nova Scotia's "accessed only in Canada", Texas Medicaid contracts, and an HSE tender's "supported from within the EEA".
+- **The proposal:** support tooling shows IDs, statuses and errors, never patient answers. Anything more goes through break-glass access that the customer approves, which is time-limited and logged (OPS-06).
+- Customers like these may also need someone in their country to do support.
 
 ### Database (D-2): plain Postgres, cheap before customers
 
@@ -567,7 +619,7 @@ CodePipeline (CDK Pipelines, Python): GitHub → test + build → QA → Trainin
   - The free tier is enough.
   - We connect over TLS, with the connection string in SSM Parameter Store (the free standard tier). There's no VPC, so there's no NAT.
   - There's no real patient data before the first customer, so a third-party database is acceptable.
-- **From the first customer: RDS for PostgreSQL** in our own AWS account, in eu-west-2.
+- **From the first customer: RDS for PostgreSQL** in our own AWS account, in the deployment's region (eu-west-2 for the UK).
   - The smallest Graviton instance, plus Multi-AZ when the contract needs it.
   - The Lambdas move into the VPC, and we add VPC endpoints or a NAT gateway; by then that's an accepted fixed cost.
   - Moving the data is a `pg_dump` and `pg_restore`.
@@ -606,6 +658,7 @@ CodePipeline (CDK Pipelines, Python): GitHub → test + build → QA → Trainin
   - **Build:** runs `make test` (Go + Vitest), builds the Go binaries for arm64 and the Node `evaluate` bundle. After the backend deploys, a step zips the frontend build and calls Amplify `StartDeployment`, so one pipeline controls the order and Amplify never builds on its own.
   - **Migrations:** goose runs as a post-deploy step against each stage's database.
   - **Stages:** **QA** only until the first customer. Then **Training** and **Production** are added, in separate AWS accounts, with a manual approval before Production.
+  - **Countries (A-20):** each stack takes its country entry from `infra/countries.py`, and nothing in a stack names a region or domain. Production has one stage per country, deployed in one wave. Only the UK exists for now.
 - **Cost:** CodePipeline (V2) charges per action-minute and CodeBuild per build-minute, so pennies at our volume. **Idle target before the first customer: close to £0.** The only small fixed costs are a Route 53 hosted zone and CloudWatch log storage (we set a retention period).
 
 ---
@@ -618,7 +671,7 @@ CodePipeline (CDK Pipelines, Python): GitHub → test + build → QA → Trainin
 | Phase | Delivers | Main IDs |
 | --- | --- | --- |
 | 0. AWS skeleton | Move the frontend from Next.js to React + Vite + React Router; CDK (Python) + CodePipeline; today's Go API split into the staff, patient and jobs Lambdas; Neon; the frontend on Amplify Hosting; the QA stage. Today's app is deployed with the stub login, and we **measure the idle cost**. | Section 13, D-2, D-4, D-5 |
-| 1. Trusts and staff | Trusts (with `data_region`, London only for now), hospitals, settings inheritance and opt-ins, Cognito staff pool + MFA, roles, invites, hospital picker, audit log, and `store.ForOrg` (the data-region rules in section 13) | ORG, STF |
+| 1. Trusts and staff | Trusts, hospitals, settings inheritance and opt-ins, Cognito staff pool + MFA, roles, invites, hospital picker, audit log, and nothing hardcoded for the UK (A-20, section 13) | ORG, STF |
 | 2. Patients | Magic-link sign-in, records by NHS number, SMS/email invites, patient home, `jobs` + reminders | PAT, PX-08, PX-11 |
 | 3. Episode lifecycle | Procedures, `episode_forms`, new statuses and dates, worklists, tasks, cancel, archive and un-archive, auto-archive | EPI, PRC, TSK |
 | 4. Question keys and pre-fill | Keys, question library, "Same as…", "Always ask fresh", pre-fill and confirmation screens | PRE |
@@ -646,3 +699,7 @@ None open. Settled on 2 Oct 2026:
 - a React + Vite + React Router SPA on Amplify Hosting (D-5);
 - licensed instruments as opt-ins (A-18);
 - data regions possible later (A-19).
+
+Settled on 8 Oct 2026:
+- one deployment per country, only the UK for now, nothing hardcoded for the UK (A-20, replacing A-19);
+- the superadmin is only the owner, created by hand (A-21).

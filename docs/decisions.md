@@ -23,10 +23,61 @@ Related:
 - **Personal account only.** The code lives in his private GitHub (`rlamba89/poised`). Nothing goes to the Lifebox org, and the Lifebox company's GitHub organisation name must never appear anywhere in the repo, its docs or its commit messages. It was scrubbed from the git history on 2 Oct, so describe it, never spell it out.
 - **Messages he'll send on** (e.g. IT tickets) shouldn't mention Claude.
 - **Healthcare: nothing may break silently.** Hence the testing rules (§2, 2 Oct).
+- **Ready, not built** (8 Oct). Don't build for a market or feature before a customer needs it. But don't hardcode anything that would make it a rewrite later: another country must be config, not code.
 
 ## 2. Decision log (newest first)
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
+
+### 7–8 Oct 2026: countries, superadmin and the platform features (session ae16fe2f)
+
+- **Rahul's six platform features are already planned in C1 and C2.** No new plan was needed. The six:
+  - superadmin;
+  - hospital onboarding;
+  - staff and patient invites;
+  - permissions;
+  - staff in several hospitals;
+  - patients in several hospitals.
+- **Superadmin: only Rahul, created by hand, with no screen** (A-21).
+  - Reason: there will be one or very few, and no screen means nothing to build or attack.
+  - A small command creates the Cognito user and the `platform_admins` row. It's run once per environment and country ([plans/c1-trusts-staff.md](plans/c1-trusts-staff.md)).
+- **Residency rules usually cover where data is processed and accessed, not only where it's stored.** Rahul expected storage only. Research on 8 Oct covered Canada, the US, the EU, Ireland, Australia and New Zealand ([report](../reports/Health%20data%20residency%20storage%20vs%20processing.md); notes in `research_notes/`). It found:
+  - **Storage-only rules exist only in Texas, Florida and France (HDS).**
+  - **The EU's GDPR counts remote access from the UK as a transfer.** It's allowed only because of the UK adequacy decision, renewed until Dec 2031.
+  - **Some rules cover access, use or processing:** Nova Scotia, Quebec and Alberta; Germany, Italy and Spain; Australian state rules.
+  - **Hospital tenders and contracts often add support location,** e.g. an HSE tender's "supported from within the EEA" and Texas Medicaid contracts.
+  - **London is lawful with the right contract** under US federal law (HIPAA), and in Ontario, New Zealand and Irish law.
+  - **It's research, not legal advice.** A local lawyer confirms the rules before the first contract in a new country.
+- **One deployment per country, each at its own web address. Only the UK runs now, and nothing is hardcoded for the UK** (A-20, which supersedes A-19).
+  - **How we got there:**
+    - 7 Oct: Claude proposed a copy per country. Rahul rejected it as too much to maintain alone.
+    - Rahul then proposed code in London with each country's database in that country (the same idea as A-19). The research showed that only helps in Texas, Florida and France.
+    - 8 Oct: Rahul agreed to build only the UK, but to make a new country quick to spin up, at its own subdomain.
+  - **Why it's little extra maintenance:** one codebase, one build and one pipeline. A fix is one push that deploys every country, and every country's alarms go to one email.
+  - **Details:** [saas-requirements.md §13 "Countries"](saas-requirements.md). The groundwork is in F3 (`internal/config`) and in F4:
+    - `infra/countries.py`;
+    - a CDK test that synthesises a made-up second country;
+    - the "add a country" runbook.
+  - **Dropped from A-19:**
+    - `data_region`;
+    - `store.ForOrg`;
+    - the control-plane / data-cell split;
+    - `account_records`;
+    - the jobs loop over regions.
+- **The plans are built in work sessions** (8 Oct; [sessions/README.md](sessions/README.md)). F1–F4 and C1–C2 are split into S01–S16, each with a `brief.md`.
+  - **Three roles, each in its own Claude session,** run by project skills:
+    - **builder** (`/build-session`): builds test-first and writes `test-plan.md`;
+    - **tester** (`/manual-test`): a new session for every round, which drives Chrome like a manual tester and never edits code;
+    - **verifier** (`/verify-session`): reviews, runs everything, spot-checks, and offers the commits.
+  - **The loop:** the builder fixes what each test report finds, until a report says everything passed.
+  - **Nothing is committed until verified,** and a session starts only when the one before it is verified and committed.
+  - **Reason:** Rahul wants to start each session himself, with independent manual testing in a real browser, and a check before anything is committed.
+- ***Proposed, not agreed*** (to confirm when C1 and C2 start):
+  - `national_id` + type instead of an `nhs_number` column;
+  - a time zone per hospital;
+  - the UK on `uk.<domain>` from day one;
+  - one AWS account per environment, with a region per country;
+  - support tooling that never shows patient answers, plus customer-approved break-glass access (OPS-06).
 
 ### 2 Oct 2026: SaaS productionisation (session bf5d9b3a)
 
@@ -64,6 +115,7 @@ All of these are in [saas-requirements.md](saas-requirements.md) §0 and [plans/
 - **Out of scope:** EPR integration.
 - **Cloud: AWS eu-west-2**, serverless, **near-£0 when idle before the first customer**.
   - Other **data** regions per trust must be possible later (code stays in London). The groundwork is a `data_region` per trust, `store.ForOrg`, no cross-trust SQL joins of patient data, and no patient data in control-plane tables.
+  - *Superseded 8 Oct by one deployment per country (A-20); see the 7–8 Oct entry above.*
 - **Compute: 4 Lambdas from one Go codebase** (`staff-api`, `patient-api`, `jobs`) + the Node `evaluate`.
   - Reason: separate permissions and blast radius for the public patient API, without one function per route.
   - Lambda Managed Instances, durable functions and SnapStart were checked; none is needed.
@@ -211,10 +263,13 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
 - **The exact headless Chrome path used:** `CHROME_PATH=$HOME/Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell npx tsx spikes/ui-<name>.ts`.
 - **Leftover test data:** published "Workflow test …" questionnaires stay in Hospital A, because published versions can't be deleted. Reset the local database if it gets cluttered.
 
-## 5. Open items (as of 5 Oct 2026)
+## 5. Open items (as of 8 Oct 2026)
 
 - **Next work:** plan **F1** ([plans/f1-test-foundation.md](plans/f1-test-foundation.md)).
-- **Uncommitted** in Rahul's working tree: the clinician box colour fix in `apps/web/src/features/preview/clinicianView.ts` (`root` → `mainRoot`).
+- **Build order, undecided:** the roadmap order (F1 → F2 → F3 → F4 → C1 → C2), or F1 and F2, then C1 and C2 before the AWS work (F3, F4). The roadmap order stands until Rahul decides.
+- **No domain chosen yet.** `<domain>` in the docs is a placeholder.
+- **Research files:** `research_notes/` and `reports/` at the repo root are untracked. Either keep them (e.g. move them to `docs/research/` and fix the links in saas-requirements §0 and §13 and in this file) or delete them.
+- **The proposed parts of A-20** (above, 7–8 Oct) need Rahul's yes when C1 and C2 start.
 - **App branding** still says "Lifebox" in the UI (`apps/web/src/app/layout.tsx`, `h/[hospitalId]/layout.tsx`, `PatientHQ.tsx`). Rename it to Poised.
 - **Unanswered:** should clinician-only Question Sets render full width in `ValidateSet.tsx`, rather than in an empty two-column grid?
 - **Unconfirmed:** whether saved option lists should be copied (as built) or linked.
