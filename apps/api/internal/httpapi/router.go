@@ -71,7 +71,7 @@ func routes(s *server) http.Handler {
 	mux.HandleFunc("GET /api/p/{token}", s.patientHQ)
 	mux.HandleFunc("PUT /api/p/{token}/answers/{cid}", s.savePatientAnswers)
 	mux.HandleFunc("POST /api/p/{token}/submit", s.submitPatientHQ)
-	return mux
+	return recoverPanics(mux)
 }
 
 func (s *server) health(w http.ResponseWriter, r *http.Request) {

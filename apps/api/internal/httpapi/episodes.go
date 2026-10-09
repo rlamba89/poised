@@ -190,6 +190,28 @@ func (s *server) getEpisode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"episode": e, "events": events})
 }
 
+// episodeChange is what updateEpisode changes. A field sent as null decodes to a nil pointer;
+// for an ASA grade that keeps the current grade (see asaChange).
+type episodeChange struct {
+	Status          *string `json:"status"`
+	Procedure       *string `json:"procedure"`
+	Anaesthetic     *string `json:"anaesthetic"`
+	Consultant      *string `json:"consultant"`
+	NurseAsa        *int32  `json:"nurseAsa"`
+	AnaesthetistAsa *int32  `json:"anaesthetistAsa"`
+}
+
+// validate trims the procedure details and returns a plain-language problem, or "".
+func (in *episodeChange) validate() string {
+	if in.Status == nil || in.Procedure == nil || in.Anaesthetic == nil || in.Consultant == nil {
+		return "The request could not be read."
+	}
+	for _, f := range []*string{in.Procedure, in.Anaesthetic, in.Consultant} {
+		*f = strings.TrimSpace(*f)
+	}
+	return ""
+}
+
 // updateEpisode changes the status (by hand, see episode.CanSetStatus), the procedure details
 // and the ASA grades. Fields left out keep their value; an ASA grade of 0 clears it.
 func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
@@ -202,15 +224,12 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 	}
 	// Defaults point at copies, so e keeps the current values to compare with.
 	status, procedure, anaesthetic, consultant := e.Status, e.Procedure, e.Anaesthetic, e.Consultant
-	in := struct {
-		Status          *string `json:"status"`
-		Procedure       *string `json:"procedure"`
-		Anaesthetic     *string `json:"anaesthetic"`
-		Consultant      *string `json:"consultant"`
-		NurseAsa        *int32  `json:"nurseAsa"`
-		AnaesthetistAsa *int32  `json:"anaesthetistAsa"`
-	}{Status: &status, Procedure: &procedure, Anaesthetic: &anaesthetic, Consultant: &consultant}
+	in := episodeChange{Status: &status, Procedure: &procedure, Anaesthetic: &anaesthetic, Consultant: &consultant}
 	if !readJSON(w, r, 8<<10, &in) {
+		return
+	}
+	if msg := in.validate(); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 	if !episode.CanSetStatus(e.Status, *in.Status) {
@@ -224,8 +243,7 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := s.q.UpdateEpisode(r.Context(), db.UpdateEpisodeParams{
-		ID: e.ID, Status: *in.Status, Procedure: strings.TrimSpace(*in.Procedure),
-		Anaesthetic: strings.TrimSpace(*in.Anaesthetic), Consultant: strings.TrimSpace(*in.Consultant),
+		ID: e.ID, Status: *in.Status, Procedure: *in.Procedure, Anaesthetic: *in.Anaesthetic, Consultant: *in.Consultant,
 		NurseAsa: nurse, AnaesthetistAsa: anaes,
 	})
 	if err != nil {

@@ -150,3 +150,29 @@ func TestUpdateEpisode(t *testing.T) {
 		})
 	}
 }
+
+// A PATCH sends only what it changes. A text field sent as null is refused, not a crash (found
+// by S01's code review: the handler dereferenced the nil pointer and dropped the connection).
+func TestEpisodeChangeValidate(t *testing.T) {
+	s := func(v string) *string { return &v }
+	valid := func() episodeChange {
+		return episodeChange{Status: s("ready_for_poa"), Procedure: s(" Hip replacement "), Anaesthetic: s(" GA "), Consultant: s(" Dr Who ")}
+	}
+
+	in := valid()
+	if msg := in.validate(); msg != "" || *in.Procedure != "Hip replacement" || *in.Anaesthetic != "GA" || *in.Consultant != "Dr Who" {
+		t.Errorf("valid change: %q, %q %q %q; want no problem, trimmed", msg, *in.Procedure, *in.Anaesthetic, *in.Consultant)
+	}
+	for name, change := range map[string]func(*episodeChange){
+		"null status":      func(c *episodeChange) { c.Status = nil },
+		"null procedure":   func(c *episodeChange) { c.Procedure = nil },
+		"null anaesthetic": func(c *episodeChange) { c.Anaesthetic = nil },
+		"null consultant":  func(c *episodeChange) { c.Consultant = nil },
+	} {
+		in := valid()
+		change(&in)
+		if in.validate() == "" {
+			t.Errorf("%s: no problem reported", name)
+		}
+	}
+}

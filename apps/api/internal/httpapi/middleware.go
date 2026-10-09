@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"slices"
 	"time"
 
@@ -24,6 +26,51 @@ const (
 type RoleLister interface {
 	ListRolesInHospital(ctx context.Context, arg db.ListRolesInHospitalParams) ([]string, error)
 }
+
+// recoverPanics answers a handler's panic with the plain-language 500 and logs it with its
+// stack. Without it, Go's server drops the connection and the browser gets no response.
+//   - The log names the route pattern, never the path: a patient's path holds their link token.
+//   - A response that has already started can't become a 500, so it is aborted instead.
+//   - http.ErrAbortHandler is passed on: it is the standard way to abort a response on purpose.
+func recoverPanics(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sw := &startedWriter{ResponseWriter: w}
+		defer func() {
+			err := recover()
+			if err == nil {
+				return
+			}
+			if err == http.ErrAbortHandler {
+				panic(err)
+			}
+			if sw.started {
+				log.Printf("panic in %s, after the response started: %v\n%s", r.Pattern, err, debug.Stack())
+				panic(http.ErrAbortHandler)
+			}
+			serverError(w, "panic in "+r.Pattern, fmt.Errorf("%v\n%s", err, debug.Stack()))
+		}()
+		next.ServeHTTP(sw, r)
+	})
+}
+
+// startedWriter notes whether the handler has started its response.
+type startedWriter struct {
+	http.ResponseWriter
+	started bool
+}
+
+func (s *startedWriter) WriteHeader(code int) {
+	s.started = true
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *startedWriter) Write(b []byte) (int, error) {
+	s.started = true
+	return s.ResponseWriter.Write(b)
+}
+
+// Unwrap lets http.ResponseController reach the real writer.
+func (s *startedWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
 // requireUser rejects requests without a valid token cookie and puts the user in the context.
 func requireUser(secret []byte, next http.HandlerFunc) http.HandlerFunc {
