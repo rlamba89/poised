@@ -1,0 +1,66 @@
+{
+  "name": "Workflow HQ",
+  "description": "Two patient Question Sets with clinician-only content, and one clinician set. Everything a patient must not see has SECRET in it.",
+  "chapters": [
+    {
+      "name": "About you",
+      "audience": "patient",
+      "content": {
+        "testCases": [{ "id": "tc_SECRET", "name": "SECRET test case", "answers": { "q_smokes": true } }],
+        "pages": [
+          {
+            "name": "p_lifestyle",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_smokes",
+                "title": "Do you smoke?",
+                "choices": [
+                  { "value": "o_yes", "text": "Yes", "clinicalOutputs": [{ "id": "out_1", "note": { "text": "SECRET disclosure: smoker" } }] },
+                  { "value": "o_no", "text": "No" }
+                ]
+              },
+              { "type": "comment", "name": "q_secret_note", "title": "SECRET nurse note", "clinicianOnly": true },
+              {
+                "type": "panel",
+                "name": "g_heart",
+                "elements": [
+                  { "type": "boolean", "name": "q_heart", "title": "Any heart problems?" },
+                  { "type": "text", "name": "q_secret_ecg", "title": "SECRET ECG reading", "clinicianOnly": true }
+                ]
+              },
+              {
+                "type": "paneldynamic",
+                "name": "q_meds",
+                "title": "Your medicines",
+                "templateElements": [
+                  { "type": "text", "name": "q_med_name", "title": "Medicine" },
+                  { "type": "text", "name": "q_secret_dose_check", "title": "SECRET dose check", "clinicianOnly": true }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "p_secret_page",
+            "clinicianOnly": true,
+            "elements": [{ "type": "text", "name": "q_on_secret_page", "title": "SECRET page question" }]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Your health",
+      "audience": "patient",
+      "content": {
+        "pages": [{ "name": "p_health", "elements": [{ "type": "boolean", "name": "q_diabetes", "title": "Do you have diabetes?" }] }]
+      }
+    },
+    {
+      "name": "Nurse checks",
+      "audience": "clinician",
+      "content": {
+        "pages": [{ "name": "p_checks", "elements": [{ "type": "text", "name": "q_secret_bp", "title": "SECRET blood pressure" }] }]
+      }
+    }
+  ]
+}
