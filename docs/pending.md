@@ -28,6 +28,22 @@ docker compose up -d --force-recreate db
   - patient search
   - Short HQ
 - **Re-opening:** a review can't be re-opened after it is complete.
+- **Major: a stale tab's Validate silently overwrites newer clinician answers** (found in S02 testing, 8 Oct; older than S02; [test-report-2.md](sessions/S02-workflow-route-tests/test-report-2.md) X-1).
+  - Two tabs (or two clinicians) open the same Question Set. Tab A changes an answer, and it autosaves. Tab B, still showing the old answer, clicks **Validate**.
+  - Tab B's save is accepted and stamped "Validated", tab A's change is lost, and nobody is told. The POA Summary shows tab B's answer.
+  - **Cause:** `PUT …/episodes/{eid}/answers/{cid}` has no stale-revision check, unlike chapter saves (409).
+  - **Fix:** a revision check on answer saves (409, nothing written), decided by Rahul on 8 Oct. Scheduled as session **S02a** ([brief](sessions/S02a-answer-revisions/brief.md)), after S02 and before S03.
+- **An episode PATCH can put back a status that just changed** (found by S02's verification, 8 Oct; older than S02).
+  - `updateEpisode` writes the status it loaded, even when only details change (`UPDATE episodes SET status = $2 … WHERE id = $1`).
+  - If Complete HQ review or the patient's submit lands in the milliseconds between the load and the write, the old status comes back, while `review_completed_at` or `patient_submitted_at` stays set.
+  - **Fix with the lost update above:** add `AND status = <loaded status>` to the UPDATE, and answer 409 when no row matches. Details in [verify.md](sessions/S02-workflow-route-tests/verify.md) item 2.
+- **Before C1: after a panic, the recover middleware sends headers the handler had already set** (found by S02's verification, 8 Oct).
+  - `recoverPanics` writes the 500 without clearing `w.Header()`, so a cookie set before a panic would go out with the error.
+  - No handler can do that today: both cookie handlers write straight after `SetCookie`. Fix it test-first before the Cognito session code (C1). Details in [verify.md](sessions/S02-workflow-route-tests/verify.md) item 3.
+- **A test gap: `TestUpdateEpisode` doesn't check every column after its refusals** (found by S02's second verification, 8 Oct).
+  - It compares only `Status` and `NurseAsa` with the row before. A refused null procedure, anaesthetic or consultant, or a bad `anaesthetistAsa`, isn't proved to leave the row unchanged.
+  - No bug today. Compare the whole row the next time this test is touched (S02a is likely to). Details in [verify.md](sessions/S02-workflow-route-tests/verify.md) item 4.
+- **Complete review isn't checked on the server** (found by S02, 8 Oct). `POST …/complete-review` succeeds while the episode is Ready for review, even if no Question Set is validated. Only the browser disables the button until every visible set is validated. Enforce it on the server in C6, where the `evaluate` Lambda can work out which sets are visible.
 
 ## 2. Waiting on input
 
@@ -53,6 +69,19 @@ docker compose up -d --force-recreate db
     - A saved list is deleted with one click, with no confirmation.
     - The viewer's ⋯ → View uses the pencil icon.
     - The State badge truncates to "D…" below about 760 px.
+- **Found by the S02 manual test, 8 Oct** (all older than S02; details in [test-report-1.md](sessions/S02-workflow-route-tests/test-report-1.md)):
+  - **A double-click on "Save comment" saves the note twice.** Notes are append-only, so the duplicate can't be removed, and it shows on the POA Summary. The button should be disabled while it saves.
+  - **The patient link's response (`GET /api/p/{token}`) includes the patient's last name, date of birth and sex,** though the page shows only the first name. **Decide before C2 (S14):** if patients sign in with magic link + date of birth, this response must not include the date of birth, or anyone holding the link can read the answer to the check.
+  - **Sign out sometimes seemed not to sign out** (2 of about 10, on refusal pages reached by pasting an address). Unconfirmed; it may have been the testing tool's timing.
+  - **Episode refusal pages:** the hospital picker is blank on "You don't have access to this hospital." (The questionnaire refusal pages have no header at all; see S01's item above.)
+  - **"No episodes yet." shows when a status filter matches nothing,** though episodes exist.
+  - **A PATCH with an unknown episode status gets 409** ("can't be changed to that now"), where 400 would be more accurate.
+  - **The ASA grade controls work before the HQ review is complete,** while Episode status is locked. Check whether that's wanted.
+  - **Small:** the patient's set page says "Saved" before any answer; the delete dialog's text flickers to `""` as it closes.
+  - **From the retest (report 2):**
+    - **A patient's section counts as complete once every required question is answered,** even without "Finish this section". Probably by design; confirm.
+    - **"Send your answers?" can reappear over a section** if a click lands behind it as it animates in. Confirming it still submits correctly.
+    - **The staff header wraps at narrow widths** (about 500 px), crowding the back link. Staff pages aren't phone-targeted.
 - **Lifebox import:**
   - Conditions that cross Question Sets on pages and questions are still dropped with a warning.
   - Lifebox has no Question Set-level conditions to import.

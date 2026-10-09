@@ -91,7 +91,7 @@ Leave the existing fake-querier tests (`fakeQ`) alone. Per rule 4, they're repla
 
 ## Status
 
-**In progress.** Session S01 (Step 1, and Step 2 for the authoring routes) is built, passed manual testing (report 1, 8 Oct: 19 of 19) and is verified ([build notes](../sessions/S01-integration-harness/build-notes.md), [verify](../sessions/S01-integration-harness/verify.md)). S02 and S03 are next.
+**In progress.** Session S01 (Step 1, and Step 2 for the authoring routes) is built, passed manual testing (report 1, 8 Oct: 19 of 19) and is verified ([build notes](../sessions/S01-integration-harness/build-notes.md), [verify](../sessions/S01-integration-harness/verify.md)). S02 (Step 2 for the episode, patient-link, clinician and sign-in routes) is built and passed manual testing (report 2, 8 Oct: 17 of 17) and is verified (8 Oct; [build notes](../sessions/S02-workflow-route-tests/build-notes.md), [verify](../sessions/S02-workflow-route-tests/verify.md)). S03 is next.
 
 **Differences from the plan (S01):**
 - **Fixtures:** `fx.DraftHQ` / `fx.PublishedHQ(t, hospital, by, file)` take the creating user and a `testdata/` file name; `fx.DraftHQ` was added. `c.LoginAs(t, user)` returns a new signed-in client, so a test can hold several users.
@@ -103,3 +103,12 @@ Leave the existing fake-querier tests (`fakeQ`) alone. Per rule 4, they're repla
 2. `PATCH /api/h/{hid}/chapters/{cid}` with a field set to `null` crashed the handler, and the connection dropped with no response. It's now a 400.
 
 **Found by the S01 code review, for S02 to fix:** `PATCH /api/h/{hid}/episodes/{eid}` with `status`, `procedure`, `anaesthetic` or `consultant` set to `null` crashes in the same way. S02 fixes it test-first, and adds a recover middleware so any handler panic becomes a logged, plain-language 500 (Rahul, 8 Oct).
+
+**S02 (8 Oct):**
+- **The episode PATCH crash is fixed:** a `null` status, procedure, anaesthetic or consultant → 400.
+- **A recover middleware wraps the router:**
+  - a handler panic is logged by route pattern and answered with the plain-language 500;
+  - a response already started is aborted cleanly.
+  - Both were asked for in S02's brief.
+- **The integration tests prove what Go enforces (Rahul, 8 Oct).** "Complete review only when every set is validated" and "the first write copies the patient's answers" are browser rules, covered by S03's J4. The server-side check is in pending.md for C6.
+- **No new bugs found by the integration tests.** Manual testing found a Major lost update on clinician answers, older than S02 (a stale tab's Validate overwrites a newer answer). Rahul chose a revision check (a 409 on a stale save) over a lock; session S02a fixes it, after S02 and before S03.

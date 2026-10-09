@@ -30,6 +30,17 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 8 Oct 2026: S02, what the workflow integration tests prove
+
+- **Lost updates on answers are prevented by a revision check, not a lock** (Rahul, 8 Oct). Each answers row gets a revision. A save must send the revision it started from; if someone saved in between, it's a 409 and nothing is written. This is the same pattern as Question Set saves.
+  - **Reason:** S02's manual test found that a stale tab's Validate silently overwrote a newer answer (X-1). A per-person lock wouldn't stop one person's two tabs. A lock needs expiry, a "still here" signal and a take-over button, and still needs this check after a lock expires.
+  - **Built in session S02a** ([brief](sessions/S02a-answer-revisions/brief.md)), after S02 and before S03.
+
+- **The integration tests prove what Go enforces, not the two workflow rules the browser applies** (Rahul, 8 Oct). Two of F1's "must also cover" items are browser rules:
+  - **"Complete review is refused until every set is validated."** The server refuses only when the episode isn't Ready for review. The browser enables the button once every *visible* set is validated, and visibility depends on Question Set conditions, which Go can't evaluate (the key rule in CLAUDE.md).
+  - **"The first write copies the patient's answers."** The browser pre-fills the clinician view from the patient's row and sends the full data. The server stores a separate clinician row and leaves the patient's row as it was.
+  - **Reason:** S02 makes no behaviour changes beyond the two its brief asked for (the episode PATCH `null` fix and the recover middleware), and the server can't know which sets are visible without evaluating expressions. S03's J4 covers both rules end-to-end. The gap is in [pending.md](pending.md) §1a, for C6 (the `evaluate` Lambda can work out the visible sets).
+
 ### 8 Oct 2026: S01, the integration test harness (session a8c9de3a)
 
 All of these are detailed in [sessions/S01-integration-harness/build-notes.md](sessions/S01-integration-harness/build-notes.md) and the F1 Status section.
@@ -298,11 +309,13 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
 
 ## 5. Open items (as of 8 Oct 2026)
 
-- **Next work:** plan **F1** ([plans/f1-test-foundation.md](plans/f1-test-foundation.md)). Session S01 is verified (8 Oct); S02 is next.
+- **Next work:** plan **F1** ([plans/f1-test-foundation.md](plans/f1-test-foundation.md)). Sessions S01 and S02 are verified (8 Oct); S02a is next, then S03.
 - **The `dev` branch** (on `origin` too; commit `557be2c` "Auth first: sessions, trusts, Cognito staff sign-in, patient link sign-in", 7 Oct) isn't mentioned in the plans or sessions. Decide whether sessions S08–S15 supersede it or should reuse parts of it.
 - **Build order, undecided:** the roadmap order (F1 → F2 → F3 → F4 → C1 → C2), or F1 and F2, then C1 and C2 before the AWS work (F3, F4). The roadmap order stands until Rahul decides.
 - **No domain chosen yet.** `<domain>` in the docs is a placeholder.
 - **Research files:** `research_notes/` and `reports/` at the repo root are untracked. Either keep them (e.g. move them to `docs/research/` and fix the links in saas-requirements §0 and §13 and in this file) or delete them.
+- **The lost update on clinician answers** (Major, found in S02 testing, 8 Oct) is fixed in session S02a, with a revision check (decided 8 Oct, §2).
+- **Before C2 (S14), decide what the patient link returns** (found in S02 testing, 8 Oct). `GET /api/p/{token}` includes the date of birth. With magic link + date-of-birth sign-in, that would give away the check. Details are in [pending.md](pending.md) §3.
 - **The proposed parts of A-20** (above, 7–8 Oct) need Rahul's yes when C1 and C2 start.
 - **App branding** still says "Lifebox" in the UI (`apps/web/src/app/layout.tsx`, `h/[hospitalId]/layout.tsx`, `PatientHQ.tsx`). Rename it to Poised.
 - **Unanswered:** should clinician-only Question Sets render full width in `ValidateSet.tsx`, rather than in an empty two-column grid?
