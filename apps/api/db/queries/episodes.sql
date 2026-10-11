@@ -54,10 +54,13 @@ JOIN questionnaires q ON q.id = v.questionnaire_id
 LEFT JOIN users reviewer ON reviewer.id = e.review_completed_by
 WHERE e.id = $1 AND e.hospital_id = $2;
 
--- name: UpdateEpisode :exec
+-- name: UpdateEpisode :execrows
+-- Changes nothing if the status is no longer `loaded_status`, the one the caller read: the
+-- workflow (the patient's submit, completing the review) may have moved it on since.
 UPDATE episodes
-SET status = $2, procedure = $3, anaesthetic = $4, consultant = $5, nurse_asa = $6, anaesthetist_asa = $7
-WHERE id = $1;
+SET status = sqlc.arg(status), procedure = sqlc.arg(procedure), anaesthetic = sqlc.arg(anaesthetic),
+    consultant = sqlc.arg(consultant), nurse_asa = sqlc.arg(nurse_asa), anaesthetist_asa = sqlc.arg(anaesthetist_asa)
+WHERE id = sqlc.arg(id) AND status = sqlc.arg(loaded_status);
 
 -- name: AddEpisodeEvent :exec
 INSERT INTO episode_events (episode_id, kind, text, user_id) VALUES ($1, $2, $3, $4);

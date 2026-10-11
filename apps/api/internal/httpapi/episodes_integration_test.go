@@ -4,6 +4,7 @@ package httpapi_test
 
 import (
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -466,8 +467,8 @@ func TestUpdateEpisode(t *testing.T) {
 		// Before the HQ review is complete, no status can be picked by hand.
 		refused(t, patch(w.clinician, w.a, w.ep, change), http.StatusConflict)
 	})
-	if after := readEpisode(t, w, reviewed.ID); after.Status != before.Status || after.NurseAsa != nil {
-		t.Fatalf("refusals changed the episode: %+v", after)
+	if after := readEpisode(t, w, reviewed.ID); !reflect.DeepEqual(after, before) {
+		t.Fatalf("refusals changed the episode: %+v, was %+v", after, before)
 	}
 	if ev := readEvents(t, w, reviewed.ID); len(ev) != 0 {
 		t.Fatalf("refusals wrote events: %+v", ev)
@@ -492,6 +493,15 @@ func TestUpdateEpisode(t *testing.T) {
 			}
 		}
 	})
+	t.Run("happy path: details only, before the review", func(t *testing.T) {
+		patch(w.clinician, w.a, w.ep, map[string]string{"procedure": "Hip"}).Want(t, http.StatusNoContent)
+		if e := readEpisode(t, w, w.ep.ID); e.Status != "hq_not_complete" || e.Procedure != "Hip" {
+			t.Errorf("episode = %+v, want the procedure changed and the status kept", e)
+		}
+		if ev := readEvents(t, w, w.ep.ID); len(ev) != 0 {
+			t.Errorf("events = %+v, want none", ev)
+		}
+	})
 	t.Run("happy path: no change, no event; 0 clears a grade", func(t *testing.T) {
 		patch(w.clinician, w.a, reviewed, map[string]any{"status": "poa_complete", "nurseAsa": 0, "anaesthetistAsa": 3}).Want(t, http.StatusNoContent)
 		e := readEpisode(t, w, reviewed.ID)
@@ -503,6 +513,38 @@ func TestUpdateEpisode(t *testing.T) {
 			t.Errorf("events = %+v, want one more: 'Nurse ASA grade cleared'", ev)
 		}
 	})
+}
+
+// A PATCH that changes only details sends no status, so the server keeps the one it loaded. If
+// the workflow moves the status on between that load and the write, the PATCH must not put the
+// old status back (S02's verification, item 2): it gets a 409 and writes nothing.
+func TestUpdateEpisodeKeepsAStatusThatJustChanged(t *testing.T) {
+	t.Parallel()
+	w := newClinic(t)
+	for _, race := range []struct{ name, from, sql, want string }{
+		{"the review is completed", "ready_for_review",
+			`UPDATE episodes SET status = 'ready_for_poa', review_completed_at = now() WHERE id = $1`, "ready_for_poa"},
+		{"the patient submits", "hq_not_complete",
+			`UPDATE episodes SET status = 'ready_for_review', patient_submitted_at = now() WHERE id = $1`, "ready_for_review"},
+	} {
+		t.Run(race.name, func(t *testing.T) {
+			e := w.fx.Episode(t, w.hq, w.cara)
+			setStatus(t, w, e, race.from)
+			r := meanwhile(t, w.db, race.sql, []any{e.ID}, func() *apitest.Resp {
+				return w.clinician.Do("PATCH", epPath(w.a, e, ""), map[string]any{"procedure": "Knee scope", "nurseAsa": 2})
+			})
+			refused(t, r, http.StatusConflict)
+			if !strings.Contains(r.Message(), "changed since you opened it") {
+				t.Errorf("message = %q", r.Message())
+			}
+			if got := readEpisode(t, w, e.ID); got.Status != race.want || got.Procedure != "" || got.NurseAsa != nil {
+				t.Errorf("episode = %+v, want status %s and nothing else changed", got, race.want)
+			}
+			if ev := readEvents(t, w, e.ID); len(ev) != 0 {
+				t.Errorf("events = %+v, want none", ev)
+			}
+		})
+	}
 }
 
 func TestAddEpisodeNote(t *testing.T) {

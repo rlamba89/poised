@@ -603,31 +603,39 @@ func (q *Queries) SubmitPatientHQ(ctx context.Context, id uuid.UUID) (int64, err
 	return result.RowsAffected(), nil
 }
 
-const updateEpisode = `-- name: UpdateEpisode :exec
+const updateEpisode = `-- name: UpdateEpisode :execrows
 UPDATE episodes
-SET status = $2, procedure = $3, anaesthetic = $4, consultant = $5, nurse_asa = $6, anaesthetist_asa = $7
-WHERE id = $1
+SET status = $1, procedure = $2, anaesthetic = $3,
+    consultant = $4, nurse_asa = $5, anaesthetist_asa = $6
+WHERE id = $7 AND status = $8
 `
 
 type UpdateEpisodeParams struct {
-	ID              uuid.UUID `json:"id"`
 	Status          string    `json:"status"`
 	Procedure       string    `json:"procedure"`
 	Anaesthetic     string    `json:"anaesthetic"`
 	Consultant      string    `json:"consultant"`
 	NurseAsa        *int32    `json:"nurseAsa"`
 	AnaesthetistAsa *int32    `json:"anaesthetistAsa"`
+	ID              uuid.UUID `json:"id"`
+	LoadedStatus    string    `json:"loadedStatus"`
 }
 
-func (q *Queries) UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) error {
-	_, err := q.db.Exec(ctx, updateEpisode,
-		arg.ID,
+// Changes nothing if the status is no longer `loaded_status`, the one the caller read: the
+// workflow (the patient's submit, completing the review) may have moved it on since.
+func (q *Queries) UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateEpisode,
 		arg.Status,
 		arg.Procedure,
 		arg.Anaesthetic,
 		arg.Consultant,
 		arg.NurseAsa,
 		arg.AnaesthetistAsa,
+		arg.ID,
+		arg.LoadedStatus,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

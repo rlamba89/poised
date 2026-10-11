@@ -242,12 +242,16 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Choose an ASA grade from 1 to 6.")
 		return
 	}
-	err := s.q.UpdateEpisode(r.Context(), db.UpdateEpisodeParams{
-		ID: e.ID, Status: *in.Status, Procedure: *in.Procedure, Anaesthetic: *in.Anaesthetic, Consultant: *in.Consultant,
-		NurseAsa: nurse, AnaesthetistAsa: anaes,
+	n, err := s.q.UpdateEpisode(r.Context(), db.UpdateEpisodeParams{
+		ID: e.ID, LoadedStatus: e.Status, Status: *in.Status, Procedure: *in.Procedure, Anaesthetic: *in.Anaesthetic,
+		Consultant: *in.Consultant, NurseAsa: nurse, AnaesthetistAsa: anaes,
 	})
 	if err != nil {
 		serverError(w, "update episode", err)
+		return
+	}
+	if n == 0 {
+		writeError(w, http.StatusConflict, "This episode changed since you opened it. Reload to see the latest; your change was not saved.")
 		return
 	}
 	uid := currentUser(r).ID

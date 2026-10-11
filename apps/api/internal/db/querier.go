@@ -75,7 +75,9 @@ type Querier interface {
 	SubmitPatientHQ(ctx context.Context, id uuid.UUID) (int64, error)
 	TouchVersion(ctx context.Context, arg TouchVersionParams) error
 	UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) error
-	UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) error
+	// Changes nothing if the status is no longer `loaded_status`, the one the caller read: the
+	// workflow (the patient's submit, completing the review) may have moved it on since.
+	UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (int64, error)
 	UpdateOptionList(ctx context.Context, arg UpdateOptionListParams) (int64, error)
 }
 

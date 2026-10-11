@@ -21,7 +21,6 @@ type episodeFake struct {
 	episode  db.GetEpisodeRow
 	patients []db.CreatePatientParams
 	created  []db.CreateEpisodeParams
-	updates  []db.UpdateEpisodeParams
 	events   []db.AddEpisodeEventParams
 	// CreateEpisode finds no row unless the version is this one (published, in the hospital).
 	published uuid.UUID
@@ -51,11 +50,6 @@ func (f *episodeFake) GetEpisode(_ context.Context, arg db.GetEpisodeParams) (db
 		return db.GetEpisodeRow{}, pgx.ErrNoRows
 	}
 	return f.episode, nil
-}
-
-func (f *episodeFake) UpdateEpisode(_ context.Context, arg db.UpdateEpisodeParams) error {
-	f.updates = append(f.updates, arg)
-	return nil
 }
 
 func (f *episodeFake) AddEpisodeEvent(_ context.Context, arg db.AddEpisodeEventParams) error {
@@ -113,41 +107,6 @@ func TestCreateEpisode(t *testing.T) {
 	body = `{"patientId":"` + uuid.NewString() + `","versionId":"` + uuid.NewString() + `"}`
 	if rec := call(t, f, "POST", hospitalPath("/episodes"), body); rec.Code != http.StatusBadRequest {
 		t.Errorf("unpublished version: got %d, want 400", rec.Code)
-	}
-}
-
-func TestUpdateEpisode(t *testing.T) {
-	path := hospitalPath("/episodes/" + episodeID.String())
-	tests := []struct {
-		name, status, body string
-		want               int
-		events             []string
-	}{
-		{"ready for admission after the review", episode.ReadyForPOA, `{"status":"ready_for_admission"}`, http.StatusNoContent, []string{"Status changed to Ready for admission"}},
-		{"not before the review", episode.ReadyForReview, `{"status":"ready_for_admission"}`, http.StatusConflict, nil},
-		{"ASA grades", episode.ReadyForReview, `{"nurseAsa":2,"anaesthetistAsa":3}`, http.StatusNoContent, []string{"Nurse ASA grade set to 2", "Anaesthetist ASA grade set to 3"}},
-		{"ASA out of range", episode.ReadyForReview, `{"nurseAsa":7}`, http.StatusBadRequest, nil},
-		{"procedure only", episode.HQNotComplete, `{"procedure":"Hip"}`, http.StatusNoContent, nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f := newEpisodeFake(tt.status, "clinician")
-			if rec := call(t, f, "PATCH", path, tt.body); rec.Code != tt.want {
-				t.Fatalf("got %d (%s), want %d", rec.Code, rec.Body.String(), tt.want)
-			}
-			var got []string
-			for _, e := range f.events {
-				got = append(got, e.Text)
-			}
-			if len(got) != len(tt.events) {
-				t.Fatalf("events = %q, want %q", got, tt.events)
-			}
-			for i := range got {
-				if got[i] != tt.events[i] {
-					t.Errorf("event %d = %q, want %q", i, got[i], tt.events[i])
-				}
-			}
-		})
 	}
 }
 
