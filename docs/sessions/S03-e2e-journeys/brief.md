@@ -1,7 +1,7 @@
 # S03: End-to-end journeys J1–J5
 
 **Plan:** F1 ([f1-test-foundation.md](../../plans/f1-test-foundation.md)), Steps 3 and 4. This is part 3 of 3; F1 is done after this session.
-**Depends on:** S02 verified.
+**Depends on:** S02 and S02a verified.
 
 **Ask Rahul first:** nothing. Check Python 3.12+ is installed.
 
@@ -12,6 +12,12 @@
   - data set up through the API, with unique names;
   - role and label selectors.
 - **Journeys J1–J5**, from F1's table. J3's patient runs on an iPhone 13.
+  - **J4 also has a two-tab step** (Rahul, 9 Oct):
+    1. Open one Question Set in two tabs.
+    2. Change an answer in the first tab and let it save.
+    3. Validate in the second tab. It must show the "changed somewhere else" message with **Reload**.
+    4. After Reload, it shows the first tab's answer.
+    - This guards S02a's fix end to end.
 - **`make e2e-setup` and `make e2e`.** Traces are kept on failure.
 - **Clean up:**
   - delete `spikes/ui-workflow.ts`;

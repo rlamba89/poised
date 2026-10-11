@@ -28,21 +28,21 @@ docker compose up -d --force-recreate db
   - patient search
   - Short HQ
 - **Re-opening:** a review can't be re-opened after it is complete.
-- **Major: a stale tab's Validate silently overwrites newer clinician answers** (found in S02 testing, 8 Oct; older than S02; [test-report-2.md](sessions/S02-workflow-route-tests/test-report-2.md) X-1).
-  - Two tabs (or two clinicians) open the same Question Set. Tab A changes an answer, and it autosaves. Tab B, still showing the old answer, clicks **Validate**.
-  - Tab B's save is accepted and stamped "Validated", tab A's change is lost, and nobody is told. The POA Summary shows tab B's answer.
-  - **Cause:** `PUT …/episodes/{eid}/answers/{cid}` has no stale-revision check, unlike chapter saves (409).
-  - **Fix:** a revision check on answer saves (409, nothing written), decided by Rahul on 8 Oct. Scheduled as session **S02a** ([brief](sessions/S02a-answer-revisions/brief.md)), after S02 and before S03.
-- **An episode PATCH can put back a status that just changed** (found by S02's verification, 8 Oct; older than S02).
-  - `updateEpisode` writes the status it loaded, even when only details change (`UPDATE episodes SET status = $2 … WHERE id = $1`).
-  - If Complete HQ review or the patient's submit lands in the milliseconds between the load and the write, the old status comes back, while `review_completed_at` or `patient_submitted_at` stays set.
-  - **Fix with the lost update above:** add `AND status = <loaded status>` to the UPDATE, and answer 409 when no row matches. Details in [verify.md](sessions/S02-workflow-route-tests/verify.md) item 2.
+- **Two simultaneous episode PATCHes can overwrite each other's ASA grade** (found by S02a's verification, 9 Oct; older than S02a).
+  - S02a's guard covers only the status. The handler still fills the fields a PATCH didn't send from the row it loaded, so of two PATCHes in the same milliseconds (Nurse ASA and Anaesthetist ASA), the last empties the other's grade.
+  - **Fix:** an UPDATE that sets only the fields sent (`sqlc.narg` with `coalesce`), or a revision on the episode row. Details in [S02a verify.md](sessions/S02a-answer-revisions/verify.md) item 2.
+  - **Related (S02a verification 2, finding 5):** the PATCH 409 says "This episode changed since you opened it", but it compares with the status the request loaded a moment earlier, not the one the user's page loaded. A stale POA Summary page isn't detected. A revision on the episode row would fix both, and make the message true.
+- **A save whose response is lost can make the tab conflict with itself** (found by S02a's verification, 9 Oct).
+  - **How it happens:** the server commits an answers save, but the browser gets a network error. The saver keeps the old revision, so the tab's next save gets a 409, and the user sees "changed somewhere else" though no other tab exists.
+  - **Not silent:** the message and Reload show, and Reload shows what was saved.
+  - **Fix when it matters:** after a failed save, read the set's current revision and data, and carry on if the server already has this tab's answers. Details in [S02a verify.md](sessions/S02a-answer-revisions/verify.md) item 3.
+- **An answers save's 409 can give the wrong reason** (found by S02a's verification, 9 Oct; low).
+  - **How it happens:** if the patient submits on another device, or another clinician completes the review, while a save is in flight, that save says "changed somewhere else" instead of "already sent" or "review complete".
+  - **Why it's low:** it's still a 409, and Reload shows the truth.
+  - **Where:** `patient.go` and `validation.go` pick the message from the episode as loaded at the start of the request.
 - **Before C1: after a panic, the recover middleware sends headers the handler had already set** (found by S02's verification, 8 Oct).
   - `recoverPanics` writes the 500 without clearing `w.Header()`, so a cookie set before a panic would go out with the error.
   - No handler can do that today: both cookie handlers write straight after `SetCookie`. Fix it test-first before the Cognito session code (C1). Details in [verify.md](sessions/S02-workflow-route-tests/verify.md) item 3.
-- **A test gap: `TestUpdateEpisode` doesn't check every column after its refusals** (found by S02's second verification, 8 Oct).
-  - It compares only `Status` and `NurseAsa` with the row before. A refused null procedure, anaesthetic or consultant, or a bad `anaesthetistAsa`, isn't proved to leave the row unchanged.
-  - No bug today. Compare the whole row the next time this test is touched (S02a is likely to). Details in [verify.md](sessions/S02-workflow-route-tests/verify.md) item 4.
 - **Complete review isn't checked on the server** (found by S02, 8 Oct). `POST …/complete-review` succeeds while the episode is Ready for review, even if no Question Set is validated. Only the browser disables the button until every visible set is validated. Enforce it on the server in C6, where the `evaluate` Lambda can work out which sets are visible.
 
 ## 2. Waiting on input
@@ -82,6 +82,11 @@ docker compose up -d --force-recreate db
     - **A patient's section counts as complete once every required question is answered,** even without "Finish this section". Probably by design; confirm.
     - **"Send your answers?" can reappear over a section** if a click lands behind it as it animates in. Confirming it still submits correctly.
     - **The staff header wraps at narrow widths** (about 500 px), crowding the back link. Staff pages aren't phone-targeted.
+- **Found by S02a's second verification, 11 Oct** (details in [S02a verify.md](sessions/S02a-answer-revisions/verify.md), "Verification 2"):
+  - **Network errors show technical text** (finding 2, older than S02a): a failed fetch shows "TypeError: Failed to fetch" (patient banner) or "Failed to fetch" (staff). `apps/web/src/lib/api.ts` could turn a network failure into a plain message, such as "We couldn't reach the server. Check your connection." The patient page already says **Not saved** next to the section.
+  - **If Reload fails on the clinician's set page, the page is stuck on the error** (finding 3, new in S02a): `ValidateSet.tsx` doesn't wait for or catch the reload, and the error from `useEpisode` / `useEpisodeHQ` is never cleared. Refreshing the browser recovers.
+- **Found by the S02a manual test, 9 Oct** (older than S02a; [test-report-1.md](sessions/S02a-answer-revisions/test-report-1.md) item 3):
+  - **The editor says "All changes saved" while a title edit is still in the focused field.** It saves only when the field loses focus. So a stale editor tab finds out about a conflict only then, and an edit can look saved when it isn't.
 - **Lifebox import:**
   - Conditions that cross Question Sets on pages and questions are still dropped with a warning.
   - Lifebox has no Question Set-level conditions to import.

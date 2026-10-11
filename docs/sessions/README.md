@@ -71,7 +71,7 @@ you: /verify-session S08 ─► verifier: review + tests + spot-check → verify
 | --- | --- | --- | --- | --- |
 | [S01](S01-integration-harness/brief.md) | F1 | Integration test harness, plus tests for the authoring routes | Docker running | Verified |
 | [S02](S02-workflow-route-tests/brief.md) | F1 | Integration tests for the episode, patient and clinician routes | — | Verified |
-| [S02a](S02a-answer-revisions/brief.md) | F1 | Bug fix: a stale save of clinician answers gets a 409, not a silent overwrite (S02 report 2, X-1) | Answer the brief's question | Not started |
+| [S02a](S02a-answer-revisions/brief.md) | F1 | Bug fix: a stale save of clinician or patient answers gets a 409, not a silent overwrite (S02 report 2, X-1); an episode PATCH can't put back a status that just changed | Answered 9 Oct | Verified (11 Oct) |
 | [S03](S03-e2e-journeys/brief.md) | F1 | Playwright journeys J1–J5 and `make e2e` | Python 3.12+ | Not started |
 | [S04](S04-react-vite/brief.md) | F2 | Next.js → React + Vite + React Router | Answer: rename the UI to Poised now? | Not started |
 | [S05](S05-lambda-entrypoints/brief.md) | F3 | Lambda entry points, `internal/config`, `GET /api/config` | — | Not started |

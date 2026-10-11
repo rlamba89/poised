@@ -30,6 +30,46 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 11 Oct 2026: finding the patient when creating an episode
+
+- **Matching a patient to an existing record is silent, and shows nothing from other hospitals** (Rahul, 11 Oct).
+  - **What staff see:** they type the patient's details from the referral, and the server links the episode to the trust's existing record when the identifiers agree.
+  - **What staff never see:**
+    - which other hospital has seen the patient;
+    - the patient's episodes, answers or notes there;
+    - any stored value they didn't type.
+  - **A mismatch** (same NHS number, different date of birth or name) is reported without showing the stored values.
+  - **Other trusts' records are never searched.**
+  - **Reason:** privacy, and no sharing of information Hospital A doesn't need. Claude's first proposal showed "last seen at Hospital B" and earlier episodes, and Rahul rejected it.
+- **The New episode page is rebuilt in C2,** as a dedicated page. It replaces the drawer and its Existing/New patient tabs (Rahul, 11 Oct).
+  - **Reason:** silent matching needs C2's trust-wide records keyed by NHS number.
+  - **Staff can search patients, but only their own hospital's** (Rahul, 11 Oct). C2's plan had a trust-wide search, and it's now hospital-scoped.
+  - **The search must work with millions of patients:** today's dropdown doesn't.
+  - **The design** is in [plans/c2-patients-signin.md](plans/c2-patients-signin.md): server-side search as you type, at most 20 results, and a precise term required. Its details (what counts as "this hospital's patient", the search terms) are Claude's proposal, for C2's build session to confirm with Rahul.
+
+
+- **The patient's autosave gets the same revision check as the clinician's** (`PUT /api/p/{token}/answers/{cid}`).
+  - **Reason:** a patient with the link open on a phone and a laptop loses answers in the same way when the older one saves last, and just as silently. It's the same pattern on the same table.
+  - **Details:** [S02a brief](sessions/S02a-answer-revisions/brief.md).
+- **S02a also fixes the episode PATCH status write-back.**
+  - **The fix:** the UPDATE succeeds only while the status is still the one loaded; otherwise the PATCH gets a 409.
+  - **Its own commit,** test-first.
+  - **Reason:** it's small and the same idea. It was found by S02's verification (pending.md §1a, and S02's verify.md item 2).
+- **S03's J4 gains a two-tab step:** a stale tab's save gets the "changed somewhere else" message.
+  - **Reason:** the integration tests prove the 409, but only an end-to-end test can guard the browser's message and Reload.
+- **Any 409 on an answers save stops autosaving and offers Reload,** not only a stale revision. That includes "the review is already complete" and the patient's "already sent" (S02a builder; it passed manual testing on 9 Oct).
+  - **Reason:** in every case the page is out of date, and Reload shows the truth. The refused change stays on screen, locked, until Reload, so nothing typed vanishes before the user reads why.
+- **The patient page doesn't save a section the server already has** (S02a builder, 9 Oct; corrected after S02a's verification the same day). Leaving a section used to save it every time.
+  - **"Already has" means what the server accepted, not the page's own copy.** The first version compared with the page's copy, so a failed save was never sent again (verify.md finding 1).
+  - **The section list, "Complete" and "Send my answers" go by what the server has,** so a section whose save failed can't look complete or be sent.
+  - **And a section with a change that hasn't saved isn't complete either** (corrected again after verification 2, 11 Oct). A section that was already complete, then changed while offline, used to stay Complete, and the HQ could be sent without the change. `isSetReadyToSend` in `packages/clinical` decides it. After a failed save, the section's label says "Not saved".
+  - **Reason:** with the revision check, a tab left open on another device would otherwise get the conflict message for doing nothing. Before S02a, it would have overwritten newer answers with stale ones. The clinician page already worked this way.
+  - **Details:** [S02a build notes](sessions/S02a-answer-revisions/build-notes.md).
+- **Race tests make the race happen in a fixed order with `meanwhile`** (`apps/api/internal/httpapi/cast_integration_test.go`).
+  - **How:** the conflicting change holds a row lock until `pg_stat_activity` shows the request waiting, and only then commits.
+  - **Reason:** two concurrent HTTP requests would pass or fail by timing. This way it goes through the real API and database, with no fakes.
+  - **Use it for any future "between the read and the write" bug.**
+
 ### 8 Oct 2026: S02, what the workflow integration tests prove
 
 - **Lost updates on answers are prevented by a revision check, not a lock** (Rahul, 8 Oct). Each answers row gets a revision. A save must send the revision it started from; if someone saved in between, it's a 409 and nothing is written. This is the same pattern as Question Set saves.
@@ -305,6 +345,16 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
   ```
   (This works while the database holds only HJE Full HQ; otherwise filter the rows.)
 - **On Rahul's Mac, the `docker` CLI isn't on the PATH of Claude's shells** (builder and tester sessions). Docker itself runs; Claude prefixes `PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"` for `make test-integration`.
+- **Claude in Chrome's tab can stay "hidden" even with Chrome in front** (S02a testing, 9 and 11 Oct).
+  - **Symptoms:**
+    - `document.visibilityState` is `hidden`, and no animation frames run;
+    - Mantine drawers, modals and dropdowns are in the page but never appear, and screen clicks on them are lost;
+    - timers can be slowed to about once a minute.
+  - **Check:** run `requestAnimationFrame` in the page; if it doesn't fire within a second, the tab is hidden.
+  - **Workaround the testers used:**
+    - click the app's own controls from script, and confirm results in the page text and the request log;
+    - send a dialog's request directly when its content can't show, and say so in the report;
+    - run long scripts in the background and poll their results, because the tool times out after 45 s.
 - **The Claude in Chrome network log shows every `204 No Content` as 503** (found in S01 testing, 8 Oct). `fetch` and `curl` both return the real 204. Testers should ignore a 503 on a route that answers 204, such as a DELETE, publish or logout. Other error codes are reported correctly.
 
 ## 5. Open items (as of 8 Oct 2026)

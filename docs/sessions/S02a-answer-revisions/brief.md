@@ -3,8 +3,10 @@
 **Plan:** F1 ([f1-test-foundation.md](../../plans/f1-test-foundation.md)), a bug fix found by S02's manual testing ([test-report-2.md](../S02-workflow-route-tests/test-report-2.md), X-1). F1 fixes bugs in their own commits, with the test that shows them.
 **Depends on:** S02 verified and committed.
 
-**Ask Rahul first:**
-- **Patient answers too?** The patient's autosave (`PUT /api/p/{token}/answers/{cid}`) can lose answers in the same way: the patient has the link open on a phone and a laptop, and the older one saves last. Recommended: **yes, the same check in this session.** It's the same pattern on the same table, and a patient's lost answer is as silent as a clinician's.
+**Rahul's answers (9 Oct):**
+- **Patient answers too?** **Yes:** the same check in this session. The patient's autosave (`PUT /api/p/{token}/answers/{cid}`) can lose answers in the same way: the patient has the link open on a phone and a laptop, and the older one saves last.
+- **Also fix the episode PATCH status write-back?** **Yes,** in its own commit, test-first (see "Also: the episode PATCH" below).
+- **Should S03's J4 gain a two-tab step?** **Yes.** It's added to [S03's brief](../S03-e2e-journeys/brief.md).
 
 ## The problem (X-1)
 
@@ -31,6 +33,13 @@ Rahul chose this over "one editor at a time" (a lock). A per-person lock wouldn'
   - **on a 409, stop autosaving** and show the message with a **Reload** button, which reloads the set from the server;
   - Validate doesn't stamp anything on a 409.
 
+## Also: the episode PATCH can put back a status that just changed (added 9 Oct)
+
+Found by S02's verification ([verify.md](../S02-workflow-route-tests/verify.md) item 2; pending.md §1a).
+- **The problem:** `updateEpisode` writes back the status it loaded, even when the PATCH changes only details. If Complete HQ review or the patient's submit lands between the load and the write, the old status comes back.
+- **The fix:** the UPDATE adds `AND status = <the loaded status>`. When no row matches, the PATCH gets a 409 and nothing is written. The message: "This episode changed since you opened it. Reload to see the latest; your change was not saved."
+- **Test-first,** in its own commit. Also close S02's test gap: after `TestUpdateEpisode`'s refusals, compare the whole row with the row before (verify.md item 4).
+
 ## Tests (TDD, failing first)
 
 - **Integration** (`validation_integration_test.go`, and `patient_integration_test.go` if in scope):
@@ -47,8 +56,8 @@ Rahul chose this over "one editor at a time" (a lock). A per-person lock wouldn'
 
 - Showing "Cara is also looking at this set" (presence). It's a convenience to add when a hospital asks for it.
 - Locks.
-- Other routes. The chapter save already has its check, and episode PATCH and notes don't overwrite answers.
-- Playwright: S03 doesn't exist yet. Ask Rahul whether S03's J4 should gain a two-tab step.
+- Other routes. The chapter save already has its check, and notes are append-only.
+- Playwright: S03 doesn't exist yet. Its J4 gains the two-tab step (Rahul, 9 Oct).
 
 ## Done when
 

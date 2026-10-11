@@ -74,7 +74,7 @@ Leave the existing fake-querier tests (`fakeQ`) alone. Per rule 4, they're repla
 | J1 | **Author:** create a questionnaire, add a Question Set, page and question, save, reload, and see it's kept. The preview shows the question. | Desktop |
 | J2 | **Publish:** publish blocked by a logic problem, fix it, publish, "Create new version". | Desktop |
 | J3 | **Patient:** the clinician creates an episode and copies the link. The patient opens it, fills every set (leaving part-way and coming back keeps the answers), and submits. The status is Ready for review. | **Phone (iPhone 13)** for the patient |
-| J4 | **Clinician validates:** opens each set, corrects one answer (a "Patient answered…" note appears), validates every set, completes the review. The status is Ready for POA. | Desktop |
+| J4 | **Clinician validates:** opens each set, corrects one answer (a "Patient answered…" note appears), validates every set, completes the review. The status is Ready for POA. **Two tabs** (added 9 Oct, for S02a's fix): a stale tab's Validate shows "changed somewhere else" with Reload, and the newer answer is kept. | Desktop |
 | J5 | **POA Summary:** both tabs. The corrected answer is marked on the validated tab. Change the episode status; a comment is added to General notes. The Print button exists. | Desktop |
 
 - **Makefile:**
@@ -91,7 +91,7 @@ Leave the existing fake-querier tests (`fakeQ`) alone. Per rule 4, they're repla
 
 ## Status
 
-**In progress.** Session S01 (Step 1, and Step 2 for the authoring routes) is built, passed manual testing (report 1, 8 Oct: 19 of 19) and is verified ([build notes](../sessions/S01-integration-harness/build-notes.md), [verify](../sessions/S01-integration-harness/verify.md)). S02 (Step 2 for the episode, patient-link, clinician and sign-in routes) is built and passed manual testing (report 2, 8 Oct: 17 of 17) and is verified (8 Oct; [build notes](../sessions/S02-workflow-route-tests/build-notes.md), [verify](../sessions/S02-workflow-route-tests/verify.md)). S03 is next.
+**In progress.** Session S01 (Step 1, and Step 2 for the authoring routes) is built, passed manual testing (report 1, 8 Oct: 19 of 19) and is verified ([build notes](../sessions/S01-integration-harness/build-notes.md), [verify](../sessions/S01-integration-harness/verify.md)). S02 (Step 2 for the episode, patient-link, clinician and sign-in routes) is built and passed manual testing (report 2, 8 Oct: 17 of 17) and is verified (8 Oct; [build notes](../sessions/S02-workflow-route-tests/build-notes.md), [verify](../sessions/S02-workflow-route-tests/verify.md)). S02a (two bug fixes) is built and passed manual testing (report 1, 9 Oct: 15 of 15; [build notes](../sessions/S02a-answer-revisions/build-notes.md)). Verification 1 found a Major bug in the patient page (a failed save was never re-sent), now fixed test-first. The retest passed (report 2, 11 Oct: 10 of 10). Verification 2 (independent) found a related Major gap: a complete section with a change that failed to save could still be sent. It's fixed test-first. Verification 3 (11 Oct) retested the fix in the browser and **verified** S02a ([verify](../sessions/S02a-answer-revisions/verify.md)). S03 is next.
 
 **Differences from the plan (S01):**
 - **Fixtures:** `fx.DraftHQ` / `fx.PublishedHQ(t, hospital, by, file)` take the creating user and a `testdata/` file name; `fx.DraftHQ` was added. `c.LoginAs(t, user)` returns a new signed-in client, so a test can hold several users.
@@ -112,3 +112,14 @@ Leave the existing fake-querier tests (`fakeQ`) alone. Per rule 4, they're repla
   - Both were asked for in S02's brief.
 - **The integration tests prove what Go enforces (Rahul, 8 Oct).** "Complete review only when every set is validated" and "the first write copies the patient's answers" are browser rules, covered by S03's J4. The server-side check is in pending.md for C6.
 - **No new bugs found by the integration tests.** Manual testing found a Major lost update on clinician answers, older than S02 (a stale tab's Validate overwrites a newer answer). Rahul chose a revision check (a 409 on a stale save) over a lock; session S02a fixes it, after S02 and before S03.
+
+**S02a (9 Oct), bug fixes:**
+- **A stale save of answers is refused (409), not silently applied,** for the clinician and (Rahul, 9 Oct) the patient.
+  - Each `episode_answers` row has a `revision` (migration 00005). A save sends the one it started from, in one SQL statement that checks it twice.
+  - Both answer pages stop saving after a 409 and offer Reload.
+- **An episode PATCH can't put back a status that just changed** (S02's verify.md item 2; Rahul, 9 Oct): `UpdateEpisode` requires the status it loaded, else 409.
+- **Differences from the brief:**
+  - the patient page no longer saves a section that hasn't changed;
+  - every 409 on an answers save (not only a stale revision) stops autosaving and offers Reload.
+- **Race tests use `meanwhile`** (`cast_integration_test.go`): the conflicting change holds a row lock until the request is seen waiting on it, so the race happens in a fixed order through the real API and database.
+- **Old fake-querier tests for the changed routes were removed** (testing rule 4); the integration tests cover their cases.

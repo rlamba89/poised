@@ -32,14 +32,26 @@ All of these are in the deployment's one database. *(On 8 Oct the London control
   - The **jobs** Lambda, run every 5 minutes by EventBridge Scheduler (CDK). It serves its own deployment only; each country has its own schedule (A-20).
   - Job kinds: send the invite, a reminder on day 2 and day 5, and flagging "not responding" on day 7.
   - **Testing jobs:** each job's *decision* is a pure function (`due(episode, now) → actions`) with unit tests. Its database writes reuse store functions already covered by the API integration tests. This follows the README's integration-test rule.
-- **NHS number:** the Modulus 11 check (written TDD). Without an NHS number, staff are warned about possible duplicates with the same name and date of birth.
+- **NHS number:** the Modulus 11 check (written TDD). Without an NHS number, staff are warned about possible duplicates with the same name and date of birth. The warning shows none of the other record's details (decisions.md, 11 Oct).
+- **The New episode page** (Rahul, 11 Oct; decisions.md). It replaces today's drawer and its Existing/New patient tabs.
+  - **The page:** a dedicated page, `/h/:hid/episodes/new`. It has a patient search, then one form: patient details, then episode details.
+  - **Search is for this hospital's patients only:** patients with at least one episode at this hospital. Creating a patient always creates an episode here.
+    - **Never shown:** a patient known only at another hospital of the trust, and anything from another trust.
+  - **Built for millions of records:**
+    - **no dropdown:** the server searches as staff type, and returns at most 20 results (name, date of birth, NHS number);
+    - **a precise term is needed:** a valid NHS number (exact), a hospital number (exact), a surname with a date of birth, or at least 3 letters of a surname. Nobody can list everyone;
+    - **indexed:** on the identifier, and on surname with date of birth. Scoped to the hospital in the query itself.
+  - **Not found:** staff type the patient's details from the referral. On Create, the server links **silently** to the trust's existing record when the NHS number and date of birth agree.
+    - **Nothing is shown about that record:** not its hospitals, episodes or stored values.
+    - **A mismatch** (same NHS number, different date of birth or surname) gets a 409 that says the details don't match. It shows no stored values, and nothing is created.
 - **Staff completing for the patient (PAT-09):** a clinician opens the patient's forms from the episode. The answers are stored as the patient's, with `entered_by`.
 - **Patient URLs:** `/p/:token` is replaced by `/i/:token`, `/s/:token`, `/home` and `/home/episodes/:id`.
 
 ## API
 
 - **Staff:**
-  - `GET/POST /api/o/{oid}/patients` (search by NHS number, name, date of birth)
+  - `GET /api/h/{hid}/patients?q=` (search this hospital's patients: NHS number, hospital number, or surname with date of birth; at most 20)
+  - `POST /api/h/{hid}/episodes` with the patient's details or a found patient's id (creates the trust record when there's no match, links silently when there is). *Changed 11 Oct from a trust-wide `/api/o/{oid}/patients`: search is hospital-scoped.*
   - `POST …/episodes` (sends the invite)
   - `POST …/episodes/{eid}/resend-invite`
 - **Patient:**
@@ -62,6 +74,14 @@ All of these are in the deployment's one database. *(On 8 Oct the London control
   - sign-in requests are rate-limited;
   - an SMS to a non-UK number is refused;
   - a duplicate NHS number in a trust → 409;
+  - **patient search:**
+    - doesn't return a patient known only at another hospital of the same trust, or anything from another trust;
+    - refuses a term that's too broad;
+    - returns at most 20 results;
+  - **creating an episode for details that match another hospital's patient:**
+    - it links to that record;
+    - the response and the page show none of that record's data;
+  - **a mismatch** (same NHS number, different date of birth) → 409, the message holds no stored values, and nothing is written;
   - the invite is recorded by the fake SMS and email.
 - **Unit:** the NHS number check, token hashing and expiry, the job decisions, and the session cookie.
 - **End-to-end:**
