@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -26,17 +27,30 @@ type clinicianRow struct {
 	Data      string
 	By        *uuid.UUID
 	Validated *time.Time
+	Revision  int
 }
 
 func readClinicianAnswers(t *testing.T, w *clinic, e apitest.Episode, chapter uuid.UUID) clinicianRow {
 	t.Helper()
 	var c clinicianRow
-	err := w.db.QueryRow(t.Context(), `SELECT data::text, updated_by, validated_at FROM episode_answers
-		WHERE episode_id = $1 AND chapter_id = $2 AND actor = 'clinician'`, e.ID, chapter).Scan(&c.Data, &c.By, &c.Validated)
+	err := w.db.QueryRow(t.Context(), `SELECT data::text, updated_by, validated_at, revision FROM episode_answers
+		WHERE episode_id = $1 AND chapter_id = $2 AND actor = 'clinician'`, e.ID, chapter).Scan(&c.Data, &c.By, &c.Validated, &c.Revision)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatal(err)
 	}
 	return c
+}
+
+// savedRevision checks a save's 200 and returns the revision it reports.
+func savedRevision(t *testing.T, r *apitest.Resp) int {
+	t.Helper()
+	r.Want(t, http.StatusOK)
+	var got struct{ Revision *int }
+	r.Decode(t, &got)
+	if got.Revision == nil {
+		t.Fatalf("the save returned no revision: %s", r)
+	}
+	return *got.Revision
 }
 
 func TestEpisodeHQ(t *testing.T) {
@@ -60,6 +74,7 @@ func TestEpisodeHQ(t *testing.T) {
 				ChapterID            uuid.UUID
 				Actor, UpdatedByName string
 				Data                 json.RawMessage
+				Revision             *int
 			}
 		}
 		r.Decode(t, &got)
@@ -76,6 +91,10 @@ func TestEpisodeHQ(t *testing.T) {
 		for _, a := range got.Answers {
 			if a.ChapterID == about {
 				actors[a.Actor] = string(a.Data)
+			}
+			// Each row's revision, which a save sends back (S02a). Rows saved before S02a are at 0.
+			if a.Revision == nil || *a.Revision != 0 {
+				t.Errorf("answers row %+v: want revision 0", a)
 			}
 		}
 		if len(got.Answers) != 2 || actors["patient"] != `{"q_smokes":"o_yes"}` || actors["clinician"] != `{"q_smokes":"o_no"}` {
@@ -101,15 +120,17 @@ func TestEpisodeHQ(t *testing.T) {
 func TestSaveClinicianAnswers(t *testing.T) {
 	t.Parallel()
 	w := newClinic(t)
-	about, nurse := w.hq.Chapters[0], w.hq.Chapters[2]
+	about, health, nurse := w.hq.Chapters[0], w.hq.Chapters[1], w.hq.Chapters[2]
 	setStatus(t, w, w.ep, "ready_for_review")
 	const patientSaid = `{"q_heart": true, "q_smokes": "o_yes"}`
 	saveAnswers(t, w, w.ep, about, nil, patientSaid)
 	save := func(c *apitest.Client, h uuid.UUID, e apitest.Episode, chapter uuid.UUID, body any) *apitest.Resp {
 		return c.Do("PUT", epPath(h, e, "/answers/"+chapter.String()), body)
 	}
-	// The browser pre-fills from the patient's answers; the clinician corrects one.
-	corrected := map[string]any{"data": map[string]any{"q_smokes": "o_no", "q_heart": true}}
+	// The browser pre-fills from the patient's answers; the clinician corrects one. Each save
+	// sends the revision it started from: 0 when the clinician has no row yet.
+	correctedData := map[string]any{"q_smokes": "o_no", "q_heart": true}
+	corrected := map[string]any{"data": correctedData, "revision": 0}
 
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, save(w.anon, w.a, w.ep, about, corrected), http.StatusUnauthorized)
@@ -129,7 +150,12 @@ func TestSaveClinicianAnswers(t *testing.T) {
 		refused(t, w.clinician.Do("PUT", at(w.a, "/episodes/abc/answers/"+about.String()), corrected), http.StatusNotFound)
 		refused(t, save(w.clinician, w.a, w.ep, about, `{"data":`), http.StatusBadRequest)
 		refused(t, save(w.clinician, w.a, w.ep, about, `{"data": [1]}`), http.StatusBadRequest)
-		refused(t, save(w.clinician, w.a, w.ep, about, `{"data": {}, "validated": "yes"}`), http.StatusBadRequest)
+		refused(t, save(w.clinician, w.a, w.ep, about, `{"data": {}, "validated": "yes", "revision": 0}`), http.StatusBadRequest)
+		refused(t, save(w.clinician, w.a, w.ep, about, `{"data": {}}`), http.StatusBadRequest) // no revision
+		refused(t, save(w.clinician, w.a, w.ep, about, `{"data": {}, "revision": null}`), http.StatusBadRequest)
+		refused(t, save(w.clinician, w.a, w.ep, about, `{"data": {}, "revision": "0"}`), http.StatusBadRequest)
+		refused(t, save(w.clinician, w.a, w.ep, about, `{"data": {}, "revision": 1.5}`), http.StatusBadRequest)
+		refused(t, save(w.clinician, w.a, w.ep, about, `{"data": {}, "revision": -1}`), http.StatusBadRequest)
 	})
 	t.Run("before the patient submits", func(t *testing.T) {
 		waiting := w.fx.Episode(t, w.hq, w.cara)
@@ -143,34 +169,84 @@ func TestSaveClinicianAnswers(t *testing.T) {
 		t.Fatalf("refusals saved %d clinician rows", n)
 	}
 
-	t.Run("happy path: the first write makes the clinician's own row", func(t *testing.T) {
-		save(w.clinician, w.a, w.ep, about, corrected).Want(t, http.StatusNoContent)
+	t.Run("happy path: the first write makes the clinician's own row, at revision 1", func(t *testing.T) {
+		if rev := savedRevision(t, save(w.clinician, w.a, w.ep, about, corrected)); rev != 1 {
+			t.Errorf("revision = %d, want 1", rev)
+		}
 		c := readClinicianAnswers(t, w, w.ep, about)
-		if c.Data != `{"q_heart": true, "q_smokes": "o_no"}` || c.By == nil || *c.By != w.cara.ID || c.Validated != nil {
-			t.Errorf("clinician row = %+v, want the corrected answers by Cara, not validated", c)
+		if c.Data != `{"q_heart": true, "q_smokes": "o_no"}` || c.By == nil || *c.By != w.cara.ID || c.Validated != nil || c.Revision != 1 {
+			t.Errorf("clinician row = %+v, want the corrected answers by Cara, not validated, revision 1", c)
 		}
 		if got := patientAnswers(t, w, w.ep, about); got != patientSaid {
 			t.Errorf("the patient's answers changed: %s", got)
 		}
 	})
-	t.Run("happy path: validating stamps the set", func(t *testing.T) {
+	t.Run("happy path: validating stamps the set, at the next revision", func(t *testing.T) {
 		start := time.Now().Add(-time.Minute)
-		save(w.clinician, w.a, w.ep, about, map[string]any{"data": corrected["data"], "validated": true}).Want(t, http.StatusNoContent)
+		if rev := savedRevision(t, save(w.clinician, w.a, w.ep, about, map[string]any{"data": correctedData, "validated": true, "revision": 1})); rev != 2 {
+			t.Errorf("revision = %d, want 2", rev)
+		}
 		c := readClinicianAnswers(t, w, w.ep, about)
-		if c.Validated == nil || c.Validated.Before(start) || c.By == nil || *c.By != w.cara.ID {
-			t.Errorf("clinician row = %+v, want validated now by Cara", c)
+		if c.Validated == nil || c.Validated.Before(start) || c.By == nil || *c.By != w.cara.ID || c.Revision != 2 {
+			t.Errorf("clinician row = %+v, want validated now by Cara, revision 2", c)
 		}
 	})
 	t.Run("happy path: a clinician Question Set, which has no patient row", func(t *testing.T) {
-		save(w.clinician, w.a, w.ep, nurse, map[string]any{"data": map[string]string{"q_secret_bp": "120/80"}, "validated": true}).Want(t, http.StatusNoContent)
-		if c := readClinicianAnswers(t, w, w.ep, nurse); c.Validated == nil {
-			t.Errorf("clinician set = %+v, want validated", c)
+		savedRevision(t, save(w.clinician, w.a, w.ep, nurse, map[string]any{"data": map[string]string{"q_secret_bp": "120/80"}, "validated": true, "revision": 0}))
+		if c := readClinicianAnswers(t, w, w.ep, nurse); c.Validated == nil || c.Revision != 1 {
+			t.Errorf("clinician set = %+v, want validated, revision 1", c)
 		}
 	})
 	t.Run("a later save without validated clears the stamp", func(t *testing.T) {
-		save(w.clinician, w.a, w.ep, about, corrected).Want(t, http.StatusNoContent)
-		if c := readClinicianAnswers(t, w, w.ep, about); c.Validated != nil {
-			t.Errorf("clinician row = %+v, want the stamp cleared", c)
+		savedRevision(t, save(w.clinician, w.a, w.ep, about, map[string]any{"data": correctedData, "revision": 2}))
+		if c := readClinicianAnswers(t, w, w.ep, about); c.Validated != nil || c.Revision != 3 {
+			t.Errorf("clinician row = %+v, want the stamp cleared, revision 3", c)
+		}
+	})
+	t.Run("a stale revision is refused, and nothing is written", func(t *testing.T) {
+		before := readClinicianAnswers(t, w, w.ep, about)
+		for _, body := range []map[string]any{
+			{"data": map[string]string{"q_smokes": "o_yes"}, "revision": 2},                    // older
+			{"data": map[string]string{"q_smokes": "o_yes"}, "revision": 4},                    // newer than the row
+			{"data": map[string]string{"q_smokes": "o_yes"}, "revision": 0, "validated": true}, // "first" save, but there is a row
+		} {
+			r := save(w.clinician, w.a, w.ep, about, body)
+			refused(t, r, http.StatusConflict)
+			if !strings.Contains(r.Message(), "changed somewhere else") {
+				t.Errorf("message = %q", r.Message())
+			}
+		}
+		if after := readClinicianAnswers(t, w, w.ep, about); !reflect.DeepEqual(after, before) {
+			t.Errorf("clinician row = %+v, want unchanged %+v", after, before)
+		}
+		// A revision for a row that doesn't exist yet: the health set has no clinician row.
+		refused(t, save(w.clinician, w.a, w.ep, health, map[string]any{"data": map[string]bool{"q_diabetes": true}, "revision": 3}), http.StatusConflict)
+		if c := readClinicianAnswers(t, w, w.ep, health); c.Data != "" {
+			t.Errorf("a stale save made a row: %+v", c)
+		}
+	})
+	t.Run("X-1: a stale tab's Validate doesn't overwrite a newer answer", func(t *testing.T) {
+		// Both tabs opened the set at the current revision.
+		opened := readClinicianAnswers(t, w, w.ep, about).Revision
+		// Tab A changes smoking to Yes, and it autosaves.
+		savedRevision(t, save(w.clinician, w.a, w.ep, about, map[string]any{"data": map[string]any{"q_smokes": "o_yes", "q_heart": true}, "revision": opened}))
+		// Tab B, still showing No, validates.
+		r := save(w.clinician, w.a, w.ep, about, map[string]any{"data": correctedData, "validated": true, "revision": opened})
+		refused(t, r, http.StatusConflict)
+		if c := readClinicianAnswers(t, w, w.ep, about); c.Data != `{"q_heart": true, "q_smokes": "o_yes"}` || c.Validated != nil || c.Revision != opened+1 {
+			t.Errorf("clinician row = %+v, want tab A's answer, unvalidated, revision %d", c, opened+1)
+		}
+	})
+	t.Run("two first saves at once: one wins, the other gets a 409", func(t *testing.T) {
+		// The other tab's first save is in, but not committed, when this one arrives.
+		r := meanwhile(t, w.db, `INSERT INTO episode_answers (episode_id, chapter_id, actor, data, updated_by, revision)
+			VALUES ($1, $2, 'clinician', '{"q_diabetes": true}', $3, 1)`, []any{w.ep.ID, health, w.cara.ID},
+			func() *apitest.Resp {
+				return save(w.clinician, w.a, w.ep, health, map[string]any{"data": map[string]bool{"q_diabetes": false}, "revision": 0})
+			})
+		refused(t, r, http.StatusConflict)
+		if c := readClinicianAnswers(t, w, w.ep, health); c.Data != `{"q_diabetes": true}` || c.Revision != 1 {
+			t.Errorf("clinician row = %+v, want the first save's, revision 1", c)
 		}
 	})
 	t.Run("read-only once the review is complete", func(t *testing.T) {
@@ -179,12 +255,12 @@ func TestSaveClinicianAnswers(t *testing.T) {
 			t.Fatal("the clinician set wasn't validated by the earlier case")
 		}
 		setStatus(t, w, w.ep, "ready_for_poa")
-		r := save(w.clinician, w.a, w.ep, nurse, map[string]any{"data": map[string]string{"q_secret_bp": "changed"}, "validated": true})
+		r := save(w.clinician, w.a, w.ep, nurse, map[string]any{"data": map[string]string{"q_secret_bp": "changed"}, "validated": true, "revision": before.Revision})
 		refused(t, r, http.StatusConflict)
 		if !strings.Contains(r.Message(), "already complete") {
 			t.Errorf("message = %q", r.Message())
 		}
-		if after := readClinicianAnswers(t, w, w.ep, nurse); after.Data != before.Data || after.Validated == nil || !after.Validated.Equal(*before.Validated) {
+		if after := readClinicianAnswers(t, w, w.ep, nurse); !reflect.DeepEqual(after, before) {
 			t.Errorf("clinician row changed after the review: %+v", after)
 		}
 	})

@@ -40,8 +40,32 @@ func (s *server) episodeHQ(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"chapters": chapters, "answers": answers})
 }
 
+// staleAnswersMsg answers a save whose revision isn't the row's current one: another tab, device
+// or person has saved the Question Set since this one loaded it (S02a).
+const staleAnswersMsg = "These answers were changed somewhere else since you opened them. Reload to see the latest; your last change was not saved."
+
+// answersInput is the body of an answers save, the clinician's or the patient's.
+type answersInput struct {
+	Data      map[string]json.RawMessage `json:"data"`
+	Validated bool                       `json:"validated"` // the clinician's only
+	// Revision is the one the browser loaded or last saved: 0 for a Question Set it has no row for.
+	Revision *int32 `json:"revision"`
+}
+
+// validate returns a plain-language problem, or "".
+func (in *answersInput) validate() string {
+	if in.Revision == nil || *in.Revision < 0 {
+		return "The request could not be read."
+	}
+	if in.Data == nil {
+		in.Data = map[string]json.RawMessage{}
+	}
+	return ""
+}
+
 // saveClinicianAnswers saves the clinician's answers for one Question Set, and stamps it as
 // validated when `validated` is true. The browser has checked required questions (plan 2.1).
+// It answers with the new revision, or 409 if the revision sent is stale.
 func (s *server) saveClinicianAnswers(w http.ResponseWriter, r *http.Request) {
 	if !clinicianOnly(w, r) {
 		return
@@ -61,34 +85,36 @@ func (s *server) saveClinicianAnswers(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "get chapter", err)
 		return
 	}
-	var in struct {
-		Data      map[string]json.RawMessage `json:"data"`
-		Validated bool                       `json:"validated"`
-	}
+	var in answersInput
 	if !readJSON(w, r, chapter.MaxContentBytes, &in) {
 		return
 	}
-	if in.Data == nil {
-		in.Data = map[string]json.RawMessage{}
+	if msg := in.validate(); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
 	}
 	raw, err := json.Marshal(in.Data)
 	if err != nil {
 		serverError(w, "encode answers", err)
 		return
 	}
-	n, err := s.q.SaveClinicianAnswers(r.Context(), db.SaveClinicianAnswersParams{
-		EpisodeID: e.ID, ChapterID: cid, Data: raw, Validated: in.Validated,
+	rev, err := s.q.SaveClinicianAnswers(r.Context(), db.SaveClinicianAnswersParams{
+		EpisodeID: e.ID, ChapterID: cid, Data: raw, Validated: in.Validated, Revision: *in.Revision,
 		UpdatedBy: uuid.NullUUID{UUID: currentUser(r).ID, Valid: true},
 	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		if e.Status != episode.ReadyForReview {
+			writeError(w, http.StatusConflict, notInReview(e.Status))
+		} else {
+			writeError(w, http.StatusConflict, staleAnswersMsg)
+		}
+		return
+	}
 	if err != nil {
 		serverError(w, "save answers", err)
 		return
 	}
-	if n == 0 {
-		writeError(w, http.StatusConflict, notInReview(e.Status))
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusOK, map[string]int32{"revision": rev})
 }
 
 // completeReview moves the episode to Ready for POA. The browser enables it once every

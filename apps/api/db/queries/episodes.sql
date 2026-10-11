@@ -92,32 +92,50 @@ ORDER BY position, name;
 SELECT id, audience, content FROM chapters WHERE id = $1 AND version_id = $2;
 
 -- name: ListEpisodeAnswers :many
-SELECT a.chapter_id, a.actor, a.data, a.updated_at, a.validated_at, u.name AS updated_by_name
+SELECT a.chapter_id, a.actor, a.data, a.updated_at, a.validated_at, a.revision, u.name AS updated_by_name
 FROM episode_answers a
 LEFT JOIN users u ON u.id = a.updated_by
 WHERE a.episode_id = $1;
 
--- name: SavePatientAnswers :execrows
--- Saves nothing once the patient has submitted: their answers are then frozen.
-INSERT INTO episode_answers (episode_id, chapter_id, actor, data)
-SELECT e.id, sqlc.arg(chapter_id), 'patient', sqlc.arg(data)
+-- name: SavePatientAnswers :one
+-- Returns the new revision, or no row if nothing was saved:
+--   - once the patient has submitted, their answers are frozen;
+--   - `revision` must be the row's current one, or 0 if there's no row yet (see SaveClinicianAnswers).
+INSERT INTO episode_answers (episode_id, chapter_id, actor, data, revision)
+SELECT e.id, sqlc.arg(chapter_id), 'patient', sqlc.arg(data), 1
 FROM episodes e WHERE e.id = sqlc.arg(episode_id) AND e.patient_submitted_at IS NULL
-ON CONFLICT (episode_id, chapter_id, actor) DO UPDATE SET data = EXCLUDED.data, updated_at = now();
+  AND sqlc.arg(revision)::int = coalesce((SELECT a.revision FROM episode_answers a
+      WHERE a.episode_id = e.id AND a.chapter_id = sqlc.arg(chapter_id) AND a.actor = 'patient'), 0)
+ON CONFLICT (episode_id, chapter_id, actor) DO UPDATE
+SET data = EXCLUDED.data, updated_at = now(), revision = episode_answers.revision + 1
+WHERE episode_answers.revision = sqlc.arg(revision)
+RETURNING revision;
 
 -- name: SubmitPatientHQ :execrows
 UPDATE episodes SET patient_submitted_at = now(), status = 'ready_for_review'
 WHERE id = $1 AND patient_submitted_at IS NULL;
 
--- name: SaveClinicianAnswers :execrows
+-- name: SaveClinicianAnswers :one
 -- The clinician's copy of a Question Set's answers, which is final. `validated` stamps it
--- ("Validated by … on …"); a later save without it clears the stamp. Saves nothing unless the
--- episode is Ready for review: before that the patient is still filling in, after it the review is complete.
-INSERT INTO episode_answers (episode_id, chapter_id, actor, data, updated_by, validated_at)
+-- ("Validated by … on …"); a later save without it clears the stamp. Returns the new revision, or
+-- no row if nothing was saved:
+--   - unless the episode is Ready for review: before that the patient is still filling in, after
+--     it the review is complete;
+--   - unless `revision` is the one the caller started from: the row's current revision, or 0 if
+--     there's no row yet. The SELECT checks it against the rows as they were when the statement
+--     started; ON CONFLICT … WHERE checks it again against the row as it is now, so of two saves
+--     sent at once from the same revision, only the first is applied.
+INSERT INTO episode_answers (episode_id, chapter_id, actor, data, updated_by, validated_at, revision)
 SELECT e.id, sqlc.arg(chapter_id), 'clinician', sqlc.arg(data), sqlc.arg(updated_by),
-       CASE WHEN sqlc.arg(validated)::boolean THEN now() END
+       CASE WHEN sqlc.arg(validated)::boolean THEN now() END, 1
 FROM episodes e WHERE e.id = sqlc.arg(episode_id) AND e.status = 'ready_for_review'
+  AND sqlc.arg(revision)::int = coalesce((SELECT a.revision FROM episode_answers a
+      WHERE a.episode_id = e.id AND a.chapter_id = sqlc.arg(chapter_id) AND a.actor = 'clinician'), 0)
 ON CONFLICT (episode_id, chapter_id, actor) DO UPDATE
-SET data = EXCLUDED.data, updated_by = EXCLUDED.updated_by, updated_at = now(), validated_at = EXCLUDED.validated_at;
+SET data = EXCLUDED.data, updated_by = EXCLUDED.updated_by, updated_at = now(), validated_at = EXCLUDED.validated_at,
+    revision = episode_answers.revision + 1
+WHERE episode_answers.revision = sqlc.arg(revision)
+RETURNING revision;
 
 -- name: CompleteReview :execrows
 UPDATE episodes SET status = 'ready_for_poa', review_completed_by = $2, review_completed_at = now()

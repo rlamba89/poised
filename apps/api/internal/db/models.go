@@ -70,6 +70,7 @@ type EpisodeAnswer struct {
 	UpdatedBy   uuid.NullUUID      `json:"updatedBy"`
 	UpdatedAt   time.Time          `json:"updatedAt"`
 	ValidatedAt pgtype.Timestamptz `json:"validatedAt"`
+	Revision    int32              `json:"revision"`
 }
 
 type EpisodeEvent struct {

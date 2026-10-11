@@ -36,6 +36,17 @@ export function isSetComplete(json: ChapterJson, data: Answers | undefined, view
 }
 
 /**
+ * Whether a patient's set counts as complete on their list, so "Send my answers" can go: the
+ * answers the server has (`saved`) are complete, and what's on screen (`draft`, if any) has been
+ * saved. A change whose save failed keeps the set from counting, so the HQ can't be sent without it
+ * (S02a). `sameAnswer` ignores key order.
+ */
+export function isSetReadyToSend(json: ChapterJson, saved: Answers | undefined, draft: Answers | undefined, patient: SamplePatient): boolean {
+  if (draft !== undefined && !sameAnswer(draft, saved ?? {})) return false;
+  return isSetComplete(json, saved, "patient", patient);
+}
+
+/**
  * The Question Sets shown, in order (LOG-02). A set's condition sees the answers of the sets
  * shown before it, and the patient's age and sex.
  */

@@ -267,7 +267,7 @@ func (q *Queries) GetVersionChapter(ctx context.Context, arg GetVersionChapterPa
 }
 
 const listEpisodeAnswers = `-- name: ListEpisodeAnswers :many
-SELECT a.chapter_id, a.actor, a.data, a.updated_at, a.validated_at, u.name AS updated_by_name
+SELECT a.chapter_id, a.actor, a.data, a.updated_at, a.validated_at, a.revision, u.name AS updated_by_name
 FROM episode_answers a
 LEFT JOIN users u ON u.id = a.updated_by
 WHERE a.episode_id = $1
@@ -279,6 +279,7 @@ type ListEpisodeAnswersRow struct {
 	Data          json.RawMessage    `json:"data"`
 	UpdatedAt     time.Time          `json:"updatedAt"`
 	ValidatedAt   pgtype.Timestamptz `json:"validatedAt"`
+	Revision      int32              `json:"revision"`
 	UpdatedByName *string            `json:"updatedByName"`
 }
 
@@ -297,6 +298,7 @@ func (q *Queries) ListEpisodeAnswers(ctx context.Context, episodeID uuid.UUID) (
 			&i.Data,
 			&i.UpdatedAt,
 			&i.ValidatedAt,
+			&i.Revision,
 			&i.UpdatedByName,
 		); err != nil {
 			return nil, err
@@ -534,13 +536,18 @@ func (q *Queries) ListVersionChapters(ctx context.Context, versionID uuid.UUID) 
 	return items, nil
 }
 
-const saveClinicianAnswers = `-- name: SaveClinicianAnswers :execrows
-INSERT INTO episode_answers (episode_id, chapter_id, actor, data, updated_by, validated_at)
+const saveClinicianAnswers = `-- name: SaveClinicianAnswers :one
+INSERT INTO episode_answers (episode_id, chapter_id, actor, data, updated_by, validated_at, revision)
 SELECT e.id, $1, 'clinician', $2, $3,
-       CASE WHEN $4::boolean THEN now() END
+       CASE WHEN $4::boolean THEN now() END, 1
 FROM episodes e WHERE e.id = $5 AND e.status = 'ready_for_review'
+  AND $6::int = coalesce((SELECT a.revision FROM episode_answers a
+      WHERE a.episode_id = e.id AND a.chapter_id = $1 AND a.actor = 'clinician'), 0)
 ON CONFLICT (episode_id, chapter_id, actor) DO UPDATE
-SET data = EXCLUDED.data, updated_by = EXCLUDED.updated_by, updated_at = now(), validated_at = EXCLUDED.validated_at
+SET data = EXCLUDED.data, updated_by = EXCLUDED.updated_by, updated_at = now(), validated_at = EXCLUDED.validated_at,
+    revision = episode_answers.revision + 1
+WHERE episode_answers.revision = $6
+RETURNING revision
 `
 
 type SaveClinicianAnswersParams struct {
@@ -549,45 +556,64 @@ type SaveClinicianAnswersParams struct {
 	UpdatedBy uuid.NullUUID   `json:"updatedBy"`
 	Validated bool            `json:"validated"`
 	EpisodeID uuid.UUID       `json:"episodeId"`
+	Revision  int32           `json:"revision"`
 }
 
 // The clinician's copy of a Question Set's answers, which is final. `validated` stamps it
-// ("Validated by … on …"); a later save without it clears the stamp. Saves nothing unless the
-// episode is Ready for review: before that the patient is still filling in, after it the review is complete.
-func (q *Queries) SaveClinicianAnswers(ctx context.Context, arg SaveClinicianAnswersParams) (int64, error) {
-	result, err := q.db.Exec(ctx, saveClinicianAnswers,
+// ("Validated by … on …"); a later save without it clears the stamp. Returns the new revision, or
+// no row if nothing was saved:
+//   - unless the episode is Ready for review: before that the patient is still filling in, after
+//     it the review is complete;
+//   - unless `revision` is the one the caller started from: the row's current revision, or 0 if
+//     there's no row yet. The SELECT checks it against the rows as they were when the statement
+//     started; ON CONFLICT … WHERE checks it again against the row as it is now, so of two saves
+//     sent at once from the same revision, only the first is applied.
+func (q *Queries) SaveClinicianAnswers(ctx context.Context, arg SaveClinicianAnswersParams) (int32, error) {
+	row := q.db.QueryRow(ctx, saveClinicianAnswers,
 		arg.ChapterID,
 		arg.Data,
 		arg.UpdatedBy,
 		arg.Validated,
 		arg.EpisodeID,
+		arg.Revision,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	var revision int32
+	err := row.Scan(&revision)
+	return revision, err
 }
 
-const savePatientAnswers = `-- name: SavePatientAnswers :execrows
-INSERT INTO episode_answers (episode_id, chapter_id, actor, data)
-SELECT e.id, $1, 'patient', $2
+const savePatientAnswers = `-- name: SavePatientAnswers :one
+INSERT INTO episode_answers (episode_id, chapter_id, actor, data, revision)
+SELECT e.id, $1, 'patient', $2, 1
 FROM episodes e WHERE e.id = $3 AND e.patient_submitted_at IS NULL
-ON CONFLICT (episode_id, chapter_id, actor) DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+  AND $4::int = coalesce((SELECT a.revision FROM episode_answers a
+      WHERE a.episode_id = e.id AND a.chapter_id = $1 AND a.actor = 'patient'), 0)
+ON CONFLICT (episode_id, chapter_id, actor) DO UPDATE
+SET data = EXCLUDED.data, updated_at = now(), revision = episode_answers.revision + 1
+WHERE episode_answers.revision = $4
+RETURNING revision
 `
 
 type SavePatientAnswersParams struct {
 	ChapterID uuid.UUID       `json:"chapterId"`
 	Data      json.RawMessage `json:"data"`
 	EpisodeID uuid.UUID       `json:"episodeId"`
+	Revision  int32           `json:"revision"`
 }
 
-// Saves nothing once the patient has submitted: their answers are then frozen.
-func (q *Queries) SavePatientAnswers(ctx context.Context, arg SavePatientAnswersParams) (int64, error) {
-	result, err := q.db.Exec(ctx, savePatientAnswers, arg.ChapterID, arg.Data, arg.EpisodeID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+// Returns the new revision, or no row if nothing was saved:
+//   - once the patient has submitted, their answers are frozen;
+//   - `revision` must be the row's current one, or 0 if there's no row yet (see SaveClinicianAnswers).
+func (q *Queries) SavePatientAnswers(ctx context.Context, arg SavePatientAnswersParams) (int32, error) {
+	row := q.db.QueryRow(ctx, savePatientAnswers,
+		arg.ChapterID,
+		arg.Data,
+		arg.EpisodeID,
+		arg.Revision,
+	)
+	var revision int32
+	err := row.Scan(&revision)
+	return revision, err
 }
 
 const submitPatientHQ = `-- name: SubmitPatientHQ :execrows

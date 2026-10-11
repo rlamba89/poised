@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChapterJson } from "./doc";
 import { Model } from "survey-core";
-import { ageFrom, describeAnswer, isSetComplete, patientVariables, sameAnswer, shownSets } from "./respondent";
+import { ageFrom, describeAnswer, isSetComplete, isSetReadyToSend, patientVariables, sameAnswer, shownSets } from "./respondent";
 
 const smoking: ChapterJson = {
   pages: [{ name: "p_1", elements: [{ type: "radiogroup", name: "q_smoke", isRequired: true, choices: [{ value: "o_y", text: "Yes" }, { value: "o_n", text: "No" }] }] }],
@@ -24,6 +24,17 @@ describe("respondent", () => {
     // A required clinician-only question doesn't hold the patient up, but does hold up the clinician.
     expect(isSetComplete(clinicianNote, {}, "patient", pat)).toBe(true);
     expect(isSetComplete(clinicianNote, {}, "clinician", pat)).toBe(false);
+  });
+
+  // S02a verify.md, verification 2 finding 1: the server had a complete set, the patient changed an
+  // answer and the save failed. The set still counted as complete, so the HQ was sent without the change.
+  it("is ready to send only when the server's answers are complete and nothing on screen is unsaved", () => {
+    const saved = { q_smoke: "o_n" };
+    expect(isSetReadyToSend(smoking, saved, undefined, pat)).toBe(true); // nothing typed since loading
+    expect(isSetReadyToSend(smoking, saved, { q_smoke: "o_n" }, pat)).toBe(true); // what's on screen is saved
+    expect(isSetReadyToSend(smoking, saved, { q_smoke: "o_y" }, pat)).toBe(false); // a change that didn't save
+    expect(isSetReadyToSend(smoking, {}, { q_smoke: "o_n" }, pat)).toBe(false); // complete on screen only
+    expect(isSetReadyToSend(smoking, undefined, undefined, pat)).toBe(false); // nothing saved yet
   });
 
   it("shows a Question Set only when its condition is met by earlier sets", () => {

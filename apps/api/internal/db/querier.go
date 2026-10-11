@@ -63,11 +63,19 @@ type Querier interface {
 	// Saves only if nobody saved since the caller loaded `revision` (LCY-04).
 	SaveChapterContent(ctx context.Context, arg SaveChapterContentParams) (int32, error)
 	// The clinician's copy of a Question Set's answers, which is final. `validated` stamps it
-	// ("Validated by … on …"); a later save without it clears the stamp. Saves nothing unless the
-	// episode is Ready for review: before that the patient is still filling in, after it the review is complete.
-	SaveClinicianAnswers(ctx context.Context, arg SaveClinicianAnswersParams) (int64, error)
-	// Saves nothing once the patient has submitted: their answers are then frozen.
-	SavePatientAnswers(ctx context.Context, arg SavePatientAnswersParams) (int64, error)
+	// ("Validated by … on …"); a later save without it clears the stamp. Returns the new revision, or
+	// no row if nothing was saved:
+	//   - unless the episode is Ready for review: before that the patient is still filling in, after
+	//     it the review is complete;
+	//   - unless `revision` is the one the caller started from: the row's current revision, or 0 if
+	//     there's no row yet. The SELECT checks it against the rows as they were when the statement
+	//     started; ON CONFLICT … WHERE checks it again against the row as it is now, so of two saves
+	//     sent at once from the same revision, only the first is applied.
+	SaveClinicianAnswers(ctx context.Context, arg SaveClinicianAnswersParams) (int32, error)
+	// Returns the new revision, or no row if nothing was saved:
+	//   - once the patient has submitted, their answers are frozen;
+	//   - `revision` must be the row's current one, or 0 if there's no row yet (see SaveClinicianAnswers).
+	SavePatientAnswers(ctx context.Context, arg SavePatientAnswersParams) (int32, error)
 	// CLN-09: part of the code or description, within one code set, active only.
 	// ILIKE '%…%' is served by the pg_trgm GIN indexes.
 	SearchCodes(ctx context.Context, arg SearchCodesParams) ([]SearchCodesRow, error)

@@ -13,6 +13,8 @@ export type AnswerRow = {
   updatedAt: string;
   validatedAt: string | null;
   updatedByName: string | null;
+  /** Counts the row's saves; the next save sends it back (S02a). */
+  revision: number;
 };
 export type EpisodeHQ = {
   chapters: HQSet[];

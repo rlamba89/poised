@@ -44,6 +44,9 @@ func TestPatientHQ(t *testing.T) {
 	saveAnswers(t, w, w.ep, nurse, &w.cara, `{"q_secret_bp": "SECRET 120/80"}`)
 	other := w.fx.Episode(t, w.hq, w.cara)
 	saveAnswers(t, w, other, health, nil, `{"q_diabetes": true}`)
+	if _, err := w.db.Exec(t.Context(), `UPDATE episode_answers SET revision = 2 WHERE episode_id = $1`, w.ep.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	type hq struct {
 		Patient           struct{ FirstName, LastName string }
@@ -54,7 +57,8 @@ func TestPatientHQ(t *testing.T) {
 			Name    string
 			Content json.RawMessage
 		}
-		Answers map[uuid.UUID]json.RawMessage
+		Answers   map[uuid.UUID]json.RawMessage
+		Revisions map[uuid.UUID]int
 	}
 	check := func(t *testing.T, r *apitest.Resp) hq {
 		t.Helper()
@@ -88,6 +92,11 @@ func TestPatientHQ(t *testing.T) {
 		if len(got.Answers) != 1 || string(got.Answers[about]) != `{"q_smokes":"o_yes"}` {
 			t.Errorf("answers = %s, want only the patient's own answer", got.Answers)
 		}
+		// Each saved set's revision, which the next save sends back (S02a). A set with no
+		// answers yet has none: its first save sends 0.
+		if len(got.Revisions) != 1 || got.Revisions[about] != 2 {
+			t.Errorf("revisions = %v, want only the patient's own set, at 2", got.Revisions)
+		}
 	})
 	t.Run("wrong role: a signed-in clinician gets only what the patient gets", func(t *testing.T) {
 		got := check(t, w.clinician.Do("GET", patientPath(w.ep, ""), nil))
@@ -115,7 +124,13 @@ func TestSavePatientAnswers(t *testing.T) {
 	save := func(c *apitest.Client, e apitest.Episode, chapter uuid.UUID, body any) *apitest.Resp {
 		return c.Do("PUT", patientPath(e, "/answers/"+chapter.String()), body)
 	}
-	answers := map[string]any{"data": map[string]any{"q_smokes": "o_no", "q_heart": true}}
+	// Each save sends the revision it started from: 0 for a set with no answers yet.
+	answers := map[string]any{"data": map[string]any{"q_smokes": "o_no", "q_heart": true}, "revision": 0}
+	revisionOf := func(chapter uuid.UUID) int {
+		t.Helper()
+		return count(t, w.db, `SELECT coalesce(max(revision), -1) FROM episode_answers
+			WHERE episode_id = $1 AND chapter_id = $2 AND actor = 'patient'`, w.ep.ID, chapter)
+	}
 
 	t.Run("invalid input", func(t *testing.T) {
 		refused(t, w.anon.Do("PUT", "/api/p/short/answers/"+about.String(), answers), http.StatusNotFound)
@@ -123,10 +138,13 @@ func TestSavePatientAnswers(t *testing.T) {
 		refused(t, w.anon.Do("PUT", patientPath(w.ep, "/answers/abc"), answers), http.StatusNotFound)
 		refused(t, save(w.anon, w.ep, uuid.New(), answers), http.StatusNotFound)
 		refused(t, save(w.anon, w.ep, about, `{"data":`), http.StatusBadRequest)
-		refused(t, save(w.anon, w.ep, about, `{"data": ["q_smokes"]}`), http.StatusBadRequest)
+		refused(t, save(w.anon, w.ep, about, `{"data": ["q_smokes"], "revision": 0}`), http.StatusBadRequest)
+		refused(t, save(w.anon, w.ep, about, `{"data": {}}`), http.StatusBadRequest) // no revision
+		refused(t, save(w.anon, w.ep, about, `{"data": {}, "revision": "0"}`), http.StatusBadRequest)
+		refused(t, save(w.anon, w.ep, about, `{"data": {}, "revision": -1}`), http.StatusBadRequest)
 	})
 	t.Run("wrong role: the clinician Question Set is not the patient's", func(t *testing.T) {
-		refused(t, save(w.anon, w.ep, nurse, map[string]any{"data": map[string]string{"q_secret_bp": "1"}}), http.StatusNotFound)
+		refused(t, save(w.anon, w.ep, nurse, map[string]any{"data": map[string]string{"q_secret_bp": "1"}, "revision": 0}), http.StatusNotFound)
 	})
 	t.Run("another hospital: a Question Set of another HQ", func(t *testing.T) {
 		theirs := w.fx.PublishedHQ(t, w.b, w.bea, "workflow.json")
@@ -136,18 +154,56 @@ func TestSavePatientAnswers(t *testing.T) {
 		t.Fatalf("refusals saved %d answer rows", n)
 	}
 
-	t.Run("happy path: saved, and saved again on the next autosave", func(t *testing.T) {
-		save(w.anon, w.ep, about, answers).Want(t, http.StatusNoContent)
-		save(w.anon, w.ep, about, map[string]any{"data": map[string]any{"q_smokes": "o_yes"}}).Want(t, http.StatusNoContent)
-		if got := patientAnswers(t, w, w.ep, about); got != `{"q_smokes": "o_yes"}` {
-			t.Errorf("answers = %s, want the second save", got)
+	t.Run("happy path: saved at revision 1, and saved again on the next autosave", func(t *testing.T) {
+		if rev := savedRevision(t, save(w.anon, w.ep, about, answers)); rev != 1 {
+			t.Errorf("revision = %d, want 1", rev)
+		}
+		if rev := savedRevision(t, save(w.anon, w.ep, about, map[string]any{"data": map[string]any{"q_smokes": "o_yes"}, "revision": 1})); rev != 2 {
+			t.Errorf("revision = %d, want 2", rev)
+		}
+		if got := patientAnswers(t, w, w.ep, about); got != `{"q_smokes": "o_yes"}` || revisionOf(about) != 2 {
+			t.Errorf("answers = %s at revision %d, want the second save at 2", got, revisionOf(about))
+		}
+	})
+	t.Run("the link open on two devices: the older one's save is refused", func(t *testing.T) {
+		// Both opened the set at revision 2. The phone saves first.
+		savedRevision(t, save(w.anon, w.ep, about, map[string]any{"data": map[string]any{"q_smokes": "o_no"}, "revision": 2}))
+		for _, body := range []map[string]any{
+			{"data": map[string]any{"q_smokes": "o_yes"}, "revision": 2}, // the laptop, which still shows Yes
+			{"data": map[string]any{"q_smokes": "o_yes"}, "revision": 0}, // a "first" save, but there is a row
+			{"data": map[string]any{"q_smokes": "o_yes"}, "revision": 9}, // newer than the row
+		} {
+			r := save(w.anon, w.ep, about, body)
+			refused(t, r, http.StatusConflict)
+			if !strings.Contains(r.Message(), "changed somewhere else") {
+				t.Errorf("message = %q", r.Message())
+			}
+		}
+		if got := patientAnswers(t, w, w.ep, about); got != `{"q_smokes": "o_no"}` || revisionOf(about) != 3 {
+			t.Errorf("answers = %s at revision %d, want the phone's at 3", got, revisionOf(about))
+		}
+		// A revision for a set with no answers yet.
+		refused(t, save(w.anon, w.ep, health, map[string]any{"data": map[string]bool{"q_diabetes": true}, "revision": 1}), http.StatusConflict)
+		if got := patientAnswers(t, w, w.ep, health); got != "" {
+			t.Errorf("a stale save made a row: %s", got)
+		}
+	})
+	t.Run("two first saves at once: one wins, the other gets a 409", func(t *testing.T) {
+		r := meanwhile(t, w.db, `INSERT INTO episode_answers (episode_id, chapter_id, actor, data, revision)
+			VALUES ($1, $2, 'patient', '{"q_diabetes": true}', 1)`, []any{w.ep.ID, health},
+			func() *apitest.Resp {
+				return save(w.anon, w.ep, health, map[string]any{"data": map[string]bool{"q_diabetes": false}, "revision": 0})
+			})
+		refused(t, r, http.StatusConflict)
+		if got := patientAnswers(t, w, w.ep, health); got != `{"q_diabetes": true}` || revisionOf(health) != 1 {
+			t.Errorf("answers = %s at revision %d, want the first save's at 1", got, revisionOf(health))
 		}
 	})
 	t.Run("answers to questions the patient doesn't get are dropped", func(t *testing.T) {
-		save(w.anon, w.ep, about, map[string]any{"data": map[string]any{
+		savedRevision(t, save(w.anon, w.ep, about, map[string]any{"data": map[string]any{
 			"q_smokes": "o_yes", "q_smokes-Comment": "Pipe", "q_heart": false,
 			"q_secret_note": "injected", "q_secret_ecg": "injected", "q_on_secret_page": "injected", "q_made_up": 1,
-		}}).Want(t, http.StatusNoContent)
+		}, "revision": 3}))
 		var got map[string]any
 		if err := json.Unmarshal([]byte(patientAnswers(t, w, w.ep, about)), &got); err != nil {
 			t.Fatal(err)
@@ -158,9 +214,13 @@ func TestSavePatientAnswers(t *testing.T) {
 	})
 	t.Run("frozen after submit", func(t *testing.T) {
 		w.anon.Do("POST", patientPath(w.ep, "/submit"), nil).Want(t, http.StatusNoContent)
-		refused(t, save(w.anon, w.ep, about, answers), http.StatusConflict)
-		refused(t, save(w.anon, w.ep, health, map[string]any{"data": map[string]bool{"q_diabetes": true}}), http.StatusConflict)
-		if got := patientAnswers(t, w, w.ep, health); got != "" {
+		r := save(w.anon, w.ep, about, map[string]any{"data": map[string]any{"q_smokes": "o_no"}, "revision": 4})
+		refused(t, r, http.StatusConflict)
+		if !strings.Contains(r.Message(), "already been sent") {
+			t.Errorf("message = %q", r.Message())
+		}
+		refused(t, save(w.anon, w.ep, health, map[string]any{"data": map[string]bool{"q_diabetes": false}, "revision": 1}), http.StatusConflict)
+		if got := patientAnswers(t, w, w.ep, health); got != `{"q_diabetes": true}` {
 			t.Errorf("a Question Set was saved after submit: %s", got)
 		}
 		if got := patientAnswers(t, w, w.ep, about); !strings.Contains(got, `"q_smokes-Comment": "Pipe"`) {

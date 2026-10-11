@@ -76,9 +76,11 @@ func (s *server) patientHQ(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	answers := map[uuid.UUID]json.RawMessage{}
+	revisions := map[uuid.UUID]int32{} // what the next save of each set sends back (S02a)
 	for _, a := range saved {
 		if a.Actor == "patient" {
 			answers[a.ChapterID] = a.Data
+			revisions[a.ChapterID] = a.Revision
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -87,11 +89,13 @@ func (s *server) patientHQ(w http.ResponseWriter, r *http.Request) {
 		"submitted":         e.PatientSubmittedAt.Valid,
 		"chapters":          chapters,
 		"answers":           answers,
+		"revisions":         revisions,
 	})
 }
 
 // savePatientAnswers autosaves one Question Set's answers (SurveyJS data). Only answers to the
-// patient's own questions are kept, and nothing is saved once the HQ has been submitted.
+// patient's own questions are kept, and nothing is saved once the HQ has been submitted. It
+// answers with the new revision, or 409 if the revision sent is stale (the link is open twice).
 func (s *server) savePatientAnswers(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.loadByToken(w, r)
 	if !ok {
@@ -110,10 +114,12 @@ func (s *server) savePatientAnswers(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "get chapter", err)
 		return
 	}
-	var in struct {
-		Data map[string]json.RawMessage `json:"data"`
-	}
+	var in answersInput
 	if !readJSON(w, r, chapter.MaxContentBytes, &in) {
+		return
+	}
+	if msg := in.validate(); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 	_, names, err := chapter.ForPatient(c.Content)
@@ -130,16 +136,20 @@ func (s *server) savePatientAnswers(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "encode answers", err)
 		return
 	}
-	n, err := s.q.SavePatientAnswers(r.Context(), db.SavePatientAnswersParams{EpisodeID: e.ID, ChapterID: c.ID, Data: raw})
+	rev, err := s.q.SavePatientAnswers(r.Context(), db.SavePatientAnswersParams{EpisodeID: e.ID, ChapterID: c.ID, Data: raw, Revision: *in.Revision})
+	if errors.Is(err, pgx.ErrNoRows) {
+		if e.PatientSubmittedAt.Valid {
+			writeError(w, http.StatusConflict, "Your answers have already been sent, so they can't be changed here.")
+		} else {
+			writeError(w, http.StatusConflict, staleAnswersMsg)
+		}
+		return
+	}
 	if err != nil {
 		serverError(w, "save answers", err)
 		return
 	}
-	if n == 0 {
-		writeError(w, http.StatusConflict, "Your answers have already been sent, so they can't be changed here.")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusOK, map[string]int32{"revision": rev})
 }
 
 // submitPatientHQ freezes the patient's answers and moves the episode to Ready for review

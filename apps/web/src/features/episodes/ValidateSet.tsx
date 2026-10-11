@@ -2,7 +2,8 @@
 // Step 4 of plan-workflow.md: the clinician validates one Question Set. The clinician view shows
 // the patient's answers beside the clinician questions; the clinician corrects answers (each
 // change shows what the patient said) and fills in their own. Answers save as they go;
-// "Validate" checks required questions and stamps the set.
+// "Validate" checks required questions and stamps the set. Saves carry the set's revision, so a
+// save from a stale tab gets a 409 and the page asks for a reload instead of overwriting (S02a).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,7 +12,7 @@ import { IconArrowLeft, IconCircleCheck } from "@tabler/icons-react";
 import type { Model } from "survey-core";
 import { Survey } from "survey-react-ui";
 import "survey-core/survey-core.css";
-import { patientVariables, refreshClinicalSummaries, registerClinicalProperties, sameAnswer, type Answers } from "@poised/clinical";
+import { answerSaver, patientVariables, refreshClinicalSummaries, registerClinicalProperties, sameAnswer, type Answers } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { clinicianModel } from "@/features/preview/clinicianView";
@@ -23,19 +24,27 @@ import { patientName, type Episode } from "./types";
 registerClinicalProperties();
 
 export default function ValidateSet({ hospitalId, episodeId, chapterId }: { hospitalId: string; episodeId: string; chapterId: string }) {
-  const { data, error: episodeError } = useEpisode(hospitalId, episodeId);
-  const { hq, error: hqError } = useEpisodeHQ(hospitalId, episodeId);
+  const { data, error: episodeError, reload: reloadEpisode } = useEpisode(hospitalId, episodeId);
+  const { hq, error: hqError, reload: reloadHQ } = useEpisodeHQ(hospitalId, episodeId);
+  // Bumped by Reload, so the set is built again from the latest answers.
+  const [loads, setLoads] = useState(0);
+  const reload = async () => {
+    await Promise.all([reloadEpisode(), reloadHQ()]);
+    setLoads((n) => n + 1);
+  };
   const error = episodeError || hqError;
   if (error) return <Alert color="red">{error}</Alert>;
   if (!data || !hq) return <Center h="40vh"><Loader /></Center>;
   const set = hq.chapters.find((c) => c.id === chapterId);
   if (!set) return <Alert color="red">This Question Set isn&apos;t part of the episode.</Alert>;
-  return <Validate hospitalId={hospitalId} episode={data.episode} hq={hq} set={set} />;
+  return <Validate key={loads} hospitalId={hospitalId} episode={data.episode} hq={hq} set={set} onReload={reload} />;
 }
 
 const SAVE_DELAY_MS = 600;
 
-function Validate({ hospitalId, episode, hq, set }: { hospitalId: string; episode: Episode; hq: EpisodeHQ; set: HQSet }) {
+type ValidateProps = { hospitalId: string; episode: Episode; hq: EpisodeHQ; set: HQSet; onReload: () => Promise<void> };
+
+function Validate({ hospitalId, episode, hq, set, onReload }: ValidateProps) {
   const router = useRouter();
   const back = `/h/${hospitalId}/episodes/${episode.id}`;
   const path = `/h/${hospitalId}/episodes/${episode.id}/answers/${set.id}`;
@@ -44,6 +53,9 @@ function Validate({ hospitalId, episode, hq, set }: { hospitalId: string; episod
   const patient = hq.patient[set.id];
   const [status, setStatus] = useState<"saved" | "saving" | "error">("saved");
   const [error, setError] = useState("");
+  // The 409's message: the answers changed somewhere else, so nothing more is saved until Reload.
+  const [conflict, setConflict] = useState("");
+  const [reloading, setReloading] = useState(false);
   const [validated, setValidated] = useState(row?.validatedAt ? row : null);
   const saved = useRef<Answers>(currentAnswers(hq, set.id));
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -59,6 +71,16 @@ function Validate({ hospitalId, episode, hq, set }: { hospitalId: string; episod
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [set.id]);
 
+  // Saves run one at a time, each with the revision the last one returned. Built once, like the model.
+  const saver = useMemo(
+    () =>
+      answerSaver<{ data: Answers; validated: boolean }>(row?.revision ?? 0, (body, revision) =>
+        api<{ revision: number }>(path, { method: "PUT", body: JSON.stringify({ ...body, revision }) }),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [path],
+  );
+
   const save = useCallback(
     async (validate: boolean) => {
       clearTimeout(timer.current);
@@ -66,19 +88,23 @@ function Validate({ hospitalId, episode, hq, set }: { hospitalId: string; episod
       // Nothing changed (calculations re-run on load), so keep the stamp.
       if (!validate && sameAnswer(data, saved.current)) return true;
       setStatus("saving");
-      try {
-        await api(path, { method: "PUT", body: JSON.stringify({ data, validated: validate }) });
+      const result = await saver.save({ data, validated: validate });
+      if (result.ok) {
         saved.current = data;
         setStatus("saved");
         if (!validate) setValidated(null); // a change after validating needs validating again
         return true;
-      } catch (e) {
-        setError((e as Error).message);
-        setStatus("error");
-        return false;
       }
+      if (result.conflict) {
+        model.readOnly = true; // no more changes that couldn't be saved
+        setConflict(result.message);
+      } else {
+        setError(result.message);
+      }
+      setStatus("error");
+      return false;
     },
-    [model, path],
+    [model, saver],
   );
 
   useEffect(() => {
@@ -117,7 +143,7 @@ function Validate({ hospitalId, episode, hq, set }: { hospitalId: string; episod
         </Group>
         <Group gap="sm">
           {editable && <Text size="sm" c={status === "error" ? "red" : "dimmed"} data-testid="validate-save-status">{status === "saving" ? "Saving…" : status === "error" ? "Not saved" : "Saved"}</Text>}
-          {editable && <Button onClick={validate} leftSection={<IconCircleCheck size={16} />}>Validate</Button>}
+          {editable && <Button onClick={validate} disabled={!!conflict} leftSection={<IconCircleCheck size={16} />}>Validate</Button>}
         </Group>
       </Group>
       {!editable && (
@@ -126,6 +152,14 @@ function Validate({ hospitalId, episode, hq, set }: { hospitalId: string; episod
         </Alert>
       )}
       {editable && set.audience === "patient" && !patient && <Alert color="orange">The patient didn&apos;t answer this Question Set.</Alert>}
+      {conflict && (
+        <Alert color="red" title="Not saved">
+          <Group justify="space-between" wrap="nowrap">
+            <Text size="sm">{conflict}</Text>
+            <Button size="xs" style={{ flexShrink: 0 }} loading={reloading} onClick={() => { setReloading(true); onReload(); }}>Reload</Button>
+          </Group>
+        </Alert>
+      )}
       {error && <Alert color="red">{error}</Alert>}
       <Card withBorder padding={0} className="sj-clinician-layout">
         <Survey model={model} />
