@@ -91,7 +91,7 @@ Leave the existing fake-querier tests (`fakeQ`) alone. Per rule 4, they're repla
 
 ## Status
 
-**In progress.** Session S01 (Step 1, and Step 2 for the authoring routes) is built, passed manual testing (report 1, 8 Oct: 19 of 19) and is verified ([build notes](../sessions/S01-integration-harness/build-notes.md), [verify](../sessions/S01-integration-harness/verify.md)). S02 (Step 2 for the episode, patient-link, clinician and sign-in routes) is built and passed manual testing (report 2, 8 Oct: 17 of 17) and is verified (8 Oct; [build notes](../sessions/S02-workflow-route-tests/build-notes.md), [verify](../sessions/S02-workflow-route-tests/verify.md)). S02a (two bug fixes) is built and passed manual testing (report 1, 9 Oct: 15 of 15; [build notes](../sessions/S02a-answer-revisions/build-notes.md)). Verification 1 found a Major bug in the patient page (a failed save was never re-sent), now fixed test-first. The retest passed (report 2, 11 Oct: 10 of 10). Verification 2 (independent) found a related Major gap: a complete section with a change that failed to save could still be sent. It's fixed test-first. Verification 3 (11 Oct) retested the fix in the browser and **verified** S02a ([verify](../sessions/S02a-answer-revisions/verify.md)). S03 is next.
+**Done (12 Oct 2026).** Session S01 (Step 1, and Step 2 for the authoring routes) is built, passed manual testing (report 1, 8 Oct: 19 of 19) and is verified ([build notes](../sessions/S01-integration-harness/build-notes.md), [verify](../sessions/S01-integration-harness/verify.md)). S02 (Step 2 for the episode, patient-link, clinician and sign-in routes) is built and passed manual testing (report 2, 8 Oct: 17 of 17) and is verified (8 Oct; [build notes](../sessions/S02-workflow-route-tests/build-notes.md), [verify](../sessions/S02-workflow-route-tests/verify.md)). S02a (two bug fixes) is built and passed manual testing (report 1, 9 Oct: 15 of 15; [build notes](../sessions/S02a-answer-revisions/build-notes.md)). Verification 1 found a Major bug in the patient page (a failed save was never re-sent), now fixed test-first. The retest passed (report 2, 11 Oct: 10 of 10). Verification 2 (independent) found a related Major gap: a complete section with a change that failed to save could still be sent. It's fixed test-first. Verification 3 (11 Oct) retested the fix in the browser and **verified** S02a ([verify](../sessions/S02a-answer-revisions/verify.md)). S03 (Steps 3 and 4) is built (12 Oct) and passed manual testing (report 1, 12 Oct: 16 passed, T-04's headed run not watchable by the tester) ([build notes](../sessions/S03-e2e-journeys/build-notes.md)), and is **verified** (12 Oct; [verify](../sessions/S03-e2e-journeys/verify.md): six minor follow-ups, none blocking).
 
 **Differences from the plan (S01):**
 - **Fixtures:** `fx.DraftHQ` / `fx.PublishedHQ(t, hospital, by, file)` take the creating user and a `testdata/` file name; `fx.DraftHQ` was added. `c.LoginAs(t, user)` returns a new signed-in client, so a test can hold several users.
@@ -123,3 +123,13 @@ Leave the existing fake-querier tests (`fakeQ`) alone. Per rule 4, they're repla
   - every 409 on an answers save (not only a stale revision) stops autosaving and offers Reload.
 - **Race tests use `meanwhile`** (`cast_integration_test.go`): the conflicting change holds a row lock until the request is seen waiting on it, so the race happens in a fixed order through the real API and database.
 - **Old fake-querier tests for the changed routes were removed** (testing rule 4); the integration tests cover their cases.
+
+**S03 (12 Oct), Steps 3 and 4:**
+- **`e2e/`** has journeys J1–J5 (Playwright + pytest), `make e2e-setup` and `make e2e`. Data is set up through the API as the seeded users, with unique names.
+- **Differences from the plan:**
+  - `spikes/ui-workflow.ts` was never committed and wasn't on this machine, so there was nothing to delete. The journeys were written from the app.
+  - No `data-testid` was added; the app is unchanged.
+  - The patient's phone is WebKit with the iPhone 13 profile, and its trace is kept too.
+  - J3 also checks the locked status and "Episode created" before the patient starts, and the thank-you page on reopening the link.
+  - J2's logic problem is a condition on a question that no longer exists, fixed in the Logic tab (no drag).
+- **No bugs found** by the journeys. One `make e2e` run in 32 failed and wasn't captured or reproduced (build notes, Checks).

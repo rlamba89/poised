@@ -87,6 +87,12 @@ docker compose up -d --force-recreate db
   - **If Reload fails on the clinician's set page, the page is stuck on the error** (finding 3, new in S02a): `ValidateSet.tsx` doesn't wait for or catch the reload, and the error from `useEpisode` / `useEpisodeHQ` is never cleared. Refreshing the browser recovers.
 - **Found by the S02a manual test, 9 Oct** (older than S02a; [test-report-1.md](sessions/S02a-answer-revisions/test-report-1.md) item 3):
   - **The editor says "All changes saved" while a title edit is still in the focused field.** It saves only when the field loses focus. So a stale editor tab finds out about a conflict only then, and an edit can look saved when it isn't.
+- **Found by the S03 manual test, 12 Oct** (all older than S03; details in [test-report-1.md](sessions/S03-e2e-journeys/test-report-1.md), "Found while exploring"):
+  - **A "comes later" logic problem opens an empty-looking condition.** Clicking the problem opens the Logic tab with a blank "Select a question…" picker, because the tested question isn't in the earlier-questions list, while the card still says "Displays when Do you smoke? is Yes". The author isn't shown the cause.
+  - **A question in a Clinician Question Set is badged PATIENT** on its card ("Blood pressure" in Nurse checks).
+  - **Undo can't be reached while a question is selected:** the Settings panel replaces the Structure panel, where Undo lives.
+  - **The New episode "Health questionnaire" dropdown can't be searched.** Each `make e2e` run publishes four more `E2E …` HQs in Hospital A, so the list grows; rebuild the local database when it's cluttered. C2 rebuilds this page.
+  - **Clicks straight after a page loads were sometimes ignored** (3 times, in dev mode). Possibly the testing tool's timing; unconfirmed.
 - **Lifebox import:**
   - Conditions that cross Question Sets on pages and questions are still dropped with a warning.
   - Lifebox has no Question Set-level conditions to import.

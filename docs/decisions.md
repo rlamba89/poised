@@ -30,6 +30,17 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 12 Oct 2026: S03, the end-to-end journeys (builder's choices, for verification)
+
+- **The patient's journey (J3) runs in WebKit with Playwright's iPhone 13 profile,** not in Chromium at phone size.
+  - **Reason:** it's the closer match to a real iPhone (Safari's engine), and F1 already installs WebKit.
+  - The `phone` fixture keeps its trace through pytest-playwright's private `_artifacts_recorder`; check it when upgrading pytest-playwright.
+- **Each journey sets up its own data through the API** (`e2e/support.py`), as the seeded users, with unique names. J4 sends the patient's answers through the patient-link API; J5 also validates and completes the review through the API. Nothing is deleted.
+  - **Reason:** journeys must not depend on each other or their order (testing rule 5), and the UI is used only for the journey being tested.
+- **No `data-testid` was added.** Everything is found by role or label, apart from three ids that already existed, listed in `e2e/README.md`.
+- **`make e2e ARGS=…` passes options to pytest** (e.g. `ARGS=--headed`), and **`make e2e-setup PYTHON=…`** names the Python 3.12+ to use (default `python3.12`).
+- **Details:** [S03 build notes](sessions/S03-e2e-journeys/build-notes.md), [e2e/README.md](../e2e/README.md).
+
 ### 11 Oct 2026: finding the patient when creating an episode
 
 - **Matching a patient to an existing record is silent, and shows nothing from other hospitals** (Rahul, 11 Oct).
@@ -314,11 +325,11 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
   docker compose up -d --force-recreate db
   ```
 - **Long-running dev servers started by Claude** are stopped after their time limit (max 2 h). Run `make dev` in your own terminal for long sessions.
-- **Headless browser checks** (`spikes/ui-*.ts`, gitignored, so they won't exist on a new machine):
+- **Headless browser checks** (`spikes/ui-*.ts`, gitignored, so they won't exist on a new machine; *superseded 12 Oct 2026 by the committed journeys in `e2e/`*):
   - They use Playwright's `chrome-headless-shell` from `~/Library/Caches/ms-playwright/`, via `CHROME_PATH`.
   - A visible run needs `HEADED=1 SLOWMO=100 HEADED_CHROME_PATH=<full Chromium>`.
   - Use an explicit browser context to open several tabs.
-  - Plan F1 replaces all this with `e2e/`.
+  - Plan F1 replaced all this with `e2e/` (S03, 12 Oct).
 - **Driving the Lifebox Training site from a script:**
   - It redirects `/author` URLs to `/hospitals` until a hospital is picked.
   - Clicking from VS Code needs "Allow JavaScript from Apple Events" in Chrome.
@@ -355,16 +366,23 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
     - click the app's own controls from script, and confirm results in the page text and the request log;
     - send a dialog's request directly when its content can't show, and say so in the report;
     - run long scripts in the background and poll their results, because the tool times out after 45 s.
+- **End-to-end journeys (`e2e/`, found in S03, 12 Oct):**
+  - **SurveyJS hides the real radio input** behind a drawn one, so Playwright's `check()` waits forever ("intercepts pointer events"). Tap the option's text instead: `support.choose(page, question, option)`.
+  - **`make dev` adds a Next.js tools button** whose name contains "Next", so `get_by_role("button", name="Next")` matches two buttons. Use `exact=True` (until F2 removes Next.js).
+  - **A failed journey keeps one trace per browser plus one for the API set-up** (`trace-1.zip`…, in no fixed order), in `e2e/test-results/<journey>/`.
+  - **To stop a pytest run with one clean message, raise `pytest.UsageError` in `pytest_sessionstart`.** `pytest.exit` from a fixture prints it twice, with pytest noise.
+  - **On Rahul's Mac, `python3` is 3.10;** `python3.12` and `python3.13` come from Homebrew. `make e2e-setup` uses `python3.12`.
+  - **For F4's pipeline:** CodeBuild needs Python 3.12+ (`PYTHON=` if it isn't `python3.12`), and the journeys sign in with the dev stub, so QA needs it until S12.
+- **`docker` may not be on a Claude Code shell's PATH on Rahul's Mac** (found verifying S03, 12 Oct), so `make test-integration` stops at `db-up` with "docker: No such file or directory". Prefix the command with `PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"`.
 - **The Claude in Chrome network log shows every `204 No Content` as 503** (found in S01 testing, 8 Oct). `fetch` and `curl` both return the real 204. Testers should ignore a 503 on a route that answers 204, such as a DELETE, publish or logout. Other error codes are reported correctly.
 
 ## 5. Open items (as of 8 Oct 2026)
 
-- **Next work:** plan **F1** ([plans/f1-test-foundation.md](plans/f1-test-foundation.md)). Sessions S01 and S02 are verified (8 Oct); S02a is next, then S03.
+- **Next work:** plan **F2** ([plans/f2-react-vite.md](plans/f2-react-vite.md)), session S04. Plan F1 is done (S03 verified 12 Oct); its six minor e2e follow-ups are in [S03's verify.md](sessions/S03-e2e-journeys/verify.md).
 - **The `dev` branch** (on `origin` too; commit `557be2c` "Auth first: sessions, trusts, Cognito staff sign-in, patient link sign-in", 7 Oct) isn't mentioned in the plans or sessions. Decide whether sessions S08–S15 supersede it or should reuse parts of it.
 - **Build order, undecided:** the roadmap order (F1 → F2 → F3 → F4 → C1 → C2), or F1 and F2, then C1 and C2 before the AWS work (F3, F4). The roadmap order stands until Rahul decides.
 - **No domain chosen yet.** `<domain>` in the docs is a placeholder.
 - **Research files:** `research_notes/` and `reports/` at the repo root are untracked. Either keep them (e.g. move them to `docs/research/` and fix the links in saas-requirements §0 and §13 and in this file) or delete them.
-- **The lost update on clinician answers** (Major, found in S02 testing, 8 Oct) is fixed in session S02a, with a revision check (decided 8 Oct, §2).
 - **Before C2 (S14), decide what the patient link returns** (found in S02 testing, 8 Oct). `GET /api/p/{token}` includes the date of birth. With magic link + date-of-birth sign-in, that would give away the check. Details are in [pending.md](pending.md) §3.
 - **The proposed parts of A-20** (above, 7–8 Oct) need Rahul's yes when C1 and C2 start.
 - **App branding** still says "Lifebox" in the UI (`apps/web/src/app/layout.tsx`, `h/[hospitalId]/layout.tsx`, `PatientHQ.tsx`). Rename it to Poised.
