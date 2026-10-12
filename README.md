@@ -57,10 +57,21 @@ Open http://localhost:3000 and sign in as a seeded user:
 
 - **Environment:** `make` creates `.env` from `.env.example` on first run. No SurveyJS licence is needed: survey-core and survey-react-ui are MIT, and the Creator is no longer used.
 - **Other commands:**
-  - `make test`: `go test` and Vitest.
   - `make lint`: `go vet` and `tsc`.
   - `make sqlc`: regenerates `apps/api/internal/db` after editing `db/queries`.
   - `make migrate-down`: rolls back the last migration.
+
+## Tests
+
+The rules for each kind are in [docs/plans/README.md](docs/plans/README.md#testing-rules-apply-to-every-plan).
+
+| Command | What it covers | Needs |
+| --- | --- | --- |
+| `make test` | **Unit tests:** Go packages (`go test ./...`) and `packages/clinical` and the web app (Vitest). | Nothing running |
+| `make test-integration` | **API → database:** real HTTP requests through the real Go router into a real migrated Postgres, checking the response and the rows. Every route has its happy path, no sign-in, wrong role, another hospital's data and invalid input. | Docker (it starts the compose database) |
+| `make e2e` | **End-to-end journeys** in a real browser (Playwright + pytest, in [e2e/](e2e/README.md)): J1 author, J2 publish, J3 patient (on an iPhone 13), J4 clinician validates (with a stale second tab), J5 POA Summary. | `make e2e-setup` once (Python 3.12+), then `make dev` running |
+
+`make e2e ARGS=--headed` shows the browsers as the journeys run. A failed journey keeps its Playwright trace; [e2e/README.md](e2e/README.md) explains how to read it.
 
 ## Demo script
 
@@ -123,8 +134,9 @@ packages/clinical   shared TS: editor model (doc.ts), conditions (logic.ts), per
                     (fields.ts), question types and functions, properties, stable IDs, viewer
                     rules and patient screens, clinical summary, computeOutputs, test cases,
                     translations
+e2e                 end-to-end journeys J1–J5 (Playwright + pytest); see e2e/README.md
 tools               Lifebox export snippet; HQ-from-notes converter
-spikes              step 0 spike results and headless-browser checks (throwaway; see spikes/README.md)
+spikes              step 0 spike results (throwaway; see spikes/README.md)
 ```
 
 ## Deviations from the plan
@@ -155,4 +167,4 @@ These are from the first slice. The SurveyJS Creator rows no longer apply: the C
 - **Question Set conditions in the preview:** a one-set preview can't see earlier sets' answers. It decides a condition only when it tests just the patient, and otherwise explains it above the form.
 - **Publishing:** one-click Publish (publisher role) is blocked by logic problems, failing test cases and unsaved changes. There's no review or sign-off step yet (SGN).
 - **Skip rules:** a skip rule stays on the page whose Logic panel it was added on, and may test that page and earlier ones. Rules saved before 1 Oct (without a page) are listed under the latest page they test.
-- **Test coverage:** tests are unit-level, as agreed. The headless-browser checks in `spikes/ui-*.ts` drive the editor and the preview end to end, but they are not part of `make test`.
+- **Test coverage:** see [Tests](#tests). The journeys cover the main path through each screen, not every feature; [docs/manual-test-plan.md](docs/manual-test-plan.md) marks which manual cases they automate.

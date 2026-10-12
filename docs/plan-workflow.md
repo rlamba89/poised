@@ -203,7 +203,7 @@ Each step is committed on its own, with Go handler tests and Vitest tests as bef
 
 ### Step 6: demo script and checks
 - The walkthrough is section M of [manual-test-plan.md](manual-test-plan.md) (MT-64 to MT-68).
-- `spikes/ui-workflow.ts` drives the whole workflow in a headless browser. It is a local check, like the other `ui-*.ts` scripts, and isn't committed.
+- `spikes/ui-workflow.ts` drives the whole workflow in a headless browser. It is a local check, like the other `ui-*.ts` scripts, and isn't committed. (Retired 12 Oct 2026: the e2e journeys J3–J5 in `e2e/` replace it.)
 
 ## Status (1 Oct 2026)
 

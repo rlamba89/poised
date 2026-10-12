@@ -38,7 +38,7 @@ The next work is turning it into a multi-trust SaaS on AWS.
   - **End-to-end:** Playwright + Python (pytest) in `e2e/`, written as user journeys. Patient journeys run at phone size.
 - **Commits:** one commit per plan step, each with its tests. Update the plan's Status section, and record any differences from the plan.
 - **Record decisions in the repo, not in Claude memory.** Claude's memory and chat history stay on one machine. Add every new decision, preference or gotcha to [docs/decisions.md](docs/decisions.md) in the same session. The project skill **`/update-wiki`** (`.claude/skills/update-wiki/`) does this: run it whenever a decision is made or a plan step finishes, and before ending a session.
-- **`spikes/ui-*.ts` and `spikes/mt/` are gitignored local scripts**, so don't rely on them existing. Committed browser tests go in `e2e/` (plan F1).
+- **`spikes/ui-*.ts` and `spikes/mt/` are gitignored local scripts**, so don't rely on them existing. Committed browser tests are the journeys in `e2e/`.
 - **No real patient data** goes into this system before go-live (plan C10). Seed and test data are made up.
 - **The remote is Rahul's personal GitHub** (`github.com/rlamba89/poised`, private). Never push to a Lifebox organisation, and never put the Lifebox company's GitHub organisation name anywhere in the repo, including module paths, docs and commit messages. It was scrubbed from the history on 2 Oct.
 
@@ -53,6 +53,8 @@ make dev                    # Go API on :8080 + web on :3000 (web proxies /api/*
 make test                   # go test ./... + Vitest in every workspace (no database needed)
 make test-integration       # API → database tests (-tags integration): a fresh database per test
 make lint                   # go vet (with the integration tag) + tsc --noEmit
+make e2e-setup              # once: e2e/.venv (Python 3.12+), pinned Playwright + pytest, Chromium and WebKit
+make e2e                    # journeys J1–J5 in real browsers against make dev (ARGS=--headed to watch)
 make sqlc                   # regenerate apps/api/internal/db after editing apps/api/db/queries/*.sql
 make migrate-down           # roll back the last migration
 ```
@@ -61,6 +63,7 @@ make migrate-down           # roll back the last migration
 - **Go:** `cd apps/api && go test ./internal/httpapi -run TestSaveContentRevision -v`
 - **Go integration:** `cd apps/api && TEST_DATABASE_URL='postgres://sj:sj@localhost:5432/postgres?sslmode=disable' go test -tags integration -count=1 ./internal/httpapi -run TestSaveChapterContent -v`. The harness is `internal/apitest` (see its package comment); route tests are `internal/httpapi/*_integration_test.go`.
 - **TypeScript (`packages/clinical`):** `cd packages/clinical && npx vitest run src/outputs.test.ts -t "computeOutputs"`
+- **One journey:** `cd e2e && .venv/bin/pytest journeys/test_j3_patient.py --headed`. A failure keeps its trace in `e2e/test-results/` ([e2e/README.md](e2e/README.md)).
 
 **Signing in locally:** use the stub login page at http://localhost:3000. The seeded users are:
 - Alex Author (author + publisher, Hospital A)
@@ -68,7 +71,6 @@ make migrate-down           # roll back the last migration
 - Cara Clinician (clinician, Hospital A)
 - Bea Author (Hospital B)
 
-**Planned targets that don't exist yet:** `make e2e-setup` and `make e2e` (Playwright). They arrive with plan F1 (session S03).
 
 ## Architecture
 

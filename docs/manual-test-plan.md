@@ -33,6 +33,10 @@ Work through these cases in Chrome, on the running app, the way a careful manual
   - A `409 (Conflict)` error is expected when the app refuses a change on purpose: in MT-03 (duplicate name) and MT-61 (two editors). Ignore it there.
   - A Next.js "Issue" badge at the bottom left also counts as an error. Open it and copy the message.
 
+## Automated journeys
+
+Cases marked *Automated: J<n>* are also covered by the end-to-end journeys in [e2e/](../e2e/README.md) (`make e2e`). Still test them by hand when their area changes; the note says what the journey doesn't check.
+
 ## Priority: the four untested features
 
 Cases marked **NEW, untested** cover features that no one has tried in a browser yet:
@@ -63,6 +67,7 @@ Report the **known limits** at the end of this document only if they behave diff
 ## A. Sign-in and hospitals
 
 **MT-01: Sign in as an author**
+*Partly automated: J1 signs in as Alex Author and lands on the questionnaire list. The header's contents aren't checked.*
 1. Open http://localhost:3000 and click **Alex Author**.
 2. Expected:
    - The questionnaire list for Hospital A opens.
@@ -71,6 +76,7 @@ Report the **known limits** at the end of this document only if they behave diff
 ## B. Questionnaire list
 
 **MT-02: Create a questionnaire**
+*Partly automated: J1 creates a questionnaire and checks the editor opens on the draft. The refused empty Name or Description isn't checked.*
 1. Click **New Questionnaire**. A drawer opens on the right.
 2. Try **Save** with an empty Name or Description. Expected: it's refused, with a message.
 3. Enter Name `Manual test <date> <time>` and a Description, then click **Save**.
@@ -96,6 +102,7 @@ Report the **known limits** at the end of this document only if they behave diff
 Use your test questionnaire, signed in as Alex Author.
 
 **MT-06: Add a Question Set**
+*Partly automated: J1 adds a Question Set and sees it in the tree. The Question Set screen's fields aren't checked.*
 1. Click **Add Question Set**.
 2. Expected:
    - "Question Set 1" appears in the Structure tree.
@@ -109,6 +116,7 @@ Use your test questionnaire, signed in as Alex Author.
 5. Expected: the name, icon and description are kept, and the same Question Set is still selected (the URL holds it).
 
 **MT-08: Pages**
+*Partly automated: J1 adds one page and adds a question to it, then reloads and finds it kept. Move, copy, delete and drag aren't.*
 1. Click **Add Page** twice. Expected: "Page 1" and "Page 2", and clicking a page shows its canvas ("Clinical Page", the page name with a pencil, and a **Clinical summary** switch).
 2. Rename Page 1 to `Lungs` with the pencil.
 3. Open Page 2's ⋯ menu. Check that **Move up**, **Copy** and **Delete** work: Copy adds "… (copy)", and Delete asks for confirmation.
@@ -387,6 +395,7 @@ Use the Logic tab of a selected card. Make sure earlier questions exist: a Yes /
 1. Open the Logic tab of "Do you smoke?". Expected: **Used by** lists each item whose condition tests it, plus its disclosure count.
 
 **MT-46: Logic problems in the header**
+*Partly automated: J2, with a condition that tests a question that no longer exists: the header button lists it, and clicking it opens the Logic tab. Dragging and Undo aren't.*
 1. Drag the conditional Text question above "Do you smoke?".
 2. Expected:
    - An orange "1 logic problem" button appears in the header.
@@ -440,6 +449,7 @@ Use the Logic tab of a selected card. Make sure earlier questions exist: a Yes /
 Click **Preview** in the editor header, with a Question Set selected.
 
 **MT-51: Patient view**
+*Partly automated: J1's preview shows its question in the Patient view.*
 1. First, in the editor, add a Text inside the Section: an empty Section has no screen of its own. Then open the preview. Expected:
    - Clinician-only questions and statements aren't shown.
    - Page titles aren't shown.
@@ -529,6 +539,7 @@ Click **Preview** in the editor header, with a Question Set selected.
 These cases follow one patient from a published HQ to the POA Summary. Use a separate, small questionnaire named `Manual test <today's date> <time> workflow`. It will be published, and published questionnaires can't be deleted, so keep it small.
 
 **MT-64: Publish**
+*Automated: J2 (blocked by a problem, published and read-only, Create new version keeps the content). Its draft is set up through the API, so steps 1–2 aren't.*
 1. As Alex Author, make the workflow questionnaire with one Question Set **About you**, which has two pages:
    - Page **Lifestyle**, with Clinical summary on:
      - Yes / No "Do you smoke?". Give **Yes** a disclosure note "Current smoker".
@@ -542,6 +553,7 @@ These cases follow one patient from a published HQ to the POA Summary. Use a sep
 4. Click **Create new version**. Expected: "v2 · draft", with the same content.
 
 **MT-65: Create an episode**
+*Automated: J3, with a new made-up patient rather than Jo Bloggs. The Episodes-only header isn't checked.*
 1. Sign in as **Cara Clinician**. Expected: you land on **Episodes**, and the header shows only the Episodes link.
 2. **New episode**, choose **Jo Bloggs**, pick the workflow HQ **v1**, and enter the procedure "Knee replacement". Create.
 3. Expected:
@@ -550,6 +562,7 @@ These cases follow one patient from a published HQ to the POA Summary. Use a sep
    - General notes say "Episode created".
 
 **MT-66: The patient fills in the HQ**
+*Automated: J3, on an iPhone 13 (WebKit), with leaving part-way and coming back. It checks the clinician's Question Set never appears; clinician-only questions inside a patient set aren't in its HQ.*
 1. Open the patient link in a **private window**, so you are not signed in.
 2. Expected:
    - "Hello Jo", and only **About you** is listed. The clinician Question Set never appears.
@@ -561,6 +574,7 @@ These cases follow one patient from a published HQ to the POA Summary. Use a sep
    - Reopening the link shows the thank-you page, not the form.
 
 **MT-67: The clinician validates**
+*Automated: J4, plus a stale second tab getting "changed somewhere else" and Reload. The two-column layout, clinician comments and the summary box aren't checked.*
 1. As Cara, reload the episode. Expected:
    - The status is **Ready for review**.
    - Both Question Sets are listed as "Not started".
@@ -579,6 +593,7 @@ These cases follow one patient from a published HQ to the POA Summary. Use a sep
    - The sets now open read-only.
 
 **MT-68: POA Summary**
+*Partly automated: J5 (both tabs, the correction marked, status change, a comment, Print present). ASA grades and the print preview aren't.*
 1. Open **POA Summary**. On **Validated summary**, expected:
    - The patient details.
    - General notes.
