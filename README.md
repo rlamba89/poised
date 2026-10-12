@@ -42,18 +42,24 @@ You need Docker, Go 1.26 or newer (older Go downloads 1.26 by itself) and Node 2
 
 ```sh
 docker compose up -d db     # Postgres 17 on localhost:5432
-make migrate seed           # schema, then Lifebox codes, 2 hospitals and 3 users
+make migrate seed           # schema, then Lifebox codes, 2 trusts, 3 hospitals and 8 users
 make dev                    # Go API on :8080 and the web app (Vite) on :3000; Ctrl-C stops both
 ```
 
 Open http://localhost:3000 and sign in as a seeded user:
 
-| User | Hospital | Role |
+| User | Trust and hospital | Role |
 | --- | --- | --- |
-| Alex Author | Hospital A | author, publisher |
-| Val Viewer | Hospital A | viewer |
-| Cara Clinician | Hospital A | clinician |
-| Bea Author | Hospital B | author |
+| Ada Admin | Trust A, whole trust | admin |
+| Alex Author | Trust A, whole trust | super clinician |
+| Cara Clinician | Trust A: Hospital A1 only | clinician |
+| Sue Super | Trust A: Hospital A1 only | super clinician (can't change the trust's questionnaires: that takes a whole-trust role) |
+| Val Clinician | Trust A: Hospital A2 only | clinician |
+| Bea Author | Trust B, whole trust | super clinician |
+| Max Multi | Trust A: Hospital A2 only; Trust B, whole trust | clinician in A; admin in B |
+| Sam Superadmin | none (a platform admin) | — |
+
+Roles are one ladder (A-5): clinician < super clinician (also authors and publishes) < admin. Anyone with more than one hospital picks one after signing in, and switches from the header.
 
 - **Environment:** `make` creates `.env` from `.env.example` on first run. No SurveyJS licence is needed: survey-core and survey-react-ui are MIT, and the Creator is no longer used.
 - **Other commands:**
@@ -90,7 +96,7 @@ The rules for each kind are in [docs/plans/README.md](docs/plans/README.md#testi
 7. Switch to **Clinician**.
    - The statement sits in the right-hand column beside the questions.
    - Below it, the **Page 1 summary** box lists "Current smoker" and "Smokes 20 per day" above Clinical comments.
-8. Sign out and sign in as **Bea Author** (Hospital B): the questionnaire isn't visible.
+8. Sign out and sign in as **Bea Author** (Trust B): the questionnaire isn't visible.
 
 ### More features (plan-features.md)
 
@@ -113,7 +119,7 @@ The rules for each kind are in [docs/plans/README.md](docs/plans/README.md#testi
 ## Importing a Lifebox questionnaire (HJE Full HQ)
 
 1. Open the questionnaire in the Lifebox Author tool in Chrome, open DevTools (⌥⌘J), paste [tools/export-lifebox-hq.js](tools/export-lifebox-hq.js) and press Enter. It only reads. It downloads `lifebox-hq-<id>.json` with every Question Set, page, question, option, condition and disclosure.
-2. Run `cd apps/api && go run ./cmd/import-lifebox -file ~/Downloads/lifebox-hq-<id>.json`. It creates a new draft in Hospital A, then lists anything it couldn't carry over (for example, conditions on another Question Set, or codes missing from our library).
+2. Run `cd apps/api && go run ./cmd/import-lifebox -file ~/Downloads/lifebox-hq-<id>.json`. It creates a new draft in Trust A (for all its hospitals), then lists anything it couldn't carry over (for example, conditions on another Question Set, or codes missing from our library).
 
 Without an export, `python3 tools/hq-from-notes.py docs/hje-full-hq-content.md > hq.json` builds Question Sets 1–4 of HJE Full HQ from the screenshot transcription. It has no disclosures, because the screenshots don't show them. Import it the same way.
 

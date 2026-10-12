@@ -68,11 +68,15 @@ make migrate-down           # roll back the last migration
 - **TypeScript (`packages/clinical`):** `cd packages/clinical && npx vitest run src/outputs.test.ts -t "computeOutputs"` (the web app's route table: `cd apps/web && npx vitest run`)
 - **One journey:** `cd e2e && .venv/bin/pytest journeys/test_j3_patient.py --headed`. A failure keeps its trace in `e2e/test-results/` ([e2e/README.md](e2e/README.md)).
 
-**Signing in locally:** use the stub login page at http://localhost:3000. The seeded users are:
-- Alex Author (author + publisher, Hospital A)
-- Val Viewer (Hospital A)
-- Cara Clinician (clinician, Hospital A)
-- Bea Author (Hospital B)
+**Signing in locally:** use the stub login page at http://localhost:3000. The seeded users (S08) are:
+- Ada Admin (admin, the whole of Trust A)
+- Alex Author (super clinician, the whole of Trust A)
+- Cara Clinician (clinician, Hospital A1 only)
+- Sue Super (super clinician, Hospital A1 only: views but can't change the trust's questionnaires)
+- Val Clinician (clinician, Hospital A2 only)
+- Bea Author (super clinician, the whole of Trust B)
+- Max Multi (clinician at Hospital A2; admin of the whole of Trust B)
+- Sam Superadmin (a platform admin, in no trust)
 
 
 ## Architecture
@@ -92,12 +96,13 @@ npm workspaces monorepo (`apps/web`, `packages/*`), plus a separate Go module in
   - `src/lib/api.ts` is a thin fetch wrapper. Vite proxies `/api/*` to the Go API (`API_URL`).
   - `make dev` runs `vite`; `npm run build -w apps/web` then `npm run preview -w apps/web` serves the production build on :3000.
 - **`apps/api`** is Go with stdlib `net/http` (Go 1.22+ method/wildcard patterns), pgx v5, **sqlc** (`internal/db` is generated, so don't edit it) and **goose** migrations (`db/migrations`). sqlc and goose run as Go tools.
-  - `internal/httpapi/router.go` lists every route, in two routers: `NewStaffRouter` (`/api/h/…`, `/api/me`, the dev login only when `DEV_LOGIN=true`) and `NewPatientRouter` (`/api/p/…` only); both serve `/api/health` and `GET /api/config`. `NewRouter` mounts both for `make dev` and the tests (`cmd/api`; `cmd/staff-api` and `cmd/patient-api` run one each).
+  - `internal/httpapi/router.go` lists every route, in two routers: `NewStaffRouter` (`/api/o/…`, `/api/me`, the dev login only when `DEV_LOGIN=true`) and `NewPatientRouter` (`/api/p/…` only); both serve `/api/health` and `GET /api/config`. `NewRouter` mounts both for `make dev` and the tests (`cmd/api`; `cmd/staff-api` and `cmd/patient-api` run one each).
   - `internal/config` reads every setting from the environment. It's the only place a per-country value may live (A-20; a test fails on a locale, time zone or region literal anywhere else). Local dev defaults to the UK; `CONFIG_STRICT=true` refuses to start with one missing. The web app gets the locale from `GET /api/config` (`apps/web/src/lib/config.ts`).
-  - Middleware: `requireUser` (a dev HS256 JWT in an httpOnly cookie) and `requireHospital` (role check per hospital; routes are `/api/h/{hid}/…`).
+  - Middleware: `requireUser` (a dev HS256 JWT in an httpOnly cookie), then `requireHospital` for `/api/o/{oid}/h/{hid}/…` or `requireOrg` for `/api/o/{oid}/…`. They re-read the memberships on every request and give non-members a 404. The role ladder is `internal/role` (`clinician < super_clinician < admin`, A-5).
   - `internal/chapter` holds the content rules. `chapter.ForPatient` strips clinician-only elements, `clinicalOutputs` and `testCases` before patient JSON leaves the server, and `FilterAnswers` drops non-patient answer keys.
   - `internal/episode` handles episode statuses. `internal/lifebox` + `cmd/import-lifebox` import a Lifebox HQ export.
 - **Content model:**
+  - **Tenancy (S08):** questionnaires and option lists belong to a trust (`org_id`; `hospital_id` NULL = every hospital of the trust). Patient records belong to the trust; an episode belongs to one hospital, and a hospital-scoped user sees only their hospital's episodes.
   - A questionnaire has versions (draft → published → retired), and a version has **chapters ("Question Sets")**. Each chapter is one SurveyJS JSON document (`chapters.content`), with a `revision` that is bumped on every save; a stale revision → 409.
   - **Published versions are read-only.** "New version" copies chapters, keeping stable IDs.
   - **Episodes** are tied to one published version.

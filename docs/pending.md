@@ -116,6 +116,17 @@ docker compose up -d --force-recreate db
   - **`DEFAULT_LOCALE` is checked only for shape,** and some well-shaped tags (`en-12`, `en-gb-gb`) make the browser's `Intl.DateTimeFormat` throw, so every date on a page would crash it. Tighten the region part to `[A-Z]{2}` or three digits, or check the tag in `infra/countries.py` (S06).
   - **The first render waits for `GET /api/config` with no timeout** (`apps/web/src/main.tsx`). A hung request leaves a blank page. Add a timeout (e.g. `AbortSignal.timeout(5000)`) before S06 (Lambda cold starts).
   - **Small:** `APP_URL=/` trims to empty and passes strict mode (validate after trimming); the literal guard skips lines starting with `*` and reads only `.go`/`.ts`/`.tsx` files.
+- **From S08's manual tests, 12 Oct** (minor; details in [S08 test-report-2.md](sessions/S08-trusts-permissions/test-report-2.md)):
+  - **Cosmetic, older than S08: the editor's Disclosures dialog shows "No disclosures yet." while it fades out** after **Done** (report 4). The same fix as the other dialogs (keep the last content while closing) applies in `apps/web/src/features/editor/DisclosureModal.tsx`.
+  - **Cosmetic: a long test-case name squeezes its PASS/FAIL and viewer badges** to "P.." in the Preview's Test cases list (report 4). The badges should keep their width (`flexShrink: 0`) and only the name be truncated (`features/preview/TestCases.tsx`).
+  - **Keyboard: Enter in the Preview's test-case name box doesn't save**; only clicking **Save answers** does (report 4). Wrap the name box and button in a form.
+  - **Staff pages aren't laid out for phones.** The header now scrolls sideways inside itself below about 768px (fixed in S08), but the Episodes table and other staff screens are still wider than a phone. Nothing requires staff phone layouts yet.
+- **From S08's verification, 13 Oct** (minor; details in [S08 verify.md](sessions/S08-trusts-permissions/verify.md)):
+  - **For S10: `GET /api/me` leaves out a trust with no hospitals yet** (`ListMyHospitals` inner-joins hospitals, `apps/api/db/queries/users.sql`). A trust admin invited before the first hospital exists would see the "ask an admin" page.
+  - **Once hospital-owned content exists:** the option-list buttons in the editor don't use `canChange` (a hospital-only super clinician on their hospital's own HQ would be offered "Save as a list" and get 403); `DraftNameExists` checks the whole trust, including hospital-owned drafts the caller can't see; and the refusal message always says "of the whole trust".
+  - **`createVersion` checks the draft name without `LockOrgQuestionnaires`** (older than S08; the check is now trust-wide).
+  - **`memberships` has no primary key** after migration 00006 (only `UNIQUE NULLS NOT DISTINCT`). Add a surrogate `id` before any logical replication (Neon → RDS, C10).
+  - **Migration 00006's Down** fails on a questionnaire owned by a trust with no hospitals (none exist today).
 - **Lifebox import:**
   - Conditions that cross Question Sets on pages and questions are still dropped with a warning.
   - Lifebox has no Question Set-level conditions to import.

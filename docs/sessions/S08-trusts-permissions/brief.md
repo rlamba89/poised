@@ -2,12 +2,15 @@
 
 **Plan:** C1 ([c1-trusts-staff.md](../../plans/c1-trusts-staff.md)), part 1 of 5.
 **Requirements:** ORG-01, STF-02, STF-03, A-5, A-20 and A-21 ([saas-requirements](../../saas-requirements.md)).
-**Depends on:** S07 verified.
+*Local phase (12 Oct): runs on Rahul's Mac only. No AWS, and no real email or SMS.*
+
+**Depends on:** S05 verified (local-first order, 12 Oct).
 
 **Ask Rahul first** (recommendation first in each):
 1. **A time zone per hospital** (A-20, *Proposed*)? **Recommended: yes.** Canada, the US and Australia span several zones, and reminders depend on local time.
 2. **Roles:** today's `viewer / author / reviewer / publisher / hospital_admin / clinician` become `clinician < super_clinician < admin` (A-5). There's no "viewer", because everyone in a hospital sees its data. **Recommended:** author/reviewer/publisher → super clinician; hospital admin → admin; viewer and clinician → clinician. Reseed, since it's a fresh app (A-1).
-3. **Patient record visibility:** a hospital-scoped user sees the trust's **patient record**, so they can create an episode at their hospital, but only **their hospital's episodes**. **Recommended: yes.** This is needed for S13.
+3. **The `dev` branch** (7 Oct, commit `557be2c`, "Auth first: sessions, trusts, Cognito staff sign-in, patient link sign-in", also on `origin`): reuse parts of it, or ignore it? **Recommended:** read it as a reference only and build from the plan here, because it predates the 8 Oct decisions (role ladder, one deployment per country).
+4. **Patient record visibility:** a hospital-scoped user sees the trust's **patient record**, so they can create an episode at their hospital, but only **their hospital's episodes**. **Recommended: yes.** This is needed for S13.
 
 ## Build
 

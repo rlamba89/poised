@@ -2,7 +2,9 @@
 
 **Goal:** real tenancy and real staff sign-in. A platform admin creates a trust and its hospitals and invites the trust's first admin. The admin invites staff, and staff sign in through Cognito with MFA.
 
-**Requirements:** ORG-01…06, STF-01…06, A-5, A-12, A-20 (nothing hardcoded for the UK), A-21 (superadmin). **Depends on:** F1–F4.
+**Requirements:** ORG-01…06, STF-01…06, A-5, A-12, A-20 (nothing hardcoded for the UK), A-21 (superadmin). **Local first (12 Oct, A-22):** S08–S11 run locally with the dev login. Cognito (S12) comes in the AWS phase.
+
+**Depends on:** F1–F4.
 
 **Not in C1:** patients (C2), and other countries. Only the config groundwork is built (A-20).
 
@@ -71,4 +73,11 @@
 
 ## Status
 
-Not started.
+**In progress: S08 (trusts, hospitals, memberships, role ladder, hospital picker) verified 13 Oct 2026 (test report 4 all passed; [verify.md](../sessions/S08-trusts-permissions/verify.md)).** S09–S11 (local) and S12 (Cognito, AWS phase) are next.
+
+Differences from the plan so far (S08; details in [decisions.md](../decisions.md) §2 and the [S08 build notes](../sessions/S08-trusts-permissions/build-notes.md)):
+- Hospital routes are `/api/o/{oid}/h/{hid}/…`; the only trust route so far is `GET /api/o/{oid}/episodes` ("All hospitals").
+- A removed membership gets **404** on the next request, not 403: non-members can't probe trusts or hospitals (NFR-04).
+- `hospitals.timezone` NULL means the deployment's default.
+- Patient records moved to the trust in S08 (Rahul's answer, 12 Oct), ahead of C2.
+- The trust's questionnaires and option lists can be changed only by whole-trust super clinicians and admins (Rahul, 12 Oct).
