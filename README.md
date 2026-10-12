@@ -121,9 +121,12 @@ Without an export, `python3 tools/hq-from-notes.py docs/hje-full-hq-content.md >
 
 ```
 apps/api            Go API: net/http, pgx, sqlc, goose (as go tools)
-  cmd/api           server wiring
+  cmd/api           the local all-in-one server (make dev): staff + patient routes
+  cmd/staff-api     staff routes only; cmd/patient-api: the patient's link only
+                    (on AWS, separate Lambdas; locally `make staff-api` / `make patient-api`)
+  internal/config   env settings, incl. the per-country values (A-20); GET /api/config
   cmd/seed          loads db/seed/lifebox/*.csv plus demo hospitals and users
-  internal/httpapi  routes, auth and hospital-scope middleware, handlers
+  internal/httpapi  routers (staff, patient, both), auth and hospital-scope middleware, handlers
   internal/auth     dev login token (HS256 JWT in an httpOnly cookie)
   internal/chapter  chapter content rules
   internal/db       sqlc output (do not edit)

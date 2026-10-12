@@ -111,6 +111,11 @@ docker compose up -d --force-recreate db
     - the staff `HospitalLayout` is in the first-load bundle, so the patient's link downloads it (make it lazy);
     - the Vite proxy key `/api` also matches `/api-…` (use `^/api/`);
     - in dev, StrictMode flashes "Something went wrong" just before the automatic reload.
+- **From S05's verification, 12 Oct** (minor; details in [S05 verify.md](sessions/S05-lambda-entrypoints/verify.md)):
+  - **Answer dates in notes, outputs and the POA Summary are still day/month/year** (`packages/clinical/src/outputs.ts` `formatDate`, `yyyy-MM-dd` → `dd/MM/yyyy`). The guard test can't see it (no locale literal). Fine while only the UK runs; **Rahul to decide** before a second country whether `packages/clinical` takes the locale (recommended: pass it in, as `format.ts` does).
+  - **`DEFAULT_LOCALE` is checked only for shape,** and some well-shaped tags (`en-12`, `en-gb-gb`) make the browser's `Intl.DateTimeFormat` throw, so every date on a page would crash it. Tighten the region part to `[A-Z]{2}` or three digits, or check the tag in `infra/countries.py` (S06).
+  - **The first render waits for `GET /api/config` with no timeout** (`apps/web/src/main.tsx`). A hung request leaves a blank page. Add a timeout (e.g. `AbortSignal.timeout(5000)`) before S06 (Lambda cold starts).
+  - **Small:** `APP_URL=/` trims to empty and passes strict mode (validate after trimming); the literal guard skips lines starting with `*` and reads only `.go`/`.ts`/`.tsx` files.
 - **Lifebox import:**
   - Conditions that cross Question Sets on pages and questions are still dropped with a warning.
   - Lifebox has no Question Set-level conditions to import.

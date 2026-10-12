@@ -30,6 +30,92 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 12 Oct 2026: S05, per-country config and the router split (builder, automatic run)
+
+- **`internal/config` is the only home for per-country values** (A-20). It reads `APP_URL`, `DEFAULT_TIME_ZONE`, `DEFAULT_LOCALE` and `PHONE_COUNTRY` from the environment.
+  - **Locally,** a missing one falls back to the UK.
+  - **With `CONFIG_STRICT=true`** (AWS, from S06), a missing one stops start-up, and one error names them all. A bad value (an unknown zone, `en_GB`, `gb`) stops start-up in both modes.
+  - **A guard test** (`internal/config/literals_test.go`) fails on a locale, IANA zone or AWS region literal in `apps/api`, `apps/web/src` or `packages/clinical/src` (tests and comments aside).
+  - **Reason:** A-20 rule 2, enforced by a test rather than by review.
+- **The time-zone database is built into the Go binary** (`time/tzdata`). **Reason:** a zone mustn't depend on what the host (Lambda's base image) has installed.
+- **The dev login, `/api/dev/users` included, exists only when `DEV_LOGIN=true`.** `make dev` and `make staff-api` set it; nothing else does. **Reason:** F3 Step 1. The user list is part of the stub and lists everyone.
+- **`GET /api/config` returns only `{locale, timeZone}`.** It needs no sign-in, and both routers serve it. **Reason:** the sign-in page and the patient's link need it first, and nothing secret or internal (web address, phone country) needs to reach the browser yet.
+- **The web app loads `/api/config` once, before the first render** (`apps/web/src/main.tsx`, `src/lib/config.ts`), and every date goes through `src/lib/format.ts`.
+  - If the fetch fails, it renders anyway with the browser's locale and logs a console error. The pages show their own "can't reach the server" errors.
+  - **Times are still shown in the browser's time zone;** only the locale comes from config. S08's hospital time zones can decide which zone staff screens use.
+- **`httpapi.Deps` is `{Pool, Config}`.** The token secret comes from the config, so there's one source for every setting.
+- **Routers:** `NewStaffRouter` and `NewPatientRouter` run one each (`cmd/staff-api`, `cmd/patient-api`, through `internal/serve`). `NewRouter` mounts both for `make dev` (`cmd/api`) and the tests.
+  - A route a router doesn't serve gets Go's plain-text 404. **Reason:** a JSON catch-all would also turn every wrong-method 405 into a 404.
+- **`make patient-api` / `make staff-api` (`ADDR`, default `:8081`)** run one part alone beside `make dev`. Point a second Vite at it with `API_URL=http://localhost:8081 npm run dev -w apps/web -- --port 3001`.
+- **Tests:** `apitest.NewWith(t, Options{Router, Env})` starts a test server with another router or environment, through the real `config.Load`.
+- **`CONFIG_STRICT=true` doesn't refuse `DEV_LOGIN=true`** (S05 verification). **Reason:** the QA environment on AWS runs strict *and* needs the dev login (F4); the guard against the dev login in Training or Production is F4's CDK synth check.
+- **Accepted after testing (report 1):** `DEFAULT_LOCALE` is checked only for shape, so a well-formed but unknown tag (`zz-ZZ`) starts, and the browser quietly uses its own locale. **Reason:** each country's value is set once, in `infra/countries.py` (S06), and Go has no list of locales the browser knows without adding a library. `/api/config` has no `Cache-Control` header; it's fetched once per full page load, which is cheap.
+
+### 12 Oct 2026: answers for the local phase, asked up front by the conductor
+
+Rahul answered every "Ask Rahul first" question for S05–S16 at the start of the first `/run-sessions` run. Each session's full answers are in its `answers.md` (`docs/sessions/<id>-*/answers.md`).
+- **Git:** the 12 Oct planning-doc changes (skills, plans, briefs, S17) were **left uncommitted** at the start of the run. Each verifier commits its own session's files. Where a file holds both (e.g. `docs/plans/README.md`), the planning changes go into that session's docs commit.
+- **S05: dates use the locale from `GET /api/config`,** not a hardcoded `en-GB`. **Reason:** it removes a UK assumption (A-20).
+- **S08:**
+  - **a time zone per hospital** (A-20). **Reason:** Canada, the US and Australia span several zones.
+  - **Roles map** as author/reviewer/publisher → super clinician, hospital_admin → admin, viewer and clinician → clinician, with a reseed.
+  - **The `dev` branch (`557be2c`) is ignored entirely.** Builders don't read or reuse it.
+  - **A hospital-scoped user sees the trust's patient record** (name, date of birth, contacts), but only their own hospital's episodes.
+- **S10:**
+  - **a logo URL field now,** replaced by an upload in C8;
+  - **all of ORG-04's settings are built now** (trust-only and hospital-overridable), even ones nothing reads until later sessions. This widens the brief at Rahul's choice; the recommendation was only what's used now.
+- **S11: one audit row per request** that reads or changes patient data, list screens included. **Nothing is deleted for now.**
+- **S13:**
+  - **`national_id` + `national_id_type`** (A-20);
+  - **patient search** as in C2's "New episode page" design (confirmed);
+  - **duplicate matching uses email and mobile too.** On Create:
+    - the same first name, surname, date of birth **and** the same email or mobile → link silently to the trust's record, as with a matching NHS number;
+    - the same name and date of birth with a different or missing contact → a warning plus "Create anyway". Nothing about the other record is shown.
+  - **Reason (Rahul):** in Lifebox, email is what has helped here, and the NHS number is often empty. Name + date of birth alone was rejected, because two people in a large trust can share both.
+- **S14: before the date-of-birth check, the patient API returns only the hospital's name.** After the check, it returns the HQ without the date of birth or any identifier the patient didn't type. This settles the 8 Oct open item ([pending.md](pending.md) §3).
+- **S15:**
+  - **patients can update their own email or mobile now (PAT-10),** verified before use. This widens the brief at Rahul's choice.
+  - **Sign-in links are rate-limited** to 3 per contact per 15 minutes and 10 per IP address per hour.
+- **S16:**
+  - **reminders are sent at any time,** with no 09:00–19:00 window;
+  - **starting the HQ stops reminders,** not only submitting it.
+  - Both are Rahul's choice over the recommendation.
+
+### 12 Oct 2026: local first, and automatic session runs (session ae16fe2f)
+
+- **Local only until the first demo or customer.** No AWS for now. **Reason:** nothing needs AWS until someone outside Rahul's laptop must use the app, and building locally lets automatic runs go without AWS stops.
+  - **This reverses the 2 Oct order** (F3–F4 before C1). The cost is that the AWS hosting setup and its near-£0 idle cost are proven later.
+  - **The local phase:** S04, S05, S08–S11, S13–S16.
+  - **The AWS phase**, later and with Rahul there: S06 (it now also takes the Lambda half of F3), S07, S12, and a new **S17** (jobs Lambda, EventBridge schedule, real SES/SMS).
+  - **Details:** [sessions/README.md](sessions/README.md).
+- **Stand-ins for the AWS pieces:**
+  - **email and SMS:** capture mode, with a captured-messages page;
+  - **staff sign-in:** the dev login instead of Cognito;
+  - **files:** MinIO instead of S3 (C8);
+  - **scheduled jobs:** a timer in the local server instead of EventBridge.
+- **Write the code as if it already runs on Lambda,** so the AWS phase is wiring, not a rewrite:
+  - jobs are one function, `jobs.RunDue(ctx, now)`;
+  - no state in the server's memory;
+  - no reliance on local disk;
+  - files go through presigned URLs.
+- **Docker is unchanged:** only Postgres runs in it (later MinIO too). The API, web and jobs run on the Mac with `make dev`. Rahul asked about dockerising everything. It was kept as is (the 1 Oct decision) for fast feedback, and because Docker is unreliable on his Mac (§4).
+- **Automatic runs: a conductor session (`/run-sessions`).**
+  - **What it does:** for each session in the run order, it runs:
+    1. a builder agent;
+    2. a new tester agent for every test round, with the reports going back to the same builder;
+    3. a verifier agent;
+    4. a local commit.
+  - **What it handles:**
+    - it asks every brief's questions up front;
+    - it restarts `make dev` before each test round, because `make dev` doesn't reload Go;
+    - it sends phone notifications;
+    - it resumes from `docs/sessions/run-state.md`.
+  - **Rahul's standing permission (12 Oct):** the verifier commits locally to **`master`** after a Verified verdict, without asking. **Nothing is ever pushed.**
+  - **Limits:** at most **4 test reports** and **2 verifications** per session, then it stops and asks.
+  - **Testers mark cases their tools can't do** (blocking a network request, the real print dialog) as **hand checks for Rahul**, not failures.
+  - **Checked 12 Oct:** an agent started by a session can use Claude in Chrome. It needs `createIfEmpty: true` to get its own tab group.
+  - **Rejected:** a scripted workflow, and a shell loop over `claude -p`. Neither can pause to ask Rahul a question and carry on.
+
 ### 12 Oct 2026: S04, the frontend on React + Vite
 
 - **The UI is renamed from "Lifebox" to "Poised" in S04** (Rahul, 12 Oct). This covers the browser tab title, the hospital header, the login page title ("Lifebox Authoring" becomes "Poised") and the patient page header. Code comments that cite Lifebox as layout evidence stay.
@@ -169,8 +255,9 @@ All of these are detailed in [sessions/S01-integration-harness/build-notes.md](s
   - **Nothing is committed until verified,** and a session starts only when the one before it is verified and committed.
   - **Reason:** Rahul wants to start each session himself, with independent manual testing in a real browser, and a check before anything is committed.
 - ***Proposed, not agreed*** (to confirm when C1 and C2 start):
-  - `national_id` + type instead of an `nhs_number` column;
-  - a time zone per hospital;
+  - `national_id` + type instead of an `nhs_number` column; *agreed 12 Oct (S13 answers)*;
+  - a time zone per hospital; *agreed 12 Oct (S08 answers)*;
+  - dates formatted in the deployment's locale; *agreed 12 Oct (S05 answers)*;
   - the UK on `uk.<domain>` from day one;
   - one AWS account per environment, with a region per country;
   - support tooling that never shows patient answers, plus customer-approved break-glass access (OPS-06).
@@ -393,13 +480,13 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
 
 ## 5. Open items (as of 8 Oct 2026)
 
-- **Next work:** plan **F3** ([plans/f3-lambda-entrypoints.md](plans/f3-lambda-entrypoints.md)), session S05. Plan F2 is done (S04 verified 12 Oct; the verifier checked T-19 in the production build, so no hand check is needed). **Rahul to click Print once** on a POA Summary. Plan F1 is done (S03 verified 12 Oct); its six minor e2e follow-ups are in [S03's verify.md](sessions/S03-e2e-journeys/verify.md).
-- **The `dev` branch** (on `origin` too; commit `557be2c` "Auth first: sessions, trusts, Cognito staff sign-in, patient link sign-in", 7 Oct) isn't mentioned in the plans or sessions. Decide whether sessions S08–S15 supersede it or should reuse parts of it.
-- **Build order, undecided:** the roadmap order (F1 → F2 → F3 → F4 → C1 → C2), or F1 and F2, then C1 and C2 before the AWS work (F3, F4). The roadmap order stands until Rahul decides.
+- **Next work:** plan **F3** ([plans/f3-lambda-entrypoints.md](plans/f3-lambda-entrypoints.md)), session S05 (the local half) verified 12 Oct; its minor follow-ups are in [pending.md](pending.md) §3. Next: S08; F3's Lambda half is S06 (AWS phase). Plan F2 is done (S04 verified 12 Oct; the verifier checked T-19 in the production build, so no hand check is needed). **Rahul to click Print once** on a POA Summary. Plan F1 is done (S03 verified 12 Oct); its six minor e2e follow-ups are in [S03's verify.md](sessions/S03-e2e-journeys/verify.md).
+- **The `dev` branch** (on `origin` too; commit `557be2c`, 7 Oct): *settled 12 Oct: ignored entirely* (§2). Delete it later if wanted.
+- **Build order: decided 12 Oct.** Local first (S04, S05, S08–S11, S13–S16), then the AWS phase (S06, S07, S12, S17), as in §2.
 - **No domain chosen yet.** `<domain>` in the docs is a placeholder.
 - **Research files:** `research_notes/` and `reports/` at the repo root are untracked. Either keep them (e.g. move them to `docs/research/` and fix the links in saas-requirements §0 and §13 and in this file) or delete them.
-- **Before C2 (S14), decide what the patient link returns** (found in S02 testing, 8 Oct). `GET /api/p/{token}` includes the date of birth. With magic link + date-of-birth sign-in, that would give away the check. Details are in [pending.md](pending.md) §3.
-- **The proposed parts of A-20** (above, 7–8 Oct) need Rahul's yes when C1 and C2 start.
+- **What the patient link returns:** *settled 12 Oct* (§2, S14). S14 builds it.
+- **The proposed parts of A-20** (above, 7–8 Oct): the national ID, the per-hospital time zone and the locale were agreed 12 Oct. `uk.<domain>`, one AWS account per environment and the support tooling still need Rahul's yes (the AWS phase).
 - **App branding** still says "Lifebox" in the UI (`apps/web/src/app/layout.tsx`, `h/[hospitalId]/layout.tsx`, `PatientHQ.tsx`). Rename it to Poised. *Done in S04 (12 Oct), pending verification.*
 - **S04's manual tests and verification found small items, none blocking:** they're in [pending.md](pending.md) §3 ("Found by the S04 manual tests" and "From S04's verification"). The worst: the POA Summary lists a clinician's change to a question that a later change hid. **Rahul to click Print once** on a POA Summary (no tester could open the real dialog).
 - **Unanswered:** should clinician-only Question Sets render full width in `ValidateSet.tsx`, rather than in an empty two-column grid?

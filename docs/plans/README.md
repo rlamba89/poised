@@ -13,7 +13,7 @@ Agreed 2 Oct 2026. These plans turn [../saas-requirements.md](../saas-requiremen
 | --- | --- | --- | --- |
 | F1 | [Test foundation](f1-test-foundation.md) | API→database integration tests, a Playwright (Python) end-to-end suite covering today's workflow, and make targets | **Done** (12 Oct 2026): S01, S02, S02a and S03 verified |
 | F2 | [Frontend: React + Vite + React Router](f2-react-vite.md) | Next.js replaced. F1's end-to-end suite proves nothing broke. | **Done** (12 Oct 2026): S04 verified |
-| F3 | [Go API: Lambda entry points](f3-lambda-entrypoints.md) | staff-api, patient-api and jobs entry points over one shared router; local dev unchanged | Not started |
+| F3 | [Go API: Lambda entry points](f3-lambda-entrypoints.md) | staff-api, patient-api and jobs entry points over one shared router; local dev unchanged | In progress: S05 (local half) verified 12 Oct; the Lambda half is S06 (AWS phase) |
 | F4 | [AWS and pipeline](f4-aws-pipeline.md) | CDK (Python), Neon, Amplify, API Gateway, Lambdas, CodePipeline with test gates, the QA environment, the per-country config and "add a country" runbook (A-20), and the idle cost measured | Not started |
 | C1 | [Trusts and staff](c1-trusts-staff.md) | Trusts, hospitals, opt-ins, Cognito staff sign-in with MFA, roles, invites, audit log, the hand-made superadmin, and nothing hardcoded for the UK (A-20) | Not started |
 | C2 | [Patients and sign-in](c2-patients-signin.md) | Patient records by NHS number, magic-link sign-in, invites by SMS/email, patient home, jobs and reminders | Not started |
@@ -26,7 +26,13 @@ Agreed 2 Oct 2026. These plans turn [../saas-requirements.md](../saas-requiremen
 | C9 | [Documents and PROMs](c9-documents-proms.md) | Document templates and PDF; PROMs plans, sends and results; licensed instruments as opt-ins | Not started |
 | C10 | [Go-live](c10-go-live.md) | Move to RDS, the Training and Production stages, compliance, pen test | Not started |
 
-**Work sessions:** F1–F4 and C1–C2 are split into sessions S01–S16, run as build → manual test → verify. See [../sessions/README.md](../sessions/README.md).
+**Work sessions:** F1–F4 and C1–C2 are split into sessions S01–S17, run as build → manual test → verify, by hand or automatically with `/run-sessions`. See [../sessions/README.md](../sessions/README.md).
+
+**Local first (12 Oct, A-22):** no AWS until the first demo or customer.
+- **Now:** F2, the local half of F3 (S05), C1 without Cognito (S08–S11), and C2 without AWS (S13–S16).
+- **Later, in the AWS phase:** the Lambda half of F3 and F4 (S06, S07), Cognito (S12), and jobs and messaging on AWS (S17).
+
+The table keeps the plan order. The sessions index has the run order.
 
 **Keep this table current.** When a plan's work is committed, mark it Done with the date, and note any differences from the plan in that plan's Status section.
 

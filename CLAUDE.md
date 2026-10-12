@@ -52,6 +52,7 @@ Requires Docker, Go 1.26+ and Node 22.22+.
 docker compose up -d db     # Postgres 17 on :5432 (user/password/db: sj)
 make migrate seed           # goose migrations, then Lifebox codes + demo hospitals/users (idempotent)
 make dev                    # Go API on :8080 + web (Vite) on :3000 (web proxies /api/* to the API); Ctrl-C stops both
+make patient-api            # one API function alone, as on AWS (ADDR=:8081 default); also make staff-api
 make test                   # go test ./... + Vitest in every workspace (no database needed)
 make test-integration       # API → database tests (-tags integration): a fresh database per test
 make lint                   # go vet (with the integration tag) + tsc --noEmit
@@ -91,7 +92,9 @@ npm workspaces monorepo (`apps/web`, `packages/*`), plus a separate Go module in
   - `src/lib/api.ts` is a thin fetch wrapper. Vite proxies `/api/*` to the Go API (`API_URL`).
   - `make dev` runs `vite`; `npm run build -w apps/web` then `npm run preview -w apps/web` serves the production build on :3000.
 - **`apps/api`** is Go with stdlib `net/http` (Go 1.22+ method/wildcard patterns), pgx v5, **sqlc** (`internal/db` is generated, so don't edit it) and **goose** migrations (`db/migrations`). sqlc and goose run as Go tools.
-  - `internal/httpapi/router.go` lists every route. Middleware: `requireUser` (a dev HS256 JWT in an httpOnly cookie) and `requireHospital` (role check per hospital; routes are `/api/h/{hid}/…`).
+  - `internal/httpapi/router.go` lists every route, in two routers: `NewStaffRouter` (`/api/h/…`, `/api/me`, the dev login only when `DEV_LOGIN=true`) and `NewPatientRouter` (`/api/p/…` only); both serve `/api/health` and `GET /api/config`. `NewRouter` mounts both for `make dev` and the tests (`cmd/api`; `cmd/staff-api` and `cmd/patient-api` run one each).
+  - `internal/config` reads every setting from the environment. It's the only place a per-country value may live (A-20; a test fails on a locale, time zone or region literal anywhere else). Local dev defaults to the UK; `CONFIG_STRICT=true` refuses to start with one missing. The web app gets the locale from `GET /api/config` (`apps/web/src/lib/config.ts`).
+  - Middleware: `requireUser` (a dev HS256 JWT in an httpOnly cookie) and `requireHospital` (role check per hospital; routes are `/api/h/{hid}/…`).
   - `internal/chapter` holds the content rules. `chapter.ForPatient` strips clinician-only elements, `clinicalOutputs` and `testCases` before patient JSON leaves the server, and `FilterAnswers` drops non-patient answer keys.
   - `internal/episode` handles episode statuses. `internal/lifebox` + `cmd/import-lifebox` import a Lifebox HQ export.
 - **Content model:**

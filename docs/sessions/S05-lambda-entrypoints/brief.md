@@ -1,6 +1,8 @@
-# S05: Lambda entry points and per-country config
+# S05: Per-country config and the staff/patient router split
 
-**Plan:** F3 ([f3-lambda-entrypoints.md](../../plans/f3-lambda-entrypoints.md)), all of it, plus A-20 rules 1–3 ([saas-requirements §13 "Countries"](../../saas-requirements.md)).
+*Local phase (12 Oct): runs on Rahul's Mac only. No AWS, and no real email or SMS.*
+
+**Plan:** F3 ([f3-lambda-entrypoints.md](../../plans/f3-lambda-entrypoints.md)), Step 1, the local half of Steps 2–3, plus A-20 rules 1–3 ([saas-requirements §13 "Countries"](../../saas-requirements.md)). The Lambda adapter, SSM and `make build-lambdas` move to S06 (AWS phase).
 **Depends on:** S04 verified.
 
 **Ask Rahul first:**
@@ -10,24 +12,20 @@
 
 ## Build
 
-- **F3 Steps 1–4:**
-  - the staff and patient routers;
-  - `cmd/staff-api` and `cmd/patient-api`, using `algnhsa` on Lambda;
-  - `internal/config`, reading SSM;
-  - `make build-lambdas`;
-  - `DEV_LOGIN` off by default.
-- **`internal/config` holds the per-country values** (A-20): `APP_URL`, the default time zone, locale and phone country. There are UK defaults locally. On Lambda, a missing value stops the function at start-up. Write the unit tests first.
+- **F3 Step 1:** the staff and patient routers, with `NewRouter` mounting both for local use, and `DEV_LOGIN` off by default (on in `make dev`).
+- **`cmd/staff-api` and `cmd/patient-api`** as plain local servers (`http.ListenAndServe`). There's no Lambda adapter yet; S06 adds it.
+- **The code stays Lambda-friendly** (12 Oct): no state in the server's memory, and no reliance on local disk.
+- **`internal/config` holds the per-country values** (A-20): `APP_URL`, the default time zone, locale and phone country. It reads environment variables only; SSM comes in S06. There are UK defaults for local dev, plus a strict mode (`CONFIG_STRICT=true`, used on AWS later) in which a missing value stops start-up. Write the unit tests first.
 - **`GET /api/config`** returns the public per-country values: locale and time zone (and later the sign-in URL). The web app reads it once.
 
 ## Not in this session
 
-- AWS resources (S06);
-- the jobs and evaluate functions (S16 and later).
+- the Lambda adapter, SSM and AWS resources (S06);
+- jobs (S16) and the evaluate function (C6).
 
 ## Done when
 
 - `make lint test test-integration e2e` pass.
-- `make build-lambdas` builds both functions.
 - `cmd/patient-api` run alone serves `/api/p/…`, and returns 404 for staff routes and the dev login.
 
 ## Manual test focus

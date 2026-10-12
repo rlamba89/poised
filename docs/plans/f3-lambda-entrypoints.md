@@ -6,6 +6,10 @@ F3 adds **staff-api** and **patient-api**. The other two functions come with the
 - **jobs**, in C2, when the first scheduled work (invites and reminders) appears;
 - **evaluate**, in C6.
 
+**Split on 12 Oct (local first, A-22):**
+- **Local half, S05:** Step 1, local `cmd/staff-api` and `cmd/patient-api`, and env-only `internal/config`.
+- **Lambda half, S06 (AWS phase):** `algnhsa`, SSM and `make build-lambdas`.
+
 **Depends on:** F1 (integration harness).
 
 **Not in F3:** AWS resources (that's F4), and new routes or behaviour.
@@ -61,4 +65,9 @@ F3 adds **staff-api** and **patient-api**. The other two functions come with the
 
 ## Status
 
-Not started.
+**In progress (12 Oct): S05, the local half, verified** (report 1: 22 of 22 passed; [verify.md](../sessions/S05-lambda-entrypoints/verify.md)). The Lambda half is S06. Done:
+- **Step 1:** `NewStaffRouter`, `NewPatientRouter` and `NewRouter`, with `Deps{Pool, Config}`. The dev login (`/api/dev/users` and `/api/dev/login`) exists only with `DEV_LOGIN=true`; `make dev` sets it.
+- **Step 2, local:** `cmd/staff-api` and `cmd/patient-api` as plain servers over `internal/serve`; `make staff-api` / `make patient-api` run one alone.
+- **Step 3, local:** `internal/config` reads env vars only, with UK defaults locally and `CONFIG_STRICT=true` refusing to start with a missing value. Plus `GET /api/config` (locale and time zone), and a guard test against per-country literals anywhere else.
+
+**Differences:** SSM, the Lambda adapter, the Lambda pool settings and `make build-lambdas` are S06 (A-22). The web app's dates use the config's locale (answered 12 Oct). Details: [S05 build notes](../sessions/S05-lambda-entrypoints/build-notes.md).
