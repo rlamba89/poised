@@ -8,29 +8,62 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/rlamba89/poised/apps/api/internal/config"
 	"github.com/rlamba89/poised/apps/api/internal/db"
 )
+
+// Deps is what the routers need. Later plans add the clock, SMS, email, S3, Cognito and
+// evaluate; tests pass fakes.
+type Deps struct {
+	Pool   *pgxpool.Pool
+	Config config.Config // the token secret, DEV_LOGIN and the per-country values
+}
 
 type server struct {
 	pool   *pgxpool.Pool // for transactions; queries inside them use db.New(tx)
 	q      db.Querier
 	secret []byte
+	cfg    config.Config
 }
 
-// NewRouter wires every route. Paths use Go 1.22+ method and wildcard patterns.
-func NewRouter(pool *pgxpool.Pool, secret []byte) http.Handler {
-	return routes(&server{pool: pool, q: db.New(pool), secret: secret})
+func newServer(d Deps) *server {
+	return &server{pool: d.Pool, q: db.New(d.Pool), secret: []byte(d.Config.TokenSecret), cfg: d.Config}
 }
+
+// NewStaffRouter serves the staff API: /api/h/…, /api/me, /api/codes, /api/categories,
+// /api/logout, and the dev login when DEV_LOGIN=true. On AWS it's the staff-api Lambda (D-4).
+func NewStaffRouter(d Deps) http.Handler { return mount(newServer(d), (*server).staffRoutes) }
+
+// NewPatientRouter serves only the patient's link, /api/p/…: the patient-api Lambda (D-4).
+func NewPatientRouter(d Deps) http.Handler { return mount(newServer(d), (*server).patientRoutes) }
+
+// NewRouter mounts both on one mux, for the local all-in-one server (cmd/api) and the tests.
+func NewRouter(d Deps) http.Handler { return routes(newServer(d)) }
 
 func routes(s *server) http.Handler {
+	return mount(s, (*server).staffRoutes, (*server).patientRoutes)
+}
+
+// mount builds a mux with the routes every function serves, plus the given groups.
+// Paths use Go 1.22+ method and wildcard patterns.
+func mount(s *server, groups ...func(*server, *http.ServeMux)) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/health", s.health)
+	mux.HandleFunc("GET /api/config", s.publicConfig)
+	for _, add := range groups {
+		add(s, mux)
+	}
+	return recoverPanics(mux)
+}
+
+func (s *server) staffRoutes(mux *http.ServeMux) {
 	user := func(h http.HandlerFunc) http.HandlerFunc { return requireUser(s.secret, h) }
 	hosp := func(h http.HandlerFunc) http.HandlerFunc { return requireUser(s.secret, requireHospital(s.q, h)) }
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health", s.health)
-
-	mux.HandleFunc("GET /api/dev/users", s.devUsers)
-	mux.HandleFunc("POST /api/dev/login", s.devLogin)
+	if s.cfg.DevLogin { // the stub sign-in: never in Training or Production (F4)
+		mux.HandleFunc("GET /api/dev/users", s.devUsers)
+		mux.HandleFunc("POST /api/dev/login", s.devLogin)
+	}
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("GET /api/me", user(s.me))
 	mux.HandleFunc("GET /api/codes", user(s.searchCodes))
@@ -66,12 +99,19 @@ func routes(s *server) http.Handler {
 	mux.HandleFunc("GET /api/h/{hid}/episodes/{eid}/hq", hosp(s.episodeHQ))
 	mux.HandleFunc("PUT /api/h/{hid}/episodes/{eid}/answers/{cid}", hosp(s.saveClinicianAnswers))
 	mux.HandleFunc("POST /api/h/{hid}/episodes/{eid}/complete-review", hosp(s.completeReview))
+}
 
-	// The patient's link: no sign-in (plan-workflow.md Step 3).
+// patientRoutes is the patient's link: no sign-in, the token is the key (plan-workflow.md Step 3).
+func (s *server) patientRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/p/{token}", s.patientHQ)
 	mux.HandleFunc("PUT /api/p/{token}/answers/{cid}", s.savePatientAnswers)
 	mux.HandleFunc("POST /api/p/{token}/submit", s.submitPatientHQ)
-	return recoverPanics(mux)
+}
+
+// publicConfig is the deployment's public per-country values (A-20), read once by the web app.
+// No sign-in: the sign-in page and the patient's link need it first.
+func (s *server) publicConfig(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.cfg.Public())
 }
 
 func (s *server) health(w http.ResponseWriter, r *http.Request) {

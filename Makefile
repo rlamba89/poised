@@ -5,7 +5,7 @@ export
 API := apps/api
 GOOSE := cd $(API) && go tool goose -dir db/migrations postgres "$(DATABASE_URL)"
 
-.PHONY: dev test test-integration e2e-setup e2e lint db-up migrate migrate-down seed sqlc
+.PHONY: dev staff-api patient-api test test-integration e2e-setup e2e lint db-up migrate migrate-down seed sqlc
 
 node_modules: package-lock.json
 	npm install
@@ -14,12 +14,23 @@ node_modules: package-lock.json
 .env:
 	cp .env.example .env
 
-# Runs the Go API and the web app (Vite) together; Ctrl-C stops both.
+# Runs the Go API (every route, with the dev login) and the web app (Vite) together; Ctrl-C
+# stops both.
 dev: node_modules .env
 	@trap 'kill 0' INT TERM EXIT; \
-	(cd $(API) && go run ./cmd/api) & \
+	(cd $(API) && DEV_LOGIN=true go run ./cmd/api) & \
 	npm run dev -w apps/web & \
 	wait
+
+# One API function alone, as it runs on AWS (plan F3, D-4): the patient's link only, or the
+# staff routes only (with the dev login). ADDR is where it listens (default :8081), so it can
+# run beside make dev, e.g. `make patient-api` then `curl localhost:8081/api/health`.
+ADDR ?= :8081
+patient-api: .env
+	cd $(API) && API_ADDR=$(ADDR) go run ./cmd/patient-api
+
+staff-api: .env
+	cd $(API) && API_ADDR=$(ADDR) DEV_LOGIN=true go run ./cmd/staff-api
 
 db-up:
 	docker compose up -d --wait db

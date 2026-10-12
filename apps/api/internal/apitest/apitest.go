@@ -33,6 +33,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
+	"github.com/rlamba89/poised/apps/api/internal/config"
 	"github.com/rlamba89/poised/apps/api/internal/httpapi"
 )
 
@@ -44,10 +45,10 @@ const (
 )
 
 var (
-	admin  *pgxpool.Pool   // TEST_DATABASE_URL: creates and drops the per-test databases
-	config *pgxpool.Config // the same server, copied for each test database
-	module string          // apps/api, where db/migrations and internal/apitest/testdata are
-	secret = []byte("apitest-secret")
+	admin    *pgxpool.Pool   // TEST_DATABASE_URL: creates and drops the per-test databases
+	dbConfig *pgxpool.Config // the same server, copied for each test database
+	module   string          // apps/api, where db/migrations and internal/apitest/testdata are
+	secret   = []byte("apitest-secret")
 )
 
 // Main prepares the template database, runs the tests and returns the exit code.
@@ -73,10 +74,10 @@ func setup(ctx context.Context) (*pgx.Conn, error) {
 	if module, err = moduleDir(); err != nil {
 		return nil, err
 	}
-	if config, err = pgxpool.ParseConfig(url); err != nil {
+	if dbConfig, err = pgxpool.ParseConfig(url); err != nil {
 		return nil, fmt.Errorf("TEST_DATABASE_URL is not a valid Postgres URL: %v", err)
 	}
-	server := fmt.Sprintf("%s:%d", config.ConnConfig.Host, config.ConnConfig.Port)
+	server := fmt.Sprintf("%s:%d", dbConfig.ConnConfig.Host, dbConfig.ConnConfig.Port)
 	lock, err := pgx.Connect(ctx, url)
 	if err != nil {
 		return nil, fmt.Errorf("can't connect to Postgres at %s: %v\nIs it running? Try `docker compose up -d db`", server, err)
@@ -89,8 +90,8 @@ func setup(ctx context.Context) (*pgx.Conn, error) {
 		lock.Close(ctx)
 		return nil, err
 	}
-	config.MaxConns = 4
-	if admin, err = pgxpool.NewWithConfig(ctx, config); err != nil {
+	dbConfig.MaxConns = 4
+	if admin, err = pgxpool.NewWithConfig(ctx, dbConfig); err != nil {
 		lock.Close(ctx)
 		return nil, fmt.Errorf("connect to %s: %v", server, err)
 	}
@@ -164,24 +165,58 @@ type Client struct {
 }
 
 // New gives the test its own database, copied from the migrated template, and a real
-// router (httpapi.NewRouter) serving it over HTTP. Both are removed when the test ends.
+// router (httpapi.NewRouter, with DEV_LOGIN on) serving it over HTTP. Both are removed when
+// the test ends.
 func New(t *testing.T) (*Client, *Fixtures) {
+	t.Helper()
+	return NewWith(t, Options{})
+}
+
+// Options change the server NewWith starts. The zero value is New's.
+type Options struct {
+	// Router builds the handler: httpapi.NewRouter (the default), NewStaffRouter or NewPatientRouter.
+	Router func(httpapi.Deps) http.Handler
+	// Env is laid over the server's environment, which is DEV_LOGIN=true and the token secret,
+	// so the per-country values are the local defaults. "" unsets a variable.
+	Env map[string]string
+}
+
+// NewWith is New with another router or environment. The config goes through the real
+// config.Load, so a bad Env fails the test as it would stop a real server.
+func NewWith(t *testing.T, opts Options) (*Client, *Fixtures) {
 	t.Helper()
 	if admin == nil {
 		t.Fatal("apitest: the package's TestMain must call apitest.Main")
 	}
+	env := map[string]string{
+		"DATABASE_URL": "postgres://apitest", // unused: the router gets the test's pool directly
+		"TOKEN_SECRET": string(secret),
+		"DEV_LOGIN":    "true",
+	}
+	for k, v := range opts.Env {
+		env[k] = v
+	}
+	cfg, err := config.Load(func(name string) string { return env[name] })
+	if err != nil {
+		t.Fatalf("apitest: %v", err)
+	}
+	router := opts.Router
+	if router == nil {
+		router = httpapi.NewRouter
+	}
+
 	ctx := context.Background()
 	name := "sj_test_" + randomHex(8)
 	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name+" TEMPLATE "+templateDB); err != nil {
 		t.Fatalf("apitest: create %s: %v", name, err)
 	}
-	cfg := config.Copy()
-	cfg.ConnConfig.Database = name
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	poolCfg := dbConfig.Copy()
+	poolCfg.ConnConfig.Database = name
+	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		t.Fatalf("apitest: connect to %s: %v", name, err)
 	}
-	srv := httptest.NewServer(httpapi.NewRouter(pool, secret))
+	srv := httptest.NewServer(router(httpapi.Deps{Pool: pool, Config: cfg}))
 	t.Cleanup(func() {
 		srv.Close()
 		pool.Close()
