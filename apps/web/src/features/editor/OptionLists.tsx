@@ -7,6 +7,7 @@ import { ActionIcon, Alert, Badge, Button, Group, Modal, Paper, SegmentedControl
 import { IconTrash } from "@tabler/icons-react";
 import { applySavedOptions, toSavedOptions, type ChapterJson, type ElementJson, type SavedOption } from "@poised/clinical";
 import { api } from "@/lib/api";
+import { formatShortDate } from "@/lib/format";
 
 type OptionList = { id: string; name: string; options: SavedOption[]; updatedAt: string; updatedByName: string };
 
@@ -67,7 +68,7 @@ export function UseOptionList({ el, opened, onClose, change }: { el: ElementJson
               <div style={{ minWidth: 0 }}>
                 <Text fw={600}>{l.name}</Text>
                 <Text size="xs" c="dimmed" mb={4}>
-                  {l.options.length} option{l.options.length === 1 ? "" : "s"} · {l.updatedByName}, {new Date(l.updatedAt).toLocaleDateString("en-GB")}
+                  {l.options.length} option{l.options.length === 1 ? "" : "s"} · {l.updatedByName}, {formatShortDate(l.updatedAt)}
                 </Text>
                 <Group gap={4}>
                   {l.options.slice(0, 8).map((o, i) => (

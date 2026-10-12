@@ -29,6 +29,8 @@ def test_patient_fills_in_and_sends_their_hq_on_a_phone(page: Page, phone: Brows
     expect(page.get_by_role("combobox", name="Episode status")).to_have_value("HQ not complete")
     expect(page.get_by_role("combobox", name="Episode status")).to_be_disabled()
     expect(page.get_by_text("Episode created", exact=True)).to_be_visible()  # General notes
+    # Dates use the deployment's locale from GET /api/config (A-20): en-GB, make dev's default.
+    expect(page.get_by_text("17 May 1980 (age")).to_be_visible()
 
     # …and copies the patient's link.
     page.get_by_role("button", name="Copy").click()
