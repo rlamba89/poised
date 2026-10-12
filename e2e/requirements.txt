@@ -1,0 +1,4 @@
+# Pinned: `make e2e-setup` installs exactly these into e2e/.venv.
+pytest==9.1.1
+pytest-playwright==0.10.0
+playwright==1.63.0

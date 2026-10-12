@@ -1,0 +1,83 @@
+{
+  "description": "Made-up HQ for the e2e journeys: two patient Question Sets (the first has two pages) and one clinician set. Disclosure notes show on the POA Summary.",
+  "chapters": [
+    {
+      "name": "About you",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_smoking",
+            "title": "Smoking",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_smokes",
+                "title": "Do you smoke?",
+                "isRequired": true,
+                "choices": [
+                  { "value": "o_yes", "text": "Yes", "clinicalOutputs": [{ "id": "out_smoker", "note": { "text": "Smoker" } }] },
+                  { "value": "o_no", "text": "No", "clinicalOutputs": [{ "id": "out_nonsmoker", "note": { "text": "Non-smoker" } }] }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "p_alcohol",
+            "title": "Alcohol",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_alcohol",
+                "title": "How often do you drink alcohol?",
+                "isRequired": true,
+                "choices": [
+                  { "value": "o_never", "text": "Never" },
+                  { "value": "o_some", "text": "Sometimes" },
+                  { "value": "o_often", "text": "Often" }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Your health",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_health",
+            "title": "Health",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_diabetes",
+                "title": "Do you have diabetes?",
+                "isRequired": true,
+                "choices": [
+                  { "value": "o_yes", "text": "Yes", "clinicalOutputs": [{ "id": "out_diabetic", "note": { "text": "Diabetic" } }] },
+                  { "value": "o_no", "text": "No" }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Nurse checks",
+      "audience": "clinician",
+      "content": {
+        "pages": [
+          {
+            "name": "p_checks",
+            "title": "Checks",
+            "elements": [{ "type": "text", "name": "q_bp", "title": "Blood pressure", "isRequired": true }]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "description": "Made-up draft for J2: one condition tests a question that no longer exists, so publishing is blocked until it's fixed.",
+  "chapters": [
+    {
+      "name": "About you",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_smoking",
+            "title": "Smoking",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_smokes",
+                "title": "Do you smoke?",
+                "choices": [
+                  { "value": "o_yes", "text": "Yes" },
+                  { "value": "o_no", "text": "No" }
+                ]
+              },
+              {
+                "type": "text",
+                "name": "q_perday",
+                "title": "How many a day?",
+                "visibleIf": "{q_gone} = 'o_yes'"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
