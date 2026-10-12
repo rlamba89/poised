@@ -77,4 +77,13 @@ Any small pure helper written along the way gets a Vitest unit test first (TDD).
 
 ## Status
 
-Not started.
+**Done** (12 Oct 2026): **S04 verified** ([verify.md](../sessions/S04-react-vite/verify.md), verification 2). Verification 1's fix (a page whose code can't be downloaded) was retested in report 3 and checked by the verifier in the production build, which also covered T-19. Steps 1–4 are done; details in [S04's build notes](../sessions/S04-react-vite/build-notes.md).
+
+- **Checks:** `make lint test test-integration` pass; J1–J5 pass unchanged, 3 runs in a row against `vite`, and once against `vite build` + `vite preview`; a deep link (`/h/<id>/episodes/<eid>/poa`) reloads correctly under `vite preview`.
+- **Bundle size (production build, 12 Oct):** first load 0.76 MB raw (0.53 MB JS + 0.24 MB CSS), 0.20 MB gzipped. All JS 2.57 MB raw (0.66 MB gzipped); all CSS 0.77 MB (0.09 MB). SurveyJS with `packages/clinical` is one 1.51 MB chunk, loaded only by pages that run a survey.
+- **Differences from the plan:**
+  - every page's code loads when first opened (the route's `lazy`), instead of plain imports plus `React.lazy` for the SurveyJS pages, because plain imports made every first load 2.3 MB, the patient's phone included;
+  - the hospital layout has no path of its own, so `/h/<id>` alone stays "not found";
+  - pages are keyed by their URL IDs, and `<ScrollRestoration />` is added, to keep Next.js's behaviour;
+  - Node 22.22+ is required (React Router 8);
+  - the UI is renamed from "Lifebox" to "Poised" (Rahul, 12 Oct).

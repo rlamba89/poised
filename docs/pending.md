@@ -93,6 +93,24 @@ docker compose up -d --force-recreate db
   - **Undo can't be reached while a question is selected:** the Settings panel replaces the Structure panel, where Undo lives.
   - **The New episode "Health questionnaire" dropdown can't be searched.** Each `make e2e` run publishes four more `E2E …` HQs in Hospital A, so the list grows; rebuild the local database when it's cluttered. C2 rebuilds this page.
   - **Clicks straight after a page loads were sometimes ignored** (3 times, in dev mode). Possibly the testing tool's timing; unconfirmed.
+- **Found by the S04 manual tests, 12 Oct** (all older than S04; details in [S04's build notes](sessions/S04-react-vite/build-notes.md). The "chapter" text, the dead-end refusal pages, the blank hospital picker and the delete dialog's flicker are listed above already):
+  - **The POA Summary lists a clinician's change to a question that a later change hid.** E.g. the clinician changes "Do you vape?", then sets smoking to No, which hides it; the summary still says "Do you vape? Patient answered “No”, now “Yes”". Answers to hidden questions are kept (`packages/clinical`).
+  - **An empty Question Set (no pages) can be published.** The patient sees it as Complete, and the validate screen shows SurveyJS's "The survey doesn't contain any visible elements."
+  - **A non-clinician sees "New episode"** above "Only clinicians can see patients and episodes."
+  - **The printed POA Summary would include screen-only controls:** Add comment, the two tabs and the section chevrons (the print CSS hides only `.sj-no-print` and the header). Rahul to click Print once to check.
+  - **Enter doesn't save a test case** in the preview's Test cases box; you must click **Save answers** (S04 report 3).
+- **From S04's verification, 12 Oct** (minor; details in [S04 verify.md](sessions/S04-react-vite/verify.md)):
+  - **The editor writes `?set=`/`&page=` with `window.history.replaceState`,** behind React Router's back (F-2). It works (it keeps the router's history state), but the router's own `location.search` goes stale. Use `useSearchParams` + `setSearchParams(…, { replace: true, preventScrollReset: true })` when `QuestionnaireEditor.tsx` is next touched.
+  - **Leftovers from Next.js** (F-4, cosmetic): `PatientHQ`, `PoaSummary`, `ValidateSet` and `PreviewPage` keep default exports that only `next/dynamic` needed; the pages read params with `useParams() as {…}`, so a renamed `:param` would compile and pass `undefined`.
+  - **No "loading" cue when a page is opened for the first time** (F-7). The old page stays until the new page's code arrives (0.34 MB gzipped for the SurveyJS pages). Add a thin progress bar (`useNavigation().state`) before patients use it on phones.
+  - **Before the first deploy (S06), harden the reload-after-deploy screen** (S04 verification 2):
+    - `reloadOnce` (`apps/web/src/lib/chunkError.ts`) allows one reload per 10 seconds, so on a connection where each failed load takes longer than that, it reloads forever. Clear the flag only after a page renders, or widen the window.
+    - Keep `/assets/*` out of Amplify's SPA rewrite, so a missing file is a real 404. Otherwise Safari's "'text/html' is not a valid JavaScript MIME type" isn't recognised. Alternatively, add Vite's `vite:preloadError` listener as a backstop.
+  - **The error screen's "Go to the start page" sends a patient to the staff sign-in** (`RouteError.tsx`; `/` → `/login` when not signed in). Hide it on `/p/…` with S14/S15.
+  - **Small:**
+    - the staff `HospitalLayout` is in the first-load bundle, so the patient's link downloads it (make it lazy);
+    - the Vite proxy key `/api` also matches `/api-…` (use `^/api/`);
+    - in dev, StrictMode flashes "Something went wrong" just before the automatic reload.
 - **Lifebox import:**
   - Conditions that cross Question Sets on pages and questions are still dropped with a warning.
   - Lifebox has no Question Set-level conditions to import.

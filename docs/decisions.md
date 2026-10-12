@@ -30,6 +30,21 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 12 Oct 2026: S04, the frontend on React + Vite
+
+- **The UI is renamed from "Lifebox" to "Poised" in S04** (Rahul, 12 Oct). This covers the browser tab title, the hospital header, the login page title ("Lifebox Authoring" becomes "Poised") and the patient page header. Code comments that cite Lifebox as layout evidence stay.
+  - **Reason:** every layout is rewritten in S04 anyway, and it's the only visible change S04 allows.
+  - **Details:** [S04 brief](sessions/S04-react-vite/brief.md).
+- **Node 22.22 or newer is required** (was 20.9; S04 builder). React Router 8 needs it.
+  - **Reason:** React Router 8 is the current major version, and Node 20 has been end-of-life since April 2026. F4's build images and the `evaluate` Lambda should use Node 22 or newer.
+- **Each page's code loads when the page is first opened** (React Router's route `lazy`, in `apps/web/src/routes.tsx`; S04 builder).
+  - **Reason:** with plain imports, any first page load downloaded every screen (2.3 MB of JavaScript), the editor included on the patient's phone. Next.js had split the code per page by itself. Now the first load is 0.53 MB of JavaScript.
+- **Pages are keyed by their URL IDs, and the hospital layout by the hospital** (S04 builder).
+  - **Reason:** Next.js started a page afresh when the ID in its URL changed; React Router reuses the component. Keying keeps the old behaviour, so one episode's or hospital's state never lingers on the next.
+- **A page whose code can't be downloaded reloads the app once, then shows "Something went wrong" with Reload** (S04, after verification 1). The root route's error screen is `apps/web/src/pages/RouteError.tsx`; a `sessionStorage` timestamp allows at most one automatic reload in 10 seconds.
+  - **Reason:** with per-page loading, anyone with the app open across a deploy gets a missing file on the next page they open (and a patient on a patchy signal can too). Next.js recovered with a full page load; React Router's default is a raw error screen with no way out.
+- **Details:** [S04 build notes](sessions/S04-react-vite/build-notes.md).
+
 ### 12 Oct 2026: S03, the end-to-end journeys (builder's choices, for verification)
 
 - **The patient's journey (J3) runs in WebKit with Playwright's iPhone 13 profile,** not in Chromium at phone size.
@@ -338,7 +353,7 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
 - **npm:** a workspace package needs a `version` field before npm will link it.
 - **Go 1.26** is required because sqlc (run as a Go tool) needs it.
 - **Docker Desktop hangs:** `docker info` and CLI calls can hang, including on the `docker-ai` plugin. Force-quitting the backend fixes it, but it also stops other projects' containers, so ask first.
-- **Invalid HTML in React** (e.g. a Mantine `<Badge>` (a div) inside `<Text>` (a p)) shows in the dev overlay's "Issues". Check it after UI changes.
+- **Invalid HTML in React** (e.g. a Mantine `<Badge>` (a div) inside `<Text>` (a p)) shows as a console error. Check the console after UI changes. (Under Next.js it also showed in the dev overlay's "Issues"; *Next.js removed 12 Oct, S04*.)
 - **Playwright selectors:** Mantine `Select` isn't exposed as a textbox, so find it by label or placeholder. The code picker needs a short pause after selecting.
 - **Expected console noise:** two 401s from `/api/me` on the login page, and 409s in the duplicate-name and two-editor tests.
 - **The exact headless Chrome path used:** `CHROME_PATH=$HOME/Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell npx tsx spikes/ui-<name>.ts`.
@@ -349,7 +364,7 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
     docker compose exec -T db psql -U sj -d postgres -c "DROP DATABASE sj WITH (FORCE)" -c "CREATE DATABASE sj OWNER sj"
     make migrate seed
     ```
-  - **`apps/web/.next/dev/types/` keeps that branch's routes,** so `tsc` in `make lint` fails with "Cannot find module '…/page.js'". Delete the folder; `next dev` regenerates it.
+  - **`apps/web/.next/dev/types/` keeps that branch's routes,** so `tsc` in `make lint` fails with "Cannot find module '…/page.js'". Delete the folder; `next dev` regenerates it. (*Only on branches older than S04; master has no Next.js since 12 Oct.*)
 - **HJE Full HQ can't be recreated from the repo:** it was transcribed from screenshots. Before rebuilding the database, save it, then load it back after `make migrate seed`:
   ```sh
   docker compose exec -T db pg_dump -U sj --data-only -t questionnaires -t questionnaire_versions -t chapters sj > hje.sql
@@ -368,7 +383,7 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
     - run long scripts in the background and poll their results, because the tool times out after 45 s.
 - **End-to-end journeys (`e2e/`, found in S03, 12 Oct):**
   - **SurveyJS hides the real radio input** behind a drawn one, so Playwright's `check()` waits forever ("intercepts pointer events"). Tap the option's text instead: `support.choose(page, question, option)`.
-  - **`make dev` adds a Next.js tools button** whose name contains "Next", so `get_by_role("button", name="Next")` matches two buttons. Use `exact=True` (until F2 removes Next.js).
+  - **`make dev` adds a Next.js tools button** whose name contains "Next", so `get_by_role("button", name="Next")` matches two buttons. Use `exact=True` (until F2 removes Next.js). *Superseded 12 Oct (S04): Next.js is gone; the journeys keep `exact=True`, which is harmless.*
   - **A failed journey keeps one trace per browser plus one for the API set-up** (`trace-1.zip`…, in no fixed order), in `e2e/test-results/<journey>/`.
   - **To stop a pytest run with one clean message, raise `pytest.UsageError` in `pytest_sessionstart`.** `pytest.exit` from a fixture prints it twice, with pytest noise.
   - **On Rahul's Mac, `python3` is 3.10;** `python3.12` and `python3.13` come from Homebrew. `make e2e-setup` uses `python3.12`.
@@ -378,14 +393,15 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
 
 ## 5. Open items (as of 8 Oct 2026)
 
-- **Next work:** plan **F2** ([plans/f2-react-vite.md](plans/f2-react-vite.md)), session S04. Plan F1 is done (S03 verified 12 Oct); its six minor e2e follow-ups are in [S03's verify.md](sessions/S03-e2e-journeys/verify.md).
+- **Next work:** plan **F3** ([plans/f3-lambda-entrypoints.md](plans/f3-lambda-entrypoints.md)), session S05. Plan F2 is done (S04 verified 12 Oct; the verifier checked T-19 in the production build, so no hand check is needed). **Rahul to click Print once** on a POA Summary. Plan F1 is done (S03 verified 12 Oct); its six minor e2e follow-ups are in [S03's verify.md](sessions/S03-e2e-journeys/verify.md).
 - **The `dev` branch** (on `origin` too; commit `557be2c` "Auth first: sessions, trusts, Cognito staff sign-in, patient link sign-in", 7 Oct) isn't mentioned in the plans or sessions. Decide whether sessions S08–S15 supersede it or should reuse parts of it.
 - **Build order, undecided:** the roadmap order (F1 → F2 → F3 → F4 → C1 → C2), or F1 and F2, then C1 and C2 before the AWS work (F3, F4). The roadmap order stands until Rahul decides.
 - **No domain chosen yet.** `<domain>` in the docs is a placeholder.
 - **Research files:** `research_notes/` and `reports/` at the repo root are untracked. Either keep them (e.g. move them to `docs/research/` and fix the links in saas-requirements §0 and §13 and in this file) or delete them.
 - **Before C2 (S14), decide what the patient link returns** (found in S02 testing, 8 Oct). `GET /api/p/{token}` includes the date of birth. With magic link + date-of-birth sign-in, that would give away the check. Details are in [pending.md](pending.md) §3.
 - **The proposed parts of A-20** (above, 7–8 Oct) need Rahul's yes when C1 and C2 start.
-- **App branding** still says "Lifebox" in the UI (`apps/web/src/app/layout.tsx`, `h/[hospitalId]/layout.tsx`, `PatientHQ.tsx`). Rename it to Poised.
+- **App branding** still says "Lifebox" in the UI (`apps/web/src/app/layout.tsx`, `h/[hospitalId]/layout.tsx`, `PatientHQ.tsx`). Rename it to Poised. *Done in S04 (12 Oct), pending verification.*
+- **S04's manual tests and verification found small items, none blocking:** they're in [pending.md](pending.md) §3 ("Found by the S04 manual tests" and "From S04's verification"). The worst: the POA Summary lists a clinician's change to a question that a later change hid. **Rahul to click Print once** on a POA Summary (no tester could open the real dialog).
 - **Unanswered:** should clinician-only Question Sets render full width in `ValidateSet.tsx`, rather than in an empty two-column grid?
 - **Unconfirmed:** whether saved option lists should be copied (as built) or linked.
 - **Unsaved test data:**
