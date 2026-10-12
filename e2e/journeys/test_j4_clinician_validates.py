@@ -21,8 +21,8 @@ def test_clinician_validates_every_set_and_completes_the_review(page: Page, as_u
         patient.answer(set_name, answers)
     patient.submit()
 
-    hospital = sign_in(page.context, "Cara Clinician")
-    page.goto(f"/h/{hospital}/episodes/{episode['id']}")
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}")
     expect(page.get_by_role("combobox", name="Episode status")).to_have_value("Ready for review")
     complete = page.get_by_role("button", name="Complete HQ review")
     expect(complete).to_be_disabled()
@@ -56,7 +56,7 @@ def test_clinician_validates_every_set_and_completes_the_review(page: Page, as_u
     stale.close()
 
     # "Your health" is validated as the patient answered it.
-    page.goto(f"/h/{hospital}/episodes/{episode['id']}")
+    page.goto(f"{base}/episodes/{episode['id']}")
     expect(page.get_by_role("row", name="About you")).to_contain_text("Validated by Cara Clinician")
     page.get_by_role("row", name="Your health").get_by_role("link", name="Validate").click()
     expect(page.get_by_role("radiogroup", name="Do you have diabetes?").get_by_role("radio", name="No")).to_be_checked()

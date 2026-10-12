@@ -12,7 +12,9 @@ import { api, ApiError } from "@/lib/api";
 import type { SamplePatient } from "./PreviewPage";
 
 export function TestCases(props: {
-  hospitalId: string;
+  base: string;
+  /** Why test cases can only be loaded and run, not saved or deleted; null when they can be. */
+  readOnly: string | null;
   chapterId: string;
   content: ChapterJson;
   revision: number;
@@ -23,6 +25,7 @@ export function TestCases(props: {
   onLoad: (tc: TestCase) => void;
 }) {
   const { content, revision, viewer, patient, model } = props;
+  const canSave = props.readOnly === null;
   const cases = testCasesOf(content);
   const [name, setName] = useState("");
   const [results, setResults] = useState<Record<string, TestResult>>({});
@@ -35,7 +38,7 @@ export function TestCases(props: {
     setError("");
     const doc = setTestCases(content, next);
     try {
-      const res = await api<{ revision: number }>(`/h/${props.hospitalId}/chapters/${props.chapterId}/content`, {
+      const res = await api<{ revision: number }>(`${props.base}/chapters/${props.chapterId}/content`, {
         method: "PUT",
         body: JSON.stringify({ content: doc, revision }),
       });
@@ -80,7 +83,7 @@ export function TestCases(props: {
       )}
       {error && <Alert color="red" p="xs" mb="xs"><Text size="sm">{error}</Text></Alert>}
       <Stack gap={6}>
-        {cases.length === 0 && <Text size="sm" c="dimmed">Answer the form, then save the answers and the outputs they produce as a test case.</Text>}
+        {cases.length === 0 && canSave && <Text size="sm" c="dimmed">Answer the form, then save the answers and the outputs they produce as a test case.</Text>}
         {cases.map((tc) => {
           const r = results[tc.id];
           return (
@@ -93,11 +96,13 @@ export function TestCases(props: {
                 </Group>
                 <Group gap={2} wrap="nowrap">
                   <Button size="compact-xs" variant="subtle" onClick={() => props.onLoad(tc)}>Load</Button>
-                  <Tooltip label="Delete test case">
-                    <ActionIcon size="sm" variant="subtle" color="red" aria-label={`Delete ${tc.name}`} disabled={saving} onClick={() => save(cases.filter((x) => x.id !== tc.id))}>
-                      <IconTrash size={13} />
-                    </ActionIcon>
-                  </Tooltip>
+                  {canSave && (
+                    <Tooltip label="Delete test case">
+                      <ActionIcon size="sm" variant="subtle" color="red" aria-label={`Delete ${tc.name}`} disabled={saving} onClick={() => save(cases.filter((x) => x.id !== tc.id))}>
+                        <IconTrash size={13} />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
                 </Group>
               </Group>
               {r && !r.pass && open === tc.id && (
@@ -114,10 +119,14 @@ export function TestCases(props: {
           );
         })}
       </Stack>
-      <Group gap="xs" mt="sm" wrap="nowrap">
-        <TextInput size="xs" style={{ flex: 1 }} placeholder="Name, e.g. Smoker with COPD" value={name} onChange={(e) => setName(e.currentTarget.value)} aria-label="Test case name" />
-        <Button size="xs" disabled={!name.trim() || saving} onClick={add}>Save answers</Button>
-      </Group>
+      {canSave ? (
+        <Group gap="xs" mt="sm" wrap="nowrap">
+          <TextInput size="xs" style={{ flex: 1 }} placeholder="Name, e.g. Smoker with COPD" value={name} onChange={(e) => setName(e.currentTarget.value)} aria-label="Test case name" />
+          <Button size="xs" disabled={!name.trim() || saving} onClick={add}>Save answers</Button>
+        </Group>
+      ) : (
+        <Text size="sm" c="dimmed" mt="sm">{props.readOnly}</Text>
+      )}
       <Text size="xs" c="dimmed" mt={6}>Made-up answers only. Never enter a real patient&apos;s details.</Text>
     </Card>
   );

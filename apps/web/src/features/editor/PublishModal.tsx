@@ -1,6 +1,6 @@
 // Publishing a draft (LCY-01). Logic problems and failing test cases in any Question Set
 // block it (SGN-04); review and sign-off come later.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Alert, Button, Group, List, Modal, Stack, Text } from "@mantine/core";
 import { publishProblems, type ChapterJson } from "@poised/clinical";
 import { api } from "@/lib/api";
@@ -20,7 +20,11 @@ type Props = {
 export function PublishModal({ opened, onClose, onPublished, path, versionId, versionNo, sets, unsaved }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const problems = opened && sets ? publishProblems(sets) : [];
+  // The problems are worked out while the dialog is open, and the last ones kept while it fades out,
+  // so Cancel doesn't flash the "ready to publish" text (S08 test report 2).
+  const shown = useRef<ReturnType<typeof publishProblems>>([]);
+  if (opened) shown.current = sets ? publishProblems(sets) : [];
+  const problems = shown.current;
   const blocked = !sets || unsaved || problems.length > 0 || sets.length === 0;
 
   const publish = async () => {

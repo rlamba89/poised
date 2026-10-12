@@ -13,6 +13,7 @@ import (
 
 	"github.com/rlamba89/poised/apps/api/internal/chapter"
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/role"
 )
 
 var (
@@ -28,9 +29,10 @@ const (
 
 // canEdit writes 403/409 itself and reports whether the caller may change a chapter
 // of a version with this status.
-func canEdit(w http.ResponseWriter, r *http.Request, versionStatus string) bool {
-	if !hasRole(r, "author") {
-		writeError(w, http.StatusForbidden, "Only authors can change chapters.")
+// owner is the questionnaire's hospital_id: NULL for the trust's (see canChange).
+func canEdit(w http.ResponseWriter, r *http.Request, owner uuid.NullUUID, versionStatus string) bool {
+	if !canChange(r, owner, role.SuperClinician) {
+		writeError(w, http.StatusForbidden, contentRole)
 		return false
 	}
 	if versionStatus != "draft" {
@@ -45,7 +47,7 @@ func (s *server) loadChapterMeta(w http.ResponseWriter, r *http.Request) (db.Get
 	if !ok {
 		return db.GetChapterMetaRow{}, false
 	}
-	row, err := s.q.GetChapterMeta(r.Context(), db.GetChapterMetaParams{ID: cid, HospitalID: hospitalID(r)})
+	row, err := s.q.GetChapterMeta(r.Context(), db.GetChapterMetaParams{ID: cid, OrgID: orgID(r), HospitalID: hospitalID(r)})
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, chapterNotFound)
 		return row, false
@@ -60,7 +62,7 @@ func (s *server) loadChapterMeta(w http.ResponseWriter, r *http.Request) (db.Get
 // addChapter appends a chapter to the questionnaire's draft (FRM-07).
 func (s *server) addChapter(w http.ResponseWriter, r *http.Request) {
 	q, ok := s.loadQuestionnaire(w, r)
-	if !ok || !canEdit(w, r, q.Status) {
+	if !ok || !canEdit(w, r, q.HospitalID, q.Status) {
 		return
 	}
 	var in struct {
@@ -112,7 +114,7 @@ func (in *chapterDetails) validate() string {
 // updateChapter renames, describes, and sets the icon and audience (FRM-07).
 func (s *server) updateChapter(w http.ResponseWriter, r *http.Request) {
 	c, ok := s.loadChapterMeta(w, r)
-	if !ok || !canEdit(w, r, c.VersionStatus) {
+	if !ok || !canEdit(w, r, c.OwnerHospitalID, c.VersionStatus) {
 		return
 	}
 	// Fields left out keep their current value.
@@ -138,7 +140,7 @@ func (s *server) updateChapter(w http.ResponseWriter, r *http.Request) {
 // reorderChapters takes every chapter id of the draft in the new order.
 func (s *server) reorderChapters(w http.ResponseWriter, r *http.Request) {
 	q, ok := s.loadQuestionnaire(w, r)
-	if !ok || !canEdit(w, r, q.Status) {
+	if !ok || !canEdit(w, r, q.HospitalID, q.Status) {
 		return
 	}
 	var order []uuid.UUID
@@ -198,7 +200,7 @@ func sameIDs(current []db.ListChaptersRow, order []uuid.UUID) bool {
 
 func (s *server) deleteChapter(w http.ResponseWriter, r *http.Request) {
 	c, ok := s.loadChapterMeta(w, r)
-	if !ok || !canEdit(w, r, c.VersionStatus) {
+	if !ok || !canEdit(w, r, c.OwnerHospitalID, c.VersionStatus) {
 		return
 	}
 	if err := s.q.DeleteChapter(r.Context(), c.ID); err != nil {
@@ -215,7 +217,7 @@ func (s *server) getChapter(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	row, err := s.q.GetChapter(r.Context(), db.GetChapterParams{ID: cid, HospitalID: hospitalID(r)})
+	row, err := s.q.GetChapter(r.Context(), db.GetChapterParams{ID: cid, OrgID: orgID(r), HospitalID: hospitalID(r)})
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, chapterNotFound)
 		return
@@ -230,7 +232,7 @@ func (s *server) getChapter(w http.ResponseWriter, r *http.Request) {
 // saveContent stores the SurveyJS JSON if `revision` is still current, else 409 (LCY-04).
 func (s *server) saveContent(w http.ResponseWriter, r *http.Request) {
 	c, ok := s.loadChapterMeta(w, r)
-	if !ok || !canEdit(w, r, c.VersionStatus) {
+	if !ok || !canEdit(w, r, c.OwnerHospitalID, c.VersionStatus) {
 		return
 	}
 	var in struct {

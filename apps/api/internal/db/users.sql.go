@@ -15,37 +15,74 @@ const getUser = `-- name: GetUser :one
 SELECT id, name, email FROM users WHERE id = $1
 `
 
-func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
+type GetUserRow struct {
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	Email string    `json:"email"`
+}
+
+func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error) {
 	row := q.db.QueryRow(ctx, getUser, id)
-	var i User
+	var i GetUserRow
 	err := row.Scan(&i.ID, &i.Name, &i.Email)
 	return i, err
 }
 
-const listMemberships = `-- name: ListMemberships :many
-SELECT m.hospital_id, h.name AS hospital_name, m.role
-FROM memberships m
-JOIN hospitals h ON h.id = m.hospital_id
-WHERE m.user_id = $1
-ORDER BY h.name, m.role
+const isPlatformAdmin = `-- name: IsPlatformAdmin :one
+SELECT EXISTS (SELECT 1 FROM platform_admins WHERE user_id = $1)
 `
 
-type ListMembershipsRow struct {
-	HospitalID   uuid.UUID `json:"hospitalId"`
-	HospitalName string    `json:"hospitalName"`
-	Role         string    `json:"role"`
+func (q *Queries) IsPlatformAdmin(ctx context.Context, userID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, isPlatformAdmin, userID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
-func (q *Queries) ListMemberships(ctx context.Context, userID uuid.UUID) ([]ListMembershipsRow, error) {
-	rows, err := q.db.Query(ctx, listMemberships, userID)
+const listMyHospitals = `-- name: ListMyHospitals :many
+SELECT o.id AS org_id, o.name AS org_name, o.code AS org_code,
+       h.id AS hospital_id, h.name AS hospital_name, h.timezone,
+       m.role, (m.hospital_id IS NULL)::boolean AS trust_wide
+FROM memberships m
+JOIN orgs o ON o.id = m.org_id
+JOIN hospitals h ON h.org_id = m.org_id AND (m.hospital_id IS NULL OR m.hospital_id = h.id)
+WHERE m.user_id = $1
+ORDER BY o.name, o.id, h.name, h.id
+`
+
+type ListMyHospitalsRow struct {
+	OrgID        uuid.UUID `json:"orgId"`
+	OrgName      string    `json:"orgName"`
+	OrgCode      string    `json:"orgCode"`
+	HospitalID   uuid.UUID `json:"hospitalId"`
+	HospitalName string    `json:"hospitalName"`
+	Timezone     *string   `json:"timezone"`
+	Role         string    `json:"role"`
+	TrustWide    bool      `json:"trustWide"`
+}
+
+// Every hospital the user can work in, once per membership that reaches it: a trust-wide one
+// (hospital_id NULL) reaches every hospital of the trust, a hospital one only that hospital.
+// GET /api/me keeps the highest role per hospital.
+func (q *Queries) ListMyHospitals(ctx context.Context, userID uuid.UUID) ([]ListMyHospitalsRow, error) {
+	rows, err := q.db.Query(ctx, listMyHospitals, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListMembershipsRow{}
+	items := []ListMyHospitalsRow{}
 	for rows.Next() {
-		var i ListMembershipsRow
-		if err := rows.Scan(&i.HospitalID, &i.HospitalName, &i.Role); err != nil {
+		var i ListMyHospitalsRow
+		if err := rows.Scan(
+			&i.OrgID,
+			&i.OrgName,
+			&i.OrgCode,
+			&i.HospitalID,
+			&i.HospitalName,
+			&i.Timezone,
+			&i.Role,
+			&i.TrustWide,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -56,28 +93,34 @@ func (q *Queries) ListMemberships(ctx context.Context, userID uuid.UUID) ([]List
 	return items, nil
 }
 
-const listRolesInHospital = `-- name: ListRolesInHospital :many
-SELECT role FROM memberships WHERE user_id = $1 AND hospital_id = $2
+const listOrgMemberships = `-- name: ListOrgMemberships :many
+SELECT hospital_id, role FROM memberships WHERE user_id = $1 AND org_id = $2
 `
 
-type ListRolesInHospitalParams struct {
-	UserID     uuid.UUID `json:"userId"`
-	HospitalID uuid.UUID `json:"hospitalId"`
+type ListOrgMembershipsParams struct {
+	UserID uuid.UUID `json:"userId"`
+	OrgID  uuid.UUID `json:"orgId"`
 }
 
-func (q *Queries) ListRolesInHospital(ctx context.Context, arg ListRolesInHospitalParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, listRolesInHospital, arg.UserID, arg.HospitalID)
+type ListOrgMembershipsRow struct {
+	HospitalID uuid.NullUUID `json:"hospitalId"`
+	Role       string        `json:"role"`
+}
+
+// The caller's memberships in one trust: hospital_id is NULL for a trust-wide one.
+func (q *Queries) ListOrgMemberships(ctx context.Context, arg ListOrgMembershipsParams) ([]ListOrgMembershipsRow, error) {
+	rows, err := q.db.Query(ctx, listOrgMemberships, arg.UserID, arg.OrgID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []string{}
+	items := []ListOrgMembershipsRow{}
 	for rows.Next() {
-		var role string
-		if err := rows.Scan(&role); err != nil {
+		var i ListOrgMembershipsRow
+		if err := rows.Scan(&i.HospitalID, &i.Role); err != nil {
 			return nil, err
 		}
-		items = append(items, role)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -89,16 +132,62 @@ const listUsers = `-- name: ListUsers :many
 SELECT id, name, email FROM users ORDER BY name
 `
 
-func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
+type ListUsersRow struct {
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	Email string    `json:"email"`
+}
+
+func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 	rows, err := q.db.Query(ctx, listUsers)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []User{}
+	items := []ListUsersRow{}
 	for rows.Next() {
-		var i User
+		var i ListUsersRow
 		if err := rows.Scan(&i.ID, &i.Name, &i.Email); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rolesAtHospital = `-- name: RolesAtHospital :many
+SELECT m.hospital_id, m.role FROM memberships m
+JOIN hospitals h ON h.org_id = m.org_id AND h.id = $1
+WHERE m.user_id = $2 AND m.org_id = $3
+  AND (m.hospital_id IS NULL OR m.hospital_id = h.id)
+`
+
+type RolesAtHospitalParams struct {
+	HospitalID uuid.UUID `json:"hospitalId"`
+	UserID     uuid.UUID `json:"userId"`
+	OrgID      uuid.UUID `json:"orgId"`
+}
+
+type RolesAtHospitalRow struct {
+	HospitalID uuid.NullUUID `json:"hospitalId"`
+	Role       string        `json:"role"`
+}
+
+// The caller's roles at a hospital of a trust: trust-wide, at that hospital, or both. None when
+// they aren't a member, or the hospital isn't in that trust. Re-read on every request (STF-04).
+func (q *Queries) RolesAtHospital(ctx context.Context, arg RolesAtHospitalParams) ([]RolesAtHospitalRow, error) {
+	rows, err := q.db.Query(ctx, rolesAtHospital, arg.HospitalID, arg.UserID, arg.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RolesAtHospitalRow{}
+	for rows.Next() {
+		var i RolesAtHospitalRow
+		if err := rows.Scan(&i.HospitalID, &i.Role); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

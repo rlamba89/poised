@@ -9,6 +9,7 @@ User journeys through the real app in real browsers, with Playwright and pytest 
 | J3 | `journeys/test_j3_patient.py` | **Patient:** the clinician creates an episode and copies the link. The patient opens it on a phone, fills in every Question Set (leaving part-way and coming back), and sends it. The episode is Ready for review. | Clinician: desktop Chromium. Patient: **iPhone 13** (WebKit, Safari's engine) |
 | J4 | `journeys/test_j4_clinician_validates.py` | **Clinician validates:** corrects one answer ("Patient answered: Yes" appears), validates every Question Set and completes the review. **Two tabs:** a stale tab's Validate shows "changed somewhere else" with **Reload**, and Reload shows the newer answer. | Desktop Chromium |
 | J5 | `journeys/test_j5_poa_summary.py` | **POA Summary:** both tabs, with the corrected answer marked on the validated one. The status changes and General notes records it; a comment is added; **Print** is there. | Desktop Chromium |
+| Trusts | `journeys/test_trusts.py` | **Trusts and hospitals (S08):** a member of two trusts picks a hospital and switches trust from the header, with their role in each; a trust admin's **All hospitals** list; a clinician at Hospital A1 can't open Hospital A2's episode by its URL; a super clinician of one hospital can view but not change the trust's questionnaires, in the editor or the Preview; the header fits a 390px window. | Desktop Chromium (one case at 390px) |
 
 ## Set up (once)
 
@@ -74,7 +75,7 @@ In the viewer:
 
 - **Set up through the API** (`support.py`), signed in as the seeded users with the dev stub, so the browser is used only for the journey itself. J4 and J5 set up the patient's answers this way; J3 is where a patient fills them in.
 - **Every name has a unique suffix,** such as `E2E J3 1210 150457 c0d4` (day, month, time, random). Runs never collide, and journeys don't depend on each other or on their order.
-- **Nothing is deleted.** Published questionnaires can't be deleted, so `E2E …` questionnaires and `Sam J…` patients collect in Hospital A. The local database is disposable: rebuild it when it gets cluttered ([decisions.md](../docs/decisions.md) §4).
+- **Nothing is deleted.** Published questionnaires can't be deleted, so `E2E …` questionnaires and `Sam J…` patients collect in Trust A (Hospital A1). The local database is disposable: rebuild it when it gets cluttered ([decisions.md](../docs/decisions.md) §4).
 - **Made-up data only.** The questionnaires are in `data/`.
 
 ## Writing a journey

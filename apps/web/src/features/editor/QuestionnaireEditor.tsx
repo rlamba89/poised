@@ -10,7 +10,7 @@ import {
   findElement, findPage, logicProblems, movePage, movePageTo, pageTitle, pagesOf, type ChapterJson, type Kind, type Target,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
-import { hasRole, useMe } from "@/lib/auth";
+import { canChange, useHospital, useMe } from "@/lib/auth";
 import type { Chapter } from "@/features/chapters/types";
 import { PageCanvas, SetCanvas } from "./Canvas";
 import { EditorContext, type EditorContextValue } from "./context";
@@ -24,7 +24,8 @@ import { useChapters, type SaveStatus } from "./useChapters";
 import css from "./editor.module.css";
 
 type Detail = {
-  questionnaire: { id: string; name: string; description: string; versionId: string; versionNo: number; status: string };
+  // hospitalId null: the trust's questionnaire, for every hospital.
+  questionnaire: { id: string; hospitalId: string | null; name: string; description: string; versionId: string; versionNo: number; status: string };
   chapters: Chapter[];
 };
 
@@ -38,14 +39,16 @@ const STATUS: Record<SaveStatus, { text: string; color: string }> = {
 
 type Confirm = { title: string; body: string; dependents?: string[]; onConfirm: () => void };
 
-export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalId: string; questionnaireId: string }) {
+export function QuestionnaireEditor({ base, questionnaireId }: { base: string; questionnaireId: string }) {
   const me = useMe();
+  const here = useHospital();
   const navigate = useNavigate();
-  const base = `/h/${hospitalId}`;
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
-  const store = useChapters(hospitalId);
-  const readOnly = !hasRole(me, hospitalId, "author") || (data ? data.questionnaire.status !== "draft" : true);
+  const store = useChapters(base);
+  // The trust's questionnaires need a whole-trust super clinician or admin (S08 answers, 5).
+  const author = !!data && canChange(here, data.questionnaire.hospitalId, "super_clinician");
+  const readOnly = !author || (data ? data.questionnaire.status !== "draft" : true);
 
   const [selection, setSelection] = useState<Selection>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -54,6 +57,10 @@ export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalI
   const [disclosure, setDisclosure] = useState<DisclosureTarget | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
+  // The dialog shows the last question asked while it fades out, instead of an empty body (S08 test report 3).
+  const [lastConfirm, setLastConfirm] = useState<Confirm | null>(null);
+  if (confirm && confirm !== lastConfirm) setLastConfirm(confirm);
+  const shownConfirm = confirm ?? lastConfirm;
   const [translating, setTranslating] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
@@ -352,12 +359,12 @@ export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalI
               Translate
             </Button>
           )}
-          {q.status === "draft" && hasRole(me, hospitalId, "publisher") && (
+          {q.status === "draft" && author && (
             <Button size="xs" leftSection={<IconSend size={14} />} onClick={() => setPublishing(true)}>
               Publish
             </Button>
           )}
-          {q.status !== "draft" && hasRole(me, hospitalId, "author") && (
+          {q.status !== "draft" && author && (
             <Button size="xs" variant="default" leftSection={<IconCopyPlus size={14} />} onClick={createVersion}>
               Create new version
             </Button>
@@ -474,14 +481,14 @@ export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalI
         unsaved={store.overall !== "saved"}
       />
 
-      <Modal opened={!!confirm} onClose={() => setConfirm(null)} title={confirm?.title}>
+      <Modal opened={!!confirm} onClose={() => setConfirm(null)} title={shownConfirm?.title}>
         <Stack>
-          <Text>{confirm?.body}</Text>
-          {!!confirm?.dependents?.length && (
+          <Text>{shownConfirm?.body}</Text>
+          {!!shownConfirm?.dependents?.length && (
             <Alert color="orange" title="Other items depend on this">
               Their conditions will no longer work:
               <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-                {confirm.dependents.map((d) => (
+                {shownConfirm.dependents.map((d) => (
                   <li key={d}>{d}</li>
                 ))}
               </ul>

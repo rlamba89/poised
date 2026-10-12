@@ -20,21 +20,24 @@ def unique() -> str:
     return f"{datetime.now():%d%m %H%M%S} {secrets.token_hex(2)}"
 
 
-def sign_in(context: BrowserContext, name: str) -> str:
-    """Signs a browser context in as a seeded user (dev stub); returns their first hospital's id.
+def sign_in(context: BrowserContext, name: str, hospital: str = "Hospital A1") -> str:
+    """Signs a browser context in as a seeded user (dev stub); returns the start of the named
+    hospital's URLs, /o/<trust>/h/<hospital> (S08).
 
     The cookie lands in the context, so every page opened from it is signed in.
     """
-    return _sign_in(context.request, name)
+    return _sign_in(context.request, name, hospital)
 
 
-def _sign_in(request: APIRequestContext, name: str) -> str:
+def _sign_in(request: APIRequestContext, name: str, hospital: str) -> str:
     users = _ok(request.get("/api/dev/users"), "GET /api/dev/users").json()
     match = [u for u in users if u["name"] == name]
     assert match, f"No seeded user called {name!r}. Run `make seed`."
     _ok(request.post("/api/dev/login", data={"userId": match[0]["id"]}), "POST /api/dev/login")
     me = _ok(request.get("/api/me"), "GET /api/me").json()
-    return me["hospitals"][0]["id"]
+    places = [f"/o/{t['id']}/h/{h['id']}" for t in me["trusts"] for h in t["hospitals"] if h["name"] == hospital]
+    assert places, f"{name} can't work at {hospital!r}. Run `make seed`."
+    return places[0]
 
 
 def choose(scope: Page | Locator, question: str, option: str) -> None:
@@ -57,11 +60,11 @@ def _ok(res, what: str):
 
 
 class Api:
-    """One seeded user's API session, in their first hospital."""
+    """One seeded user's API session, at one of their hospitals (Hospital A1 unless named)."""
 
-    def __init__(self, playwright: Playwright, base_url: str, name: str):
+    def __init__(self, playwright: Playwright, base_url: str, name: str, hospital: str = "Hospital A1"):
         self.request = playwright.request.new_context(base_url=base_url)
-        self.hospital = _sign_in(self.request, name)
+        self.base = _sign_in(self.request, name, hospital)
 
     def call(self, method: str, path: str, body=None):
         """Sends a request to /api<path> and returns the decoded JSON (None for 204)."""
@@ -69,7 +72,8 @@ class Api:
         return None if res.status == 204 else res.json()
 
     def h(self, path: str) -> str:
-        return f"/h/{self.hospital}{path}"
+        """A path of the hospital: /o/<trust>/h/<hospital><path>."""
+        return f"{self.base}{path}"
 
     # Questionnaires
 

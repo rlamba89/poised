@@ -7,15 +7,18 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/role"
 )
 
 const (
 	optionListNotFound = "Option list not found."
 	maxOptionListBytes = 256 << 10
 	maxOptions         = 500
+	optionListsRole    = "Only super clinicians and admins of the whole trust can change the trust's option lists."
 )
 
 // optionListInput is what authors save: a name and the options, without option IDs
@@ -48,7 +51,7 @@ func (in *optionListInput) validate() string {
 }
 
 func (s *server) listOptionLists(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.q.ListOptionLists(r.Context(), hospitalID(r))
+	rows, err := s.q.ListOptionLists(r.Context(), db.ListOptionListsParams{OrgID: orgID(r), HospitalID: hospitalID(r)})
 	if err != nil {
 		serverError(w, "list option lists", err)
 		return
@@ -57,12 +60,12 @@ func (s *server) listOptionLists(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) createOptionList(w http.ResponseWriter, r *http.Request) {
-	in, ok := readOptionList(w, r)
+	in, ok := readOptionList(w, r, uuid.NullUUID{}) // a new list is the trust's
 	if !ok {
 		return
 	}
 	id, err := s.q.CreateOptionList(r.Context(), db.CreateOptionListParams{
-		HospitalID: hospitalID(r), Name: in.Name, Options: in.Options, UpdatedBy: currentUser(r).ID,
+		OrgID: orgID(r), Name: in.Name, Options: in.Options, UpdatedBy: currentUser(r).ID,
 	})
 	if isUniqueViolation(err) {
 		writeError(w, http.StatusConflict, "An option list with this name already exists.")
@@ -81,12 +84,16 @@ func (s *server) updateOptionList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	in, ok := readOptionList(w, r)
+	owner, ok := s.optionListOwner(w, r, id)
+	if !ok {
+		return
+	}
+	in, ok := readOptionList(w, r, owner)
 	if !ok {
 		return
 	}
 	n, err := s.q.UpdateOptionList(r.Context(), db.UpdateOptionListParams{
-		ID: id, HospitalID: hospitalID(r), Name: in.Name, Options: in.Options, UpdatedBy: currentUser(r).ID,
+		ID: id, OrgID: orgID(r), HospitalID: hospitalID(r), Name: in.Name, Options: in.Options, UpdatedBy: currentUser(r).ID,
 	})
 	switch {
 	case isUniqueViolation(err):
@@ -105,11 +112,15 @@ func (s *server) deleteOptionList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !hasRole(r, "author") {
-		writeError(w, http.StatusForbidden, "Only authors can change option lists.")
+	owner, ok := s.optionListOwner(w, r, id)
+	if !ok {
 		return
 	}
-	n, err := s.q.DeleteOptionList(r.Context(), db.DeleteOptionListParams{ID: id, HospitalID: hospitalID(r)})
+	if !canChange(r, owner, role.SuperClinician) {
+		writeError(w, http.StatusForbidden, optionListsRole)
+		return
+	}
+	n, err := s.q.DeleteOptionList(r.Context(), db.DeleteOptionListParams{ID: id, OrgID: orgID(r), HospitalID: hospitalID(r)})
 	switch {
 	case err != nil:
 		serverError(w, "delete option list", err)
@@ -120,11 +131,12 @@ func (s *server) deleteOptionList(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// readOptionList checks the caller is an author and reads a valid list, answering errors itself.
-func readOptionList(w http.ResponseWriter, r *http.Request) (optionListInput, bool) {
+// readOptionList checks the caller may change a list with this owner (see canChange) and reads
+// a valid list, answering errors itself.
+func readOptionList(w http.ResponseWriter, r *http.Request, owner uuid.NullUUID) (optionListInput, bool) {
 	var in optionListInput
-	if !hasRole(r, "author") {
-		writeError(w, http.StatusForbidden, "Only authors can change option lists.")
+	if !canChange(r, owner, role.SuperClinician) {
+		writeError(w, http.StatusForbidden, optionListsRole)
 		return in, false
 	}
 	if !readJSON(w, r, maxOptionListBytes, &in) {
@@ -135,6 +147,21 @@ func readOptionList(w http.ResponseWriter, r *http.Request) (optionListInput, bo
 		return in, false
 	}
 	return in, true
+}
+
+// optionListOwner is the list's hospital_id (NULL: the trust's), answering 404 itself when this
+// hospital doesn't see the list.
+func (s *server) optionListOwner(w http.ResponseWriter, r *http.Request, id uuid.UUID) (uuid.NullUUID, bool) {
+	owner, err := s.q.GetOptionListOwner(r.Context(), db.GetOptionListOwnerParams{ID: id, OrgID: orgID(r), HospitalID: hospitalID(r)})
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, optionListNotFound)
+		return owner, false
+	}
+	if err != nil {
+		serverError(w, "get option list", err)
+		return owner, false
+	}
+	return owner, true
 }
 
 func isUniqueViolation(err error) bool {

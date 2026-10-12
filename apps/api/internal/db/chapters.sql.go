@@ -44,15 +44,18 @@ func (q *Queries) DeleteChapter(ctx context.Context, id uuid.UUID) error {
 const getChapter = `-- name: GetChapter :one
 SELECT c.id, c.version_id, c.position, c.name, c.description, c.icon, c.audience,
        c.content, c.revision, c.updated_at,
-       v.status AS version_status, v.questionnaire_id, q.name AS questionnaire_name
+       v.status AS version_status, v.questionnaire_id, q.name AS questionnaire_name,
+       q.hospital_id AS owner_hospital_id
 FROM chapters c
 JOIN questionnaire_versions v ON v.id = c.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE c.id = $1 AND q.hospital_id = $2
+WHERE c.id = $1 AND q.org_id = $2
+  AND (q.hospital_id IS NULL OR q.hospital_id = $3::uuid)
 `
 
 type GetChapterParams struct {
 	ID         uuid.UUID `json:"id"`
+	OrgID      uuid.UUID `json:"orgId"`
 	HospitalID uuid.UUID `json:"hospitalId"`
 }
 
@@ -70,10 +73,11 @@ type GetChapterRow struct {
 	VersionStatus     string          `json:"versionStatus"`
 	QuestionnaireID   uuid.UUID       `json:"questionnaireId"`
 	QuestionnaireName string          `json:"questionnaireName"`
+	OwnerHospitalID   uuid.NullUUID   `json:"ownerHospitalId"`
 }
 
 func (q *Queries) GetChapter(ctx context.Context, arg GetChapterParams) (GetChapterRow, error) {
-	row := q.db.QueryRow(ctx, getChapter, arg.ID, arg.HospitalID)
+	row := q.db.QueryRow(ctx, getChapter, arg.ID, arg.OrgID, arg.HospitalID)
 	var i GetChapterRow
 	err := row.Scan(
 		&i.ID,
@@ -89,39 +93,44 @@ func (q *Queries) GetChapter(ctx context.Context, arg GetChapterParams) (GetChap
 		&i.VersionStatus,
 		&i.QuestionnaireID,
 		&i.QuestionnaireName,
+		&i.OwnerHospitalID,
 	)
 	return i, err
 }
 
 const getChapterMeta = `-- name: GetChapterMeta :one
 SELECT c.id, c.version_id, c.name, c.description, c.icon, c.audience, c.revision,
-       v.status AS version_status, v.questionnaire_id, q.name AS questionnaire_name
+       v.status AS version_status, v.questionnaire_id, q.name AS questionnaire_name,
+       q.hospital_id AS owner_hospital_id
 FROM chapters c
 JOIN questionnaire_versions v ON v.id = c.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE c.id = $1 AND q.hospital_id = $2
+WHERE c.id = $1 AND q.org_id = $2
+  AND (q.hospital_id IS NULL OR q.hospital_id = $3::uuid)
 `
 
 type GetChapterMetaParams struct {
 	ID         uuid.UUID `json:"id"`
+	OrgID      uuid.UUID `json:"orgId"`
 	HospitalID uuid.UUID `json:"hospitalId"`
 }
 
 type GetChapterMetaRow struct {
-	ID                uuid.UUID `json:"id"`
-	VersionID         uuid.UUID `json:"versionId"`
-	Name              string    `json:"name"`
-	Description       string    `json:"description"`
-	Icon              string    `json:"icon"`
-	Audience          string    `json:"audience"`
-	Revision          int32     `json:"revision"`
-	VersionStatus     string    `json:"versionStatus"`
-	QuestionnaireID   uuid.UUID `json:"questionnaireId"`
-	QuestionnaireName string    `json:"questionnaireName"`
+	ID                uuid.UUID     `json:"id"`
+	VersionID         uuid.UUID     `json:"versionId"`
+	Name              string        `json:"name"`
+	Description       string        `json:"description"`
+	Icon              string        `json:"icon"`
+	Audience          string        `json:"audience"`
+	Revision          int32         `json:"revision"`
+	VersionStatus     string        `json:"versionStatus"`
+	QuestionnaireID   uuid.UUID     `json:"questionnaireId"`
+	QuestionnaireName string        `json:"questionnaireName"`
+	OwnerHospitalID   uuid.NullUUID `json:"ownerHospitalId"`
 }
 
 func (q *Queries) GetChapterMeta(ctx context.Context, arg GetChapterMetaParams) (GetChapterMetaRow, error) {
-	row := q.db.QueryRow(ctx, getChapterMeta, arg.ID, arg.HospitalID)
+	row := q.db.QueryRow(ctx, getChapterMeta, arg.ID, arg.OrgID, arg.HospitalID)
 	var i GetChapterMetaRow
 	err := row.Scan(
 		&i.ID,
@@ -134,6 +143,7 @@ func (q *Queries) GetChapterMeta(ctx context.Context, arg GetChapterMetaParams) 
 		&i.VersionStatus,
 		&i.QuestionnaireID,
 		&i.QuestionnaireName,
+		&i.OwnerHospitalID,
 	)
 	return i, err
 }
@@ -157,7 +167,7 @@ type ListChaptersRow struct {
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
-// Every chapter lookup joins up to the questionnaire so it is scoped to the hospital.
+// Every chapter lookup joins up to the questionnaire, so it is scoped to the trust and hospital.
 func (q *Queries) ListChapters(ctx context.Context, versionID uuid.UUID) ([]ListChaptersRow, error) {
 	rows, err := q.db.Query(ctx, listChapters, versionID)
 	if err != nil {

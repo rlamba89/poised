@@ -3,7 +3,8 @@
 From pytest-playwright: `page` (a desktop Chromium tab, new for each test) and its `context`.
 Added here:
   - `base_url`: E2E_BASE_URL, default http://localhost:3000 (`make dev`);
-  - `as_user("Alex Author")`: that seeded user's API session, for setting up data (support.Api);
+  - `as_user("Alex Author")`: that seeded user's API session at Hospital A1 (or the hospital
+    named), for setting up data (support.Api);
   - `patient_link(episode)`: the patient's API session, through their link (support.Patient);
   - `phone`: a browser context on an emulated iPhone 13 (WebKit), for the patient's journeys.
 """
@@ -48,8 +49,8 @@ def browser_context_args(browser_context_args):
 def as_user(playwright, base_url):
     sessions = []
 
-    def make(name: str) -> Api:
-        api = Api(playwright, base_url, name)
+    def make(name: str, hospital: str = "Hospital A1") -> Api:
+        api = Api(playwright, base_url, name, hospital)
         sessions.append(api)
         return api
 

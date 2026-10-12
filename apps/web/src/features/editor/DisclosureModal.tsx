@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button, Group, Modal, Stack, Text } from "@mantine/core";
 import {
-  bandsOf, findElement, kindOf, newId, optionsOf, renderNote, textOf, updateElement, type ChapterJson, type ClinicalOutput, type ElementJson,
+  bandsOf, findElement, kindOf, newId, normalizeOutput, optionsOf, renderNote, textOf, updateElement, type ChapterJson, type ClinicalOutput, type ElementJson,
 } from "@poised/clinical";
 import { OutputEditor } from "@/features/outputs/OutputEditor";
 import { OutputSummary } from "@/features/outputs/OutputSummary";
@@ -14,8 +14,12 @@ export type DisclosureTarget = { element: string; option?: string; cell?: { row:
 
 type Cells = Record<string, Record<string, ClinicalOutput[]>>;
 
-/** The outputs on a target, read from the JSON. */
+/** The outputs on a target, read from the JSON, with `codes` and a note's `category` always there. */
 export function outputsAt(doc: ChapterJson, t: DisclosureTarget): ClinicalOutput[] {
+  return savedAt(doc, t).map(normalizeOutput);
+}
+
+function savedAt(doc: ChapterJson, t: DisclosureTarget): ClinicalOutput[] {
   const el = findElement(doc, t.element)?.el;
   if (!el) return [];
   if (t.cell) return ((el.cellOutputs ?? {}) as Cells)[t.cell.row]?.[t.cell.column] ?? [];

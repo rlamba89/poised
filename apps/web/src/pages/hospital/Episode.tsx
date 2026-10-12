@@ -1,7 +1,9 @@
 import { useParams } from "react-router";
+import { useHospital } from "@/lib/auth";
 import { EpisodePage } from "@/features/episodes/EpisodePage";
 
 export function Episode() {
-  const { hospitalId, eid } = useParams() as { hospitalId: string; eid: string };
-  return <EpisodePage key={eid} hospitalId={hospitalId} episodeId={eid} />;
+  const { eid } = useParams() as { eid: string };
+  const { base } = useHospital();
+  return <EpisodePage key={eid} base={base} episodeId={eid} />;
 }

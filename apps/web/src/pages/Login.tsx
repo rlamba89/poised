@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { Alert, Button, Card, Container, Stack, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
-import { homePath, type Me } from "@/lib/auth";
+import { startPath, type Me } from "@/lib/auth";
 
 type User = { id: string; name: string; email: string };
 
@@ -21,7 +21,7 @@ export function Login() {
     try {
       await api("/dev/login", { method: "POST", body: JSON.stringify({ userId }) });
       const me = await api<Me>("/me");
-      navigate(me.hospitals.length ? homePath(me.hospitals[0]) : "/");
+      navigate(startPath(me));
     } catch (e) {
       setError((e as Error).message);
     }

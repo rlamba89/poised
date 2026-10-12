@@ -21,9 +21,9 @@ import { patientName, type Episode } from "./types";
 
 registerClinicalProperties();
 
-export default function ValidateSet({ hospitalId, episodeId, chapterId }: { hospitalId: string; episodeId: string; chapterId: string }) {
-  const { data, error: episodeError, reload: reloadEpisode } = useEpisode(hospitalId, episodeId);
-  const { hq, error: hqError, reload: reloadHQ } = useEpisodeHQ(hospitalId, episodeId);
+export default function ValidateSet({ base, episodeId, chapterId }: { base: string; episodeId: string; chapterId: string }) {
+  const { data, error: episodeError, reload: reloadEpisode } = useEpisode(base, episodeId);
+  const { hq, error: hqError, reload: reloadHQ } = useEpisodeHQ(base, episodeId);
   // Bumped by Reload, so the set is built again from the latest answers.
   const [loads, setLoads] = useState(0);
   const reload = async () => {
@@ -35,17 +35,17 @@ export default function ValidateSet({ hospitalId, episodeId, chapterId }: { hosp
   if (!data || !hq) return <Center h="40vh"><Loader /></Center>;
   const set = hq.chapters.find((c) => c.id === chapterId);
   if (!set) return <Alert color="red">This Question Set isn&apos;t part of the episode.</Alert>;
-  return <Validate key={loads} hospitalId={hospitalId} episode={data.episode} hq={hq} set={set} onReload={reload} />;
+  return <Validate key={loads} base={base} episode={data.episode} hq={hq} set={set} onReload={reload} />;
 }
 
 const SAVE_DELAY_MS = 600;
 
-type ValidateProps = { hospitalId: string; episode: Episode; hq: EpisodeHQ; set: HQSet; onReload: () => Promise<void> };
+type ValidateProps = { base: string; episode: Episode; hq: EpisodeHQ; set: HQSet; onReload: () => Promise<void> };
 
-function Validate({ hospitalId, episode, hq, set, onReload }: ValidateProps) {
+function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
   const navigate = useNavigate();
-  const back = `/h/${hospitalId}/episodes/${episode.id}`;
-  const path = `/h/${hospitalId}/episodes/${episode.id}/answers/${set.id}`;
+  const back = `${base}/episodes/${episode.id}`;
+  const path = `${base}/episodes/${episode.id}/answers/${set.id}`;
   const editable = episode.status === "ready_for_review";
   const row = hq.clinician[set.id];
   const patient = hq.patient[set.id];

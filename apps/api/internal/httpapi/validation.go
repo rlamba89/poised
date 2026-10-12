@@ -19,9 +19,6 @@ import (
 // episodeHQ returns every Question Set of the episode's version, in full, with both actors'
 // answers: the patient's (frozen once submitted) and the clinician's (final).
 func (s *server) episodeHQ(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return
@@ -67,9 +64,6 @@ func (in *answersInput) validate() string {
 // validated when `validated` is true. The browser has checked required questions (plan 2.1).
 // It answers with the new revision, or 409 if the revision sent is stale.
 func (s *server) saveClinicianAnswers(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return
@@ -120,9 +114,6 @@ func (s *server) saveClinicianAnswers(w http.ResponseWriter, r *http.Request) {
 // completeReview moves the episode to Ready for POA. The browser enables it once every
 // Question Set shown is validated (plan 2.1: Go doesn't evaluate Question Set conditions).
 func (s *server) completeReview(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return

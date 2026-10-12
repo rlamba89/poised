@@ -26,7 +26,8 @@ export function outputLines(r: ComputedOutputs): string[] {
   const lines: string[] = [];
   for (const o of r.outputs) {
     for (const c of o.output.codes) lines.push(`Code ${c.set} ${c.code} ${c.display}`);
-    if (o.output.note && o.noteText) lines.push(`Note (${o.output.note.category}): ${o.noteText}`);
+    // A note saved without a category has no brackets (S08 test report 3).
+    if (o.output.note && o.noteText) lines.push(o.output.note.category ? `Note (${o.output.note.category}): ${o.noteText}` : `Note: ${o.noteText}`);
     if (o.output.flag) lines.push(`Flag ${o.output.flag}: ${o.questionTitle}: ${o.answerLabel}`);
   }
   if (r.suggestedAsa) lines.push(`Suggested ASA ${r.suggestedAsa.grade}${r.suggestedAsa.emergency ? "E" : ""}`);

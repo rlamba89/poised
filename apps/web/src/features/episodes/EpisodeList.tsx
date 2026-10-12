@@ -1,30 +1,40 @@
 // Step 2 of plan-workflow.md: the hospital's episodes, and creating one for a patient with a
-// published HQ. Made-up patients only (NFR-03).
+// published HQ. Made-up patients only (NFR-03). Trust-wide staff can also list every hospital's
+// episodes ("All hospitals", STF-03), kept in the URL as ?hospitals=all.
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import {
   Alert, Badge, Button, Drawer, Group, SegmentedControl, Select, Stack, Table, Text, TextInput, Title,
 } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
 import { api } from "@/lib/api";
+import { hospitalBase, useHospital } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { patientName, STATUS_COLORS, STATUS_LABELS, type EpisodeRow, type EpisodeStatus, type Patient } from "./types";
 
-export function EpisodeList({ hospitalId }: { hospitalId: string }) {
+type ListRow = EpisodeRow & { hospitalId: string; hospitalName: string };
+
+export function EpisodeList({ base }: { base: string }) {
   const navigate = useNavigate();
+  const { trust, hospital } = useHospital();
+  const [params, setParams] = useSearchParams();
+  // "All hospitals" is for trust-wide staff only; anyone else gets this hospital's list.
+  const trustWide = trust.role !== null;
+  const all = trustWide && params.get("hospitals") === "all";
   const [status, setStatus] = useState<string | null>(null);
-  const [rows, setRows] = useState<EpisodeRow[] | null>(null);
+  const [rows, setRows] = useState<ListRow[] | null>(null);
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(() => {
-    api<EpisodeRow[]>(`/h/${hospitalId}/episodes?${new URLSearchParams({ status: status ?? "" })}`)
+    const from = all ? `/o/${trust.id}` : base;
+    api<ListRow[]>(`${from}/episodes?${new URLSearchParams({ status: status ?? "" })}`)
       .then((r) => {
         setRows(r);
         setError("");
       })
       .catch((e: Error) => setError(e.message));
-  }, [hospitalId, status]);
+  }, [all, trust.id, base, status]);
   useEffect(load, [load]);
 
   return (
@@ -33,6 +43,18 @@ export function EpisodeList({ hospitalId }: { hospitalId: string }) {
         <Title order={3}>Episodes</Title>
         <Button leftSection={<IconPlus size={16} />} onClick={() => setCreating(true)}>New episode</Button>
       </Group>
+      {trustWide && (
+        <SegmentedControl
+          aria-label="Hospitals"
+          w="fit-content"
+          data={[
+            { value: "one", label: hospital.name },
+            { value: "all", label: "All hospitals" },
+          ]}
+          value={all ? "all" : "one"}
+          onChange={(v) => setParams(v === "all" ? { hospitals: "all" } : {})}
+        />
+      )}
       <Select
         aria-label="Status"
         placeholder="All statuses"
@@ -49,6 +71,7 @@ export function EpisodeList({ hospitalId }: { hospitalId: string }) {
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Patient</Table.Th>
+              {all && <Table.Th>Hospital</Table.Th>}
               <Table.Th>Procedure</Table.Th>
               <Table.Th>HQ</Table.Th>
               <Table.Th>Status</Table.Th>
@@ -57,11 +80,12 @@ export function EpisodeList({ hospitalId }: { hospitalId: string }) {
           </Table.Thead>
           <Table.Tbody>
             {rows.map((e) => (
-              <Table.Tr key={e.id} onClick={() => navigate(`/h/${hospitalId}/episodes/${e.id}`)} style={{ cursor: "pointer" }}>
+              <Table.Tr key={e.id} onClick={() => navigate(`${hospitalBase(trust.id, e.hospitalId)}/episodes/${e.id}`)} style={{ cursor: "pointer" }}>
                 <Table.Td>
                   <Text fw={700}>{patientName(e)}</Text>
                   {e.hospitalNumber && <Text size="sm" c="dimmed">{e.hospitalNumber}</Text>}
                 </Table.Td>
+                {all && <Table.Td>{e.hospitalName}</Table.Td>}
                 <Table.Td>{e.procedure || "—"}</Table.Td>
                 <Table.Td>{e.questionnaireName} v{e.versionNo}</Table.Td>
                 <Table.Td>
@@ -74,10 +98,10 @@ export function EpisodeList({ hospitalId }: { hospitalId: string }) {
         </Table>
       )}
       <NewEpisode
-        hospitalId={hospitalId}
+        base={base}
         opened={creating}
         onClose={() => setCreating(false)}
-        onCreated={(id) => navigate(`/h/${hospitalId}/episodes/${id}`)}
+        onCreated={(id) => navigate(`${base}/episodes/${id}`)}
       />
     </Stack>
   );
@@ -87,8 +111,8 @@ type Published = { versionId: string; versionNo: number; name: string };
 const EMPTY_PATIENT = { firstName: "", lastName: "", dateOfBirth: "", sex: "", hospitalNumber: "", phone: "" };
 const ANAESTHETICS = ["General", "Regional", "Local", "Sedation"];
 
-function NewEpisode(props: { hospitalId: string; opened: boolean; onClose: () => void; onCreated: (id: string) => void }) {
-  const base = `/h/${props.hospitalId}`;
+function NewEpisode(props: { base: string; opened: boolean; onClose: () => void; onCreated: (id: string) => void }) {
+  const { base } = props;
   const [patients, setPatients] = useState<Patient[]>([]);
   const [hqs, setHqs] = useState<Published[]>([]);
   const [mode, setMode] = useState<"existing" | "new">("existing");

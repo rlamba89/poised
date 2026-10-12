@@ -49,7 +49,7 @@ func TestListQuestionnaires(t *testing.T) {
 		return l
 	}
 
-	t.Run("happy path: the hospital's questionnaires, searchable by name and description", func(t *testing.T) {
+	t.Run("happy path: the questionnaires this hospital uses, searchable by name and description", func(t *testing.T) {
 		l := list(t, w.author, at(w.a, "/questionnaires"))
 		if l.Total != 2 || !l.ids()[draft.ID] || !l.ids()[published.ID] {
 			t.Errorf("list = %+v, want the draft and the published one", l)
@@ -64,19 +64,21 @@ func TestListQuestionnaires(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, w.anon.Do("GET", at(w.a, "/questionnaires"), nil), http.StatusUnauthorized)
 	})
-	t.Run("role: a viewer can read", func(t *testing.T) {
-		if l := list(t, w.viewer, at(w.a, "/questionnaires")); l.Total != 2 {
-			t.Errorf("viewer sees %d, want 2", l.Total)
+	t.Run("role: a clinician can read", func(t *testing.T) {
+		if l := list(t, w.clin, at(w.a, "/questionnaires")); l.Total != 2 {
+			t.Errorf("a clinician sees %d, want 2", l.Total)
 		}
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, w.other.Do("GET", at(w.a, "/questionnaires"), nil), http.StatusNotFound)
 		if l := list(t, w.other, at(w.b, "/questionnaires")); l.Total != 1 || l.Items[0].ID != inB.ID {
 			t.Errorf("hospital B's list = %+v, want only its own", l)
 		}
 	})
 	t.Run("invalid input", func(t *testing.T) {
-		refused(t, w.author.Do("GET", "/api/h/not-a-uuid/questionnaires", nil), http.StatusNotFound)
+		for _, p := range badIDs(w.a, "/questionnaires") {
+			refused(t, w.author.Do("GET", p, nil), http.StatusNotFound)
+		}
 		for _, page := range []string{"abc", "-2", "0"} {
 			if l := list(t, w.author, at(w.a, "/questionnaires?page="+page)); l.Page != 1 || l.Total != 2 {
 				t.Errorf("page=%s gave %+v, want page 1", page, l)
@@ -101,26 +103,27 @@ func TestCreateQuestionnaire(t *testing.T) {
 		r.Want(t, http.StatusCreated)
 		var got struct{ ID uuid.UUID }
 		r.Decode(t, &got)
-		var hospital, createdBy uuid.UUID
+		var org, createdBy uuid.UUID
+		var hospital *uuid.UUID
 		var name, status string
 		var versionNo int
-		err := w.db.QueryRow(t.Context(), `SELECT q.hospital_id, q.name, q.created_by, v.version_no, v.status
+		err := w.db.QueryRow(t.Context(), `SELECT q.org_id, q.hospital_id, q.name, q.created_by, v.version_no, v.status
 			FROM questionnaires q JOIN questionnaire_versions v ON v.questionnaire_id = q.id WHERE q.id = $1`,
-			got.ID).Scan(&hospital, &name, &createdBy, &versionNo, &status)
+			got.ID).Scan(&org, &hospital, &name, &createdBy, &versionNo, &status)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if hospital != w.a || name != "Pre-op assessment" || createdBy != w.alex.ID || versionNo != 1 || status != "draft" {
-			t.Errorf("row = %v %q %v v%d %s, want hospital A, trimmed name, Alex, v1 draft", hospital, name, createdBy, versionNo, status)
+		if org != w.a.Org || hospital != nil || name != "Pre-op assessment" || createdBy != w.alex.ID || versionNo != 1 || status != "draft" {
+			t.Errorf("row = %v %v %q %v v%d %s, want trust A's (every hospital), trimmed name, Alex, v1 draft", org, hospital, name, createdBy, versionNo, status)
 		}
 	})
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, w.anon.Do("POST", at(w.a, "/questionnaires"), body), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: a viewer", func(t *testing.T) {
-		refused(t, w.viewer.Do("POST", at(w.a, "/questionnaires"), body), http.StatusForbidden)
+	t.Run("wrong role: a clinician", func(t *testing.T) {
+		refused(t, w.clin.Do("POST", at(w.a, "/questionnaires"), body), http.StatusForbidden)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, w.other.Do("POST", at(w.a, "/questionnaires"), body), http.StatusNotFound)
 	})
 	t.Run("invalid input", func(t *testing.T) {
@@ -171,10 +174,10 @@ func TestGetQuestionnaire(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, w.anon.Do("GET", path, nil), http.StatusUnauthorized)
 	})
-	t.Run("role: a viewer can read", func(t *testing.T) {
-		w.viewer.Do("GET", path, nil).Want(t, http.StatusOK)
+	t.Run("role: a clinician can read", func(t *testing.T) {
+		w.clin.Do("GET", path, nil).Want(t, http.StatusOK)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, w.other.Do("GET", path, nil), http.StatusNotFound)
 		refused(t, w.other.Do("GET", at(w.b, "/questionnaires/"+hq.ID.String()), nil), http.StatusNotFound)
 	})
@@ -190,7 +193,7 @@ func TestDeleteQuestionnaire(t *testing.T) {
 	exists := func(t *testing.T, hq apitest.HQ) bool {
 		return count(t, w.db, "SELECT count(*) FROM questionnaires WHERE id = $1", hq.ID) == 1
 	}
-	path := func(h uuid.UUID, hq apitest.HQ) string { return at(h, "/questionnaires/"+hq.ID.String()) }
+	path := func(h apitest.Hospital, hq apitest.HQ) string { return at(h, "/questionnaires/"+hq.ID.String()) }
 
 	t.Run("happy path: the creator deletes a draft, with its versions and Question Sets", func(t *testing.T) {
 		hq := w.fx.DraftHQ(t, w.a, w.alex, "basic.json")
@@ -201,9 +204,9 @@ func TestDeleteQuestionnaire(t *testing.T) {
 			t.Error("rows are left behind")
 		}
 	})
-	t.Run("happy path: a hospital admin deletes someone else's draft", func(t *testing.T) {
+	t.Run("happy path: an admin deletes someone else's draft", func(t *testing.T) {
 		hq := w.fx.DraftHQ(t, w.a, w.alex, "basic.json")
-		admin := w.anon.LoginAs(t, w.fx.User(t, w.a, "hospital_admin"))
+		admin := w.anon.LoginAs(t, w.fx.TrustUser(t, w.a.Org, "admin"))
 		admin.Do("DELETE", path(w.a, hq), nil).Want(t, http.StatusNoContent)
 		if exists(t, hq) {
 			t.Error("still there")
@@ -214,12 +217,12 @@ func TestDeleteQuestionnaire(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, w.anon.Do("DELETE", path(w.a, hq), nil), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: not the creator nor a hospital admin", func(t *testing.T) {
-		refused(t, w.viewer.Do("DELETE", path(w.a, hq), nil), http.StatusForbidden)
-		otherAuthor := w.anon.LoginAs(t, w.fx.User(t, w.a, "author", "publisher"))
+	t.Run("wrong role: not the creator nor an admin", func(t *testing.T) {
+		refused(t, w.clin.Do("DELETE", path(w.a, hq), nil), http.StatusForbidden)
+		otherAuthor := w.anon.LoginAs(t, w.fx.User(t, w.a, "super_clinician"))
 		refused(t, otherAuthor.Do("DELETE", path(w.a, hq), nil), http.StatusForbidden)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, w.other.Do("DELETE", path(w.a, hq), nil), http.StatusNotFound)
 		refused(t, w.other.Do("DELETE", path(w.b, hq), nil), http.StatusNotFound)
 	})
@@ -249,7 +252,7 @@ func versionStatus(t *testing.T, db *pgxpool.Pool, id uuid.UUID) string {
 func TestPublishQuestionnaire(t *testing.T) {
 	t.Parallel()
 	w := newCast(t)
-	publish := func(c *apitest.Client, h uuid.UUID, hq apitest.HQ, versionID uuid.UUID) *apitest.Resp {
+	publish := func(c *apitest.Client, h apitest.Hospital, hq apitest.HQ, versionID uuid.UUID) *apitest.Resp {
 		return c.Do("POST", at(h, "/questionnaires/"+hq.ID.String()+"/publish"), map[string]any{"versionId": versionID})
 	}
 
@@ -276,13 +279,13 @@ func TestPublishQuestionnaire(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, publish(w.anon, w.a, hq, hq.VersionID), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: an author who isn't a publisher, and a viewer", func(t *testing.T) {
-		authorOnly := w.anon.LoginAs(t, w.fx.User(t, w.a, "author"))
-		refused(t, publish(authorOnly, w.a, hq, hq.VersionID), http.StatusForbidden)
-		refused(t, publish(w.viewer, w.a, hq, hq.VersionID), http.StatusForbidden)
+	t.Run("wrong role: a clinician can't publish (A-5)", func(t *testing.T) {
+		refused(t, publish(w.clin, w.a, hq, hq.VersionID), http.StatusForbidden)
+		trustClin := w.anon.LoginAs(t, w.fx.TrustUser(t, w.a.Org, "clinician"))
+		refused(t, publish(trustClin, w.a, hq, hq.VersionID), http.StatusForbidden)
 	})
-	t.Run("another hospital", func(t *testing.T) {
-		bPublisher := w.anon.LoginAs(t, w.fx.User(t, w.b, "author", "publisher"))
+	t.Run("another trust", func(t *testing.T) {
+		bPublisher := w.anon.LoginAs(t, w.fx.TrustUser(t, w.b.Org, "admin")) // trust B's admin
 		refused(t, publish(bPublisher, w.a, hq, hq.VersionID), http.StatusNotFound)
 		refused(t, publish(bPublisher, w.b, hq, hq.VersionID), http.StatusNotFound)
 	})
@@ -310,7 +313,7 @@ func TestPublishQuestionnaire(t *testing.T) {
 func TestCreateVersion(t *testing.T) {
 	t.Parallel()
 	w := newCast(t)
-	newVersion := func(c *apitest.Client, h uuid.UUID, hq apitest.HQ) *apitest.Resp {
+	newVersion := func(c *apitest.Client, h apitest.Hospital, hq apitest.HQ) *apitest.Resp {
 		return c.Do("POST", at(h, "/questionnaires/"+hq.ID.String()+"/versions"), nil)
 	}
 	versions := func(t *testing.T, hq apitest.HQ) int {
@@ -353,10 +356,10 @@ func TestCreateVersion(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, newVersion(w.anon, w.a, hq), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: a viewer", func(t *testing.T) {
-		refused(t, newVersion(w.viewer, w.a, hq), http.StatusForbidden)
+	t.Run("wrong role: a clinician", func(t *testing.T) {
+		refused(t, newVersion(w.clin, w.a, hq), http.StatusForbidden)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, newVersion(w.other, w.a, hq), http.StatusNotFound)
 		refused(t, newVersion(w.other, w.b, hq), http.StatusNotFound)
 	})

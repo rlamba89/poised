@@ -30,7 +30,7 @@ func newServer(d Deps) *server {
 	return &server{pool: d.Pool, q: db.New(d.Pool), secret: []byte(d.Config.TokenSecret), cfg: d.Config}
 }
 
-// NewStaffRouter serves the staff API: /api/h/…, /api/me, /api/codes, /api/categories,
+// NewStaffRouter serves the staff API: /api/o/…, /api/me, /api/codes, /api/categories,
 // /api/logout, and the dev login when DEV_LOGIN=true. On AWS it's the staff-api Lambda (D-4).
 func NewStaffRouter(d Deps) http.Handler { return mount(newServer(d), (*server).staffRoutes) }
 
@@ -58,7 +58,9 @@ func mount(s *server, groups ...func(*server, *http.ServeMux)) http.Handler {
 
 func (s *server) staffRoutes(mux *http.ServeMux) {
 	user := func(h http.HandlerFunc) http.HandlerFunc { return requireUser(s.secret, h) }
+	// Every trust's data is under /api/o/{oid}: a hospital's under /api/o/{oid}/h/{hid}.
 	hosp := func(h http.HandlerFunc) http.HandlerFunc { return requireUser(s.secret, requireHospital(s.q, h)) }
+	org := func(h http.HandlerFunc) http.HandlerFunc { return requireUser(s.secret, requireOrg(s.q, h)) }
 
 	if s.cfg.DevLogin { // the stub sign-in: never in Training or Production (F4)
 		mux.HandleFunc("GET /api/dev/users", s.devUsers)
@@ -69,36 +71,37 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/codes", user(s.searchCodes))
 	mux.HandleFunc("GET /api/categories", user(s.listCategories))
 
-	mux.HandleFunc("GET /api/h/{hid}/questionnaires", hosp(s.listQuestionnaires))
-	mux.HandleFunc("POST /api/h/{hid}/questionnaires", hosp(s.createQuestionnaire))
-	mux.HandleFunc("GET /api/h/{hid}/questionnaires/{qid}", hosp(s.getQuestionnaire))
-	mux.HandleFunc("DELETE /api/h/{hid}/questionnaires/{qid}", hosp(s.deleteQuestionnaire))
-	mux.HandleFunc("POST /api/h/{hid}/questionnaires/{qid}/chapters", hosp(s.addChapter))
-	mux.HandleFunc("PUT /api/h/{hid}/questionnaires/{qid}/chapter-order", hosp(s.reorderChapters))
-	mux.HandleFunc("POST /api/h/{hid}/questionnaires/{qid}/publish", hosp(s.publishQuestionnaire))
-	mux.HandleFunc("POST /api/h/{hid}/questionnaires/{qid}/versions", hosp(s.createVersion))
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/questionnaires", hosp(s.listQuestionnaires))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires", hosp(s.createQuestionnaire))
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/questionnaires/{qid}", hosp(s.getQuestionnaire))
+	mux.HandleFunc("DELETE /api/o/{oid}/h/{hid}/questionnaires/{qid}", hosp(s.deleteQuestionnaire))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires/{qid}/chapters", hosp(s.addChapter))
+	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/questionnaires/{qid}/chapter-order", hosp(s.reorderChapters))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires/{qid}/publish", hosp(s.publishQuestionnaire))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires/{qid}/versions", hosp(s.createVersion))
 
-	mux.HandleFunc("GET /api/h/{hid}/chapters/{cid}", hosp(s.getChapter))
-	mux.HandleFunc("PATCH /api/h/{hid}/chapters/{cid}", hosp(s.updateChapter))
-	mux.HandleFunc("DELETE /api/h/{hid}/chapters/{cid}", hosp(s.deleteChapter))
-	mux.HandleFunc("PUT /api/h/{hid}/chapters/{cid}/content", hosp(s.saveContent))
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/chapters/{cid}", hosp(s.getChapter))
+	mux.HandleFunc("PATCH /api/o/{oid}/h/{hid}/chapters/{cid}", hosp(s.updateChapter))
+	mux.HandleFunc("DELETE /api/o/{oid}/h/{hid}/chapters/{cid}", hosp(s.deleteChapter))
+	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/chapters/{cid}/content", hosp(s.saveContent))
 
-	mux.HandleFunc("GET /api/h/{hid}/option-lists", hosp(s.listOptionLists))
-	mux.HandleFunc("POST /api/h/{hid}/option-lists", hosp(s.createOptionList))
-	mux.HandleFunc("PUT /api/h/{hid}/option-lists/{lid}", hosp(s.updateOptionList))
-	mux.HandleFunc("DELETE /api/h/{hid}/option-lists/{lid}", hosp(s.deleteOptionList))
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/option-lists", hosp(s.listOptionLists))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/option-lists", hosp(s.createOptionList))
+	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/option-lists/{lid}", hosp(s.updateOptionList))
+	mux.HandleFunc("DELETE /api/o/{oid}/h/{hid}/option-lists/{lid}", hosp(s.deleteOptionList))
 
-	mux.HandleFunc("GET /api/h/{hid}/patients", hosp(s.listPatients))
-	mux.HandleFunc("POST /api/h/{hid}/patients", hosp(s.createPatient))
-	mux.HandleFunc("GET /api/h/{hid}/published-hqs", hosp(s.listPublishedHQs))
-	mux.HandleFunc("GET /api/h/{hid}/episodes", hosp(s.listEpisodes))
-	mux.HandleFunc("POST /api/h/{hid}/episodes", hosp(s.createEpisode))
-	mux.HandleFunc("GET /api/h/{hid}/episodes/{eid}", hosp(s.getEpisode))
-	mux.HandleFunc("PATCH /api/h/{hid}/episodes/{eid}", hosp(s.updateEpisode))
-	mux.HandleFunc("POST /api/h/{hid}/episodes/{eid}/notes", hosp(s.addEpisodeNote))
-	mux.HandleFunc("GET /api/h/{hid}/episodes/{eid}/hq", hosp(s.episodeHQ))
-	mux.HandleFunc("PUT /api/h/{hid}/episodes/{eid}/answers/{cid}", hosp(s.saveClinicianAnswers))
-	mux.HandleFunc("POST /api/h/{hid}/episodes/{eid}/complete-review", hosp(s.completeReview))
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/patients", hosp(s.listPatients))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/patients", hosp(s.createPatient))
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/published-hqs", hosp(s.listPublishedHQs))
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes", hosp(s.listEpisodes))
+	mux.HandleFunc("GET /api/o/{oid}/episodes", org(s.listTrustEpisodes)) // "All hospitals" (STF-03)
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes", hosp(s.createEpisode))
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}", hosp(s.getEpisode))
+	mux.HandleFunc("PATCH /api/o/{oid}/h/{hid}/episodes/{eid}", hosp(s.updateEpisode))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/notes", hosp(s.addEpisodeNote))
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/hq", hosp(s.episodeHQ))
+	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/episodes/{eid}/answers/{cid}", hosp(s.saveClinicianAnswers))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/complete-review", hosp(s.completeReview))
 }
 
 // patientRoutes is the patient's link: no sign-in, the token is the key (plan-workflow.md Step 3).

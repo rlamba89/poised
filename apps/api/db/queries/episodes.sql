@@ -1,13 +1,14 @@
--- Every episode lookup is scoped to the hospital.
+-- Patient records belong to the trust (org_id); an episode is at one of its hospitals. Every
+-- episode lookup is scoped to the hospital, or to the hospitals the caller can see.
 
 -- name: CreatePatient :one
-INSERT INTO patients (hospital_id, first_name, last_name, date_of_birth, sex, hospital_number, phone, email)
+INSERT INTO patients (org_id, first_name, last_name, date_of_birth, sex, hospital_number, phone, email)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id;
 
 -- name: ListPatients :many
 SELECT id, first_name, last_name, date_of_birth, sex, hospital_number, phone, email
-FROM patients WHERE hospital_id = $1
+FROM patients WHERE org_id = $1
 ORDER BY last_name, first_name;
 
 -- name: ListPublishedVersions :many
@@ -15,29 +16,36 @@ ORDER BY last_name, first_name;
 SELECT v.id AS version_id, v.version_no, q.name
 FROM questionnaire_versions v
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE q.hospital_id = $1 AND v.status = 'published'
+WHERE q.org_id = sqlc.arg(org_id) AND (q.hospital_id IS NULL OR q.hospital_id = sqlc.arg(hospital_id)::uuid)
+  AND v.status = 'published'
 ORDER BY q.name;
 
 -- name: CreateEpisode :one
--- Creates nothing (no row) unless the patient and a published version both belong to the hospital.
-INSERT INTO episodes (hospital_id, patient_id, version_id, procedure, anaesthetic, consultant, patient_token, created_by)
-SELECT sqlc.arg(hospital_id), p.id, v.id, sqlc.arg(procedure), sqlc.arg(anaesthetic), sqlc.arg(consultant),
-       sqlc.arg(patient_token), sqlc.arg(created_by)
+-- Creates nothing (no row) unless the patient is the trust's and the version is published and
+-- one this hospital uses.
+INSERT INTO episodes (org_id, hospital_id, patient_id, version_id, procedure, anaesthetic, consultant, patient_token, created_by)
+SELECT sqlc.arg(org_id), sqlc.arg(hospital_id), p.id, v.id, sqlc.arg(procedure), sqlc.arg(anaesthetic),
+       sqlc.arg(consultant), sqlc.arg(patient_token), sqlc.arg(created_by)
 FROM patients p, questionnaire_versions v
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE p.id = sqlc.arg(patient_id) AND p.hospital_id = sqlc.arg(hospital_id)
-  AND v.id = sqlc.arg(version_id) AND v.status = 'published' AND q.hospital_id = sqlc.arg(hospital_id)
+WHERE p.id = sqlc.arg(patient_id) AND p.org_id = sqlc.arg(org_id)
+  AND v.id = sqlc.arg(version_id) AND v.status = 'published'
+  AND q.org_id = sqlc.arg(org_id) AND (q.hospital_id IS NULL OR q.hospital_id = sqlc.arg(hospital_id)::uuid)
 RETURNING id;
 
 -- name: ListEpisodes :many
-SELECT e.id, e.status, e.procedure, e.created_at,
+-- One trust's episodes: at every hospital when all_hospitals (a trust-wide member's "All
+-- hospitals", STF-03), else only at the hospitals listed.
+SELECT e.id, e.hospital_id, h.name AS hospital_name, e.status, e.procedure, e.created_at,
        p.first_name, p.last_name, p.hospital_number,
        q.name AS questionnaire_name, v.version_no
 FROM episodes e
+JOIN hospitals h ON h.id = e.hospital_id
 JOIN patients p ON p.id = e.patient_id
 JOIN questionnaire_versions v ON v.id = e.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE e.hospital_id = sqlc.arg(hospital_id)
+WHERE e.org_id = sqlc.arg(org_id)
+  AND (sqlc.arg(all_hospitals)::boolean OR e.hospital_id = ANY (sqlc.arg(hospital_ids)::uuid[]))
   AND (sqlc.arg(status)::text = '' OR e.status = sqlc.arg(status))
 ORDER BY e.created_at DESC;
 

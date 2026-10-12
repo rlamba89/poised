@@ -1,7 +1,9 @@
 import { useParams } from "react-router";
+import { useHospital } from "@/lib/auth";
 import PoaSummary from "@/features/episodes/PoaSummary";
 
 export function Poa() {
-  const { hospitalId, eid } = useParams() as { hospitalId: string; eid: string };
-  return <PoaSummary key={eid} hospitalId={hospitalId} episodeId={eid} />;
+  const { eid } = useParams() as { eid: string };
+  const { base } = useHospital();
+  return <PoaSummary key={eid} base={base} episodeId={eid} />;
 }

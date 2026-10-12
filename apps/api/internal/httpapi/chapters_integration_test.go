@@ -41,7 +41,7 @@ func TestAddChapter(t *testing.T) {
 	t.Parallel()
 	w := newCast(t)
 	hq := w.fx.DraftHQ(t, w.a, w.alex, "basic.json")
-	add := func(c *apitest.Client, h uuid.UUID, hq apitest.HQ, body any) *apitest.Resp {
+	add := func(c *apitest.Client, h apitest.Hospital, hq apitest.HQ, body any) *apitest.Resp {
 		return c.Do("POST", at(h, "/questionnaires/"+hq.ID.String()+"/chapters"), body)
 	}
 	body := map[string]string{"name": " Medicines "}
@@ -59,10 +59,10 @@ func TestAddChapter(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, add(w.anon, w.a, hq, body), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: a viewer", func(t *testing.T) {
-		refused(t, add(w.viewer, w.a, hq, body), http.StatusForbidden)
+	t.Run("wrong role: a clinician", func(t *testing.T) {
+		refused(t, add(w.clin, w.a, hq, body), http.StatusForbidden)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, add(w.other, w.a, hq, body), http.StatusNotFound)
 		refused(t, add(w.other, w.b, hq, body), http.StatusNotFound)
 	})
@@ -88,7 +88,7 @@ func TestReorderChapters(t *testing.T) {
 	w := newCast(t)
 	hq := w.fx.DraftHQ(t, w.a, w.alex, "basic.json")
 	first, second := hq.Chapters[0], hq.Chapters[1]
-	reorder := func(c *apitest.Client, h uuid.UUID, hq apitest.HQ, body any) *apitest.Resp {
+	reorder := func(c *apitest.Client, h apitest.Hospital, hq apitest.HQ, body any) *apitest.Resp {
 		return c.Do("PUT", at(h, "/questionnaires/"+hq.ID.String()+"/chapter-order"), body)
 	}
 	positions := func(t *testing.T) [2]int {
@@ -99,10 +99,10 @@ func TestReorderChapters(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, reorder(w.anon, w.a, hq, swapped), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: a viewer", func(t *testing.T) {
-		refused(t, reorder(w.viewer, w.a, hq, swapped), http.StatusForbidden)
+	t.Run("wrong role: a clinician", func(t *testing.T) {
+		refused(t, reorder(w.clin, w.a, hq, swapped), http.StatusForbidden)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, reorder(w.other, w.a, hq, swapped), http.StatusNotFound)
 		refused(t, reorder(w.other, w.b, hq, swapped), http.StatusNotFound)
 	})
@@ -134,21 +134,23 @@ func TestGetChapter(t *testing.T) {
 	t.Parallel()
 	w := newCast(t)
 	hq := w.fx.DraftHQ(t, w.a, w.alex, "basic.json")
-	path := func(h uuid.UUID) string { return at(h, "/chapters/"+hq.Chapters[0].String()) }
+	path := func(h apitest.Hospital) string { return at(h, "/chapters/"+hq.Chapters[0].String()) }
 
-	t.Run("happy path: the SurveyJS JSON and its revision", func(t *testing.T) {
+	t.Run("happy path: the SurveyJS JSON, its revision, and whose it is", func(t *testing.T) {
 		r := w.author.Do("GET", path(w.a), nil)
 		r.Want(t, http.StatusOK)
 		var got struct {
 			Name          string
 			Revision      int
 			VersionStatus string
-			Content       struct {
+			// null: the trust's, so changing it needs a whole-trust role (S08 answers, 5)
+			HasOwner json.RawMessage `json:"ownerHospitalId"`
+			Content  struct {
 				Pages []struct{ Elements []struct{ Name string } }
 			}
 		}
 		r.Decode(t, &got)
-		if got.Name != "About you" || got.Revision != 0 || got.VersionStatus != "draft" ||
+		if got.Name != "About you" || got.Revision != 0 || got.VersionStatus != "draft" || string(got.HasOwner) != "null" ||
 			len(got.Content.Pages) != 1 || got.Content.Pages[0].Elements[0].Name != "q_smokes" {
 			t.Errorf("chapter = %s", r)
 		}
@@ -156,10 +158,10 @@ func TestGetChapter(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, w.anon.Do("GET", path(w.a), nil), http.StatusUnauthorized)
 	})
-	t.Run("role: a viewer can read", func(t *testing.T) {
-		w.viewer.Do("GET", path(w.a), nil).Want(t, http.StatusOK)
+	t.Run("role: a clinician can read", func(t *testing.T) {
+		w.clin.Do("GET", path(w.a), nil).Want(t, http.StatusOK)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, w.other.Do("GET", path(w.a), nil), http.StatusNotFound)
 		refused(t, w.other.Do("GET", path(w.b), nil), http.StatusNotFound)
 	})
@@ -174,7 +176,7 @@ func TestUpdateChapter(t *testing.T) {
 	w := newCast(t)
 	hq := w.fx.DraftHQ(t, w.a, w.alex, "basic.json")
 	id := hq.Chapters[0]
-	patch := func(c *apitest.Client, h uuid.UUID, id uuid.UUID, body any) *apitest.Resp {
+	patch := func(c *apitest.Client, h apitest.Hospital, id uuid.UUID, body any) *apitest.Resp {
 		return c.Do("PATCH", at(h, "/chapters/"+id.String()), body)
 	}
 	before := readChapter(t, w, id)
@@ -182,10 +184,10 @@ func TestUpdateChapter(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, patch(w.anon, w.a, id, map[string]string{"name": "x"}), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: a viewer", func(t *testing.T) {
-		refused(t, patch(w.viewer, w.a, id, map[string]string{"name": "x"}), http.StatusForbidden)
+	t.Run("wrong role: a clinician", func(t *testing.T) {
+		refused(t, patch(w.clin, w.a, id, map[string]string{"name": "x"}), http.StatusForbidden)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, patch(w.other, w.a, id, map[string]string{"name": "x"}), http.StatusNotFound)
 		refused(t, patch(w.other, w.b, id, map[string]string{"name": "x"}), http.StatusNotFound)
 	})
@@ -230,7 +232,7 @@ func TestDeleteChapter(t *testing.T) {
 	t.Parallel()
 	w := newCast(t)
 	hq := w.fx.DraftHQ(t, w.a, w.alex, "basic.json")
-	del := func(c *apitest.Client, h uuid.UUID, id uuid.UUID) *apitest.Resp {
+	del := func(c *apitest.Client, h apitest.Hospital, id uuid.UUID) *apitest.Resp {
 		return c.Do("DELETE", at(h, "/chapters/"+id.String()), nil)
 	}
 	target := hq.Chapters[1]
@@ -238,10 +240,10 @@ func TestDeleteChapter(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, del(w.anon, w.a, target), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: a viewer", func(t *testing.T) {
-		refused(t, del(w.viewer, w.a, target), http.StatusForbidden)
+	t.Run("wrong role: a clinician", func(t *testing.T) {
+		refused(t, del(w.clin, w.a, target), http.StatusForbidden)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, del(w.other, w.a, target), http.StatusNotFound)
 		refused(t, del(w.other, w.b, target), http.StatusNotFound)
 	})
@@ -272,7 +274,7 @@ func TestSaveChapterContent(t *testing.T) {
 	w := newCast(t)
 	hq := w.fx.DraftHQ(t, w.a, w.alex, "basic.json")
 	id := hq.Chapters[0]
-	save := func(c *apitest.Client, h uuid.UUID, id uuid.UUID, body any) *apitest.Resp {
+	save := func(c *apitest.Client, h apitest.Hospital, id uuid.UUID, body any) *apitest.Resp {
 		return c.Do("PUT", at(h, "/chapters/"+id.String()+"/content"), body)
 	}
 	content := func(question string) json.RawMessage {
@@ -286,10 +288,10 @@ func TestSaveChapterContent(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, save(w.anon, w.a, id, body("q_anonym", 0)), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: a viewer", func(t *testing.T) {
-		refused(t, save(w.viewer, w.a, id, body("q_viewer", 0)), http.StatusForbidden)
+	t.Run("wrong role: a clinician", func(t *testing.T) {
+		refused(t, save(w.clin, w.a, id, body("q_viewer", 0)), http.StatusForbidden)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, save(w.other, w.a, id, body("q_others", 0)), http.StatusNotFound)
 		refused(t, save(w.other, w.b, id, body("q_others", 0)), http.StatusNotFound)
 	})

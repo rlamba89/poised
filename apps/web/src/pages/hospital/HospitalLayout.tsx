@@ -1,21 +1,33 @@
 import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router";
-import { Alert, AppShell, Button, Group, Select, Text, Title } from "@mantine/core";
+import { Alert, Anchor, AppShell, Badge, Button, Group, Select, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
-import { AuthProvider, homePath, useMe } from "@/lib/auth";
+import { AuthProvider, HospitalContext, findHospital, hospitalBase, homePath, roleLabel, useMe, type Here } from "@/lib/auth";
+
+function NoAccess() {
+  return (
+    <Alert color="red" m="md" title="You don't have access to this hospital">
+      <Anchor component={Link} to="/">Choose a hospital</Anchor>
+    </Alert>
+  );
+}
 
 function Shell({ children }: { children: React.ReactNode }) {
   const me = useMe();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { hospitalId } = useParams() as { hospitalId: string };
-  const hospital = me.hospitals.find((h) => h.id === hospitalId);
-  const member = !!hospital;
-  const authoring = !!hospital?.roles.some((r) => r !== "clinician");
-  const clinical = !!hospital?.roles.includes("clinician");
+  const { orgId, hospitalId } = useParams() as { orgId: string; hospitalId: string };
+  const found = findHospital(me, orgId, hospitalId);
+  const here: Here | null = found && { ...found, role: found.hospital.role, base: hospitalBase(orgId, hospitalId) };
 
+  // Every hospital the user can work in, grouped by trust (STF-03). Hospital ids are unique.
+  // Switching keeps you in the same section: Episodes stays Episodes (S08 test report 1).
   const switchHospital = (id: string | null) => {
-    const next = me.hospitals.find((h) => h.id === id);
-    if (next && next.id !== hospitalId) navigate(homePath(next));
+    for (const t of me.trusts) {
+      const h = t.hospitals.find((x) => x.id === id);
+      if (!h || h.id === hospitalId) continue;
+      const section = pathname.includes("/episodes") ? "episodes" : /\/(questionnaires|chapters)/.test(pathname) ? "questionnaires" : null;
+      navigate(section ? `${hospitalBase(t.id, h.id)}/${section}` : homePath(t, h));
+    }
   };
   const nav = (href: string, label: string) => (
     <Button component={Link} to={href} size="xs" variant={pathname.startsWith(href) ? "light" : "subtle"}>
@@ -26,43 +38,55 @@ function Shell({ children }: { children: React.ReactNode }) {
     await api("/logout", { method: "POST" });
     navigate("/login", { replace: true });
   };
+  const page = here ? <HospitalContext.Provider value={here}>{children}</HospitalContext.Provider> : <NoAccess />;
   // The questionnaire editor has its own header (Lifebox layout), so it gets the whole screen.
-  const editor = /\/questionnaires\/[^/]+$/.test(pathname);
+  if (/\/questionnaires\/[^/]+$/.test(pathname)) return page;
   // The preview needs the full width and height, so it gets no page padding.
   const fullBleed = pathname.includes("/preview");
-  if (editor) return member ? <>{children}</> : <Alert color="red" m="md">You don&apos;t have access to this hospital.</Alert>;
 
   return (
     <AppShell header={{ height: 56 }} padding={fullBleed ? 0 : "md"}>
       <AppShell.Header px="md">
-        <Group h="100%" justify="space-between">
-          <Group>
+        {/* In a narrow window the header scrolls sideways rather than pushing Episodes and Sign out
+            out of reach (S08 test report 2). */}
+        <Group h="100%" justify="space-between" wrap="nowrap" style={{ overflowX: "auto", overflowY: "hidden" }}>
+          <Group wrap="nowrap" style={{ flexShrink: 0 }}>
             <Title order={4}>Poised</Title>
+            {here && (
+              <Text fw={500} size="sm" aria-label="Trust">
+                {here.trust.name}
+              </Text>
+            )}
             <Select
               aria-label="Hospital"
-              data={me.hospitals.map((h) => ({ value: h.id, label: h.name }))}
-              value={member ? hospitalId : null}
+              data={me.trusts.map((t) => ({ group: t.name, items: t.hospitals.map((h) => ({ value: h.id, label: h.name })) }))}
+              value={here ? hospitalId : null}
+              placeholder="Choose a hospital"
               onChange={switchHospital}
               allowDeselect={false}
-              w={200}
+              w={{ base: 150, sm: 200 }}
             />
-            {authoring && nav(`/h/${hospitalId}/questionnaires`, "Questionnaires")}
-            {clinical && nav(`/h/${hospitalId}/episodes`, "Episodes")}
+            {here && nav(`${here.base}/questionnaires`, "Questionnaires")}
+            {here && nav(`${here.base}/episodes`, "Episodes")}
           </Group>
-          <Group>
-            <Text size="sm">{me.user.name}</Text>
+          <Group wrap="nowrap" style={{ flexShrink: 0 }}>
+            <Text size="sm" visibleFrom="md">{me.user.name}</Text>
+            {here && (
+              <Badge variant="light" aria-label="Your role here">
+                {roleLabel[here.role]}
+              </Badge>
+            )}
             <Button variant="default" size="xs" onClick={signOut}>Sign out</Button>
           </Group>
         </Group>
       </AppShell.Header>
-      <AppShell.Main>
-        {member ? children : <Alert color="red" m="md">You don&apos;t have access to this hospital.</Alert>}
-      </AppShell.Main>
+      <AppShell.Main>{page}</AppShell.Main>
     </AppShell>
   );
 }
 
-// Every /h/:hospitalId/… page. Keyed by hospital, so switching hospitals starts afresh (as under Next.js).
+// Every /o/:orgId/h/:hospitalId/… page. Keyed by hospital, so switching hospitals starts afresh, and
+// /api/me is read again, so a changed membership shows at once.
 export function HospitalLayout() {
   const { hospitalId } = useParams() as { hospitalId: string };
   return (

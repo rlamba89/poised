@@ -12,9 +12,9 @@ def test_patient_fills_in_and_sends_their_hq_on_a_phone(page: Page, phone: Brows
     last_name = f"J3 {unique()}"
 
     # The clinician creates the episode, for a new (made-up) patient.
-    hospital = sign_in(page.context, "Cara Clinician")
+    base = sign_in(page.context, "Cara Clinician")
     page.context.grant_permissions(["clipboard-read", "clipboard-write"])
-    page.goto(f"/h/{hospital}/episodes")
+    page.goto(f"{base}/episodes")
     page.get_by_role("button", name="New episode").click()
     drawer = page.get_by_role("dialog", name="New episode")
     drawer.get_by_text("New patient").click()

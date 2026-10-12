@@ -1,5 +1,6 @@
 // Command import-lifebox loads a questionnaire exported from the Lifebox Author tool
-// (tools/export-lifebox-hq.js) as a new draft questionnaire, one chapter per Question Set.
+// (tools/export-lifebox-hq.js) as a new draft questionnaire, one chapter per Question Set. The
+// questionnaire is the trust's: every hospital of the -hospital's trust uses it.
 //
 //	go run ./cmd/import-lifebox -file ~/Downloads/lifebox-hq-<id>.json
 //
@@ -23,7 +24,7 @@ import (
 
 func main() {
 	file := flag.String("file", "", "the JSON file the export snippet downloaded")
-	hospital := flag.String("hospital", "00000000-0000-4000-8000-00000000000a", "hospital to import into (default: Hospital A)")
+	hospital := flag.String("hospital", "00000000-0000-4000-8000-00000000000a", "a hospital of the trust to import into (default: Hospital A1, in Trust A)")
 	user := flag.String("user", "00000000-0000-4000-8000-0000000000a1", "user recorded as the author (default: Alex Author)")
 	flag.Parse()
 	if *file == "" {
@@ -49,6 +50,10 @@ func main() {
 		log.Fatalf("connect: %v", err)
 	}
 	defer conn.Close(ctx)
+	var oid uuid.UUID
+	if err := conn.QueryRow(ctx, "SELECT org_id FROM hospitals WHERE id = $1", hid).Scan(&oid); err != nil {
+		log.Fatalf("hospital %s: %v", hid, err)
+	}
 
 	lib, err := loadLibrary(ctx, conn)
 	if err != nil {
@@ -59,11 +64,11 @@ func main() {
 	var id uuid.UUID
 	err = pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
 		dq := db.New(tx)
-		name, err := freeName(ctx, dq, hid, q.Name)
+		name, err := freeName(ctx, dq, oid, q.Name)
 		if err != nil {
 			return err
 		}
-		if id, err = dq.CreateQuestionnaire(ctx, db.CreateQuestionnaireParams{HospitalID: hid, Name: name, Description: q.Description, CreatedBy: uid}); err != nil {
+		if id, err = dq.CreateQuestionnaire(ctx, db.CreateQuestionnaireParams{OrgID: oid, Name: name, Description: q.Description, CreatedBy: uid}); err != nil {
 			return fmt.Errorf("create questionnaire: %w", err)
 		}
 		vid, err := dq.CreateVersion(ctx, db.CreateVersionParams{QuestionnaireID: id, VersionNo: 1, UpdatedBy: uid})
@@ -103,10 +108,10 @@ func main() {
 }
 
 // freeName adds " (2)", " (3)"… if a draft with the name already exists (FRM-04).
-func freeName(ctx context.Context, q *db.Queries, hid uuid.UUID, name string) (string, error) {
+func freeName(ctx context.Context, q *db.Queries, oid uuid.UUID, name string) (string, error) {
 	candidate := name
 	for n := 2; ; n++ {
-		taken, err := q.DraftNameExists(ctx, db.DraftNameExistsParams{HospitalID: hid, Name: candidate, ExcludeID: uuid.Nil})
+		taken, err := q.DraftNameExists(ctx, db.DraftNameExistsParams{OrgID: oid, Name: candidate, ExcludeID: uuid.Nil})
 		if err != nil || !taken {
 			return candidate, err
 		}

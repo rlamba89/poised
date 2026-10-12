@@ -1,7 +1,7 @@
-import { useParams } from "react-router";
+import { useHospital } from "@/lib/auth";
 import { QuestionnaireList } from "@/features/questionnaires/QuestionnaireList";
 
 export function Questionnaires() {
-  const { hospitalId } = useParams() as { hospitalId: string };
-  return <QuestionnaireList hospitalId={hospitalId} />;
+  const { base } = useHospital();
+  return <QuestionnaireList base={base} />;
 }

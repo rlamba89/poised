@@ -5,6 +5,7 @@ package httpapi_test
 import (
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,26 +15,32 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/apitest"
 )
 
-// The episode routes are for clinicians only, so "wrong role" here is Alex, an author and
-// publisher in A but not a clinician. "Another hospital" is Bob, a clinician in B: at A's
-// URL (not a member: 404) and at B's URL with A's ids (scoped to B: 404).
+// Everyone in a hospital is at least a clinician and sees all its data (A-5), so the episode
+// routes have no role below them. Their "role" case is instead a clinician at the trust's other
+// hospital (A2), who gets 404 at A: a hospital-scoped user sees only their hospital. "Another
+// trust" is Bob, a clinician in trust B: at A's URL (not a member: 404) and at B's URL with A's
+// ids (scoped to B: 404).
 
 // clinic adds the workflow's people and data to the usual cast.
 type clinic struct {
 	*cast
+	a2        apitest.Hospital // trust A's second hospital
 	cara, bob apitest.User
-	clinician *apitest.Client // Cara, a clinician in A
+	clinician *apitest.Client // Cara, a clinician at A
+	site2     *apitest.Client // a clinician at A2 only
 	otherClin *apitest.Client // Bob, a clinician in B
-	hq        apitest.HQ      // A's published Workflow HQ: 2 patient Question Sets, then 1 clinician set
-	ep        apitest.Episode // on hq, waiting for the patient
+	hq        apitest.HQ      // trust A's published Workflow HQ: 2 patient Question Sets, then 1 clinician set
+	ep        apitest.Episode // on hq at A, waiting for the patient
 }
 
 func newClinic(t *testing.T) *clinic {
 	t.Helper()
 	w := &clinic{cast: newCast(t)}
+	w.a2 = w.fx.HospitalIn(t, w.a.Org)
 	w.cara = w.fx.User(t, w.a, "clinician")
 	w.bob = w.fx.User(t, w.b, "clinician")
 	w.clinician = w.anon.LoginAs(t, w.cara)
+	w.site2 = w.anon.LoginAs(t, w.fx.User(t, w.a2, "clinician"))
 	w.otherClin = w.anon.LoginAs(t, w.bob)
 	w.hq = w.fx.PublishedHQ(t, w.a, w.alex, "workflow.json")
 	w.ep = w.fx.Episode(t, w.hq, w.cara)
@@ -116,8 +123,8 @@ func saveAnswers(t *testing.T, w *clinic, e apitest.Episode, chapter uuid.UUID, 
 	}
 }
 
-// epPath is a path under /api/h/{hospital}/episodes/{episode}.
-func epPath(hospital uuid.UUID, e apitest.Episode, rest string) string {
+// epPath is a path under /api/o/{trust}/h/{hospital}/episodes/{episode}.
+func epPath(hospital apitest.Hospital, e apitest.Episode, rest string) string {
 	return at(hospital, "/episodes/"+e.ID.String()+rest)
 }
 
@@ -136,33 +143,38 @@ func TestListPatients(t *testing.T) {
 		return out
 	}
 
-	t.Run("happy path: only the hospital's patients", func(t *testing.T) {
+	t.Run("happy path: the trust's patient records, a patient seen only at its other hospital included", func(t *testing.T) {
+		// S08 answers (12 Oct): a hospital-scoped clinician sees the trust's patient record, so
+		// they can open an episode here, though not the other hospital's episodes.
+		elsewhere := w.fx.EpisodeAt(t, w.hq, w.a2, w.cara)
 		got := ids(t, w.clinician.Do("GET", at(w.a, "/patients"), nil))
-		if len(got) != 1 || got[0] != w.ep.PatientID {
-			t.Errorf("patients = %v, want only %s", got, w.ep.PatientID)
+		if len(got) != 2 || !slices.Contains(got, w.ep.PatientID) || !slices.Contains(got, elsewhere.PatientID) {
+			t.Errorf("patients = %v, want %s and %s", got, w.ep.PatientID, elsewhere.PatientID)
 		}
 	})
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, w.anon.Do("GET", at(w.a, "/patients"), nil), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: an author", func(t *testing.T) {
-		refused(t, w.author.Do("GET", at(w.a, "/patients"), nil), http.StatusForbidden)
+	t.Run("role: every member is a clinician at least, so the case is a clinician at the trust's other hospital", func(t *testing.T) {
+		refused(t, w.site2.Do("GET", at(w.a, "/patients"), nil), http.StatusNotFound)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, w.otherClin.Do("GET", at(w.a, "/patients"), nil), http.StatusNotFound)
 		if got := ids(t, w.otherClin.Do("GET", at(w.b, "/patients"), nil)); len(got) != 1 || got[0] != theirs.PatientID {
 			t.Errorf("B's patients = %v, want only B's %s", got, theirs.PatientID)
 		}
 	})
 	t.Run("invalid input: not a hospital id", func(t *testing.T) {
-		refused(t, w.clinician.Do("GET", "/api/h/abc/patients", nil), http.StatusNotFound)
+		for _, p := range badIDs(w.a, "/patients") {
+			refused(t, w.clinician.Do("GET", p, nil), http.StatusNotFound)
+		}
 	})
 }
 
 func TestCreatePatient(t *testing.T) {
 	t.Parallel()
 	w := newClinic(t)
-	create := func(c *apitest.Client, h uuid.UUID, body any) *apitest.Resp {
+	create := func(c *apitest.Client, h apitest.Hospital, body any) *apitest.Resp {
 		return c.Do("POST", at(h, "/patients"), body)
 	}
 	body := map[string]string{"firstName": " Ada ", "lastName": " Lovelace ", "dateOfBirth": "1985-12-10",
@@ -173,10 +185,10 @@ func TestCreatePatient(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, create(w.anon, w.a, body), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: an author", func(t *testing.T) {
-		refused(t, create(w.author, w.a, body), http.StatusForbidden)
+	t.Run("role: every member is a clinician at least, so the case is a clinician at the trust's other hospital", func(t *testing.T) {
+		refused(t, create(w.site2, w.a, body), http.StatusNotFound)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, create(w.otherClin, w.a, body), http.StatusNotFound)
 	})
 	t.Run("invalid input", func(t *testing.T) {
@@ -203,22 +215,22 @@ func TestCreatePatient(t *testing.T) {
 	if n := patients(t); n != before {
 		t.Fatalf("refusals wrote patients: %d, want %d", n, before)
 	}
-	t.Run("happy path: trimmed, in the hospital", func(t *testing.T) {
+	t.Run("happy path: trimmed, the trust's record", func(t *testing.T) {
 		r := create(w.clinician, w.a, body)
 		r.Want(t, http.StatusCreated)
 		var got struct{ ID uuid.UUID }
 		r.Decode(t, &got)
-		var hospital uuid.UUID
+		var org uuid.UUID
 		var first, last, dob, sex, number, phone, email string
-		err := w.db.QueryRow(t.Context(), `SELECT hospital_id, first_name, last_name, date_of_birth::text, sex,
+		err := w.db.QueryRow(t.Context(), `SELECT org_id, first_name, last_name, date_of_birth::text, sex,
 			hospital_number, phone, email FROM patients WHERE id = $1`, got.ID).Scan(
-			&hospital, &first, &last, &dob, &sex, &number, &phone, &email)
+			&org, &first, &last, &dob, &sex, &number, &phone, &email)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if hospital != w.a || first != "Ada" || last != "Lovelace" || dob != "1985-12-10" || sex != "female" ||
+		if org != w.a.Org || first != "Ada" || last != "Lovelace" || dob != "1985-12-10" || sex != "female" ||
 			number != "H123" || phone != "07700 900123" || email != "ada@example.test" {
-			t.Errorf("row = %v %q %q %q %q %q %q %q", hospital, first, last, dob, sex, number, phone, email)
+			t.Errorf("row = %v %q %q %q %q %q %q %q", org, first, last, dob, sex, number, phone, email)
 		}
 	})
 }
@@ -248,17 +260,19 @@ func TestListPublishedHQs(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, w.anon.Do("GET", at(w.a, "/published-hqs"), nil), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: an author", func(t *testing.T) {
-		refused(t, w.author.Do("GET", at(w.a, "/published-hqs"), nil), http.StatusForbidden)
+	t.Run("role: every member is a clinician at least, so the case is a clinician at the trust's other hospital", func(t *testing.T) {
+		refused(t, w.site2.Do("GET", at(w.a, "/published-hqs"), nil), http.StatusNotFound)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, w.otherClin.Do("GET", at(w.a, "/published-hqs"), nil), http.StatusNotFound)
 		if got := versions(t, w.otherClin.Do("GET", at(w.b, "/published-hqs"), nil)); len(got) != 1 || got[0] != theirs.VersionID {
 			t.Errorf("B's versions = %v, want only %s", got, theirs.VersionID)
 		}
 	})
 	t.Run("invalid input: not a hospital id", func(t *testing.T) {
-		refused(t, w.clinician.Do("GET", "/api/h/abc/published-hqs", nil), http.StatusNotFound)
+		for _, p := range badIDs(w.a, "/published-hqs") {
+			refused(t, w.clinician.Do("GET", p, nil), http.StatusNotFound)
+		}
 	})
 }
 
@@ -293,10 +307,10 @@ func TestListEpisodes(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, w.anon.Do("GET", at(w.a, "/episodes"), nil), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: an author", func(t *testing.T) {
-		refused(t, w.author.Do("GET", at(w.a, "/episodes"), nil), http.StatusForbidden)
+	t.Run("role: every member is a clinician at least, so the case is a clinician at the trust's other hospital", func(t *testing.T) {
+		refused(t, w.site2.Do("GET", at(w.a, "/episodes"), nil), http.StatusNotFound)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, w.otherClin.Do("GET", at(w.a, "/episodes"), nil), http.StatusNotFound)
 		if got := list(t, w.otherClin, at(w.b, "/episodes")); len(got) != 1 || got[0] != theirs.ID {
 			t.Errorf("B's episodes = %v, want only %s", got, theirs.ID)
@@ -312,7 +326,7 @@ func TestListEpisodes(t *testing.T) {
 func TestCreateEpisode(t *testing.T) {
 	t.Parallel()
 	w := newClinic(t)
-	create := func(c *apitest.Client, h uuid.UUID, body any) *apitest.Resp {
+	create := func(c *apitest.Client, h apitest.Hospital, body any) *apitest.Resp {
 		return c.Do("POST", at(h, "/episodes"), body)
 	}
 	body := func(patient, version uuid.UUID) map[string]any {
@@ -327,10 +341,10 @@ func TestCreateEpisode(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, create(w.anon, w.a, good), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: an author", func(t *testing.T) {
-		refused(t, create(w.author, w.a, good), http.StatusForbidden)
+	t.Run("role: every member is a clinician at least, so the case is a clinician at the trust's other hospital", func(t *testing.T) {
+		refused(t, create(w.site2, w.a, good), http.StatusNotFound)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		theirs := w.fx.Episode(t, w.fx.PublishedHQ(t, w.b, w.bea, "basic.json"), w.bob)
 		beforeEpisodes++ // that fixture
 		refused(t, create(w.otherClin, w.a, good), http.StatusNotFound)
@@ -386,7 +400,9 @@ func TestGetEpisode(t *testing.T) {
 		VALUES ($1, 'comment', 'Called the patient', $2)`, w.ep.ID, w.cara.ID); err != nil {
 		t.Fatal(err)
 	}
-	get := func(c *apitest.Client, h uuid.UUID) *apitest.Resp { return c.Do("GET", epPath(h, w.ep, ""), nil) }
+	get := func(c *apitest.Client, h apitest.Hospital) *apitest.Resp {
+		return c.Do("GET", epPath(h, w.ep, ""), nil)
+	}
 
 	t.Run("happy path: the episode, its patient and its General notes", func(t *testing.T) {
 		r := get(w.clinician, w.a)
@@ -411,10 +427,10 @@ func TestGetEpisode(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, get(w.anon, w.a), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: an author", func(t *testing.T) {
-		refused(t, get(w.author, w.a), http.StatusForbidden)
+	t.Run("role: every member is a clinician at least, so the case is a clinician at the trust's other hospital", func(t *testing.T) {
+		refused(t, get(w.site2, w.a), http.StatusNotFound)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, get(w.otherClin, w.a), http.StatusNotFound)
 		refused(t, get(w.otherClin, w.b), http.StatusNotFound)
 	})
@@ -427,7 +443,7 @@ func TestGetEpisode(t *testing.T) {
 func TestUpdateEpisode(t *testing.T) {
 	t.Parallel()
 	w := newClinic(t)
-	patch := func(c *apitest.Client, h uuid.UUID, e apitest.Episode, body any) *apitest.Resp {
+	patch := func(c *apitest.Client, h apitest.Hospital, e apitest.Episode, body any) *apitest.Resp {
 		return c.Do("PATCH", epPath(h, e, ""), body)
 	}
 	reviewed := w.fx.Episode(t, w.hq, w.cara)
@@ -438,10 +454,10 @@ func TestUpdateEpisode(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, patch(w.anon, w.a, reviewed, change), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: an author", func(t *testing.T) {
-		refused(t, patch(w.author, w.a, reviewed, change), http.StatusForbidden)
+	t.Run("role: every member is a clinician at least, so the case is a clinician at the trust's other hospital", func(t *testing.T) {
+		refused(t, patch(w.site2, w.a, reviewed, change), http.StatusNotFound)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, patch(w.otherClin, w.a, reviewed, change), http.StatusNotFound)
 		refused(t, patch(w.otherClin, w.b, reviewed, change), http.StatusNotFound)
 	})
@@ -550,7 +566,7 @@ func TestUpdateEpisodeKeepsAStatusThatJustChanged(t *testing.T) {
 func TestAddEpisodeNote(t *testing.T) {
 	t.Parallel()
 	w := newClinic(t)
-	add := func(c *apitest.Client, h uuid.UUID, body any) *apitest.Resp {
+	add := func(c *apitest.Client, h apitest.Hospital, body any) *apitest.Resp {
 		return c.Do("POST", epPath(h, w.ep, "/notes"), body)
 	}
 	note := map[string]string{"text": " Called the patient "}
@@ -558,10 +574,10 @@ func TestAddEpisodeNote(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, add(w.anon, w.a, note), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: an author", func(t *testing.T) {
-		refused(t, add(w.author, w.a, note), http.StatusForbidden)
+	t.Run("role: every member is a clinician at least, so the case is a clinician at the trust's other hospital", func(t *testing.T) {
+		refused(t, add(w.site2, w.a, note), http.StatusNotFound)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, add(w.otherClin, w.a, note), http.StatusNotFound)
 		refused(t, add(w.otherClin, w.b, note), http.StatusNotFound)
 	})

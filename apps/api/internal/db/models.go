@@ -60,6 +60,7 @@ type Episode struct {
 	ReviewCompletedAt  pgtype.Timestamptz `json:"reviewCompletedAt"`
 	CreatedBy          uuid.UUID          `json:"createdBy"`
 	CreatedAt          time.Time          `json:"createdAt"`
+	OrgID              uuid.UUID          `json:"orgId"`
 }
 
 type EpisodeAnswer struct {
@@ -83,28 +84,42 @@ type EpisodeEvent struct {
 }
 
 type Hospital struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
+	ID       uuid.UUID       `json:"id"`
+	Name     string          `json:"name"`
+	OrgID    uuid.UUID       `json:"orgId"`
+	Status   string          `json:"status"`
+	Settings json.RawMessage `json:"settings"`
+	Timezone *string         `json:"timezone"`
 }
 
 type Membership struct {
-	UserID     uuid.UUID `json:"userId"`
-	HospitalID uuid.UUID `json:"hospitalId"`
-	Role       string    `json:"role"`
+	UserID     uuid.UUID     `json:"userId"`
+	HospitalID uuid.NullUUID `json:"hospitalId"`
+	Role       string        `json:"role"`
+	OrgID      uuid.UUID     `json:"orgId"`
 }
 
 type OptionList struct {
 	ID         uuid.UUID       `json:"id"`
-	HospitalID uuid.UUID       `json:"hospitalId"`
+	HospitalID uuid.NullUUID   `json:"hospitalId"`
 	Name       string          `json:"name"`
 	Options    json.RawMessage `json:"options"`
 	UpdatedBy  uuid.UUID       `json:"updatedBy"`
 	UpdatedAt  time.Time       `json:"updatedAt"`
+	OrgID      uuid.UUID       `json:"orgId"`
+}
+
+type Org struct {
+	ID        uuid.UUID       `json:"id"`
+	Name      string          `json:"name"`
+	Code      string          `json:"code"`
+	Status    string          `json:"status"`
+	Settings  json.RawMessage `json:"settings"`
+	CreatedAt time.Time       `json:"createdAt"`
 }
 
 type Patient struct {
 	ID             uuid.UUID   `json:"id"`
-	HospitalID     uuid.UUID   `json:"hospitalId"`
 	FirstName      string      `json:"firstName"`
 	LastName       string      `json:"lastName"`
 	DateOfBirth    pgtype.Date `json:"dateOfBirth"`
@@ -112,15 +127,22 @@ type Patient struct {
 	HospitalNumber string      `json:"hospitalNumber"`
 	Phone          string      `json:"phone"`
 	Email          string      `json:"email"`
+	OrgID          uuid.UUID   `json:"orgId"`
+}
+
+type PlatformAdmin struct {
+	UserID    uuid.UUID `json:"userId"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type Questionnaire struct {
-	ID          uuid.UUID `json:"id"`
-	HospitalID  uuid.UUID `json:"hospitalId"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	CreatedBy   uuid.UUID `json:"createdBy"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID          uuid.UUID     `json:"id"`
+	HospitalID  uuid.NullUUID `json:"hospitalId"`
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	CreatedBy   uuid.UUID     `json:"createdBy"`
+	CreatedAt   time.Time     `json:"createdAt"`
+	OrgID       uuid.UUID     `json:"orgId"`
 }
 
 type QuestionnaireVersion struct {
@@ -133,7 +155,8 @@ type QuestionnaireVersion struct {
 }
 
 type User struct {
-	ID    uuid.UUID `json:"id"`
-	Name  string    `json:"name"`
-	Email string    `json:"email"`
+	ID         uuid.UUID `json:"id"`
+	Name       string    `json:"name"`
+	Email      string    `json:"email"`
+	CognitoSub *string   `json:"cognitoSub"`
 }

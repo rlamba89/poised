@@ -14,18 +14,13 @@ import (
 
 	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/episode"
+	"github.com/rlamba89/poised/apps/api/internal/role"
 )
 
 const episodeNotFound = "Episode not found."
 
-// clinicianOnly writes 403 itself unless the caller is a clinician in this hospital.
-func clinicianOnly(w http.ResponseWriter, r *http.Request) bool {
-	if !hasRole(r, "clinician") {
-		writeError(w, http.StatusForbidden, "Only clinicians can see patients and episodes.")
-		return false
-	}
-	return true
-}
+// Patients and episodes need no role check: everyone in a hospital is at least a clinician, and
+// sees all its data (A-5). The middleware has checked they're a member here.
 
 var sexes = map[string]bool{"female": true, "male": true, "other": true, "unknown": true}
 
@@ -56,11 +51,10 @@ func (in *patientInput) validate(now time.Time) (time.Time, string) {
 	return dob, ""
 }
 
+// listPatients lists the trust's patient records: staff at any of its hospitals can open an
+// episode for one, though each hospital sees only its own episodes (S08 answers, 12 Oct).
 func (s *server) listPatients(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
-	rows, err := s.q.ListPatients(r.Context(), hospitalID(r))
+	rows, err := s.q.ListPatients(r.Context(), orgID(r))
 	if err != nil {
 		serverError(w, "list patients", err)
 		return
@@ -69,9 +63,6 @@ func (s *server) listPatients(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) createPatient(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	var in patientInput
 	if !readJSON(w, r, 8<<10, &in) {
 		return
@@ -82,7 +73,7 @@ func (s *server) createPatient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, err := s.q.CreatePatient(r.Context(), db.CreatePatientParams{
-		HospitalID: hospitalID(r), FirstName: in.FirstName, LastName: in.LastName,
+		OrgID: orgID(r), FirstName: in.FirstName, LastName: in.LastName,
 		DateOfBirth: pgtype.Date{Time: dob, Valid: true}, Sex: in.Sex,
 		HospitalNumber: in.HospitalNumber, Phone: in.Phone, Email: in.Email,
 	})
@@ -93,12 +84,10 @@ func (s *server) createPatient(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]uuid.UUID{"id": id})
 }
 
-// listPublishedHQs lists the questionnaires an episode can be given: their published versions.
+// listPublishedHQs lists the questionnaires an episode can be given: the published versions of
+// those this hospital uses.
 func (s *server) listPublishedHQs(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
-	rows, err := s.q.ListPublishedVersions(r.Context(), hospitalID(r))
+	rows, err := s.q.ListPublishedVersions(r.Context(), db.ListPublishedVersionsParams{OrgID: orgID(r), HospitalID: hospitalID(r)})
 	if err != nil {
 		serverError(w, "list published", err)
 		return
@@ -106,11 +95,24 @@ func (s *server) listPublishedHQs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rows)
 }
 
+// listEpisodes is one hospital's episodes, newest first, optionally of one status.
 func (s *server) listEpisodes(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
+	s.writeEpisodes(w, r, db.ListEpisodesParams{OrgID: orgID(r), HospitalIds: []uuid.UUID{hospitalID(r)}})
+}
+
+// listTrustEpisodes is "All hospitals" (STF-03): every hospital's episodes for a trust-wide
+// member, else those of the hospitals the caller is a member of.
+func (s *server) listTrustEpisodes(w http.ResponseWriter, r *http.Request) {
+	p := here(r)
+	s.writeEpisodes(w, r, db.ListEpisodesParams{OrgID: p.Org, AllHospitals: p.Role != role.None, HospitalIds: p.Hospitals})
+}
+
+func (s *server) writeEpisodes(w http.ResponseWriter, r *http.Request, arg db.ListEpisodesParams) {
+	arg.Status = r.URL.Query().Get("status")
+	if arg.HospitalIds == nil {
+		arg.HospitalIds = []uuid.UUID{}
 	}
-	rows, err := s.q.ListEpisodes(r.Context(), db.ListEpisodesParams{HospitalID: hospitalID(r), Status: r.URL.Query().Get("status")})
+	rows, err := s.q.ListEpisodes(r.Context(), arg)
 	if err != nil {
 		serverError(w, "list episodes", err)
 		return
@@ -120,9 +122,6 @@ func (s *server) listEpisodes(w http.ResponseWriter, r *http.Request) {
 
 // createEpisode gives a patient a published HQ and a link to fill it in.
 func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	var in struct {
 		PatientID   uuid.UUID `json:"patientId"`
 		VersionID   uuid.UUID `json:"versionId"`
@@ -139,7 +138,7 @@ func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, err := s.q.CreateEpisode(r.Context(), db.CreateEpisodeParams{
-		HospitalID: hospitalID(r), PatientID: in.PatientID, VersionID: in.VersionID,
+		OrgID: orgID(r), HospitalID: hospitalID(r), PatientID: in.PatientID, VersionID: in.VersionID,
 		Procedure: strings.TrimSpace(in.Procedure), Anaesthetic: strings.TrimSpace(in.Anaesthetic),
 		Consultant: strings.TrimSpace(in.Consultant), PatientToken: token, CreatedBy: currentUser(r).ID,
 	})
@@ -175,9 +174,6 @@ func (s *server) loadEpisode(w http.ResponseWriter, r *http.Request) (db.GetEpis
 
 // getEpisode returns the episode with its patient and its General notes.
 func (s *server) getEpisode(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return
@@ -215,9 +211,6 @@ func (in *episodeChange) validate() string {
 // updateEpisode changes the status (by hand, see episode.CanSetStatus), the procedure details
 // and the ASA grades. Fields left out keep their value; an ASA grade of 0 clears it.
 func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return
@@ -287,9 +280,6 @@ func asaChange(current, requested *int32, who string) (next *int32, msg string, 
 
 // addEpisodeNote adds a clinician's comment to the General notes.
 func (s *server) addEpisodeNote(w http.ResponseWriter, r *http.Request) {
-	if !clinicianOnly(w, r) {
-		return
-	}
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return

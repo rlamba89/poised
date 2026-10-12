@@ -27,9 +27,76 @@ type User struct {
 	Name string
 }
 
-// HQ is a questionnaire with one version, made from a file in testdata/.
+// Hospital is a hospital and its trust. Its routes are under Path.
+type Hospital struct {
+	Org uuid.UUID
+	ID  uuid.UUID
+}
+
+// Path is a route of the hospital: /api/o/{org}/h/{id} + p.
+func (h Hospital) Path(p string) string {
+	return "/api/o/" + h.Org.String() + "/h/" + h.ID.String() + p
+}
+
+// Org adds a trust.
+func (f *Fixtures) Org(t *testing.T) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	suffix := randomHex(3)
+	f.scan(t, &id, `INSERT INTO orgs (name, code) VALUES ($1, $2) RETURNING id`, "Trust "+suffix, "T"+suffix)
+	return id
+}
+
+// Hospital adds a trust with one hospital: another hospital is also another trust.
+func (f *Fixtures) Hospital(t *testing.T) Hospital {
+	t.Helper()
+	return f.HospitalIn(t, f.Org(t))
+}
+
+// HospitalIn adds a hospital to a trust.
+func (f *Fixtures) HospitalIn(t *testing.T, org uuid.UUID) Hospital {
+	t.Helper()
+	h := Hospital{Org: org}
+	f.scan(t, &h.ID, `INSERT INTO hospitals (org_id, name) VALUES ($1, $2) RETURNING id`, org, "Hospital "+randomHex(3))
+	return h
+}
+
+// User adds a user with this role at the hospital, or with no membership when role is "".
+func (f *Fixtures) User(t *testing.T, h Hospital, role string) User {
+	t.Helper()
+	suffix := randomHex(3)
+	u := User{Name: "User " + suffix}
+	f.scan(t, &u.ID, `INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id`, u.Name, suffix+"@test.example")
+	if role != "" {
+		f.Member(t, u, h, role)
+	}
+	return u
+}
+
+// TrustUser adds a user with this role in the whole trust.
+func (f *Fixtures) TrustUser(t *testing.T, org uuid.UUID, role string) User {
+	t.Helper()
+	u := f.User(t, Hospital{}, "")
+	f.TrustMember(t, u, org, role)
+	return u
+}
+
+// Member gives u a role at one hospital.
+func (f *Fixtures) Member(t *testing.T, u User, h Hospital, role string) {
+	t.Helper()
+	f.exec(t, `INSERT INTO memberships (user_id, org_id, hospital_id, role) VALUES ($1, $2, $3, $4)`, u.ID, h.Org, h.ID, role)
+}
+
+// TrustMember gives u a role in the whole trust.
+func (f *Fixtures) TrustMember(t *testing.T, u User, org uuid.UUID, role string) {
+	t.Helper()
+	f.exec(t, `INSERT INTO memberships (user_id, org_id, role) VALUES ($1, $2, $3)`, u.ID, org, role)
+}
+
+// HQ is a questionnaire with one version, made from a file in testdata/. It's the trust's, so
+// every hospital of the trust uses it; Hospital is where Episode puts its episodes.
 type HQ struct {
-	Hospital  uuid.UUID
+	Hospital  Hospital
 	ID        uuid.UUID // the questionnaire
 	Name      string
 	VersionID uuid.UUID
@@ -43,40 +110,21 @@ type Episode struct {
 	Token     string // the patient's link: /api/p/{Token}
 }
 
-func (f *Fixtures) Hospital(t *testing.T) uuid.UUID {
-	t.Helper()
-	var id uuid.UUID
-	f.scan(t, &id, `INSERT INTO hospitals (name) VALUES ($1) RETURNING id`, "Hospital "+randomHex(3))
-	return id
-}
-
-// User adds a user with these roles in the hospital. With no roles, they belong nowhere.
-func (f *Fixtures) User(t *testing.T, hospital uuid.UUID, roles ...string) User {
-	t.Helper()
-	suffix := randomHex(3)
-	u := User{Name: "User " + suffix}
-	f.scan(t, &u.ID, `INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id`, u.Name, suffix+"@test.example")
-	for _, role := range roles {
-		f.exec(t, `INSERT INTO memberships (user_id, hospital_id, role) VALUES ($1, $2, $3)`, u.ID, hospital, role)
-	}
-	return u
-}
-
 // DraftHQ adds a questionnaire whose only version, 1, is a draft.
-func (f *Fixtures) DraftHQ(t *testing.T, hospital uuid.UUID, by User, file string) HQ {
+func (f *Fixtures) DraftHQ(t *testing.T, hospital Hospital, by User, file string) HQ {
 	t.Helper()
 	return f.hq(t, hospital, by, "draft", file)
 }
 
 // PublishedHQ adds a questionnaire whose only version, 1, is published.
-func (f *Fixtures) PublishedHQ(t *testing.T, hospital uuid.UUID, by User, file string) HQ {
+func (f *Fixtures) PublishedHQ(t *testing.T, hospital Hospital, by User, file string) HQ {
 	t.Helper()
 	return f.hq(t, hospital, by, "published", file)
 }
 
 // hq reads testdata/<file>: {"name", "description", "chapters": [{"name", "audience", "content"}]},
 // where each content is a Question Set's SurveyJS JSON.
-func (f *Fixtures) hq(t *testing.T, hospital uuid.UUID, by User, status, file string) HQ {
+func (f *Fixtures) hq(t *testing.T, hospital Hospital, by User, status, file string) HQ {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(module, "internal", "apitest", "testdata", file))
 	if err != nil {
@@ -93,8 +141,8 @@ func (f *Fixtures) hq(t *testing.T, hospital uuid.UUID, by User, status, file st
 		t.Fatalf("apitest: %s: %v", file, err)
 	}
 	hq := HQ{Hospital: hospital, Name: in.Name + " " + randomHex(3)}
-	f.scan(t, &hq.ID, `INSERT INTO questionnaires (hospital_id, name, description, created_by)
-		VALUES ($1, $2, $3, $4) RETURNING id`, hospital, hq.Name, in.Description, by.ID)
+	f.scan(t, &hq.ID, `INSERT INTO questionnaires (org_id, name, description, created_by)
+		VALUES ($1, $2, $3, $4) RETURNING id`, hospital.Org, hq.Name, in.Description, by.ID)
 	f.scan(t, &hq.VersionID, `INSERT INTO questionnaire_versions (questionnaire_id, version_no, status, updated_by)
 		VALUES ($1, 1, $2, $3) RETURNING id`, hq.ID, status, by.ID)
 	for i, ch := range in.Chapters {
@@ -106,19 +154,25 @@ func (f *Fixtures) hq(t *testing.T, hospital uuid.UUID, by User, status, file st
 	return hq
 }
 
-// Episode adds a made-up patient in the HQ's hospital and an episode on the HQ, which
-// should be published.
+// Episode adds a made-up patient in the HQ's trust and an episode on the HQ, which should be
+// published, at the HQ's hospital.
 func (f *Fixtures) Episode(t *testing.T, hq HQ, by User) Episode {
+	t.Helper()
+	return f.EpisodeAt(t, hq, hq.Hospital, by)
+}
+
+// EpisodeAt is Episode at another hospital of the HQ's trust.
+func (f *Fixtures) EpisodeAt(t *testing.T, hq HQ, h Hospital, by User) Episode {
 	t.Helper()
 	token, err := episode.NewToken()
 	if err != nil {
 		t.Fatal(err)
 	}
 	e := Episode{Token: token}
-	f.scan(t, &e.PatientID, `INSERT INTO patients (hospital_id, first_name, last_name, date_of_birth, sex)
-		VALUES ($1, 'Test', $2, '1970-01-01', 'unknown') RETURNING id`, hq.Hospital, "Patient "+randomHex(3))
-	f.scan(t, &e.ID, `INSERT INTO episodes (hospital_id, patient_id, version_id, patient_token, created_by)
-		VALUES ($1, $2, $3, $4, $5) RETURNING id`, hq.Hospital, e.PatientID, hq.VersionID, token, by.ID)
+	f.scan(t, &e.PatientID, `INSERT INTO patients (org_id, first_name, last_name, date_of_birth, sex)
+		VALUES ($1, 'Test', $2, '1970-01-01', 'unknown') RETURNING id`, h.Org, "Patient "+randomHex(3))
+	f.scan(t, &e.ID, `INSERT INTO episodes (org_id, hospital_id, patient_id, version_id, patient_token, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`, h.Org, h.ID, e.PatientID, hq.VersionID, token, by.ID)
 	return e
 }
 

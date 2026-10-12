@@ -60,7 +60,9 @@ func TestEpisodeHQ(t *testing.T) {
 	setStatus(t, w, w.ep, "ready_for_review")
 	saveAnswers(t, w, w.ep, about, nil, `{"q_smokes": "o_yes"}`)
 	saveAnswers(t, w, w.ep, about, &w.cara, `{"q_smokes": "o_no"}`)
-	get := func(c *apitest.Client, h uuid.UUID) *apitest.Resp { return c.Do("GET", epPath(h, w.ep, "/hq"), nil) }
+	get := func(c *apitest.Client, h apitest.Hospital) *apitest.Resp {
+		return c.Do("GET", epPath(h, w.ep, "/hq"), nil)
+	}
 
 	t.Run("happy path: every Question Set in full, with both actors' answers", func(t *testing.T) {
 		r := get(w.clinician, w.a)
@@ -104,10 +106,10 @@ func TestEpisodeHQ(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, get(w.anon, w.a), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: an author", func(t *testing.T) {
-		refused(t, get(w.author, w.a), http.StatusForbidden)
+	t.Run("role: every member is a clinician at least, so the case is a clinician at the trust's other hospital", func(t *testing.T) {
+		refused(t, get(w.site2, w.a), http.StatusNotFound)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, get(w.otherClin, w.a), http.StatusNotFound)
 		refused(t, get(w.otherClin, w.b), http.StatusNotFound)
 	})
@@ -124,7 +126,7 @@ func TestSaveClinicianAnswers(t *testing.T) {
 	setStatus(t, w, w.ep, "ready_for_review")
 	const patientSaid = `{"q_heart": true, "q_smokes": "o_yes"}`
 	saveAnswers(t, w, w.ep, about, nil, patientSaid)
-	save := func(c *apitest.Client, h uuid.UUID, e apitest.Episode, chapter uuid.UUID, body any) *apitest.Resp {
+	save := func(c *apitest.Client, h apitest.Hospital, e apitest.Episode, chapter uuid.UUID, body any) *apitest.Resp {
 		return c.Do("PUT", epPath(h, e, "/answers/"+chapter.String()), body)
 	}
 	// The browser pre-fills from the patient's answers; the clinician corrects one. Each save
@@ -135,10 +137,10 @@ func TestSaveClinicianAnswers(t *testing.T) {
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, save(w.anon, w.a, w.ep, about, corrected), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: an author", func(t *testing.T) {
-		refused(t, save(w.author, w.a, w.ep, about, corrected), http.StatusForbidden)
+	t.Run("role: every member is a clinician at least, so the case is a clinician at the trust's other hospital", func(t *testing.T) {
+		refused(t, save(w.site2, w.a, w.ep, about, corrected), http.StatusNotFound)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, save(w.otherClin, w.a, w.ep, about, corrected), http.StatusNotFound)
 		refused(t, save(w.otherClin, w.b, w.ep, about, corrected), http.StatusNotFound)
 		theirs := w.fx.PublishedHQ(t, w.b, w.bea, "workflow.json")
@@ -270,17 +272,17 @@ func TestCompleteReview(t *testing.T) {
 	t.Parallel()
 	w := newClinic(t)
 	setStatus(t, w, w.ep, "ready_for_review")
-	complete := func(c *apitest.Client, h uuid.UUID, e apitest.Episode) *apitest.Resp {
+	complete := func(c *apitest.Client, h apitest.Hospital, e apitest.Episode) *apitest.Resp {
 		return c.Do("POST", epPath(h, e, "/complete-review"), nil)
 	}
 
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, complete(w.anon, w.a, w.ep), http.StatusUnauthorized)
 	})
-	t.Run("wrong role: an author", func(t *testing.T) {
-		refused(t, complete(w.author, w.a, w.ep), http.StatusForbidden)
+	t.Run("role: every member is a clinician at least, so the case is a clinician at the trust's other hospital", func(t *testing.T) {
+		refused(t, complete(w.site2, w.a, w.ep), http.StatusNotFound)
 	})
-	t.Run("another hospital", func(t *testing.T) {
+	t.Run("another trust", func(t *testing.T) {
 		refused(t, complete(w.otherClin, w.a, w.ep), http.StatusNotFound)
 		refused(t, complete(w.otherClin, w.b, w.ep), http.StatusNotFound)
 	})

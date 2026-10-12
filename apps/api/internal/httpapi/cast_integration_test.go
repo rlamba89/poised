@@ -7,42 +7,49 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/rlamba89/poised/apps/api/internal/apitest"
 )
 
-// cast is the usual set-up for a route test: hospital A with an author who can also publish
-// and a viewer, and hospital B with its own author. Each test gets its own database.
+// cast is the usual set-up for a route test: hospital A (in trust A) with a trust-wide super
+// clinician and a clinician, and hospital B (in trust B) with its own trust-wide super clinician.
+// Changing the trust's content needs a whole-trust role (S08 answers, 5). Each test gets its own
+// database. "Another trust" is Bea: at A's URL (not a member: 404) and at B's URL with A's ids
+// (scoped to B: 404).
 type cast struct {
 	fx   *apitest.Fixtures
 	db   *pgxpool.Pool
-	a, b uuid.UUID // hospitals A and B
+	a, b apitest.Hospital // hospitals A and B, each in a trust of its own
 
-	alex, bea apitest.User // author + publisher in A; author in B
+	alex, bea apitest.User // super clinicians of the whole of trust A and of trust B
 
 	anon   *apitest.Client // not signed in
-	author *apitest.Client // Alex
-	viewer *apitest.Client // a viewer in A
-	other  *apitest.Client // Bea, who isn't a member of A
+	author *apitest.Client // Alex, who can author and publish
+	clin   *apitest.Client // a clinician at A: the wrong role for authoring
+	other  *apitest.Client // Bea, who isn't a member of trust A
 }
 
 func newCast(t *testing.T) *cast {
 	t.Helper()
 	c, fx := apitest.New(t)
 	w := &cast{fx: fx, db: c.DB, anon: c, a: fx.Hospital(t), b: fx.Hospital(t)}
-	w.alex = fx.User(t, w.a, "author", "publisher")
-	w.bea = fx.User(t, w.b, "author")
+	w.alex = fx.TrustUser(t, w.a.Org, "super_clinician")
+	w.bea = fx.TrustUser(t, w.b.Org, "super_clinician")
 	w.author = c.LoginAs(t, w.alex)
-	w.viewer = c.LoginAs(t, fx.User(t, w.a, "viewer"))
+	w.clin = c.LoginAs(t, fx.User(t, w.a, "clinician"))
 	w.other = c.LoginAs(t, w.bea)
 	return w
 }
 
-// at is a path under /api/h/{hospital}.
-func at(hospital uuid.UUID, path string) string {
-	return "/api/h/" + hospital.String() + path
+// at is a path under /api/o/{trust}/h/{hospital}.
+func at(h apitest.Hospital, path string) string {
+	return h.Path(path)
+}
+
+// badIDs are the hospital's path p with a trust or hospital id that isn't a uuid.
+func badIDs(h apitest.Hospital, p string) []string {
+	return []string{"/api/o/" + h.Org.String() + "/h/abc" + p, "/api/o/abc/h/" + h.ID.String() + p}
 }
 
 // count runs a `SELECT count(*) …` on the test's database.

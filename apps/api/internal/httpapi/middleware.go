@@ -6,25 +6,41 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/rlamba89/poised/apps/api/internal/auth"
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/role"
 )
 
 type ctxKey int
 
 const (
 	userKey ctxKey = iota
-	rolesKey
+	placeKey
 )
 
-// RoleLister loads a user's roles in one hospital. *db.Queries satisfies it.
-type RoleLister interface {
-	ListRolesInHospital(ctx context.Context, arg db.ListRolesInHospitalParams) ([]string, error)
+// Memberships reads the caller's memberships, on every request so that removing one takes
+// effect at once (STF-04). *db.Queries satisfies it.
+type Memberships interface {
+	RolesAtHospital(ctx context.Context, arg db.RolesAtHospitalParams) ([]db.RolesAtHospitalRow, error)
+	ListOrgMemberships(ctx context.Context, arg db.ListOrgMembershipsParams) ([]db.ListOrgMembershipsRow, error)
+}
+
+// place is where a request works, and the caller's role there.
+type place struct {
+	Org      uuid.UUID
+	Hospital uuid.UUID // uuid.Nil on a trust route (/api/o/{oid}/…)
+	// Role is the caller's role at Hospital: the higher of their trust-wide role and their role
+	// at that hospital. On a trust route it's their trust-wide role, or None if they have none.
+	Role role.Role
+	// TrustRole is the caller's whole-trust role, or None if they belong to some hospitals only.
+	// Changing the trust's shared content needs it (S08 answers, 5).
+	TrustRole role.Role
+	// Hospitals, on a trust route, are the hospitals the caller is a member of one by one.
+	Hospitals []uuid.UUID
 }
 
 // recoverPanics answers a handler's panic with the plain-language 500 and logs it with its
@@ -89,26 +105,67 @@ func requireUser(secret []byte, next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// requireHospital checks the caller is a member of the {hid} hospital (NFR-04) and
-// puts their roles there in the context. Non-members get 404 so hospitals can't be probed.
-// It must run inside requireUser.
-func requireHospital(roles RoleLister, next http.HandlerFunc) http.HandlerFunc {
+// requireHospital puts the caller's place in the context for a route under
+// /api/o/{oid}/h/{hid}: they must be a member of the whole trust or of that hospital, and the
+// hospital must be in the trust. Anyone else gets 404, so trusts and hospitals can't be probed
+// (NFR-04). It must run inside requireUser.
+func requireHospital(m Memberships, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		hid, err := uuid.Parse(r.PathValue("hid"))
-		if err != nil {
+		oid, errO := uuid.Parse(r.PathValue("oid"))
+		hid, errH := uuid.Parse(r.PathValue("hid"))
+		if errO != nil || errH != nil {
 			writeError(w, http.StatusNotFound, "Hospital not found.")
 			return
 		}
-		got, err := roles.ListRolesInHospital(r.Context(), db.ListRolesInHospitalParams{UserID: currentUser(r).ID, HospitalID: hid})
+		rows, err := m.RolesAtHospital(r.Context(), db.RolesAtHospitalParams{UserID: currentUser(r).ID, OrgID: oid, HospitalID: hid})
 		if err != nil {
 			serverError(w, "load roles", err)
 			return
 		}
-		if len(got) == 0 {
+		p := place{Org: oid, Hospital: hid}
+		for _, row := range rows {
+			got := role.Highest(row.Role)
+			p.Role = max(p.Role, got)
+			if !row.HospitalID.Valid {
+				p.TrustRole = max(p.TrustRole, got)
+			}
+		}
+		if p.Role == role.None {
 			writeError(w, http.StatusNotFound, "Hospital not found.")
 			return
 		}
-		next(w, r.WithContext(context.WithValue(r.Context(), rolesKey, got)))
+		next(w, r.WithContext(context.WithValue(r.Context(), placeKey, p)))
+	}
+}
+
+// requireOrg is requireHospital for a trust route, /api/o/{oid}/…: the caller must be a member
+// of the trust or of one of its hospitals. Non-members get 404.
+func requireOrg(m Memberships, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		oid, err := uuid.Parse(r.PathValue("oid"))
+		if err != nil {
+			writeError(w, http.StatusNotFound, "Trust not found.")
+			return
+		}
+		rows, err := m.ListOrgMemberships(r.Context(), db.ListOrgMembershipsParams{UserID: currentUser(r).ID, OrgID: oid})
+		if err != nil {
+			serverError(w, "load memberships", err)
+			return
+		}
+		if len(rows) == 0 {
+			writeError(w, http.StatusNotFound, "Trust not found.")
+			return
+		}
+		p := place{Org: oid}
+		for _, row := range rows {
+			if !row.HospitalID.Valid {
+				p.Role = max(p.Role, role.Highest(row.Role))
+				p.TrustRole = p.Role
+			} else {
+				p.Hospitals = append(p.Hospitals, row.HospitalID.UUID)
+			}
+		}
+		next(w, r.WithContext(context.WithValue(r.Context(), placeKey, p)))
 	}
 }
 
@@ -117,15 +174,30 @@ func currentUser(r *http.Request) auth.User {
 	return u
 }
 
-func hasRole(r *http.Request, role string) bool {
-	roles, _ := r.Context().Value(rolesKey).([]string)
-	return slices.Contains(roles, role)
+// here is the request's place; requireHospital or requireOrg has put it there.
+func here(r *http.Request) place {
+	p, _ := r.Context().Value(placeKey).(place)
+	return p
 }
 
-// hospitalID is the {hid} path value; requireHospital has already validated it.
-func hospitalID(r *http.Request) uuid.UUID {
-	return uuid.MustParse(r.PathValue("hid"))
+// can reports whether the caller's role here is at least need (A-5).
+func can(r *http.Request, need role.Role) bool {
+	return here(r).Role.AtLeast(need)
 }
+
+// canChange reports whether the caller's role is at least need for changing content owned by
+// owner: one hospital's own content (owner set) needs that role here; the trust's shared content
+// (owner NULL) needs it as a whole-trust role (S08 answers, 5: Rahul, 12 Oct).
+func canChange(r *http.Request, owner uuid.NullUUID, need role.Role) bool {
+	if owner.Valid {
+		return can(r, need)
+	}
+	return here(r).TrustRole.AtLeast(need)
+}
+
+// orgID and hospitalID are the request's trust and hospital, checked by the middleware.
+func orgID(r *http.Request) uuid.UUID      { return here(r).Org }
+func hospitalID(r *http.Request) uuid.UUID { return here(r).Hospital }
 
 // pathID parses a uuid path value, writing a 404 with notFound when it isn't one.
 func pathID(w http.ResponseWriter, r *http.Request, name, notFound string) (uuid.UUID, bool) {

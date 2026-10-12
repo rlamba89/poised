@@ -42,21 +42,22 @@ func (q *Queries) CreateNextVersion(ctx context.Context, arg CreateNextVersionPa
 }
 
 const createQuestionnaire = `-- name: CreateQuestionnaire :one
-INSERT INTO questionnaires (hospital_id, name, description, created_by)
+INSERT INTO questionnaires (org_id, name, description, created_by)
 VALUES ($1, $2, $3, $4)
 RETURNING id
 `
 
 type CreateQuestionnaireParams struct {
-	HospitalID  uuid.UUID `json:"hospitalId"`
+	OrgID       uuid.UUID `json:"orgId"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	CreatedBy   uuid.UUID `json:"createdBy"`
 }
 
+// A new questionnaire is the trust's, for all its hospitals.
 func (q *Queries) CreateQuestionnaire(ctx context.Context, arg CreateQuestionnaireParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, createQuestionnaire,
-		arg.HospitalID,
+		arg.OrgID,
 		arg.Name,
 		arg.Description,
 		arg.CreatedBy,
@@ -86,16 +87,16 @@ func (q *Queries) CreateVersion(ctx context.Context, arg CreateVersionParams) (u
 }
 
 const deleteQuestionnaire = `-- name: DeleteQuestionnaire :exec
-DELETE FROM questionnaires WHERE id = $1 AND hospital_id = $2
+DELETE FROM questionnaires WHERE id = $1 AND org_id = $2
 `
 
 type DeleteQuestionnaireParams struct {
-	ID         uuid.UUID `json:"id"`
-	HospitalID uuid.UUID `json:"hospitalId"`
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"orgId"`
 }
 
 func (q *Queries) DeleteQuestionnaire(ctx context.Context, arg DeleteQuestionnaireParams) error {
-	_, err := q.db.Exec(ctx, deleteQuestionnaire, arg.ID, arg.HospitalID)
+	_, err := q.db.Exec(ctx, deleteQuestionnaire, arg.ID, arg.OrgID)
 	return err
 }
 
@@ -103,7 +104,7 @@ const draftNameExists = `-- name: DraftNameExists :one
 SELECT EXISTS (
     SELECT 1 FROM questionnaires q
     JOIN questionnaire_versions v ON v.questionnaire_id = q.id
-    WHERE q.hospital_id = $1
+    WHERE q.org_id = $1
       AND v.status = 'draft'
       AND lower(q.name) = lower($2)
       AND q.id <> $3
@@ -111,20 +112,20 @@ SELECT EXISTS (
 `
 
 type DraftNameExistsParams struct {
-	HospitalID uuid.UUID `json:"hospitalId"`
-	Name       string    `json:"name"`
-	ExcludeID  uuid.UUID `json:"excludeId"`
+	OrgID     uuid.UUID `json:"orgId"`
+	Name      string    `json:"name"`
+	ExcludeID uuid.UUID `json:"excludeId"`
 }
 
 func (q *Queries) DraftNameExists(ctx context.Context, arg DraftNameExistsParams) (bool, error) {
-	row := q.db.QueryRow(ctx, draftNameExists, arg.HospitalID, arg.Name, arg.ExcludeID)
+	row := q.db.QueryRow(ctx, draftNameExists, arg.OrgID, arg.Name, arg.ExcludeID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
 }
 
 const getQuestionnaire = `-- name: GetQuestionnaire :one
-SELECT q.id, q.hospital_id, q.name, q.description, q.created_by, q.created_at,
+SELECT q.id, q.org_id, q.hospital_id, q.name, q.description, q.created_by, q.created_at,
        v.id AS version_id, v.version_no, v.status, v.updated_at,
        editor.name AS updated_by_name
 FROM questionnaires q
@@ -134,33 +135,37 @@ JOIN LATERAL (
     ORDER BY qv.version_no DESC LIMIT 1
 ) v ON true
 JOIN users editor ON editor.id = v.updated_by
-WHERE q.id = $1 AND q.hospital_id = $2
+WHERE q.id = $1 AND q.org_id = $2
+  AND (q.hospital_id IS NULL OR q.hospital_id = $3::uuid)
 `
 
 type GetQuestionnaireParams struct {
 	ID         uuid.UUID `json:"id"`
+	OrgID      uuid.UUID `json:"orgId"`
 	HospitalID uuid.UUID `json:"hospitalId"`
 }
 
 type GetQuestionnaireRow struct {
-	ID            uuid.UUID `json:"id"`
-	HospitalID    uuid.UUID `json:"hospitalId"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	CreatedBy     uuid.UUID `json:"createdBy"`
-	CreatedAt     time.Time `json:"createdAt"`
-	VersionID     uuid.UUID `json:"versionId"`
-	VersionNo     int32     `json:"versionNo"`
-	Status        string    `json:"status"`
-	UpdatedAt     time.Time `json:"updatedAt"`
-	UpdatedByName string    `json:"updatedByName"`
+	ID            uuid.UUID     `json:"id"`
+	OrgID         uuid.UUID     `json:"orgId"`
+	HospitalID    uuid.NullUUID `json:"hospitalId"`
+	Name          string        `json:"name"`
+	Description   string        `json:"description"`
+	CreatedBy     uuid.UUID     `json:"createdBy"`
+	CreatedAt     time.Time     `json:"createdAt"`
+	VersionID     uuid.UUID     `json:"versionId"`
+	VersionNo     int32         `json:"versionNo"`
+	Status        string        `json:"status"`
+	UpdatedAt     time.Time     `json:"updatedAt"`
+	UpdatedByName string        `json:"updatedByName"`
 }
 
 func (q *Queries) GetQuestionnaire(ctx context.Context, arg GetQuestionnaireParams) (GetQuestionnaireRow, error) {
-	row := q.db.QueryRow(ctx, getQuestionnaire, arg.ID, arg.HospitalID)
+	row := q.db.QueryRow(ctx, getQuestionnaire, arg.ID, arg.OrgID, arg.HospitalID)
 	var i GetQuestionnaireRow
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
 		&i.HospitalID,
 		&i.Name,
 		&i.Description,
@@ -190,7 +195,7 @@ func (q *Queries) HasNonDraftVersion(ctx context.Context, questionnaireID uuid.U
 
 const listQuestionnaires = `-- name: ListQuestionnaires :many
 
-SELECT q.id, q.name, q.description, q.created_by, q.created_at,
+SELECT q.id, q.hospital_id, q.name, q.description, q.created_by, q.created_at,
        creator.name AS created_by_name,
        v.version_no, v.status, v.updated_at,
        editor.name AS updated_by_name,
@@ -203,15 +208,16 @@ JOIN LATERAL (
     ORDER BY qv.version_no DESC LIMIT 1
 ) v ON true
 JOIN users editor ON editor.id = v.updated_by
-WHERE q.hospital_id = $1
-  AND ($2::text = ''
-       OR q.name ILIKE '%' || $2 || '%'
-       OR q.description ILIKE '%' || $2 || '%')
+WHERE q.org_id = $1 AND (q.hospital_id IS NULL OR q.hospital_id = $2::uuid)
+  AND ($3::text = ''
+       OR q.name ILIKE '%' || $3 || '%'
+       OR q.description ILIKE '%' || $3 || '%')
 ORDER BY v.updated_at DESC, q.name
-LIMIT $4 OFFSET $3
+LIMIT $5 OFFSET $4
 `
 
 type ListQuestionnairesParams struct {
+	OrgID      uuid.UUID `json:"orgId"`
 	HospitalID uuid.UUID `json:"hospitalId"`
 	Search     string    `json:"search"`
 	PageOffset int32     `json:"pageOffset"`
@@ -219,22 +225,26 @@ type ListQuestionnairesParams struct {
 }
 
 type ListQuestionnairesRow struct {
-	ID            uuid.UUID `json:"id"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	CreatedBy     uuid.UUID `json:"createdBy"`
-	CreatedAt     time.Time `json:"createdAt"`
-	CreatedByName string    `json:"createdByName"`
-	VersionNo     int32     `json:"versionNo"`
-	Status        string    `json:"status"`
-	UpdatedAt     time.Time `json:"updatedAt"`
-	UpdatedByName string    `json:"updatedByName"`
-	Total         int64     `json:"total"`
+	ID            uuid.UUID     `json:"id"`
+	HospitalID    uuid.NullUUID `json:"hospitalId"`
+	Name          string        `json:"name"`
+	Description   string        `json:"description"`
+	CreatedBy     uuid.UUID     `json:"createdBy"`
+	CreatedAt     time.Time     `json:"createdAt"`
+	CreatedByName string        `json:"createdByName"`
+	VersionNo     int32         `json:"versionNo"`
+	Status        string        `json:"status"`
+	UpdatedAt     time.Time     `json:"updatedAt"`
+	UpdatedByName string        `json:"updatedByName"`
+	Total         int64         `json:"total"`
 }
 
 // A questionnaire shows its latest version: the draft if there is one, else the last published.
+// Questionnaires belong to a trust (org_id). hospital_id NULL means every hospital of the trust
+// uses it; otherwise only that hospital sees it. Each lookup is scoped to the trust and hospital.
 func (q *Queries) ListQuestionnaires(ctx context.Context, arg ListQuestionnairesParams) ([]ListQuestionnairesRow, error) {
 	rows, err := q.db.Query(ctx, listQuestionnaires,
+		arg.OrgID,
 		arg.HospitalID,
 		arg.Search,
 		arg.PageOffset,
@@ -249,6 +259,7 @@ func (q *Queries) ListQuestionnaires(ctx context.Context, arg ListQuestionnaires
 		var i ListQuestionnairesRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.HospitalID,
 			&i.Name,
 			&i.Description,
 			&i.CreatedBy,
@@ -270,13 +281,13 @@ func (q *Queries) ListQuestionnaires(ctx context.Context, arg ListQuestionnaires
 	return items, nil
 }
 
-const lockHospitalQuestionnaires = `-- name: LockHospitalQuestionnaires :exec
+const lockOrgQuestionnaires = `-- name: LockOrgQuestionnaires :exec
 SELECT pg_advisory_xact_lock(hashtext($1::uuid::text))
 `
 
-// Serialises creates in one hospital so the unique-draft-name check can't race.
-func (q *Queries) LockHospitalQuestionnaires(ctx context.Context, hospitalID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, lockHospitalQuestionnaires, hospitalID)
+// Serialises creates in one trust so the unique-draft-name check can't race.
+func (q *Queries) LockOrgQuestionnaires(ctx context.Context, orgID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockOrgQuestionnaires, orgID)
 	return err
 }
 

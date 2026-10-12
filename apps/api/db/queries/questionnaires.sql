@@ -1,7 +1,9 @@
 -- A questionnaire shows its latest version: the draft if there is one, else the last published.
+-- Questionnaires belong to a trust (org_id). hospital_id NULL means every hospital of the trust
+-- uses it; otherwise only that hospital sees it. Each lookup is scoped to the trust and hospital.
 
 -- name: ListQuestionnaires :many
-SELECT q.id, q.name, q.description, q.created_by, q.created_at,
+SELECT q.id, q.hospital_id, q.name, q.description, q.created_by, q.created_at,
        creator.name AS created_by_name,
        v.version_no, v.status, v.updated_at,
        editor.name AS updated_by_name,
@@ -14,29 +16,30 @@ JOIN LATERAL (
     ORDER BY qv.version_no DESC LIMIT 1
 ) v ON true
 JOIN users editor ON editor.id = v.updated_by
-WHERE q.hospital_id = sqlc.arg(hospital_id)
+WHERE q.org_id = sqlc.arg(org_id) AND (q.hospital_id IS NULL OR q.hospital_id = sqlc.arg(hospital_id)::uuid)
   AND (sqlc.arg(search)::text = ''
        OR q.name ILIKE '%' || sqlc.arg(search) || '%'
        OR q.description ILIKE '%' || sqlc.arg(search) || '%')
 ORDER BY v.updated_at DESC, q.name
 LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset);
 
--- name: LockHospitalQuestionnaires :exec
--- Serialises creates in one hospital so the unique-draft-name check can't race.
-SELECT pg_advisory_xact_lock(hashtext(sqlc.arg(hospital_id)::uuid::text));
+-- name: LockOrgQuestionnaires :exec
+-- Serialises creates in one trust so the unique-draft-name check can't race.
+SELECT pg_advisory_xact_lock(hashtext(sqlc.arg(org_id)::uuid::text));
 
 -- name: DraftNameExists :one
 SELECT EXISTS (
     SELECT 1 FROM questionnaires q
     JOIN questionnaire_versions v ON v.questionnaire_id = q.id
-    WHERE q.hospital_id = sqlc.arg(hospital_id)
+    WHERE q.org_id = sqlc.arg(org_id)
       AND v.status = 'draft'
       AND lower(q.name) = lower(sqlc.arg(name))
       AND q.id <> sqlc.arg(exclude_id)
 );
 
 -- name: CreateQuestionnaire :one
-INSERT INTO questionnaires (hospital_id, name, description, created_by)
+-- A new questionnaire is the trust's, for all its hospitals.
+INSERT INTO questionnaires (org_id, name, description, created_by)
 VALUES ($1, $2, $3, $4)
 RETURNING id;
 
@@ -46,7 +49,7 @@ VALUES ($1, $2, 'draft', $3)
 RETURNING id;
 
 -- name: GetQuestionnaire :one
-SELECT q.id, q.hospital_id, q.name, q.description, q.created_by, q.created_at,
+SELECT q.id, q.org_id, q.hospital_id, q.name, q.description, q.created_by, q.created_at,
        v.id AS version_id, v.version_no, v.status, v.updated_at,
        editor.name AS updated_by_name
 FROM questionnaires q
@@ -56,7 +59,8 @@ JOIN LATERAL (
     ORDER BY qv.version_no DESC LIMIT 1
 ) v ON true
 JOIN users editor ON editor.id = v.updated_by
-WHERE q.id = $1 AND q.hospital_id = $2;
+WHERE q.id = sqlc.arg(id) AND q.org_id = sqlc.arg(org_id)
+  AND (q.hospital_id IS NULL OR q.hospital_id = sqlc.arg(hospital_id)::uuid);
 
 -- name: HasNonDraftVersion :one
 SELECT EXISTS (
@@ -64,7 +68,7 @@ SELECT EXISTS (
 );
 
 -- name: DeleteQuestionnaire :exec
-DELETE FROM questionnaires WHERE id = $1 AND hospital_id = $2;
+DELETE FROM questionnaires WHERE id = $1 AND org_id = $2;
 
 -- name: TouchVersion :exec
 UPDATE questionnaire_versions SET updated_by = $2, updated_at = now() WHERE id = $1;

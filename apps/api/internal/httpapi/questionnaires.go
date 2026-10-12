@@ -11,15 +11,17 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/role"
 )
 
 const pageSize = 20
 
-// listQuestionnaires is FRM-01: the hospital's questionnaires, searchable by name
+// listQuestionnaires is FRM-01: the questionnaires this hospital uses (its trust's and its own), searchable by name
 // and description, newest change first, 20 per page.
 func (s *server) listQuestionnaires(w http.ResponseWriter, r *http.Request) {
 	page := pageNumber(r.URL.Query().Get("page"))
 	rows, err := s.q.ListQuestionnaires(r.Context(), db.ListQuestionnairesParams{
+		OrgID:      orgID(r),
 		HospitalID: hospitalID(r),
 		Search:     strings.TrimSpace(r.URL.Query().Get("q")),
 		PageSize:   pageSize,
@@ -63,11 +65,15 @@ func (in *questionnaireInput) validate() string {
 
 const draftNameTaken = "A draft questionnaire with this name already exists."
 
-// createQuestionnaire is FRM-04: a questionnaire and its draft version 1.
-// Two drafts in one hospital can't share a name.
+// contentRole refuses a change to a questionnaire. The trust's shared ones need a whole-trust
+// super clinician or admin; a hospital's own ones, one at that hospital (S08 answers, 5).
+const contentRole = "Only super clinicians and admins of the whole trust can change the trust's questionnaires."
+
+// createQuestionnaire is FRM-04: a questionnaire and its draft version 1, for every hospital of
+// the trust. Two drafts in one trust can't share a name.
 func (s *server) createQuestionnaire(w http.ResponseWriter, r *http.Request) {
-	if !hasRole(r, "author") {
-		writeError(w, http.StatusForbidden, "Only authors can create questionnaires.")
+	if !canChange(r, uuid.NullUUID{}, role.SuperClinician) { // a new questionnaire is the trust's
+		writeError(w, http.StatusForbidden, contentRole)
 		return
 	}
 	var in questionnaireInput
@@ -78,7 +84,7 @@ func (s *server) createQuestionnaire(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
-	ctx, hid, uid := r.Context(), hospitalID(r), currentUser(r).ID
+	ctx, oid, uid := r.Context(), orgID(r), currentUser(r).ID
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -87,11 +93,11 @@ func (s *server) createQuestionnaire(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 	q := db.New(tx)
-	if err := q.LockHospitalQuestionnaires(ctx, hid); err != nil {
+	if err := q.LockOrgQuestionnaires(ctx, oid); err != nil {
 		serverError(w, "lock", err)
 		return
 	}
-	taken, err := q.DraftNameExists(ctx, db.DraftNameExistsParams{HospitalID: hid, Name: in.Name, ExcludeID: uuid.Nil})
+	taken, err := q.DraftNameExists(ctx, db.DraftNameExistsParams{OrgID: oid, Name: in.Name, ExcludeID: uuid.Nil})
 	if err != nil {
 		serverError(w, "check name", err)
 		return
@@ -100,7 +106,7 @@ func (s *server) createQuestionnaire(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, draftNameTaken)
 		return
 	}
-	id, err := q.CreateQuestionnaire(ctx, db.CreateQuestionnaireParams{HospitalID: hid, Name: in.Name, Description: in.Description, CreatedBy: uid})
+	id, err := q.CreateQuestionnaire(ctx, db.CreateQuestionnaireParams{OrgID: oid, Name: in.Name, Description: in.Description, CreatedBy: uid})
 	if err != nil {
 		serverError(w, "create questionnaire", err)
 		return
@@ -116,13 +122,13 @@ func (s *server) createQuestionnaire(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]uuid.UUID{"id": id})
 }
 
-// loadQuestionnaire fetches {qid} within the hospital, answering 404 itself.
+// loadQuestionnaire fetches {qid} among the questionnaires this hospital uses, answering 404 itself.
 func (s *server) loadQuestionnaire(w http.ResponseWriter, r *http.Request) (db.GetQuestionnaireRow, bool) {
 	qid, ok := pathID(w, r, "qid", "Questionnaire not found.")
 	if !ok {
 		return db.GetQuestionnaireRow{}, false
 	}
-	row, err := s.q.GetQuestionnaire(r.Context(), db.GetQuestionnaireParams{ID: qid, HospitalID: hospitalID(r)})
+	row, err := s.q.GetQuestionnaire(r.Context(), db.GetQuestionnaireParams{ID: qid, OrgID: orgID(r), HospitalID: hospitalID(r)})
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "Questionnaire not found.")
 		return row, false
@@ -147,14 +153,15 @@ func (s *server) getQuestionnaire(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"questionnaire": row, "chapters": chapters})
 }
 
-// deleteQuestionnaire is FRM-06: drafts only, by their creator or a hospital admin.
+// deleteQuestionnaire is FRM-06: drafts only, by their creator or an admin.
 func (s *server) deleteQuestionnaire(w http.ResponseWriter, r *http.Request) {
 	row, ok := s.loadQuestionnaire(w, r)
 	if !ok {
 		return
 	}
-	if row.CreatedBy != currentUser(r).ID && !hasRole(r, "hospital_admin") {
-		writeError(w, http.StatusForbidden, "Only the person who created this questionnaire or a hospital admin can delete it.")
+	mine := row.CreatedBy == currentUser(r).ID && canChange(r, row.HospitalID, role.SuperClinician)
+	if !mine && !canChange(r, row.HospitalID, role.Admin) {
+		writeError(w, http.StatusForbidden, "Only the person who created this questionnaire or an admin of the whole trust can delete it.")
 		return
 	}
 	published, err := s.q.HasNonDraftVersion(r.Context(), row.ID)
@@ -166,7 +173,7 @@ func (s *server) deleteQuestionnaire(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "Only drafts can be deleted. Published versions can be retired instead.")
 		return
 	}
-	if err := s.q.DeleteQuestionnaire(r.Context(), db.DeleteQuestionnaireParams{ID: row.ID, HospitalID: row.HospitalID}); err != nil {
+	if err := s.q.DeleteQuestionnaire(r.Context(), db.DeleteQuestionnaireParams{ID: row.ID, OrgID: row.OrgID}); err != nil {
 		serverError(w, "delete questionnaire", err)
 		return
 	}
@@ -177,12 +184,12 @@ func (s *server) deleteQuestionnaire(w http.ResponseWriter, r *http.Request) {
 // no sign-off yet (SGN comes later). The browser has already checked logic problems and test
 // cases (plan 2.1). `versionId` is the version it checked, so a newer one isn't published by mistake.
 func (s *server) publishQuestionnaire(w http.ResponseWriter, r *http.Request) {
-	if !hasRole(r, "publisher") {
-		writeError(w, http.StatusForbidden, "Only publishers can publish questionnaires.")
-		return
-	}
 	row, ok := s.loadQuestionnaire(w, r)
 	if !ok {
+		return
+	}
+	if !canChange(r, row.HospitalID, role.SuperClinician) {
+		writeError(w, http.StatusForbidden, contentRole)
 		return
 	}
 	var in struct {
@@ -219,12 +226,12 @@ func (s *server) publishQuestionnaire(w http.ResponseWriter, r *http.Request) {
 // createVersion starts a new draft from the latest published version (LCY-06/07). Its chapters
 // are copied unchanged, so stable IDs and test cases carry over.
 func (s *server) createVersion(w http.ResponseWriter, r *http.Request) {
-	if !hasRole(r, "author") {
-		writeError(w, http.StatusForbidden, "Only authors can create versions.")
-		return
-	}
 	row, ok := s.loadQuestionnaire(w, r)
 	if !ok {
+		return
+	}
+	if !canChange(r, row.HospitalID, role.SuperClinician) {
+		writeError(w, http.StatusForbidden, contentRole)
 		return
 	}
 	if row.Status == "draft" {
@@ -232,7 +239,7 @@ func (s *server) createVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	taken, err := s.q.DraftNameExists(ctx, db.DraftNameExistsParams{HospitalID: row.HospitalID, Name: row.Name, ExcludeID: row.ID})
+	taken, err := s.q.DraftNameExists(ctx, db.DraftNameExistsParams{OrgID: row.OrgID, Name: row.Name, ExcludeID: row.ID})
 	if err != nil {
 		serverError(w, "check name", err)
 		return

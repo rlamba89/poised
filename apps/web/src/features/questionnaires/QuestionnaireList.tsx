@@ -5,13 +5,14 @@ import { useDebouncedValue } from "@mantine/hooks";
 import {
   ActionIcon, Alert, Badge, Button, Drawer, Group, Menu, Modal, Pagination, Stack, Table, Text, Textarea, TextInput, Title,
 } from "@mantine/core";
-import { IconDots, IconPencil, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
+import { IconDots, IconEye, IconPencil, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
 import { api } from "@/lib/api";
-import { hasRole, useMe } from "@/lib/auth";
+import { canChange, useHospital, useMe } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 
 type Row = {
   id: string;
+  hospitalId: string | null; // null: the trust's, for every hospital
   name: string;
   description: string;
   createdBy: string;
@@ -24,8 +25,9 @@ type Row = {
 };
 type ListResponse = { items: Row[]; total: number; page: number; pageSize: number };
 
-export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
+export function QuestionnaireList({ base }: { base: string }) {
   const me = useMe();
+  const here = useHospital();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 250);
@@ -34,18 +36,19 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<Row | null>(null);
-  const isAuthor = hasRole(me, hospitalId, "author");
-  const isAdmin = hasRole(me, hospitalId, "hospital_admin");
+  // New questionnaires are the trust's, so creating one needs a whole-trust role.
+  const isAuthor = canChange(here, null, "super_clinician");
+  const canEdit = (q: Row) => canChange(here, q.hospitalId, "super_clinician");
 
   const load = useCallback(() => {
     const params = new URLSearchParams({ q: debounced, page: String(page) });
-    api<ListResponse>(`/h/${hospitalId}/questionnaires?${params}`)
+    api<ListResponse>(`${base}/questionnaires?${params}`)
       .then((d) => {
         setData(d);
         setError("");
       })
       .catch((e: Error) => setError(e.message));
-  }, [hospitalId, debounced, page]);
+  }, [base, debounced, page]);
 
   useEffect(load, [load]);
   useEffect(() => setPage(1), [debounced]);
@@ -79,8 +82,10 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
           </Table.Thead>
           <Table.Tbody>
             {data.items.map((q) => {
-              const open = () => navigate(`/h/${hospitalId}/questionnaires/${q.id}`);
-              const canDelete = q.status === "draft" && (q.createdBy === me.user.id || isAdmin);
+              const open = () => navigate(`${base}/questionnaires/${q.id}`);
+              const canDelete =
+                q.status === "draft" && ((q.createdBy === me.user.id && canEdit(q)) || canChange(here, q.hospitalId, "admin"));
+              const editing = q.status === "draft" && canEdit(q);
               return (
                 <Table.Tr key={q.id} onClick={open} style={{ cursor: "pointer" }}>
                   <Table.Td>
@@ -101,8 +106,8 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
                         </ActionIcon>
                       </Menu.Target>
                       <Menu.Dropdown>
-                        <Menu.Item leftSection={<IconPencil size={14} />} onClick={open}>
-                          {q.status === "draft" && isAuthor ? "Edit" : "View"}
+                        <Menu.Item leftSection={editing ? <IconPencil size={14} /> : <IconEye size={14} />} onClick={open}>
+                          {editing ? "Edit" : "View"}
                         </Menu.Item>
                         {canDelete && (
                           <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={() => setDeleting(q)}>
@@ -125,12 +130,12 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
       <CreateModal
         opened={creating}
         onClose={() => setCreating(false)}
-        hospitalId={hospitalId}
-        onCreated={(id) => navigate(`/h/${hospitalId}/questionnaires/${id}`)}
+        base={base}
+        onCreated={(id) => navigate(`${base}/questionnaires/${id}`)}
       />
       <DeleteModal
         row={deleting}
-        hospitalId={hospitalId}
+        base={base}
         onClose={() => setDeleting(null)}
         onDeleted={() => {
           setDeleting(null);
@@ -141,7 +146,7 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
   );
 }
 
-function CreateModal(props: { opened: boolean; onClose: () => void; hospitalId: string; onCreated: (id: string) => void }) {
+function CreateModal(props: { opened: boolean; onClose: () => void; base: string; onCreated: (id: string) => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
@@ -152,7 +157,7 @@ function CreateModal(props: { opened: boolean; onClose: () => void; hospitalId: 
     setSaving(true);
     setError("");
     try {
-      const res = await api<{ id: string }>(`/h/${props.hospitalId}/questionnaires`, {
+      const res = await api<{ id: string }>(`${props.base}/questionnaires`, {
         method: "POST",
         body: JSON.stringify({ name, description }),
       });
@@ -181,12 +186,15 @@ function CreateModal(props: { opened: boolean; onClose: () => void; hospitalId: 
   );
 }
 
-function DeleteModal(props: { row: Row | null; hospitalId: string; onClose: () => void; onDeleted: () => void }) {
+function DeleteModal(props: { row: Row | null; base: string; onClose: () => void; onDeleted: () => void }) {
   const [error, setError] = useState("");
+  // The name stays while the modal fades out after a delete, instead of flashing "".
+  const [name, setName] = useState("");
+  if (props.row && props.row.name !== name) setName(props.row.name);
   const confirm = async () => {
     if (!props.row) return;
     try {
-      await api(`/h/${props.hospitalId}/questionnaires/${props.row.id}`, { method: "DELETE" });
+      await api(`${props.base}/questionnaires/${props.row.id}`, { method: "DELETE" });
       setError("");
       props.onDeleted();
     } catch (err) {
@@ -198,7 +206,7 @@ function DeleteModal(props: { row: Row | null; hospitalId: string; onClose: () =
       <Stack>
         {error && <Alert color="red">{error}</Alert>}
         <Text>
-          “{props.row?.name}” and all its Question Sets will be deleted. This can&apos;t be undone.
+          “{name}” and all its Question Sets will be deleted. This can&apos;t be undone.
         </Text>
         <Group justify="flex-end">
           <Button variant="default" onClick={props.onClose}>Cancel</Button>

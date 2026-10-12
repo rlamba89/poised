@@ -18,6 +18,7 @@ import { api } from "@/lib/api";
 import { clinicianModel } from "./clinicianView";
 import { SetCondition } from "./SetCondition";
 import { TestCases } from "./TestCases";
+import { canChange, useHospital } from "@/lib/auth";
 import { showUnits } from "./units";
 
 registerClinicalProperties();
@@ -28,6 +29,7 @@ type ChapterDetail = {
   content: object;
   revision: number;
   versionStatus: string;
+  ownerHospitalId: string | null; // null: the trust's questionnaire
   questionnaireId: string;
   questionnaireName: string;
 };
@@ -37,14 +39,14 @@ export type SamplePatient = { name: string; age: number | ""; sex: string | null
 const DEVICES = { phone: 390, tablet: 820, desktop: undefined } as const;
 type Device = keyof typeof DEVICES;
 
-export default function PreviewPage({ hospitalId, chapterId }: { hospitalId: string; chapterId: string }) {
+export default function PreviewPage({ base, chapterId }: { base: string; chapterId: string }) {
   const [chapter, setChapter] = useState<ChapterDetail | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
-    api<ChapterDetail>(`/h/${hospitalId}/chapters/${chapterId}`)
+    api<ChapterDetail>(`${base}/chapters/${chapterId}`)
       .then(setChapter)
       .catch((e: Error) => setError(e.message));
-  }, [hospitalId, chapterId]);
+  }, [base, chapterId]);
 
   if (error) return <Alert color="red" m="md">{error}</Alert>;
   if (!chapter) {
@@ -54,10 +56,18 @@ export default function PreviewPage({ hospitalId, chapterId }: { hospitalId: str
       </Center>
     );
   }
-  return <Preview hospitalId={hospitalId} chapter={chapter} />;
+  return <Preview base={base} chapter={chapter} />;
 }
 
-function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: ChapterDetail }) {
+function Preview({ base, chapter }: { base: string; chapter: ChapterDetail }) {
+  // Saving or deleting test cases changes the Question Set: only for a draft, and only for those
+  // who may change this questionnaire (the trust's needs a whole-trust role; S08 answers, 5).
+  const readOnly = !canChange(useHospital(), chapter.ownerHospitalId, "super_clinician")
+    ? "Read only: only super clinicians and admins of the whole trust can change test cases."
+    : chapter.versionStatus !== "draft"
+      ? "Read only: test cases can be changed only in a draft version."
+      : null;
+  const canSave = !readOnly;
   const [viewer, setViewerState] = useState<Viewer>("patient");
   const [patient, setPatient] = useState<SamplePatient>({ name: "Sam Sample", age: 54, sex: "female" });
   const [result, setResult] = useState<ComputedOutputs>({ outputs: [] });
@@ -125,8 +135,6 @@ function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: Chapter
     model.clear(true, true);
     setResult(computeOutputs(model));
   };
-
-  const base = `/h/${hospitalId}`;
   const locales = localesIn(content);
   const width = DEVICES[device];
   return (
@@ -171,13 +179,13 @@ function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: Chapter
             ]}
           />
           <Button size="xs" variant="default" onClick={restart}>Clear answers</Button>
-          <Button size="xs" variant="light" component={Link} to={`${base}/questionnaires/${chapter.questionnaireId}?set=${chapter.id}`}>Edit</Button>
+          <Button size="xs" variant="light" component={Link} to={`${base}/questionnaires/${chapter.questionnaireId}?set=${chapter.id}`}>{canSave ? "Edit" : "Open in editor"}</Button>
         </Group>
       </Group>
       <Grid>
         <Grid.Col span={{ base: 12, md: 8 }}>
           <SetCondition
-            hospitalId={hospitalId}
+            base={base}
             questionnaireId={chapter.questionnaireId}
             chapterId={chapter.id}
             content={content}
@@ -194,7 +202,8 @@ function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: Chapter
             <SamplePatientCard value={patient} onChange={setPatient} />
             <OutputsPanel result={result} />
             <TestCases
-              hospitalId={hospitalId}
+              base={base}
+              readOnly={readOnly}
               chapterId={chapter.id}
               content={content}
               revision={revision}
@@ -249,10 +258,12 @@ function OutputsPanel({ result }: { result: ComputedOutputs }) {
   const byCategory = new Map<string, string[]>();
   for (const o of outputs) {
     if (!o.output.note || !o.noteText) continue;
-    const list = byCategory.get(o.output.note.category) ?? [];
+    const category = o.output.note.category; // "" when the note was saved without one
+    const list = byCategory.get(category) ?? [];
     list.push(o.noteText);
-    byCategory.set(o.output.note.category, list);
+    byCategory.set(category, list);
   }
+  // computeOutputs normalizes each output, so `codes` is always a list (S08 test reports 2 and 3).
   const codes = outputs.flatMap((o) => o.output.codes.map((c) => ({ ...c, from: o.questionTitle })));
   const flags = outputs.filter((o) => o.output.flag);
 

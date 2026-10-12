@@ -1,7 +1,9 @@
 import { useParams } from "react-router";
+import { useHospital } from "@/lib/auth";
 import PreviewPage from "@/features/preview/PreviewPage";
 
 export function Preview() {
-  const { hospitalId, cid } = useParams() as { hospitalId: string; cid: string };
-  return <PreviewPage key={cid} hospitalId={hospitalId} chapterId={cid} />;
+  const { cid } = useParams() as { cid: string };
+  const { base } = useHospital();
+  return <PreviewPage key={cid} base={base} chapterId={cid} />;
 }

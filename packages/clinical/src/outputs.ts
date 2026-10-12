@@ -1,7 +1,7 @@
 // Where outputs live on a question, how they are validated, and how {answer} is rendered.
 import { Serializer, type ItemValue, type Question, type SurveyModel } from "survey-core";
 import { bandFor, type Band } from "./logic";
-import { isClinicianOnly, outputsOf } from "./properties";
+import { isClinicianOnly, normalizeOutput, outputsOf } from "./properties";
 import type { AsaGrade, ClinicalOutput } from "./types";
 
 /**
@@ -29,7 +29,8 @@ export function countOutputs(q: Question): number {
 }
 
 /** CLN-06: at least one code or a note, and a note needs a category. Returns problems in plain words. */
-export function validateOutput(o: ClinicalOutput): string[] {
+export function validateOutput(saved: ClinicalOutput): string[] {
+  const o = normalizeOutput(saved);
   const problems: string[] = [];
   const hasNote = !!o.note?.text.trim();
   if (!o.codes.length && !hasNote) problems.push("Add at least one code or a clinical note.");
@@ -110,7 +111,7 @@ export function computeOutputs(model: SurveyModel): ComputedOutputs {
       const columns = (q as unknown as { columns: ItemValue[] }).columns;
       for (const [row, column] of Object.entries(q.value as Record<string, string>)) {
         const label = `${rows.find((r) => r.value === row)?.text ?? row}: ${columns.find((c) => c.value === column)?.text ?? column}`;
-        for (const output of cells[row]?.[column] ?? []) {
+        for (const output of (cells[row]?.[column] ?? []).map(normalizeOutput)) {
           outputs.push({ ...base, answerId: `${row}.${column}`, answerLabel: label, output, noteText: note(output, label) });
         }
       }
@@ -118,7 +119,7 @@ export function computeOutputs(model: SurveyModel): ComputedOutputs {
     }
     const band = bands(q);
     if (band) {
-      for (const output of band.clinicalOutputs ?? []) {
+      for (const output of (band.clinicalOutputs ?? []).map(normalizeOutput)) {
         outputs.push({ ...base, answerId: band.id, answerLabel: band.label, output, noteText: note(output, answer) });
       }
       continue;

@@ -88,7 +88,7 @@ func TestSearchCodes(t *testing.T) {
 		refused(t, w.anon.Do("GET", "/api/codes?set=SNOMED&q=smok", nil), http.StatusUnauthorized)
 	})
 	t.Run("role and hospital: any signed-in user gets the same codes", func(t *testing.T) {
-		for _, c := range []*apitest.Client{w.viewer, w.other} {
+		for _, c := range []*apitest.Client{w.clin, w.other} {
 			if got := search(t, c, "SNOMED", "7717"); len(got) != 1 || got[0] != "77176002" {
 				t.Errorf("found %v, want 77176002", got)
 			}
@@ -151,7 +151,7 @@ func TestListCategories(t *testing.T) {
 		refused(t, w.anon.Do("GET", "/api/categories", nil), http.StatusUnauthorized)
 	})
 	t.Run("role and hospital: any signed-in user gets the same categories", func(t *testing.T) {
-		for _, c := range []*apitest.Client{w.viewer, w.other} {
+		for _, c := range []*apitest.Client{w.clin, w.other} {
 			if got := names(t, c); got != "Cardiac, Lifestyle, Unassigned" {
 				t.Errorf("categories = %q", got)
 			}

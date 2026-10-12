@@ -46,7 +46,19 @@ export function registerClinicalProperties(): void {
 
 /** The outputs on a question or option (empty when none). */
 export function outputsOf(obj: Base): ClinicalOutput[] {
-  return (obj.getPropertyValue(OUTPUTS) as OutputsBox | undefined)?.items ?? [];
+  return ((obj.getPropertyValue(OUTPUTS) as OutputsBox | undefined)?.items ?? []).map(normalizeOutput);
+}
+
+/**
+ * An output as saved may lack `codes` or its note's `category` (the e2e fixtures and older content
+ * have `{id, note: {text}}`). Every reader goes through this, so `codes` is always a list and a
+ * note always has `text` and `category` (S08 test reports 2 and 3).
+ */
+export function normalizeOutput(o: ClinicalOutput): ClinicalOutput {
+  const partial = o as Partial<ClinicalOutput>;
+  const out: ClinicalOutput = { ...o, codes: Array.isArray(partial.codes) ? partial.codes : [] };
+  if (partial.note) out.note = { ...partial.note, text: partial.note.text ?? "", category: partial.note.category ?? "" };
+  return out;
 }
 
 /** Replaces the outputs on a question or option. One call is one undo step in the Creator. */

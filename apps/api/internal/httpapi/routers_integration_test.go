@@ -28,7 +28,7 @@ func TestPatientRouter(t *testing.T) {
 	t.Parallel()
 	p, fx := apitest.NewWith(t, apitest.Options{Router: httpapi.NewPatientRouter}) // DEV_LOGIN is on
 	h := fx.Hospital(t)
-	alex := fx.User(t, h, "author", "publisher")
+	alex := fx.User(t, h, "super_clinician")
 	hq := fx.PublishedHQ(t, h, alex, "workflow.json")
 	ep := fx.Episode(t, hq, alex)
 
@@ -45,6 +45,7 @@ func TestPatientRouter(t *testing.T) {
 		}
 		p.Do("GET", at(h, "/episodes"), nil).Want(t, http.StatusNotFound)
 		p.Do("GET", at(h, "/questionnaires"), nil).Want(t, http.StatusNotFound)
+		p.Do("GET", "/api/o/"+h.Org.String()+"/episodes", nil).Want(t, http.StatusNotFound)
 	})
 }
 
@@ -52,7 +53,7 @@ func TestStaffRouter(t *testing.T) {
 	t.Parallel()
 	s, fx := apitest.NewWith(t, apitest.Options{Router: httpapi.NewStaffRouter})
 	h := fx.Hospital(t)
-	alex := fx.User(t, h, "author", "publisher", "clinician")
+	alex := fx.User(t, h, "super_clinician")
 	hq := fx.PublishedHQ(t, h, alex, "workflow.json")
 	ep := fx.Episode(t, hq, alex)
 	signed := s.LoginAs(t, alex) // through the staff router's dev login
@@ -61,6 +62,7 @@ func TestStaffRouter(t *testing.T) {
 		signed.Do("GET", "/api/me", nil).Want(t, http.StatusOK)
 		signed.Do("GET", at(h, "/episodes"), nil).Want(t, http.StatusOK)
 		signed.Do("GET", at(h, "/questionnaires"), nil).Want(t, http.StatusOK)
+		signed.Do("GET", "/api/o/"+h.Org.String()+"/episodes", nil).Want(t, http.StatusOK)
 	})
 	t.Run("serves health and config", func(t *testing.T) {
 		s.Do("GET", "/api/health", nil).Want(t, http.StatusOK)
@@ -86,7 +88,7 @@ func TestDevLoginOffUnlessEnabled(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			c, fx := apitest.NewWith(t, apitest.Options{Router: router, Env: map[string]string{"DEV_LOGIN": ""}})
-			alex := fx.User(t, fx.Hospital(t), "author")
+			alex := fx.User(t, fx.Hospital(t), "super_clinician")
 			c.Do("POST", "/api/dev/login", map[string]any{"userId": alex.ID}).Want(t, http.StatusNotFound)
 			c.Do("GET", "/api/dev/users", nil).Want(t, http.StatusNotFound)
 			// The rest of the staff API is still there, waiting for a real sign-in.
@@ -123,7 +125,7 @@ func TestConfig(t *testing.T) {
 		check(t, c.Do("GET", "/api/config", nil))
 	})
 	t.Run("signed in: the same answer", func(t *testing.T) {
-		check(t, c.LoginAs(t, fx.User(t, fx.Hospital(t), "viewer")).Do("GET", "/api/config", nil))
+		check(t, c.LoginAs(t, fx.User(t, fx.Hospital(t), "clinician")).Do("GET", "/api/config", nil))
 	})
 	t.Run("invalid input", func(t *testing.T) {
 		c.Do("POST", "/api/config", map[string]any{"locale": "en-US"}).Want(t, http.StatusMethodNotAllowed)

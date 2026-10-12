@@ -1,7 +1,9 @@
 import { useParams } from "react-router";
+import { useHospital } from "@/lib/auth";
 import ValidateSet from "@/features/episodes/ValidateSet";
 
 export function ValidateSetPage() {
-  const { hospitalId, eid, cid } = useParams() as { hospitalId: string; eid: string; cid: string };
-  return <ValidateSet key={`${eid}/${cid}`} hospitalId={hospitalId} episodeId={eid} chapterId={cid} />;
+  const { eid, cid } = useParams() as { eid: string; cid: string };
+  const { base } = useHospital();
+  return <ValidateSet key={`${eid}/${cid}`} base={base} episodeId={eid} chapterId={cid} />;
 }

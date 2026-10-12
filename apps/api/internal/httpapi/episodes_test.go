@@ -1,112 +1,34 @@
 package httpapi
 
 import (
-	"context"
-	"net/http"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-
-	"github.com/rlamba89/poised/apps/api/internal/db"
-	"github.com/rlamba89/poised/apps/api/internal/episode"
 )
 
-var episodeID = uuid.MustParse("44444444-4444-4444-8444-444444444444")
+// The episode routes are tested against the database (episodes_integration_test.go); these are
+// the input checks on their own. (S08 replaced the fake-querier route tests, testing rule 4.)
 
-// episodeFake holds one episode in hospital A and records writes.
-type episodeFake struct {
-	*fakeQ
-	episode  db.GetEpisodeRow
-	patients []db.CreatePatientParams
-	created  []db.CreateEpisodeParams
-	events   []db.AddEpisodeEventParams
-	// CreateEpisode finds no row unless the version is this one (published, in the hospital).
-	published uuid.UUID
-}
-
-func newEpisodeFake(status string, roles ...string) *episodeFake {
-	f := newFake()
-	f.roles[hospitalA] = roles
-	return &episodeFake{fakeQ: f, episode: db.GetEpisodeRow{ID: episodeID, Status: status}, published: versionID}
-}
-
-func (f *episodeFake) CreatePatient(_ context.Context, arg db.CreatePatientParams) (uuid.UUID, error) {
-	f.patients = append(f.patients, arg)
-	return uuid.New(), nil
-}
-
-func (f *episodeFake) CreateEpisode(_ context.Context, arg db.CreateEpisodeParams) (uuid.UUID, error) {
-	if arg.VersionID != f.published {
-		return uuid.Nil, pgx.ErrNoRows
+func TestPatientInputValidate(t *testing.T) {
+	now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
+	valid := func() patientInput {
+		return patientInput{FirstName: " Jo ", LastName: "Bloggs", DateOfBirth: "1974-12-11", Sex: "male"}
 	}
-	f.created = append(f.created, arg)
-	return episodeID, nil
-}
-
-func (f *episodeFake) GetEpisode(_ context.Context, arg db.GetEpisodeParams) (db.GetEpisodeRow, error) {
-	if arg.ID != episodeID || arg.HospitalID != hospitalA {
-		return db.GetEpisodeRow{}, pgx.ErrNoRows
+	in := valid()
+	if _, msg := in.validate(now); msg != "" || in.FirstName != "Jo" {
+		t.Errorf("valid: %q, first name %q; want no problem, trimmed", msg, in.FirstName)
 	}
-	return f.episode, nil
-}
-
-func (f *episodeFake) AddEpisodeEvent(_ context.Context, arg db.AddEpisodeEventParams) error {
-	f.events = append(f.events, arg)
-	return nil
-}
-
-func hospitalPath(suffix string) string { return "/api/h/" + hospitalA.String() + suffix }
-
-func TestEpisodesNeedClinician(t *testing.T) {
-	f := newEpisodeFake(episode.HQNotComplete, "author", "publisher")
-	if rec := call(t, f, "GET", hospitalPath("/episodes/"+episodeID.String()), ""); rec.Code != http.StatusForbidden {
-		t.Errorf("author: got %d, want 403", rec.Code)
-	}
-}
-
-func TestCreatePatient(t *testing.T) {
-	tomorrow := time.Now().AddDate(0, 0, 1).Format(time.DateOnly)
-	tests := []struct {
-		name, body string
-		want       int
-	}{
-		{"valid", `{"firstName":" Jo ","lastName":"Bloggs","dateOfBirth":"1974-12-11","sex":"male"}`, http.StatusCreated},
-		{"no last name", `{"firstName":"Jo","lastName":" ","dateOfBirth":"1974-12-11","sex":"male"}`, http.StatusBadRequest},
-		{"date not a date", `{"firstName":"Jo","lastName":"Bloggs","dateOfBirth":"11/12/1974","sex":"male"}`, http.StatusBadRequest},
-		{"born tomorrow", `{"firstName":"Jo","lastName":"Bloggs","dateOfBirth":"` + tomorrow + `","sex":"male"}`, http.StatusBadRequest},
-		{"unknown sex value", `{"firstName":"Jo","lastName":"Bloggs","dateOfBirth":"1974-12-11","sex":"x"}`, http.StatusBadRequest},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f := newEpisodeFake("", "clinician")
-			if rec := call(t, f, "POST", hospitalPath("/patients"), tt.body); rec.Code != tt.want {
-				t.Fatalf("got %d (%s), want %d", rec.Code, rec.Body.String(), tt.want)
-			}
-			if tt.want == http.StatusCreated && f.patients[0].FirstName != "Jo" {
-				t.Errorf("first name %q was not trimmed", f.patients[0].FirstName)
-			}
-		})
-	}
-}
-
-func TestCreateEpisode(t *testing.T) {
-	f := newEpisodeFake("", "clinician")
-	body := `{"patientId":"` + uuid.NewString() + `","versionId":"` + versionID.String() + `","procedure":"Knee replacement"}`
-	if rec := call(t, f, "POST", hospitalPath("/episodes"), body); rec.Code != http.StatusCreated {
-		t.Fatalf("got %d (%s)", rec.Code, rec.Body.String())
-	}
-	if len(f.created[0].PatientToken) != 43 {
-		t.Errorf("token %q: want 43 characters", f.created[0].PatientToken)
-	}
-	if len(f.events) != 1 || f.events[0].Text != "Episode created" {
-		t.Errorf("events = %+v", f.events)
-	}
-
-	body = `{"patientId":"` + uuid.NewString() + `","versionId":"` + uuid.NewString() + `"}`
-	if rec := call(t, f, "POST", hospitalPath("/episodes"), body); rec.Code != http.StatusBadRequest {
-		t.Errorf("unpublished version: got %d, want 400", rec.Code)
+	for name, change := range map[string]func(*patientInput){
+		"no last name":      func(p *patientInput) { p.LastName = " " },
+		"date not a date":   func(p *patientInput) { p.DateOfBirth = "11/12/1974" },
+		"born tomorrow":     func(p *patientInput) { p.DateOfBirth = "2026-10-13" },
+		"born before 1900":  func(p *patientInput) { p.DateOfBirth = "1899-12-31" },
+		"unknown sex value": func(p *patientInput) { p.Sex = "x" },
+	} {
+		in := valid()
+		change(&in)
+		if _, msg := in.validate(now); msg == "" {
+			t.Errorf("%s: no problem reported", name)
+		}
 	}
 }
 

@@ -1,4 +1,5 @@
-// Every page and its URL: the same URLs as under Next.js (plan F2). Each route has an id for routes.test.ts.
+// Every page and its URL. Each route has an id for routes.test.ts. A hospital's pages are under
+// /o/<trust>/h/<hospital> (plan C1, S08).
 // Each page's code loads when it's first opened (`lazy`), so the patient's link doesn't download the editor.
 import type { RouteObject } from "react-router";
 import { Root } from "@/pages/Root";
@@ -6,7 +7,7 @@ import { NotFound } from "@/pages/NotFound";
 import { RouteError } from "@/pages/RouteError";
 import { HospitalLayout } from "@/pages/hospital/HospitalLayout";
 
-const h = "/h/:hospitalId";
+const h = "/o/:orgId/h/:hospitalId";
 
 export const routes: RouteObject[] = [
   {
@@ -21,7 +22,7 @@ export const routes: RouteObject[] = [
       { id: "login", path: "/login", lazy: async () => ({ Component: (await import("@/pages/Login")).Login }) },
       { id: "patient", path: "/p/:token", lazy: async () => ({ Component: (await import("@/pages/Patient")).Patient }) },
       {
-        // No path of its own, so /h/:hospitalId alone isn't a page (it wasn't under Next.js either).
+        // No path of its own, so /o/:orgId/h/:hospitalId alone isn't a page.
         id: "hospital",
         element: <HospitalLayout />,
         children: [

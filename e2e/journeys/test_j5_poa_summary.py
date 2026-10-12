@@ -20,8 +20,8 @@ def test_poa_summary_shows_both_tabs_and_records_status_and_comments(page: Page,
     cara.validate(episode, "Nurse checks", {"q_bp": "120/80"})
     cara.complete_review(episode)
 
-    hospital = sign_in(page.context, "Cara Clinician")
-    page.goto(f"/h/{hospital}/episodes/{episode['id']}")
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}")
     page.get_by_role("link", name="POA Summary").click()
     expect(page.get_by_role("heading", name="POA Summary")).to_be_visible()
     expect(page.get_by_role("button", name="Print")).to_be_enabled()

@@ -8,8 +8,8 @@ from support import pick, sign_in, unique
 def test_publish_is_blocked_until_the_logic_problem_is_fixed(page: Page, as_user):
     # A draft whose "How many a day?" shows only if a question that no longer exists is Yes.
     hq = as_user("Alex Author").draft_hq("logic-problem-hq.json", f"E2E J2 {unique()}")
-    hospital = sign_in(page.context, "Alex Author")
-    page.goto(f"/h/{hospital}/questionnaires/{hq['id']}")
+    base = sign_in(page.context, "Alex Author")
+    page.goto(f"{base}/questionnaires/{hq['id']}")
 
     # Publish is refused, and says why.
     page.get_by_role("banner").get_by_role("button", name="Publish").click()

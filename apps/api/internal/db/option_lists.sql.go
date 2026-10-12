@@ -14,21 +14,21 @@ import (
 )
 
 const createOptionList = `-- name: CreateOptionList :one
-INSERT INTO option_lists (hospital_id, name, options, updated_by)
+INSERT INTO option_lists (org_id, name, options, updated_by)
 VALUES ($1, $2, $3, $4)
 RETURNING id
 `
 
 type CreateOptionListParams struct {
-	HospitalID uuid.UUID       `json:"hospitalId"`
-	Name       string          `json:"name"`
-	Options    json.RawMessage `json:"options"`
-	UpdatedBy  uuid.UUID       `json:"updatedBy"`
+	OrgID     uuid.UUID       `json:"orgId"`
+	Name      string          `json:"name"`
+	Options   json.RawMessage `json:"options"`
+	UpdatedBy uuid.UUID       `json:"updatedBy"`
 }
 
 func (q *Queries) CreateOptionList(ctx context.Context, arg CreateOptionListParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, createOptionList,
-		arg.HospitalID,
+		arg.OrgID,
 		arg.Name,
 		arg.Options,
 		arg.UpdatedBy,
@@ -39,20 +39,43 @@ func (q *Queries) CreateOptionList(ctx context.Context, arg CreateOptionListPara
 }
 
 const deleteOptionList = `-- name: DeleteOptionList :execrows
-DELETE FROM option_lists WHERE id = $1 AND hospital_id = $2
+DELETE FROM option_lists
+WHERE id = $1 AND org_id = $2
+  AND (hospital_id IS NULL OR hospital_id = $3::uuid)
 `
 
 type DeleteOptionListParams struct {
 	ID         uuid.UUID `json:"id"`
+	OrgID      uuid.UUID `json:"orgId"`
 	HospitalID uuid.UUID `json:"hospitalId"`
 }
 
 func (q *Queries) DeleteOptionList(ctx context.Context, arg DeleteOptionListParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteOptionList, arg.ID, arg.HospitalID)
+	result, err := q.db.Exec(ctx, deleteOptionList, arg.ID, arg.OrgID, arg.HospitalID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const getOptionListOwner = `-- name: GetOptionListOwner :one
+SELECT hospital_id FROM option_lists
+WHERE id = $1 AND org_id = $2
+  AND (hospital_id IS NULL OR hospital_id = $3::uuid)
+`
+
+type GetOptionListOwnerParams struct {
+	ID         uuid.UUID `json:"id"`
+	OrgID      uuid.UUID `json:"orgId"`
+	HospitalID uuid.UUID `json:"hospitalId"`
+}
+
+// Whose the list is: NULL for the trust's, else the hospital whose own it is.
+func (q *Queries) GetOptionListOwner(ctx context.Context, arg GetOptionListOwnerParams) (uuid.NullUUID, error) {
+	row := q.db.QueryRow(ctx, getOptionListOwner, arg.ID, arg.OrgID, arg.HospitalID)
+	var hospital_id uuid.NullUUID
+	err := row.Scan(&hospital_id)
+	return hospital_id, err
 }
 
 const listOptionLists = `-- name: ListOptionLists :many
@@ -60,9 +83,14 @@ const listOptionLists = `-- name: ListOptionLists :many
 SELECT l.id, l.name, l.options, l.updated_at, u.name AS updated_by_name
 FROM option_lists l
 JOIN users u ON u.id = l.updated_by
-WHERE l.hospital_id = $1
+WHERE l.org_id = $1 AND (l.hospital_id IS NULL OR l.hospital_id = $2::uuid)
 ORDER BY lower(l.name)
 `
+
+type ListOptionListsParams struct {
+	OrgID      uuid.UUID `json:"orgId"`
+	HospitalID uuid.UUID `json:"hospitalId"`
+}
 
 type ListOptionListsRow struct {
 	ID            uuid.UUID       `json:"id"`
@@ -72,9 +100,10 @@ type ListOptionListsRow struct {
 	UpdatedByName string          `json:"updatedByName"`
 }
 
-// Option lists are scoped to a hospital (OPT-07, TEN-01).
-func (q *Queries) ListOptionLists(ctx context.Context, hospitalID uuid.UUID) ([]ListOptionListsRow, error) {
-	rows, err := q.db.Query(ctx, listOptionLists, hospitalID)
+// Option lists (OPT-07) belong to a trust: hospital_id NULL is the whole trust's, as every list
+// made so far is; otherwise only that hospital sees it. Names are unique in the trust.
+func (q *Queries) ListOptionLists(ctx context.Context, arg ListOptionListsParams) ([]ListOptionListsRow, error) {
+	rows, err := q.db.Query(ctx, listOptionLists, arg.OrgID, arg.HospitalID)
 	if err != nil {
 		return nil, err
 	}
@@ -101,25 +130,28 @@ func (q *Queries) ListOptionLists(ctx context.Context, hospitalID uuid.UUID) ([]
 
 const updateOptionList = `-- name: UpdateOptionList :execrows
 UPDATE option_lists
-SET name = $3, options = $4, updated_by = $5, updated_at = now()
-WHERE id = $1 AND hospital_id = $2
+SET name = $1, options = $2, updated_by = $3, updated_at = now()
+WHERE id = $4 AND org_id = $5
+  AND (hospital_id IS NULL OR hospital_id = $6::uuid)
 `
 
 type UpdateOptionListParams struct {
-	ID         uuid.UUID       `json:"id"`
-	HospitalID uuid.UUID       `json:"hospitalId"`
 	Name       string          `json:"name"`
 	Options    json.RawMessage `json:"options"`
 	UpdatedBy  uuid.UUID       `json:"updatedBy"`
+	ID         uuid.UUID       `json:"id"`
+	OrgID      uuid.UUID       `json:"orgId"`
+	HospitalID uuid.UUID       `json:"hospitalId"`
 }
 
 func (q *Queries) UpdateOptionList(ctx context.Context, arg UpdateOptionListParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateOptionList,
-		arg.ID,
-		arg.HospitalID,
 		arg.Name,
 		arg.Options,
 		arg.UpdatedBy,
+		arg.ID,
+		arg.OrgID,
+		arg.HospitalID,
 	)
 	if err != nil {
 		return 0, err

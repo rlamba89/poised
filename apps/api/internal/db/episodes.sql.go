@@ -54,17 +54,19 @@ func (q *Queries) CompleteReview(ctx context.Context, arg CompleteReviewParams) 
 }
 
 const createEpisode = `-- name: CreateEpisode :one
-INSERT INTO episodes (hospital_id, patient_id, version_id, procedure, anaesthetic, consultant, patient_token, created_by)
-SELECT $1, p.id, v.id, $2, $3, $4,
-       $5, $6
+INSERT INTO episodes (org_id, hospital_id, patient_id, version_id, procedure, anaesthetic, consultant, patient_token, created_by)
+SELECT $1, $2, p.id, v.id, $3, $4,
+       $5, $6, $7
 FROM patients p, questionnaire_versions v
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE p.id = $7 AND p.hospital_id = $1
-  AND v.id = $8 AND v.status = 'published' AND q.hospital_id = $1
+WHERE p.id = $8 AND p.org_id = $1
+  AND v.id = $9 AND v.status = 'published'
+  AND q.org_id = $1 AND (q.hospital_id IS NULL OR q.hospital_id = $2::uuid)
 RETURNING id
 `
 
 type CreateEpisodeParams struct {
+	OrgID        uuid.UUID `json:"orgId"`
 	HospitalID   uuid.UUID `json:"hospitalId"`
 	Procedure    string    `json:"procedure"`
 	Anaesthetic  string    `json:"anaesthetic"`
@@ -75,9 +77,11 @@ type CreateEpisodeParams struct {
 	VersionID    uuid.UUID `json:"versionId"`
 }
 
-// Creates nothing (no row) unless the patient and a published version both belong to the hospital.
+// Creates nothing (no row) unless the patient is the trust's and the version is published and
+// one this hospital uses.
 func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, createEpisode,
+		arg.OrgID,
 		arg.HospitalID,
 		arg.Procedure,
 		arg.Anaesthetic,
@@ -94,13 +98,13 @@ func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (u
 
 const createPatient = `-- name: CreatePatient :one
 
-INSERT INTO patients (hospital_id, first_name, last_name, date_of_birth, sex, hospital_number, phone, email)
+INSERT INTO patients (org_id, first_name, last_name, date_of_birth, sex, hospital_number, phone, email)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id
 `
 
 type CreatePatientParams struct {
-	HospitalID     uuid.UUID   `json:"hospitalId"`
+	OrgID          uuid.UUID   `json:"orgId"`
 	FirstName      string      `json:"firstName"`
 	LastName       string      `json:"lastName"`
 	DateOfBirth    pgtype.Date `json:"dateOfBirth"`
@@ -110,10 +114,11 @@ type CreatePatientParams struct {
 	Email          string      `json:"email"`
 }
 
-// Every episode lookup is scoped to the hospital.
+// Patient records belong to the trust (org_id); an episode is at one of its hospitals. Every
+// episode lookup is scoped to the hospital, or to the hospitals the caller can see.
 func (q *Queries) CreatePatient(ctx context.Context, arg CreatePatientParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, createPatient,
-		arg.HospitalID,
+		arg.OrgID,
 		arg.FirstName,
 		arg.LastName,
 		arg.DateOfBirth,
@@ -354,25 +359,31 @@ func (q *Queries) ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([
 }
 
 const listEpisodes = `-- name: ListEpisodes :many
-SELECT e.id, e.status, e.procedure, e.created_at,
+SELECT e.id, e.hospital_id, h.name AS hospital_name, e.status, e.procedure, e.created_at,
        p.first_name, p.last_name, p.hospital_number,
        q.name AS questionnaire_name, v.version_no
 FROM episodes e
+JOIN hospitals h ON h.id = e.hospital_id
 JOIN patients p ON p.id = e.patient_id
 JOIN questionnaire_versions v ON v.id = e.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE e.hospital_id = $1
-  AND ($2::text = '' OR e.status = $2)
+WHERE e.org_id = $1
+  AND ($2::boolean OR e.hospital_id = ANY ($3::uuid[]))
+  AND ($4::text = '' OR e.status = $4)
 ORDER BY e.created_at DESC
 `
 
 type ListEpisodesParams struct {
-	HospitalID uuid.UUID `json:"hospitalId"`
-	Status     string    `json:"status"`
+	OrgID        uuid.UUID   `json:"orgId"`
+	AllHospitals bool        `json:"allHospitals"`
+	HospitalIds  []uuid.UUID `json:"hospitalIds"`
+	Status       string      `json:"status"`
 }
 
 type ListEpisodesRow struct {
 	ID                uuid.UUID `json:"id"`
+	HospitalID        uuid.UUID `json:"hospitalId"`
+	HospitalName      string    `json:"hospitalName"`
 	Status            string    `json:"status"`
 	Procedure         string    `json:"procedure"`
 	CreatedAt         time.Time `json:"createdAt"`
@@ -383,8 +394,15 @@ type ListEpisodesRow struct {
 	VersionNo         int32     `json:"versionNo"`
 }
 
+// One trust's episodes: at every hospital when all_hospitals (a trust-wide member's "All
+// hospitals", STF-03), else only at the hospitals listed.
 func (q *Queries) ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]ListEpisodesRow, error) {
-	rows, err := q.db.Query(ctx, listEpisodes, arg.HospitalID, arg.Status)
+	rows, err := q.db.Query(ctx, listEpisodes,
+		arg.OrgID,
+		arg.AllHospitals,
+		arg.HospitalIds,
+		arg.Status,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -394,6 +412,8 @@ func (q *Queries) ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]L
 		var i ListEpisodesRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.HospitalID,
+			&i.HospitalName,
 			&i.Status,
 			&i.Procedure,
 			&i.CreatedAt,
@@ -415,7 +435,7 @@ func (q *Queries) ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]L
 
 const listPatients = `-- name: ListPatients :many
 SELECT id, first_name, last_name, date_of_birth, sex, hospital_number, phone, email
-FROM patients WHERE hospital_id = $1
+FROM patients WHERE org_id = $1
 ORDER BY last_name, first_name
 `
 
@@ -430,8 +450,8 @@ type ListPatientsRow struct {
 	Email          string      `json:"email"`
 }
 
-func (q *Queries) ListPatients(ctx context.Context, hospitalID uuid.UUID) ([]ListPatientsRow, error) {
-	rows, err := q.db.Query(ctx, listPatients, hospitalID)
+func (q *Queries) ListPatients(ctx context.Context, orgID uuid.UUID) ([]ListPatientsRow, error) {
+	rows, err := q.db.Query(ctx, listPatients, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -463,9 +483,15 @@ const listPublishedVersions = `-- name: ListPublishedVersions :many
 SELECT v.id AS version_id, v.version_no, q.name
 FROM questionnaire_versions v
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE q.hospital_id = $1 AND v.status = 'published'
+WHERE q.org_id = $1 AND (q.hospital_id IS NULL OR q.hospital_id = $2::uuid)
+  AND v.status = 'published'
 ORDER BY q.name
 `
+
+type ListPublishedVersionsParams struct {
+	OrgID      uuid.UUID `json:"orgId"`
+	HospitalID uuid.UUID `json:"hospitalId"`
+}
 
 type ListPublishedVersionsRow struct {
 	VersionID uuid.UUID `json:"versionId"`
@@ -474,8 +500,8 @@ type ListPublishedVersionsRow struct {
 }
 
 // The HQs an episode can be given: each questionnaire's published version.
-func (q *Queries) ListPublishedVersions(ctx context.Context, hospitalID uuid.UUID) ([]ListPublishedVersionsRow, error) {
-	rows, err := q.db.Query(ctx, listPublishedVersions, hospitalID)
+func (q *Queries) ListPublishedVersions(ctx context.Context, arg ListPublishedVersionsParams) ([]ListPublishedVersionsRow, error) {
+	rows, err := q.db.Query(ctx, listPublishedVersions, arg.OrgID, arg.HospitalID)
 	if err != nil {
 		return nil, err
 	}

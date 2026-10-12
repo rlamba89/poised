@@ -19,15 +19,15 @@ import { patientName, type Episode, type EpisodeEvent } from "./types";
 export type EpisodeDetail = { episode: Episode; events: EpisodeEvent[] };
 
 /** Loads an episode and its events; `reload` refetches both. */
-export function useEpisode(hospitalId: string, episodeId: string) {
+export function useEpisode(base: string, episodeId: string) {
   const [data, setData] = useState<EpisodeDetail | null>(null);
   const [error, setError] = useState("");
   const reload = useCallback(
     () =>
-      api<EpisodeDetail>(`/h/${hospitalId}/episodes/${episodeId}`)
+      api<EpisodeDetail>(`${base}/episodes/${episodeId}`)
         .then(setData)
         .catch((e: Error) => setError(e.message)),
-    [hospitalId, episodeId],
+    [base, episodeId],
   );
   useEffect(() => {
     reload();
@@ -35,16 +35,16 @@ export function useEpisode(hospitalId: string, episodeId: string) {
   return { data, error, reload };
 }
 
-export function EpisodePage({ hospitalId, episodeId }: { hospitalId: string; episodeId: string }) {
-  const { data, error, reload } = useEpisode(hospitalId, episodeId);
-  const path = `/h/${hospitalId}/episodes/${episodeId}`;
+export function EpisodePage({ base, episodeId }: { base: string; episodeId: string }) {
+  const { data, error, reload } = useEpisode(base, episodeId);
+  const path = `${base}/episodes/${episodeId}`;
   if (!data) return error ? <Alert color="red">{error}</Alert> : <Center h="40vh"><Loader /></Center>;
   const e = data.episode;
   const link = `${window.location.origin}/p/${e.patientToken}`;
 
   return (
     <Stack maw={960} mx="auto">
-      <Anchor component={Link} to={`/h/${hospitalId}/episodes`} size="sm">
+      <Anchor component={Link} to={`${base}/episodes`} size="sm">
         <Group gap={4}><IconArrowLeft size={14} /> Episodes</Group>
       </Anchor>
       <Group justify="space-between">
@@ -87,7 +87,7 @@ export function EpisodePage({ hospitalId, episodeId }: { hospitalId: string; epi
         </Card>
       )}
 
-      <QuestionSets hospitalId={hospitalId} episode={e} onReviewed={reload} />
+      <QuestionSets base={base} episode={e} onReviewed={reload} />
 
       <Card withBorder>
         <StatusSelect path={path} status={e.status} onChanged={reload} />
@@ -111,8 +111,8 @@ function Detail({ label, value }: { label: string; value: string }) {
 }
 
 /** The Question Sets shown for this patient, each with its validation state, and "Complete HQ review". */
-function QuestionSets({ hospitalId, episode, onReviewed }: { hospitalId: string; episode: Episode; onReviewed: () => void }) {
-  const { hq, error, reload } = useEpisodeHQ(hospitalId, episode.id);
+function QuestionSets({ base, episode, onReviewed }: { base: string; episode: Episode; onReviewed: () => void }) {
+  const { hq, error, reload } = useEpisodeHQ(base, episode.id);
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState("");
   if (error) return <Alert color="red">{error}</Alert>;
@@ -127,7 +127,7 @@ function QuestionSets({ hospitalId, episode, onReviewed }: { hospitalId: string;
   const complete = async () => {
     setCompleting(true);
     try {
-      await api(`/h/${hospitalId}/episodes/${episode.id}/complete-review`, { method: "POST" });
+      await api(`${base}/episodes/${episode.id}/complete-review`, { method: "POST" });
       setCompleteError("");
       onReviewed();
       reload();
@@ -173,7 +173,7 @@ function QuestionSets({ hospitalId, episode, onReviewed }: { hospitalId: string;
                 </Table.Td>
                 <Table.Td ta="right">
                   {!waiting && (
-                    <Button size="xs" variant={reviewing && !row?.validatedAt ? "filled" : "default"} component={Link} to={`/h/${hospitalId}/episodes/${episode.id}/sets/${s.id}`}>
+                    <Button size="xs" variant={reviewing && !row?.validatedAt ? "filled" : "default"} component={Link} to={`${base}/episodes/${episode.id}/sets/${s.id}`}>
                       {reviewing ? (row?.validatedAt ? "Review" : "Validate") : "View"}
                     </Button>
                   )}

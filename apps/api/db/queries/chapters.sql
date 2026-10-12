@@ -1,4 +1,4 @@
--- Every chapter lookup joins up to the questionnaire so it is scoped to the hospital.
+-- Every chapter lookup joins up to the questionnaire, so it is scoped to the trust and hospital.
 
 -- name: ListChapters :many
 SELECT c.id, c.position, c.name, c.description, c.icon, c.audience, c.revision, c.updated_at
@@ -8,20 +8,24 @@ ORDER BY c.position, c.name;
 
 -- name: GetChapterMeta :one
 SELECT c.id, c.version_id, c.name, c.description, c.icon, c.audience, c.revision,
-       v.status AS version_status, v.questionnaire_id, q.name AS questionnaire_name
+       v.status AS version_status, v.questionnaire_id, q.name AS questionnaire_name,
+       q.hospital_id AS owner_hospital_id
 FROM chapters c
 JOIN questionnaire_versions v ON v.id = c.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE c.id = $1 AND q.hospital_id = $2;
+WHERE c.id = sqlc.arg(id) AND q.org_id = sqlc.arg(org_id)
+  AND (q.hospital_id IS NULL OR q.hospital_id = sqlc.arg(hospital_id)::uuid);
 
 -- name: GetChapter :one
 SELECT c.id, c.version_id, c.position, c.name, c.description, c.icon, c.audience,
        c.content, c.revision, c.updated_at,
-       v.status AS version_status, v.questionnaire_id, q.name AS questionnaire_name
+       v.status AS version_status, v.questionnaire_id, q.name AS questionnaire_name,
+       q.hospital_id AS owner_hospital_id
 FROM chapters c
 JOIN questionnaire_versions v ON v.id = c.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE c.id = $1 AND q.hospital_id = $2;
+WHERE c.id = sqlc.arg(id) AND q.org_id = sqlc.arg(org_id)
+  AND (q.hospital_id IS NULL OR q.hospital_id = sqlc.arg(hospital_id)::uuid);
 
 -- name: CreateChapter :one
 INSERT INTO chapters (version_id, position, name, updated_by)

@@ -14,14 +14,17 @@ type Querier interface {
 	AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams) error
 	CompleteReview(ctx context.Context, arg CompleteReviewParams) (int64, error)
 	CreateChapter(ctx context.Context, arg CreateChapterParams) (uuid.UUID, error)
-	// Creates nothing (no row) unless the patient and a published version both belong to the hospital.
+	// Creates nothing (no row) unless the patient is the trust's and the version is published and
+	// one this hospital uses.
 	CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (uuid.UUID, error)
 	// A new draft copied from version `from_version_id` (LCY-06/07): same chapters, same content,
 	// so stable IDs and test cases carry over. Chapters get new row ids.
 	CreateNextVersion(ctx context.Context, arg CreateNextVersionParams) (uuid.UUID, error)
 	CreateOptionList(ctx context.Context, arg CreateOptionListParams) (uuid.UUID, error)
-	// Every episode lookup is scoped to the hospital.
+	// Patient records belong to the trust (org_id); an episode is at one of its hospitals. Every
+	// episode lookup is scoped to the hospital, or to the hospitals the caller can see.
 	CreatePatient(ctx context.Context, arg CreatePatientParams) (uuid.UUID, error)
+	// A new questionnaire is the trust's, for all its hospitals.
 	CreateQuestionnaire(ctx context.Context, arg CreateQuestionnaireParams) (uuid.UUID, error)
 	CreateVersion(ctx context.Context, arg CreateVersionParams) (uuid.UUID, error)
 	DeleteChapter(ctx context.Context, id uuid.UUID) error
@@ -33,33 +36,48 @@ type Querier interface {
 	GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpisodeRow, error)
 	// The patient's link: no sign-in, the token is the key.
 	GetEpisodeByToken(ctx context.Context, patientToken string) (GetEpisodeByTokenRow, error)
+	// Whose the list is: NULL for the trust's, else the hospital whose own it is.
+	GetOptionListOwner(ctx context.Context, arg GetOptionListOwnerParams) (uuid.NullUUID, error)
 	GetQuestionnaire(ctx context.Context, arg GetQuestionnaireParams) (GetQuestionnaireRow, error)
-	GetUser(ctx context.Context, id uuid.UUID) (User, error)
+	GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error)
 	GetVersionChapter(ctx context.Context, arg GetVersionChapterParams) (GetVersionChapterRow, error)
 	HasNonDraftVersion(ctx context.Context, questionnaireID uuid.UUID) (bool, error)
+	IsPlatformAdmin(ctx context.Context, userID uuid.UUID) (bool, error)
 	ListCategories(ctx context.Context) ([]Category, error)
-	// Every chapter lookup joins up to the questionnaire so it is scoped to the hospital.
+	// Every chapter lookup joins up to the questionnaire, so it is scoped to the trust and hospital.
 	ListChapters(ctx context.Context, versionID uuid.UUID) ([]ListChaptersRow, error)
 	ListEpisodeAnswers(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeAnswersRow, error)
 	ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeEventsRow, error)
+	// One trust's episodes: at every hospital when all_hospitals (a trust-wide member's "All
+	// hospitals", STF-03), else only at the hospitals listed.
 	ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]ListEpisodesRow, error)
-	ListMemberships(ctx context.Context, userID uuid.UUID) ([]ListMembershipsRow, error)
-	// Option lists are scoped to a hospital (OPT-07, TEN-01).
-	ListOptionLists(ctx context.Context, hospitalID uuid.UUID) ([]ListOptionListsRow, error)
-	ListPatients(ctx context.Context, hospitalID uuid.UUID) ([]ListPatientsRow, error)
+	// Every hospital the user can work in, once per membership that reaches it: a trust-wide one
+	// (hospital_id NULL) reaches every hospital of the trust, a hospital one only that hospital.
+	// GET /api/me keeps the highest role per hospital.
+	ListMyHospitals(ctx context.Context, userID uuid.UUID) ([]ListMyHospitalsRow, error)
+	// Option lists (OPT-07) belong to a trust: hospital_id NULL is the whole trust's, as every list
+	// made so far is; otherwise only that hospital sees it. Names are unique in the trust.
+	ListOptionLists(ctx context.Context, arg ListOptionListsParams) ([]ListOptionListsRow, error)
+	// The caller's memberships in one trust: hospital_id is NULL for a trust-wide one.
+	ListOrgMemberships(ctx context.Context, arg ListOrgMembershipsParams) ([]ListOrgMembershipsRow, error)
+	ListPatients(ctx context.Context, orgID uuid.UUID) ([]ListPatientsRow, error)
 	// The HQs an episode can be given: each questionnaire's published version.
-	ListPublishedVersions(ctx context.Context, hospitalID uuid.UUID) ([]ListPublishedVersionsRow, error)
+	ListPublishedVersions(ctx context.Context, arg ListPublishedVersionsParams) ([]ListPublishedVersionsRow, error)
 	// A questionnaire shows its latest version: the draft if there is one, else the last published.
+	// Questionnaires belong to a trust (org_id). hospital_id NULL means every hospital of the trust
+	// uses it; otherwise only that hospital sees it. Each lookup is scoped to the trust and hospital.
 	ListQuestionnaires(ctx context.Context, arg ListQuestionnairesParams) ([]ListQuestionnairesRow, error)
-	ListRolesInHospital(ctx context.Context, arg ListRolesInHospitalParams) ([]string, error)
-	ListUsers(ctx context.Context) ([]User, error)
+	ListUsers(ctx context.Context) ([]ListUsersRow, error)
 	ListVersionChapters(ctx context.Context, versionID uuid.UUID) ([]ListVersionChaptersRow, error)
-	// Serialises creates in one hospital so the unique-draft-name check can't race.
-	LockHospitalQuestionnaires(ctx context.Context, hospitalID uuid.UUID) error
+	// Serialises creates in one trust so the unique-draft-name check can't race.
+	LockOrgQuestionnaires(ctx context.Context, orgID uuid.UUID) error
 	Ping(ctx context.Context) (int32, error)
 	// Publishes the draft and retires the version published before it (LCY-01), in one statement.
 	// Returns 0 when the version is no longer a draft.
 	PublishVersion(ctx context.Context, arg PublishVersionParams) (int64, error)
+	// The caller's roles at a hospital of a trust: trust-wide, at that hospital, or both. None when
+	// they aren't a member, or the hospital isn't in that trust. Re-read on every request (STF-04).
+	RolesAtHospital(ctx context.Context, arg RolesAtHospitalParams) ([]RolesAtHospitalRow, error)
 	// Saves only if nobody saved since the caller loaded `revision` (LCY-04).
 	SaveChapterContent(ctx context.Context, arg SaveChapterContentParams) (int32, error)
 	// The clinician's copy of a Question Set's answers, which is final. `validated` stamps it
