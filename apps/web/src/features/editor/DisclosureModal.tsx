@@ -1,4 +1,3 @@
-"use client";
 // The disclosures (clinical outputs) of one option, or of a Text / Date / Number question.
 // Opened from a `🔗 n` chip or the Disclosures tab. Edits the chapter JSON.
 import { useState } from "react";

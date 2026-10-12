@@ -34,6 +34,7 @@ Drafted 2 Oct 2026 with Rahul and revised the same day after his answers. Status
 | A-18 | Licensed instruments | **Build them now** (EQ-5D-5L, Oxford Hip and Knee Scores). Licence costs are decided later and can be a paid add-on. Each is **opt-in, set when a trust or hospital is added**: a trust opts in or out, and each hospital can follow the trust or decide differently (PRM-08). Licensors aren't contacted for now. | Agreed |
 | A-19 | Data regions | **London (eu-west-2) for now.** The architecture must let a trust's **data** live in another AWS region later. Code and the control plane stay in London (section 13). Not built this session. | **Superseded 8 Oct by A-20** |
 | A-20 | Countries | **One deployment per country, each at its own web address** (`uk.<domain>`, `ca.<domain>`…). Each runs in that country's AWS region, with its own database, files bucket, Cognito pool, email and SMS. It's the same code and the same pipeline.<ul><li>**Only the UK runs for now.**</li><li>**Nothing is hardcoded for the UK or London.** Every per-country value is deployment config, so a new country is config plus a runbook, never a code change (section 13).</li></ul>**Why:** residency rules that bite usually cover where data is *processed and accessed*, not only where it's stored, so only a full in-country stack reliably meets them ([research, 8 Oct](../reports/Health%20data%20residency%20storage%20vs%20processing.md)). | Agreed 8 Oct |
+| A-22 | Local first | **No AWS until the first demo or customer** (12 Oct). Everything runs on the developer's Mac:<ul><li>email and SMS are captured, not sent;</li><li>the dev login stands in for Cognito;</li><li>MinIO stands in for S3;</li><li>a local timer stands in for EventBridge.</li></ul>The code is written as if it already runs on Lambda. The AWS work (S06, S07, S12, S17) comes later. This changes the build order in section 14. | Agreed 12 Oct |
 | A-21 | Superadmin | **Only the owner (Rahul).** Created by hand in each deployment and environment: a Cognito user plus a `platform_admins` row. There's no screen for creating superadmins. | Agreed 8 Oct |
 | D-1 | Server-side form evaluation | A small **Node Lambda** runs `packages/clinical` to compute disclosures, ASA and triage when a patient submits (section 10). This **reverses the 30 Sep "no Node service" decision**. | **Agreed 2 Oct** |
 | D-2 | Database | **Plain Postgres throughout.**<ul><li>**Neon** (AWS London) until the first customer: free tier, sleeps when idle, wakes in under a second.</li><li>**RDS for PostgreSQL** in our own AWS account from the first customer.</li></ul>Both are plain Postgres, so the move is a dump and restore (section 13). | Agreed |
@@ -48,7 +49,7 @@ Drafted 2 Oct 2026 with Rahul and revised the same day after his answers. Status
 1. **Everything a person fills in is a SurveyJS form.**
    - That covers the HQ, PROMs, assessments and clinician capture blocks.
    - They share one editor, one renderer, one versioning model and one answer store.
-2. **One Go codebase and one Next.js app**, both serverless.
+2. **One Go codebase and one React app** (React + Vite, D-5), both serverless.
    - The Go code is deployed as a few Lambdas split by audience (D-4).
    - Background work (reminders, PROMs sends, auto-archive) uses a `jobs` table, drained by a scheduled Lambda.
    - There are no queues or extra services.

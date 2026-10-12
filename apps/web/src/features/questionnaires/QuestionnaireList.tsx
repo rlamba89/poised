@@ -1,7 +1,6 @@
-"use client";
 // FRM-01 list, FRM-04 create, FRM-06 delete. Laid out like the Lifebox Author list.
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router";
 import { useDebouncedValue } from "@mantine/hooks";
 import {
   ActionIcon, Alert, Badge, Button, Drawer, Group, Menu, Modal, Pagination, Stack, Table, Text, Textarea, TextInput, Title,
@@ -27,7 +26,7 @@ type ListResponse = { items: Row[]; total: number; page: number; pageSize: numbe
 
 export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
   const me = useMe();
-  const router = useRouter();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 250);
   const [page, setPage] = useState(1);
@@ -80,7 +79,7 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
           </Table.Thead>
           <Table.Tbody>
             {data.items.map((q) => {
-              const open = () => router.push(`/h/${hospitalId}/questionnaires/${q.id}`);
+              const open = () => navigate(`/h/${hospitalId}/questionnaires/${q.id}`);
               const canDelete = q.status === "draft" && (q.createdBy === me.user.id || isAdmin);
               return (
                 <Table.Tr key={q.id} onClick={open} style={{ cursor: "pointer" }}>
@@ -127,7 +126,7 @@ export function QuestionnaireList({ hospitalId }: { hospitalId: string }) {
         opened={creating}
         onClose={() => setCreating(false)}
         hospitalId={hospitalId}
-        onCreated={(id) => router.push(`/h/${hospitalId}/questionnaires/${id}`)}
+        onCreated={(id) => navigate(`/h/${hospitalId}/questionnaires/${id}`)}
       />
       <DeleteModal
         row={deleting}

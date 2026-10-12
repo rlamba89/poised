@@ -1,4 +1,3 @@
-"use client";
 // "General notes" (Lifebox POA Summary): the episode's events and clinicians' comments.
 import { useState } from "react";
 import { Alert, Button, Group, Stack, Text, Textarea } from "@mantine/core";

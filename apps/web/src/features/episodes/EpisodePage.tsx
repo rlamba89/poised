@@ -1,8 +1,7 @@
-"use client";
 // One episode: the patient, the procedure, the patient's link, the Question Sets to validate
 // (Step 4 of plan-workflow.md), the status and the General notes.
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
+import { Link } from "react-router";
 import {
   Alert, Anchor, Badge, Button, Card, Center, CopyButton, Group, Loader, SimpleGrid, Stack, Table, Text, TextInput, Title,
 } from "@mantine/core";
@@ -41,11 +40,11 @@ export function EpisodePage({ hospitalId, episodeId }: { hospitalId: string; epi
   const path = `/h/${hospitalId}/episodes/${episodeId}`;
   if (!data) return error ? <Alert color="red">{error}</Alert> : <Center h="40vh"><Loader /></Center>;
   const e = data.episode;
-  const link = typeof window === "undefined" ? "" : `${window.location.origin}/p/${e.patientToken}`;
+  const link = `${window.location.origin}/p/${e.patientToken}`;
 
   return (
     <Stack maw={960} mx="auto">
-      <Anchor component={Link} href={`/h/${hospitalId}/episodes`} size="sm">
+      <Anchor component={Link} to={`/h/${hospitalId}/episodes`} size="sm">
         <Group gap={4}><IconArrowLeft size={14} /> Episodes</Group>
       </Anchor>
       <Group justify="space-between">
@@ -53,7 +52,7 @@ export function EpisodePage({ hospitalId, episodeId }: { hospitalId: string; epi
           <Title order={3}>{patientName(e)}</Title>
           <StatusBadge status={e.status} />
         </Group>
-        <Button component={Link} href={`${path}/poa`} variant="default">POA Summary</Button>
+        <Button component={Link} to={`${path}/poa`} variant="default">POA Summary</Button>
       </Group>
 
       <Card withBorder>
@@ -174,7 +173,7 @@ function QuestionSets({ hospitalId, episode, onReviewed }: { hospitalId: string;
                 </Table.Td>
                 <Table.Td ta="right">
                   {!waiting && (
-                    <Button size="xs" variant={reviewing && !row?.validatedAt ? "filled" : "default"} component={Link} href={`/h/${hospitalId}/episodes/${episode.id}/sets/${s.id}`}>
+                    <Button size="xs" variant={reviewing && !row?.validatedAt ? "filled" : "default"} component={Link} to={`/h/${hospitalId}/episodes/${episode.id}/sets/${s.id}`}>
                       {reviewing ? (row?.validatedAt ? "Review" : "Validate") : "View"}
                     </Button>
                   )}

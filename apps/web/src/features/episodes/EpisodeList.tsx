@@ -1,8 +1,7 @@
-"use client";
 // Step 2 of plan-workflow.md: the hospital's episodes, and creating one for a patient with a
 // published HQ. Made-up patients only (NFR-03).
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router";
 import {
   Alert, Badge, Button, Drawer, Group, SegmentedControl, Select, Stack, Table, Text, TextInput, Title,
 } from "@mantine/core";
@@ -12,7 +11,7 @@ import { formatDateTime } from "@/lib/format";
 import { patientName, STATUS_COLORS, STATUS_LABELS, type EpisodeRow, type EpisodeStatus, type Patient } from "./types";
 
 export function EpisodeList({ hospitalId }: { hospitalId: string }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [status, setStatus] = useState<string | null>(null);
   const [rows, setRows] = useState<EpisodeRow[] | null>(null);
   const [error, setError] = useState("");
@@ -58,7 +57,7 @@ export function EpisodeList({ hospitalId }: { hospitalId: string }) {
           </Table.Thead>
           <Table.Tbody>
             {rows.map((e) => (
-              <Table.Tr key={e.id} onClick={() => router.push(`/h/${hospitalId}/episodes/${e.id}`)} style={{ cursor: "pointer" }}>
+              <Table.Tr key={e.id} onClick={() => navigate(`/h/${hospitalId}/episodes/${e.id}`)} style={{ cursor: "pointer" }}>
                 <Table.Td>
                   <Text fw={700}>{patientName(e)}</Text>
                   {e.hospitalNumber && <Text size="sm" c="dimmed">{e.hospitalNumber}</Text>}
@@ -78,7 +77,7 @@ export function EpisodeList({ hospitalId }: { hospitalId: string }) {
         hospitalId={hospitalId}
         opened={creating}
         onClose={() => setCreating(false)}
-        onCreated={(id) => router.push(`/h/${hospitalId}/episodes/${id}`)}
+        onCreated={(id) => navigate(`/h/${hospitalId}/episodes/${id}`)}
       />
     </Stack>
   );

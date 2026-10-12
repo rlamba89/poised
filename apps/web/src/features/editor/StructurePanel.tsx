@@ -1,4 +1,3 @@
-"use client";
 // The left column: Question Sets (chapters) as accordions, each with its pages (STR-01, FRM-07).
 import { useEffect, useState } from "react";
 import { ActionIcon, Button, Loader, Menu, Text, Tooltip } from "@mantine/core";

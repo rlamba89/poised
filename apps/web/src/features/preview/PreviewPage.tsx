@@ -1,9 +1,8 @@
-"use client";
 // Preview a chapter as a patient or a clinician (PRV-01), on a phone, tablet or desktop and in
 // any translated language (PRV-02), with a sample patient (PRV-04), the outputs the answers
 // produce, live (PRV-03), and saved test cases (PRV-05/06).
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { Link } from "react-router";
 import {
   Alert, Anchor, Badge, Box, Button, Card, Center, Grid, Group, Loader, NumberInput, SegmentedControl, Select, Stack, Text,
   TextInput, Title,
@@ -134,7 +133,7 @@ function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: Chapter
     <Box p="md">
       <Group justify="space-between" mb="md">
         <Group gap="xs">
-          <Anchor component={Link} href={`${base}/questionnaires/${chapter.questionnaireId}`} size="sm">
+          <Anchor component={Link} to={`${base}/questionnaires/${chapter.questionnaireId}`} size="sm">
             ← {chapter.questionnaireName}
           </Anchor>
           <Text fw={600}>/ {chapter.name} · Preview</Text>
@@ -172,7 +171,7 @@ function Preview({ hospitalId, chapter }: { hospitalId: string; chapter: Chapter
             ]}
           />
           <Button size="xs" variant="default" onClick={restart}>Clear answers</Button>
-          <Button size="xs" variant="light" component={Link} href={`${base}/questionnaires/${chapter.questionnaireId}?set=${chapter.id}`}>Edit</Button>
+          <Button size="xs" variant="light" component={Link} to={`${base}/questionnaires/${chapter.questionnaireId}?set=${chapter.id}`}>Edit</Button>
         </Group>
       </Group>
       <Grid>

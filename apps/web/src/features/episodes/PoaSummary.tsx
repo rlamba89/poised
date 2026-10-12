@@ -1,9 +1,8 @@
-"use client";
 // Step 5 of plan-workflow.md: the POA Summary, laid out like Lifebox's (layout, not styling).
 // "Validated summary" is built from the clinician's answers, which are final, and marks what the
 // clinician changed; "Patient answers" is the same document from the patient's original answers.
 import { useMemo, useState } from "react";
-import Link from "next/link";
+import { Link } from "react-router";
 import {
   Accordion, Alert, Anchor, Badge, Breadcrumbs, Button, Card, Center, Group, List, Loader, Select, SimpleGrid, Stack, Table, Tabs, Text,
   Title, Tooltip,
@@ -33,12 +32,12 @@ export default function PoaSummary({ hospitalId, episodeId }: { hospitalId: stri
   return (
     <Stack maw={960} mx="auto">
       <Breadcrumbs className="sj-no-print">
-        <Anchor component={Link} href={`/h/${hospitalId}/episodes`} size="sm">Episodes</Anchor>
-        <Anchor component={Link} href={path} size="sm">Episode</Anchor>
+        <Anchor component={Link} to={`/h/${hospitalId}/episodes`} size="sm">Episodes</Anchor>
+        <Anchor component={Link} to={path} size="sm">Episode</Anchor>
         <Text size="sm" fw={600}>POA summary</Text>
       </Breadcrumbs>
       <Group gap="md">
-        <Anchor component={Link} href={path} fw={700} underline="always">{patientName(e)}</Anchor>
+        <Anchor component={Link} to={path} fw={700} underline="always">{patientName(e)}</Anchor>
         <StatusBadge status={e.status} />
         <Text size="sm">Hospital number: <b>{e.hospitalNumber || "—"}</b></Text>
         <Text size="sm">Phone number: <b>{e.phone || "—"}</b></Text>

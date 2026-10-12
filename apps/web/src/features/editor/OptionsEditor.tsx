@@ -1,4 +1,3 @@
-"use client";
 // Options of Yes / No, Select One and Select Many: labels, order, scores (OPT-03), the
 // exclusive "None" option, one-click options (OPT-04/06), Select all, and options imported
 // from the code library with their code as a disclosure (QT-07), and saved option lists

@@ -1,4 +1,3 @@
-"use client";
 // "Add content:" buttons (Lifebox catalogue, plus Number from DSG-01 and the SurveyJS types).
 import { Button, Text } from "@mantine/core";
 import {

@@ -31,7 +31,7 @@ Work through these cases in Chrome, on the running app, the way a careful manual
 - **Watch the browser console** throughout. Report any red error, with the case ID.
   - Two `401 (Unauthorized)` errors on the sign-in page are expected; ignore them.
   - A `409 (Conflict)` error is expected when the app refuses a change on purpose: in MT-03 (duplicate name) and MT-61 (two editors). Ignore it there.
-  - A Next.js "Issue" badge at the bottom left also counts as an error. Open it and copy the message.
+  - Any error in the browser console counts. (Before plan F2, a Next.js "Issue" badge at the bottom left showed these too.)
 
 ## Automated journeys
 
@@ -476,7 +476,7 @@ Click **Preview** in the editor header, with a Question Set selected.
    - Clinician items sit in a right-hand column with a tinted background. Both columns are about the same width, and no words break mid-word.
    - With **Clinical summary** on, a yellow summary box lists the page's clinical notes above "Clinical comments".
 2. Check the Calculation shows its value and band, for example "3 (Low risk)". Calculations are clinician-only by default.
-3. Switch between Patient and Clinician several times. Expected: no errors appear (watch the console and the Next.js Issue badge).
+3. Switch between Patient and Clinician several times. Expected: no errors appear (watch the console).
 
 **MT-55: Screen sizes and language**
 1. Click **Phone**, then **Tablet**, then **Desktop**. Expected: the form narrows inside a device frame and still works. Long ratings may turn into a dropdown on Phone.

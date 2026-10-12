@@ -38,12 +38,12 @@ What we copied from Lifebox is in [docs/lifebox-ui-notes.md](docs/lifebox-ui-not
 
 ## Setup
 
-You need Docker, Go 1.26 or newer (older Go downloads 1.26 by itself) and Node 20.9 or newer.
+You need Docker, Go 1.26 or newer (older Go downloads 1.26 by itself) and Node 22.22 or newer (React Router 8 needs it).
 
 ```sh
 docker compose up -d db     # Postgres 17 on localhost:5432
 make migrate seed           # schema, then Lifebox codes, 2 hospitals and 3 users
-make dev                    # Go API on :8080 and Next.js on :3000; Ctrl-C stops both
+make dev                    # Go API on :8080 and the web app (Vite) on :3000; Ctrl-C stops both
 ```
 
 Open http://localhost:3000 and sign in as a seeded user:
@@ -128,7 +128,8 @@ apps/api            Go API: net/http, pgx, sqlc, goose (as go tools)
   internal/chapter  chapter content rules
   internal/db       sqlc output (do not edit)
   cmd/import-lifebox  loads a Lifebox export (internal/lifebox converts it)
-apps/web            Next.js + Mantine; /api/* is proxied to the Go API
+apps/web            React + Vite + React Router + Mantine; /api/* is proxied to the Go API
+  src/routes.tsx    every URL and its page (src/pages); see apps/web/AGENTS.md
   src/features      questionnaires, editor (Lifebox layout), outputs, preview
 packages/clinical   shared TS: editor model (doc.ts), conditions (logic.ts), per-type settings
                     (fields.ts), question types and functions, properties, stable IDs, viewer

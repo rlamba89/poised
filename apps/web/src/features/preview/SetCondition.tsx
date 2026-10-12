@@ -1,4 +1,3 @@
-"use client";
 // The Question Set's own condition (LOG-02), in plain words above the preview. A one-set preview
 // can't see earlier sets' answers, so it decides only conditions that test just the patient.
 import { useEffect, useState } from "react";

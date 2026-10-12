@@ -1,15 +1,14 @@
-"use client";
 // Stub login: pick a seeded user. Replaced by SSO later.
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router";
 import { Alert, Button, Card, Container, Stack, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
 import { homePath, type Me } from "@/lib/auth";
 
 type User = { id: string; name: string; email: string };
 
-export default function LoginPage() {
-  const router = useRouter();
+export function Login() {
+  const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState("");
 
@@ -22,7 +21,7 @@ export default function LoginPage() {
     try {
       await api("/dev/login", { method: "POST", body: JSON.stringify({ userId }) });
       const me = await api<Me>("/me");
-      router.push(me.hospitals.length ? homePath(me.hospitals[0]) : "/");
+      navigate(me.hospitals.length ? homePath(me.hospitals[0]) : "/");
     } catch (e) {
       setError((e as Error).message);
     }
@@ -30,7 +29,7 @@ export default function LoginPage() {
 
   return (
     <Container size="xs" py="xl">
-      <Title order={2} mb="xs">Lifebox Authoring</Title>
+      <Title order={2} mb="xs">Poised</Title>
       <Text c="dimmed" mb="lg">Development sign-in: choose a user.</Text>
       {error && <Alert color="red" mb="md">{error}</Alert>}
       <Stack>

@@ -1,12 +1,10 @@
-"use client";
 // Step 4 of plan-workflow.md: the clinician validates one Question Set. The clinician view shows
 // the patient's answers beside the clinician questions; the clinician corrects answers (each
 // change shows what the patient said) and fills in their own. Answers save as they go;
 // "Validate" checks required questions and stamps the set. Saves carry the set's revision, so a
 // save from a stale tab gets a 409 and the page asks for a reload instead of overwriting (S02a).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useNavigate } from "react-router";
 import { Alert, Anchor, Badge, Button, Card, Center, Group, Loader, Stack, Text, Title } from "@mantine/core";
 import { IconArrowLeft, IconCircleCheck } from "@tabler/icons-react";
 import type { Model } from "survey-core";
@@ -45,7 +43,7 @@ const SAVE_DELAY_MS = 600;
 type ValidateProps = { hospitalId: string; episode: Episode; hq: EpisodeHQ; set: HQSet; onReload: () => Promise<void> };
 
 function Validate({ hospitalId, episode, hq, set, onReload }: ValidateProps) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const back = `/h/${hospitalId}/episodes/${episode.id}`;
   const path = `/h/${hospitalId}/episodes/${episode.id}/answers/${set.id}`;
   const editable = episode.status === "ready_for_review";
@@ -124,12 +122,12 @@ function Validate({ hospitalId, episode, hq, set, onReload }: ValidateProps) {
       setError("Some required questions have no answer yet.");
       return;
     }
-    if (await save(true)) router.push(back);
+    if (await save(true)) navigate(back);
   };
 
   return (
     <Stack>
-      <Anchor component={Link} href={back} size="sm">
+      <Anchor component={Link} to={back} size="sm">
         <Group gap={4}><IconArrowLeft size={14} /> {patientName(episode)}</Group>
       </Anchor>
       <Group justify="space-between">

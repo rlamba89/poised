@@ -1,4 +1,3 @@
-"use client";
 // Each Question Set's (chapter's) SurveyJS JSON, loaded on demand, with autosave (LCY-03),
 // undo and redo (LCY-05) and the stale-revision guard (LCY-04).
 import { useCallback, useEffect, useRef, useState } from "react";

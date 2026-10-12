@@ -1,4 +1,5 @@
 node_modules/
+dist/
 .next/
 .env
 *.log
@@ -11,3 +12,4 @@ apps/web/next-env.d.ts
 spikes/ui-*.ts
 spikes/mt/
 shots/
+docs/sessions/run-state.md

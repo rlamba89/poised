@@ -1,4 +1,3 @@
-"use client";
 // Translations for one Question Set (LNG-01/02/03): English beside the chosen language, gaps
 // flagged, CSV out and back in for a translator. Clinical notes and codes are never listed.
 import { useMemo, useRef, useState } from "react";

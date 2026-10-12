@@ -1,4 +1,3 @@
-"use client";
 // The episode's Question Sets with both actors' answers (GET …/episodes/{eid}/hq).
 import { useCallback, useEffect, useState } from "react";
 import type { Answers, ChapterJson } from "@poised/clinical";

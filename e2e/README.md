@@ -83,7 +83,7 @@ In the viewer:
 - **`data-testid` only where an element has no accessible name.** List each one below.
 - **Answer SurveyJS questions with `choose(page, "Do you smoke?", "Yes")`.** SurveyJS hides the real radio button behind a drawing of one, so the helper taps the option's text, as a person does, then checks the radio is selected.
 - **Pick from a dropdown (Mantine Select) with `pick(page, "Sex", "Female")`.**
-- **Use `exact=True` for a "Next" button.** `make dev` adds a Next.js tools button whose name contains "Next". (It goes when plan F2 replaces Next.js.)
+- **`exact=True` for a "Next" button** was needed while `make dev` added a Next.js tools button whose name contained "Next". Plan F2 removed Next.js (S04, 12 Oct); the journeys keep `exact=True`, which is harmless.
 - **Patient journeys use the `phone` fixture,** an iPhone 13 in WebKit. Its trace is kept through pytest-playwright's private `_artifacts_recorder` fixture, so check `conftest.py` still works after upgrading pytest-playwright.
 - **Wait for saves through the page,** never with a fixed sleep: `expect(page.get_by_test_id("save-status")).to_have_text("All changes saved")`, or `page.expect_response(...)` around the change (as J4 does).
 

@@ -1,10 +1,8 @@
-"use client";
 // The questionnaire editor, laid out like the Lifebox Author tool (docs/lifebox-ui-notes.md):
 // Structure tree on the left (replaced by the Settings panel while a card is selected), the
 // selected Question Set or page on the right. Every change saves automatically.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useNavigate } from "react-router";
 import { Alert, Anchor, Avatar, Badge, Button, Center, Group, Loader, Menu, Modal, Popover, Stack, Text } from "@mantine/core";
 import { IconAlertTriangle, IconArrowLeft, IconCopyPlus, IconEye, IconLanguage, IconLogout, IconSend } from "@tabler/icons-react";
 import {
@@ -42,7 +40,7 @@ type Confirm = { title: string; body: string; dependents?: string[]; onConfirm: 
 
 export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalId: string; questionnaireId: string }) {
   const me = useMe();
-  const router = useRouter();
+  const navigate = useNavigate();
   const base = `/h/${hospitalId}`;
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
@@ -91,7 +89,8 @@ export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalI
     if (selection) params.set("set", selection.chapterId);
     if (selection?.page) params.set("page", selection.page);
     const qs = params.toString();
-    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+    // Keeps the router's own history state (its key and position), which Back and scroll restoring use.
+    window.history.replaceState(window.history.state, "", qs ? `?${qs}` : window.location.pathname);
   }, [selection]);
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -294,7 +293,7 @@ export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalI
       <header className={css.header}>
         <Group gap="xs" wrap="nowrap">
           <IconArrowLeft size={16} />
-          <Anchor component={Link} href={`${base}/questionnaires`} underline="always" c="dark">Questionnaires</Anchor>
+          <Anchor component={Link} to={`${base}/questionnaires`} underline="always" c="dark">Questionnaires</Anchor>
           <Text>/ {q.name}</Text>
           <Badge variant="light" color={q.status === "published" ? "green" : "gray"} size="sm">
             v{q.versionNo} · {q.status}
@@ -364,7 +363,7 @@ export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalI
             </Button>
           )}
           {chapterId && (
-            <Button size="xs" variant="default" leftSection={<IconEye size={14} />} component={Link} href={`${base}/chapters/${chapterId}/preview`}>
+            <Button size="xs" variant="default" leftSection={<IconEye size={14} />} component={Link} to={`${base}/chapters/${chapterId}/preview`}>
               Preview
             </Button>
           )}
@@ -380,7 +379,7 @@ export function QuestionnaireEditor({ hospitalId, questionnaireId }: { hospitalI
                 leftSection={<IconLogout size={14} />}
                 onClick={async () => {
                   await api("/logout", { method: "POST" });
-                  router.replace("/login");
+                  navigate("/login", { replace: true });
                 }}
               >
                 Sign out

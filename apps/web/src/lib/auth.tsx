@@ -1,7 +1,6 @@
-"use client";
 // Signed-in user and their hospitals, loaded once from /api/me.
 import { createContext, useContext, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router";
 import { Center, Loader } from "@mantine/core";
 import { api, ApiError } from "./api";
 
@@ -12,15 +11,15 @@ export type Me = { user: { id: string; name: string; email: string }; hospitals:
 const AuthContext = createContext<Me | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [me, setMe] = useState<Me | null>(null);
   useEffect(() => {
     api<Me>("/me")
       .then(setMe)
       .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) router.replace("/login");
+        if (e instanceof ApiError && e.status === 401) navigate("/login", { replace: true });
       });
-  }, [router]);
+  }, [navigate]);
   if (!me) {
     return (
       <Center h="100vh">

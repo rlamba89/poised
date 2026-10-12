@@ -1,4 +1,3 @@
-"use client";
 // Pick a question, a comparison and a value from lists (LOG-05), as many rules as needed,
 // joined by All / Any / None / Not all, with groups nested to any depth (LOG-04).
 // Writes a SurveyJS expression.

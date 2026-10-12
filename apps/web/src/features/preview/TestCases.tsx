@@ -1,4 +1,3 @@
-"use client";
 // Test cases (PRV-05/06/07/08): save the preview's answers with the outputs they produce, then
 // re-run them all after changes. Stored in the chapter JSON, so they carry over to new versions.
 import { useState } from "react";

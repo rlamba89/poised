@@ -1,4 +1,3 @@
-"use client";
 // Find codes by part of the code or description, within one code set (CLN-09).
 import { useEffect, useState } from "react";
 import { useDebouncedValue } from "@mantine/hooks";

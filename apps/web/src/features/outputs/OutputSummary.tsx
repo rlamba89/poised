@@ -1,4 +1,3 @@
-"use client";
 // One clinical output in a line: its note with category, codes, ASA grade and flag.
 import { Badge, Group, Stack, Text } from "@mantine/core";
 import type { ClinicalOutput } from "@poised/clinical";

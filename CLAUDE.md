@@ -20,6 +20,8 @@ The next work is turning it into a multi-trust SaaS on AWS.
    - **`/build-session <id>`:** builds the session test-first and writes a manual test plan.
    - **`/manual-test <id>`:** a separate session that tests in Chrome like a manual tester. It never edits code.
    - **`/verify-session <id>`:** reviews and verifies before Rahul commits.
+   - **`/run-sessions [from] [to]`:** the conductor. It runs all three automatically, session after session, and commits locally after each Verified verdict (never pushes). It stops only for Rahul's questions or a limit.
+   - **Local first (12 Oct):** no AWS until the first demo or customer. Email and SMS are captured, and the dev login stands in for Cognito.
 5. Background, as needed:
    - [docs/requirements.md](docs/requirements.md) (authoring requirement IDs such as PNL-07);
    - [docs/plan-workflow.md](docs/plan-workflow.md) (how the episode workflow is built);
@@ -44,12 +46,12 @@ The next work is turning it into a multi-trust SaaS on AWS.
 
 ## Commands
 
-Requires Docker, Go 1.26+ and Node 20.9+.
+Requires Docker, Go 1.26+ and Node 22.22+.
 
 ```sh
 docker compose up -d db     # Postgres 17 on :5432 (user/password/db: sj)
 make migrate seed           # goose migrations, then Lifebox codes + demo hospitals/users (idempotent)
-make dev                    # Go API on :8080 + web on :3000 (web proxies /api/* to the API); Ctrl-C stops both
+make dev                    # Go API on :8080 + web (Vite) on :3000 (web proxies /api/* to the API); Ctrl-C stops both
 make test                   # go test ./... + Vitest in every workspace (no database needed)
 make test-integration       # API → database tests (-tags integration): a fresh database per test
 make lint                   # go vet (with the integration tag) + tsc --noEmit
@@ -62,7 +64,7 @@ make migrate-down           # roll back the last migration
 **Running one test:**
 - **Go:** `cd apps/api && go test ./internal/httpapi -run TestSaveContentRevision -v`
 - **Go integration:** `cd apps/api && TEST_DATABASE_URL='postgres://sj:sj@localhost:5432/postgres?sslmode=disable' go test -tags integration -count=1 ./internal/httpapi -run TestSaveChapterContent -v`. The harness is `internal/apitest` (see its package comment); route tests are `internal/httpapi/*_integration_test.go`.
-- **TypeScript (`packages/clinical`):** `cd packages/clinical && npx vitest run src/outputs.test.ts -t "computeOutputs"`
+- **TypeScript (`packages/clinical`):** `cd packages/clinical && npx vitest run src/outputs.test.ts -t "computeOutputs"` (the web app's route table: `cd apps/web && npx vitest run`)
 - **One journey:** `cd e2e && .venv/bin/pytest journeys/test_j3_patient.py --headed`. A failure keeps its trace in `e2e/test-results/` ([e2e/README.md](e2e/README.md)).
 
 **Signing in locally:** use the stub login page at http://localhost:3000. The seeded users are:
@@ -84,10 +86,10 @@ npm workspaces monorepo (`apps/web`, `packages/*`), plus a separate Go module in
   - **disclosures and outputs** (`outputs.ts`: `computeOutputs`);
   - clinical summaries, test cases, translations, publish checks (`publish.ts`), and the POA Summary (`poa.ts`).
   - Most behaviour lives here and is unit-tested with Vitest.
-- **`apps/web`** is today Next.js 16 + Mantine, but every page is a client component.
-  - Pages live in `src/app/**/page.tsx`, and the real UI is in `src/features/{editor,preview,episodes,patient,outputs,questionnaires}`.
-  - `src/lib/api.ts` is a thin fetch wrapper.
-  - **Plan F2 replaces Next.js with React + Vite + React Router**, because Amplify Hosting supports only Next.js ≤ 15. `apps/web/AGENTS.md` (the Next.js agent rules) goes away then.
+- **`apps/web`** is a React single-page app: React + Vite + React Router + Mantine (plan F2 replaced Next.js, because Amplify Hosting supports only Next.js ≤ 15).
+  - `src/routes.tsx` lists every URL and its page (`src/pages/…`); the real UI is in `src/features/{editor,preview,episodes,patient,outputs,questionnaires}`. See `apps/web/AGENTS.md`.
+  - `src/lib/api.ts` is a thin fetch wrapper. Vite proxies `/api/*` to the Go API (`API_URL`).
+  - `make dev` runs `vite`; `npm run build -w apps/web` then `npm run preview -w apps/web` serves the production build on :3000.
 - **`apps/api`** is Go with stdlib `net/http` (Go 1.22+ method/wildcard patterns), pgx v5, **sqlc** (`internal/db` is generated, so don't edit it) and **goose** migrations (`db/migrations`). sqlc and goose run as Go tools.
   - `internal/httpapi/router.go` lists every route. Middleware: `requireUser` (a dev HS256 JWT in an httpOnly cookie) and `requireHospital` (role check per hospital; routes are `/api/h/{hid}/…`).
   - `internal/chapter` holds the content rules. `chapter.ForPatient` strips clinician-only elements, `clinicalOutputs` and `testCases` before patient JSON leaves the server, and `FilterAnswers` drops non-patient answer keys.

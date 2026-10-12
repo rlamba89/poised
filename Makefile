@@ -14,7 +14,7 @@ node_modules: package-lock.json
 .env:
 	cp .env.example .env
 
-# Runs the Go API and Next.js together; Ctrl-C stops both.
+# Runs the Go API and the web app (Vite) together; Ctrl-C stops both.
 dev: node_modules .env
 	@trap 'kill 0' INT TERM EXIT; \
 	(cd $(API) && go run ./cmd/api) & \

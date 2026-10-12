@@ -1,4 +1,3 @@
-"use client";
 // The right-hand column: a Question Set's settings, or a page's cards.
 import { Group, Paper, Select, Switch, Text, Textarea } from "@mantine/core";
 import { chapterConditionOf, pagesOf as pagesIn, setChapterCondition, type ChapterJson } from "@poised/clinical";

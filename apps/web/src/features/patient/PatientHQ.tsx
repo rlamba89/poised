@@ -1,4 +1,3 @@
-"use client";
 // Step 3 of plan-workflow.md: the patient fills in their HQ through their link (no sign-in).
 // Question Sets are listed as tiles; each opens in the patient view, answers save as they go
 // (PX-05), and "Send my answers" submits the whole HQ once every set is complete. Saves carry the
@@ -122,7 +121,7 @@ export default function PatientHQ({ token }: { token: string }) {
   return (
     <Box bg="gray.0" mih="100vh">
       <Box bg="dark.8" c="white" py="sm" px="md">
-        <Text fw={700}>Lifebox</Text>
+        <Text fw={700}>Poised</Text>
       </Box>
       <Container size="md" py="lg">
         {error && <Alert color="red" mb="md" withCloseButton onClose={() => setError("")}>{error}</Alert>}

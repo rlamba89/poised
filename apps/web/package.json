@@ -2,25 +2,31 @@
   "name": "@poised/web",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
-    "build": "next build",
-    "start": "next start -p 3000",
-    "lint": "tsc --noEmit"
+    "dev": "vite",
+    "build": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json && vite build",
+    "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@mantine/core": "9.6.3",
     "@mantine/hooks": "9.6.3",
     "@poised/clinical": "0.0.0",
     "@tabler/icons-react": "3.48.0",
-    "next": "16.3.7",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-router": "8.4.0",
     "survey-core": "3.1.2",
     "survey-react-ui": "3.1.2"
   },
   "devDependencies": {
     "@types/node": "26.6.3",
     "@types/react": "19.3.0",
-    "typescript": "5.9.3"
-  }
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "typescript": "5.9.3",
+    "vite": "8.3.4",
+    "vitest": "4.1.11"
+  },
+  "type": "module"
 }

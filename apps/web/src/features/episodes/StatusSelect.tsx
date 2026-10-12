@@ -1,4 +1,3 @@
-"use client";
 // The "Episode status" dropdown. The first three statuses are set by the workflow; the rest are
 // picked by hand once the HQ review is complete (apps/api/internal/episode.CanSetStatus).
 import { useState } from "react";

@@ -1,4 +1,3 @@
-"use client";
 // The settings that differ by type: text format, number range and unit, date format, list
 // display, ticks, rating scale, grid rows and columns, calculations and bands, uploads and
 // repeating groups (QT-02..12, VAL-02/03, CAL-01/02, STR-04).

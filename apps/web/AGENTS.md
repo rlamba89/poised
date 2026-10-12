@@ -1,9 +1,15 @@
-<!-- BEGIN:nextjs-agent-rules -->
+# apps/web
 
-# This is NOT the Next.js you know
+A plain React single-page app: **React 19 + Vite + React Router + Mantine**. There's no server rendering; everything runs in the browser. It replaced Next.js in plan F2 (session S04, 12 Oct 2026).
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
-
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
-
-<!-- END:nextjs-agent-rules -->
+- **Pages and URLs:** `src/routes.tsx` lists every URL and its page (`src/pages/…`). `src/routes.test.ts` pins each URL to its page, so add a case there when you add a route.
+  - Each page's code is loaded when it's first opened (the route's `lazy`), so the patient's link doesn't download the editor.
+  - The pages are thin: they read the URL's params and render a component from `src/features/…`, where the real UI lives.
+  - A page is keyed by its URL params (e.g. `key={eid}`), so moving to another episode starts afresh.
+- **Errors:** the root route's `ErrorBoundary` (`src/pages/RouteError.tsx`) catches a page that fails to load or crashes. If the page's code couldn't be downloaded (usually after a deploy), it reloads once (`src/lib/chunkError.ts`); otherwise it shows "Something went wrong" with Reload.
+- **Navigation:** `useNavigate`, `useParams`, `useLocation` and `<Link to>` from `react-router`. With Mantine: `<Button component={Link} to={…}>`.
+- **API:** `src/lib/api.ts` calls `/api/…` on the same origin. `vite.config.ts` proxies `/api` to the Go API (`API_URL`, default `http://localhost:8080`), in `vite` (dev) and in `vite preview`. On AWS, Amplify does the same with a rewrite (plan F4).
+- **Types:** `tsconfig.json` is the browser code, with no Node types, so `process.env` in `src/` fails the type check. `tsconfig.node.json` covers `vite.config.ts`, which runs in Node.
+- **Imports:** `@/…` is `src/…`. `@poised/clinical` is the workspace package's TypeScript source, which Vite compiles.
+- **Scripts:** `npm run dev` (port 3000), `build` (type-check, then `dist/`), `preview` (serves `dist/` on port 3000), `lint` (`tsc` on both tsconfigs), `test` (Vitest).
+- **Nothing country-specific in the code** (A-20): the region, domain, time zone, locale and phone country come from config.

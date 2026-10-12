@@ -1,4 +1,3 @@
-"use client";
 // One element on the page canvas: a read-only lookalike of what the patient sees, with a
 // PATIENT / CLINICIAN badge, disclosure chips and the "Displays when" box (STR-09, LOG-06).
 // The selected card's title can be edited in place.

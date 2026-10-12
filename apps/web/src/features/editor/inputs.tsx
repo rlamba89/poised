@@ -1,4 +1,3 @@
-"use client";
 // Inputs that save when they lose focus, so each edit is one undo step (not one per letter).
 import { useEffect, useState } from "react";
 import { NumberInput, Textarea, TextInput, type NumberInputProps, type TextareaProps, type TextInputProps } from "@mantine/core";

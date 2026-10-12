@@ -1,9 +1,8 @@
-"use client";
 // Reusable option lists (OPT-07): save a question's options under a name for the hospital, and
 // copy a saved list into another question. Copies get new IDs, so a question never changes
 // when the list does.
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams } from "react-router";
 import { ActionIcon, Alert, Badge, Button, Group, Modal, Paper, SegmentedControl, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { applySavedOptions, toSavedOptions, type ChapterJson, type ElementJson, type SavedOption } from "@poised/clinical";
@@ -12,7 +11,7 @@ import { api } from "@/lib/api";
 type OptionList = { id: string; name: string; options: SavedOption[]; updatedAt: string; updatedByName: string };
 
 function useOptionLists() {
-  const { hospitalId } = useParams<{ hospitalId: string }>();
+  const { hospitalId } = useParams() as { hospitalId: string };
   const base = `/h/${hospitalId}/option-lists`;
   const [lists, setLists] = useState<OptionList[] | null>(null);
   const [error, setError] = useState("");

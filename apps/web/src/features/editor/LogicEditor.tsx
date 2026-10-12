@@ -1,4 +1,3 @@
-"use client";
 // The Logic tab (LOG-01/02/04/05/07/10/11/12/13, OPT-05). The Builder covers when an element is
 // shown, required or read-only, and when each option is shown; for a page, when it is shown and
 // its skip rules. The Code tab edits the raw SurveyJS expressions for anything more.

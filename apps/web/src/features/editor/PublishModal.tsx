@@ -1,4 +1,3 @@
-"use client";
 // Publishing a draft (LCY-01). Logic problems and failing test cases in any Question Set
 // block it (SGN-04); review and sign-off come later.
 import { useState } from "react";

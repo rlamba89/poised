@@ -1,15 +1,13 @@
-"use client";
-import Link from "next/link";
-import { useParams, usePathname, useRouter } from "next/navigation";
+import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { Alert, AppShell, Button, Group, Select, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
 import { AuthProvider, homePath, useMe } from "@/lib/auth";
 
 function Shell({ children }: { children: React.ReactNode }) {
   const me = useMe();
-  const router = useRouter();
-  const pathname = usePathname();
-  const { hospitalId } = useParams<{ hospitalId: string }>();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const { hospitalId } = useParams() as { hospitalId: string };
   const hospital = me.hospitals.find((h) => h.id === hospitalId);
   const member = !!hospital;
   const authoring = !!hospital?.roles.some((r) => r !== "clinician");
@@ -17,16 +15,16 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   const switchHospital = (id: string | null) => {
     const next = me.hospitals.find((h) => h.id === id);
-    if (next && next.id !== hospitalId) router.push(homePath(next));
+    if (next && next.id !== hospitalId) navigate(homePath(next));
   };
   const nav = (href: string, label: string) => (
-    <Button component={Link} href={href} size="xs" variant={pathname.startsWith(href) ? "light" : "subtle"}>
+    <Button component={Link} to={href} size="xs" variant={pathname.startsWith(href) ? "light" : "subtle"}>
       {label}
     </Button>
   );
   const signOut = async () => {
     await api("/logout", { method: "POST" });
-    router.replace("/login");
+    navigate("/login", { replace: true });
   };
   // The questionnaire editor has its own header (Lifebox layout), so it gets the whole screen.
   const editor = /\/questionnaires\/[^/]+$/.test(pathname);
@@ -39,7 +37,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <AppShell.Header px="md">
         <Group h="100%" justify="space-between">
           <Group>
-            <Title order={4}>Lifebox</Title>
+            <Title order={4}>Poised</Title>
             <Select
               aria-label="Hospital"
               data={me.hospitals.map((h) => ({ value: h.id, label: h.name }))}
@@ -64,10 +62,14 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function HospitalLayout({ children }: { children: React.ReactNode }) {
+// Every /h/:hospitalId/… page. Keyed by hospital, so switching hospitals starts afresh (as under Next.js).
+export function HospitalLayout() {
+  const { hospitalId } = useParams() as { hospitalId: string };
   return (
-    <AuthProvider>
-      <Shell>{children}</Shell>
+    <AuthProvider key={hospitalId}>
+      <Shell>
+        <Outlet />
+      </Shell>
     </AuthProvider>
   );
 }
