@@ -28,7 +28,7 @@ export function GeneralNotes({ path, events, onAdded }: { path: string; events: 
         <Group key={ev.id} gap={8} wrap="nowrap" align="baseline">
           <Text size="sm" c={ev.kind === "event" ? "blue.8" : undefined}>{ev.text}</Text>
           <Text size="xs" c="dimmed">
-            | {ev.userName ?? "Patient"} on {formatDateTime(ev.createdAt)}
+            | {ev.automatic ? "Automatic" : (ev.userName ?? "Patient")} on {formatDateTime(ev.createdAt)}
           </Text>
         </Group>
       ))}

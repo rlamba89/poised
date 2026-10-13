@@ -4,6 +4,7 @@
 // exists only where nothing is really sent: the API serves it only with MESSAGING=capture, which
 // a strict (AWS) deployment must set explicitly (QA only; S17 refuses it elsewhere).
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router";
 import { Alert, Anchor, Badge, Button, Card, Container, Group, Loader, Stack, Text, TextInput, Title } from "@mantine/core";
 import { ApiError, api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
@@ -59,7 +60,10 @@ export function CapturedMessages() {
       <Stack>
         <div>
           <Title order={2}>Captured messages</Title>
-          <Text c="dimmed" size="sm">Texts and emails to patients are stored here instead of being sent (MESSAGING=capture). Newest first.</Text>
+          <Text c="dimmed" size="sm">
+            Texts and emails to patients are stored here instead of being sent (MESSAGING=capture). Newest first. To see reminders,
+            use <Anchor component={Link} to="/qa/jobs">Scheduled jobs</Anchor>.
+          </Text>
         </div>
         <form onSubmit={search}>
           <Group align="flex-end" wrap="nowrap">

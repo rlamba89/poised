@@ -32,12 +32,17 @@ export type Episode = EpisodeRow & {
   nationalIdType: string | null;
   mobile: string;
   email: string;
+  /** The follow-up (S16): when the first invite reached the patient (null: none has), how many reminder days have been dealt with, and when it was marked "not responding". */
+  invitedAt: string | null;
+  remindersSent: number;
+  notRespondingAt: string | null;
 };
 
 /** The patient's working invite (S14), or null before one is sent: when, and whether five wrong dates of birth locked it. */
 export type EpisodeInvite = { sentAt: string; lockedAt: string | null } | null;
 
-export type EpisodeEvent = { id: string; kind: "event" | "comment"; text: string; createdAt: string; userName: string | null };
+/** A General notes entry. userName is null for the patient's and the automatic ones (reminders, "not responding": S16). */
+export type EpisodeEvent = { id: string; kind: "event" | "comment"; text: string; createdAt: string; userName: string | null; automatic: boolean };
 
 /** A search result, or a possible duplicate shown on the New episode page: one of this hospital's patients. */
 export type FoundPatient = {

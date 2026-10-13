@@ -20,6 +20,7 @@ describe("routes", () => {
     ["/s/tok123", "signin-link", { token: "tok123" }],
     ["/v/tok123", "verify-contact", { token: "tok123" }],
     ["/qa/messages", "qa-messages", {}],
+    ["/qa/jobs", "qa-jobs", {}],
     ["/p/tok123", "not-found", {}], // the old link (before S14) is gone
     ["/o/o1/h/h1/questionnaires", "questionnaires", { orgId: "o1", hospitalId: "h1" }],
     ["/o/o1/h/h1/questionnaires/q1", "editor", { orgId: "o1", hospitalId: "h1", qid: "q1" }],

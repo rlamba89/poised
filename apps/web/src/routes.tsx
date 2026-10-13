@@ -36,6 +36,8 @@ export const routes: RouteObject[] = [
       { id: "verify-contact", path: "/v/:token", lazy: async () => ({ Component: (await import("@/pages/VerifyContact")).VerifyContact }) },
       // The captured texts and emails (MESSAGING=capture: local and QA only).
       { id: "qa-messages", path: "/qa/messages", lazy: async () => ({ Component: (await import("@/pages/QaMessages")).QaMessages }) },
+      // The scheduled jobs (S16): run them as of a later time, or move the timer's clock (capture mode only).
+      { id: "qa-jobs", path: "/qa/jobs", lazy: async () => ({ Component: (await import("@/pages/QaJobs")).QaJobs }) },
       {
         // No path of its own, so /o/:orgId/h/:hospitalId alone isn't a page.
         id: "hospital",

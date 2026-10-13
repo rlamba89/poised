@@ -54,6 +54,10 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
             <Anchor component={Link} to={`${base}/patients/${e.patientId}`} inherit>{patientName(e)}</Anchor>
           </Title>
           <StatusBadge status={e.status} />
+          {e.notRespondingAt && !e.patientSubmittedAt && (
+            // EPI-02 (S16): the HQ wasn't sent by the hospital's "not responding" day. The worklist is C3's.
+            <Badge color="red" variant="light" data-testid="not-responding">Not responding</Badge>
+          )}
         </Group>
         <Button component={Link} to={`${path}/poa`} variant="default">POA Summary</Button>
       </Group>
@@ -118,9 +122,16 @@ function Invite({ path, episode, invite, onSent }: { path: string; episode: Epis
           ? `Last sent ${formatDateTime(invite.sentAt)}. The patient opens the link in their text message or email, then confirms their date of birth. The General notes say how it was sent.`
           : "No invite has been sent. The General notes say why."}
       </Text>
+      {episode.invitedAt && (
+        <Text size="sm" c="dimmed" mb="xs" data-testid="reminders">
+          Reminders go on the hospital&apos;s reminder days after the first invite, until the patient starts answering. The General
+          notes list each one.
+        </Text>
+      )}
       {invite?.lockedAt && (
         <Alert color="red" mb="xs" title="The link is locked">
-          The date of birth was entered wrongly 5 times ({formatDateTime(invite.lockedAt)}). Resend the invite to send the patient a new link.
+          The date of birth was entered wrongly 5 times ({formatDateTime(invite.lockedAt)}), so every link sent to the patient for this
+          episode is locked, and no reminders go. Resend the invite to send them a new link.
         </Alert>
       )}
       {result && <Alert color={result.ok ? "green" : "red"} mb="xs">{result.text}</Alert>}
