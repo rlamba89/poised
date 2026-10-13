@@ -48,9 +48,21 @@ export const routes: RouteObject[] = [
             lazy: async () => ({ Component: (await import("@/pages/hospital/Episodes")).Episodes }),
           },
           {
+            // The New episode page (S13): find the patient, or type their details, then the episode.
+            id: "new-episode",
+            path: `${h}/episodes/new`,
+            lazy: async () => ({ Component: (await import("@/pages/hospital/NewEpisode")).NewEpisode }),
+          },
+          {
             id: "episode",
             path: `${h}/episodes/:eid`,
             lazy: async () => ({ Component: (await import("@/pages/hospital/Episode")).Episode }),
+          },
+          {
+            // A patient's page: the trust's record and their episodes at this hospital only (S13).
+            id: "patient-record",
+            path: `${h}/patients/:pid`,
+            lazy: async () => ({ Component: (await import("@/pages/hospital/Patient")).Patient }),
           },
           {
             id: "poa",

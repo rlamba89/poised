@@ -27,22 +27,43 @@ export type Episode = EpisodeRow & {
   patientId: string;
   dateOfBirth: string;
   sex: string;
-  phone: string;
+  nationalId: string | null;
+  nationalIdType: string | null;
+  mobile: string;
   email: string;
 };
 
 export type EpisodeEvent = { id: string; kind: "event" | "comment"; text: string; createdAt: string; userName: string | null };
 
-export type Patient = {
+/** A search result, or a possible duplicate shown on the New episode page: one of this hospital's patients. */
+export type FoundPatient = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  nationalId: string | null;
+  hospitalNumber: string; // their latest here, or ""
+};
+
+/** The trust's record of one of this hospital's patients (GET …/patients/:id). */
+export type PatientRecord = {
   id: string;
   firstName: string;
   lastName: string;
   dateOfBirth: string;
   sex: string;
-  hospitalNumber: string;
-  phone: string;
+  nationalId: string | null;
+  nationalIdType: string | null;
+  mobile: string;
   email: string;
 };
+
+export const SEXES = [
+  { value: "female", label: "Female" },
+  { value: "male", label: "Male" },
+  { value: "other", label: "Other" },
+  { value: "unknown", label: "Not known" },
+];
 
 // Lifebox's Full HQ states with readable keys (apps/api/internal/episode).
 export const STATUS_LABELS: Record<EpisodeStatus, string> = {

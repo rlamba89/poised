@@ -38,7 +38,7 @@ export function switchPath(pathname: string, t: Trust, h: Hospital): string {
   if (pathname.endsWith("/staff") && canManageStaff(t)) return `${base}/staff`;
   if (pathname.endsWith("/settings") && canManageSettings(t)) return `${base}/settings`;
   if (pathname.endsWith("/audit") && canSeeAudit(t)) return `${base}/audit`;
-  if (pathname.includes("/episodes")) return `${base}/episodes`;
+  if (/\/(episodes|patients)/.test(pathname)) return `${base}/episodes`; // a patient's page is under Episodes
   if (/\/(questionnaires|chapters)/.test(pathname)) return `${base}/questionnaires`;
   return homePath(t, h);
 }

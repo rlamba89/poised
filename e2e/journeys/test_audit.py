@@ -62,7 +62,7 @@ def test_an_admin_finds_a_clinicians_actions_filters_them_and_exports_the_csv(pa
     page.get_by_label("Patient").fill(surname)
     show(page, "?user=", "&patient=")
     rows = log_rows(page)
-    for what in ["Saved the clinician's answers", "Opened the answers", "Opened an episode", "Listed episodes", "Created an episode", "Added a patient"]:
+    for what in ["Saved the clinician's answers", "Opened the answers", "Opened an episode", "Listed episodes", "Created an episode"]:
         expect(rows.filter(has_text=what).first).to_be_visible()
     expect(rows.first).to_contain_text("Cara Clinician")
     expect(rows.first).to_contain_text("Hospital A1")
@@ -128,8 +128,8 @@ def test_a_clinician_cant_see_the_audit_screen(page: Page):
 
 def test_another_trusts_admin_sees_nothing_of_trust_a(page: Page, as_user):
     surname = f"Audit {unique()}"
-    cara = as_user("Cara Clinician")
-    cara.call("POST", cara.h("/patients"), {"firstName": "Sam", "lastName": surname, "dateOfBirth": "1980-05-17", "sex": "female"})
+    hq = as_user("Alex Author").published_hq("workflow-hq.json", f"E2E Audit {unique()}")
+    as_user("Cara Clinician").episode(hq, surname)
     open_audit(page, sign_in(page.context, "Max Multi", "Hospital B1"))  # Trust B's admin
     page.get_by_label("Patient").fill(surname)
     show(page, "patient=")
@@ -170,13 +170,16 @@ def test_bad_filters_say_so_and_never_leave_old_rows_on_screen(page: Page):
 
 
 def test_a_list_row_names_ten_patients_and_counts_them_all(page: Page, as_user):
+    hq = as_user("Alex Author").published_hq("workflow-hq.json", f"E2E Audit {unique()}")
     cara = as_user("Cara Clinician")
-    cara.call("GET", cara.h("/patients"))  # lists every patient of the trust (the seed has 3, runs add more)
+    for _ in range(2):  # at least two, even on a fresh database
+        cara.episode(hq, f"List {unique()}")
+    cara.call("GET", cara.h("/episodes"))  # lists every episode at A1 and its patient
     base = sign_in(page.context, "Ada Admin")
     open_audit(page, base)
     pick(page, "Who", "Cara Clinician (cara.clinician@hospital-a.example)")
     show(page, "user=")
-    row = log_rows(page).filter(has_text="Listed patients").first
+    row = log_rows(page).filter(has_text="Listed episodes").first
     expect(row).to_contain_text(re.compile(r"\d+ patients"))
     row.get_by_text(re.compile(r"\d+ patients")).hover()
     expect(page.get_by_role("tooltip")).to_be_visible()

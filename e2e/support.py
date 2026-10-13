@@ -20,6 +20,18 @@ def unique() -> str:
     return f"{datetime.now():%d%m %H%M%S} {secrets.token_hex(2)}"
 
 
+def nhs_number() -> str:
+    """A made-up NHS number with a valid check digit (Modulus 11), in the 999 range, different
+    almost every call, so each run's patients are new to the trust."""
+    while True:
+        body = "999" + "".join(secrets.choice("0123456789") for _ in range(6))
+        check = 11 - sum(int(d) * w for d, w in zip(body, range(10, 1, -1))) % 11
+        if check == 11:
+            check = 0
+        if check != 10:
+            return body + str(check)
+
+
 def sign_in(context: BrowserContext, name: str, hospital: str = "Hospital A1") -> str:
     """Signs a browser context in as a seeded user (dev stub); returns the start of the named
     hospital's URLs, /o/<trust>/h/<hospital> (S08).
@@ -124,19 +136,18 @@ class Api:
 
     # Episodes
 
-    def episode(self, hq: dict, last_name: str) -> dict:
-        """A made-up patient and an episode for them on the published HQ."""
-        patient = {
-            "firstName": "Sam", "lastName": last_name, "dateOfBirth": "1980-05-17", "sex": "female",
-            "hospitalNumber": "E2E", "phone": "",
-        }
-        pid = self.call("POST", self.h("/patients"), patient)["id"]
+    def episode(self, hq: dict, last_name: str, hospital_number: str = "E2E", **patient) -> dict:
+        """An episode on the published HQ for a made-up patient, typed as on the New episode page
+        (S13): Sam <last_name>, born 1980-05-17, unless `patient` says otherwise (e.g.
+        nationalId=…, mobile=…). The trust's record is linked to silently if it matches one."""
+        details = {"firstName": "Sam", "lastName": last_name, "dateOfBirth": "1980-05-17", "sex": "female", **patient}
         eid = self.call("POST", self.h("/episodes"), {
-            "patientId": pid, "versionId": hq["versionId"], "procedure": "Knee replacement", "anaesthetic": "General",
-            "consultant": "Dr Example",
+            "patient": details, "versionId": hq["versionId"], "hospitalNumber": hospital_number,
+            "procedure": "Knee replacement", "anaesthetic": "General", "consultant": "Dr Example",
         })["id"]
         e = self.call("GET", self.h(f"/episodes/{eid}"))["episode"]
-        return {"id": eid, "token": e["patientToken"], "name": f"Sam {last_name}", "hq": hq}
+        return {"id": eid, "token": e["patientToken"], "name": f"{e['firstName']} {e['lastName']}", "hq": hq,
+                "patientId": e["patientId"]}
 
     def validate(self, episode: dict, set_name: str, answers: dict) -> None:
         """Saves the clinician's answers for one Question Set and validates it."""

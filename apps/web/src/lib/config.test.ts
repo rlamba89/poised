@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadConfig, locale, resetConfigForTests } from "./config";
+import { loadConfig, locale, nationalIdLabel, resetConfigForTests } from "./config";
 
 function serve(status: number, body: unknown) {
   const fetch = vi.fn(async () => new Response(JSON.stringify(body), { status }));
@@ -29,5 +29,12 @@ describe("loadConfig", () => {
     serve(503, { error: "The database is not reachable." });
     await expect(loadConfig()).rejects.toThrow("The database is not reachable.");
     expect(locale()).toBeUndefined();
+  });
+
+  it("names the deployment's patient identifier (S13), with a neutral name until it's loaded", async () => {
+    expect(nationalIdLabel()).toBe("National ID");
+    serve(200, { locale: "en-CA", timeZone: "America/Toronto", nationalId: { type: "nhs", label: "NHS number" } });
+    await loadConfig();
+    expect(nationalIdLabel()).toBe("NHS number");
   });
 });

@@ -28,7 +28,7 @@ type Row = {
   actionLabel: string;
   route: string;
   status: number;
-  patients: { id: string; name: string; hospitalNumber: string }[]; // the first ten
+  patients: { id: string; name: string; nationalId: string }[]; // the first ten
   patientCount: number; // every patient the request touched
   episodeIds: string[];
 };
@@ -238,7 +238,7 @@ export function AuditPage() {
 /** One patient by name, or "12 patients" for a list screen, with the first ten names on hover. */
 function Patients({ patients, count }: { patients: Row["patients"]; count: number }) {
   if (count === 0) return <Text size="sm" c="dimmed">—</Text>;
-  const label = (p: Row["patients"][number]) => (p.hospitalNumber ? `${p.name} (${p.hospitalNumber})` : p.name);
+  const label = (p: Row["patients"][number]) => (p.nationalId ? `${p.name} (${p.nationalId})` : p.name);
   if (count === 1 && patients.length === 1) return <Text size="sm">{label(patients[0])}</Text>;
   return (
     <Tooltip label={namesOf(patients.map(label), count)} multiline w={320}>

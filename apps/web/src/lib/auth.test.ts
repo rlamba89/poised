@@ -85,6 +85,8 @@ describe("switching hospital from the header", () => {
   const adminA: Trust = { ...trustA, role: "admin" };
   it("keeps the section: Episodes stays Episodes, the editor goes to Questionnaires", () => {
     expect(switchPath("/o/ta/h/a1/episodes/e1", trustB, trustB.hospitals[0])).toBe("/o/tb/h/b1/episodes");
+    // A patient's page is under Episodes: another hospital gets its own list, never this patient (S13).
+    expect(switchPath("/o/ta/h/a1/patients/p1", adminA, adminA.hospitals[1])).toBe("/o/ta/h/a2/episodes");
     expect(switchPath("/o/ta/h/a1/questionnaires/q1", adminA, adminA.hospitals[1])).toBe("/o/ta/h/a2/questionnaires");
   });
   it("keeps Staff and Settings where the user manages the hospital's trust", () => {

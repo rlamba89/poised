@@ -27,8 +27,9 @@ function Shell({ children }: { children: React.ReactNode }) {
       if (h && h.id !== hospitalId) navigate(switchPath(pathname, t, h));
     }
   };
-  const nav = (href: string, label: string) => (
-    <Button component={Link} to={href} size="xs" variant={pathname.startsWith(href) ? "light" : "subtle"}>
+  // `also`: other sections highlighted as this one (a patient's page is under Episodes).
+  const nav = (href: string, label: string, also: string[] = []) => (
+    <Button component={Link} to={href} size="xs" variant={[href, ...also].some((p) => pathname.startsWith(p)) ? "light" : "subtle"}>
       {label}
     </Button>
   );
@@ -65,7 +66,7 @@ function Shell({ children }: { children: React.ReactNode }) {
               w={{ base: 150, sm: 200 }}
             />
             {here && nav(`${here.base}/questionnaires`, "Questionnaires")}
-            {here && nav(`${here.base}/episodes`, "Episodes")}
+            {here && nav(`${here.base}/episodes`, "Episodes", [`${here.base}/patients`])}
             {here && canManageStaff(here.trust) && nav(`${here.base}/staff`, "Staff")}
             {here && canManageSettings(here.trust) && nav(`${here.base}/settings`, "Settings")}
             {here && canSeeAudit(here.trust) && nav(`${here.base}/audit`, "Audit")}

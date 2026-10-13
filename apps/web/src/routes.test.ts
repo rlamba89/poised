@@ -18,7 +18,9 @@ describe("routes", () => {
     ["/o/o1/h/h1/questionnaires/q1", "editor", { orgId: "o1", hospitalId: "h1", qid: "q1" }],
     ["/o/o1/h/h1/chapters/c1/preview", "preview", { orgId: "o1", hospitalId: "h1", cid: "c1" }],
     ["/o/o1/h/h1/episodes", "episodes", { orgId: "o1", hospitalId: "h1" }],
+    ["/o/o1/h/h1/episodes/new", "new-episode", { orgId: "o1", hospitalId: "h1" }],
     ["/o/o1/h/h1/episodes/e1", "episode", { orgId: "o1", hospitalId: "h1", eid: "e1" }],
+    ["/o/o1/h/h1/patients/p1", "patient-record", { orgId: "o1", hospitalId: "h1", pid: "p1" }],
     ["/o/o1/h/h1/episodes/e1/poa", "poa", { orgId: "o1", hospitalId: "h1", eid: "e1" }],
     ["/o/o1/h/h1/episodes/e1/sets/c1", "validate", { orgId: "o1", hospitalId: "h1", eid: "e1", cid: "c1" }],
     ["/o/o1/h/h1/staff", "staff", { orgId: "o1", hospitalId: "h1" }],
@@ -38,7 +40,9 @@ describe("routes", () => {
     "/o/o1/h/h1/questionnaires/q1",
     "/o/o1/h/h1/chapters/c1/preview",
     "/o/o1/h/h1/episodes",
+    "/o/o1/h/h1/episodes/new",
     "/o/o1/h/h1/episodes/e1",
+    "/o/o1/h/h1/patients/p1",
     "/o/o1/h/h1/episodes/e1/poa",
     "/o/o1/h/h1/episodes/e1/sets/c1",
     "/o/o1/h/h1/staff",
@@ -68,7 +72,7 @@ describe("routes", () => {
     expect(matches.some((m) => m.route.id === "hospital")).toBe(false);
   });
 
-  it.each(["/nope", "/admin/nope", "/admin/trusts", "/h/h1", "/o/o1/h/h1/nope", "/o/o1/h/h1/episodes/e1/nope", "/p", "/login/extra"])(
+  it.each(["/nope", "/admin/nope", "/admin/trusts", "/h/h1", "/o/o1/h/h1/nope", "/o/o1/h/h1/episodes/e1/nope", "/o/o1/h/h1/patients", "/p", "/login/extra"])(
     "%s is not found, as it was under Next.js",
     (path) => {
       expect(page(path).id).toBe("not-found");

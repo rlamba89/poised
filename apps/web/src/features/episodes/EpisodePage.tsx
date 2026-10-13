@@ -9,6 +9,7 @@ import { IconArrowLeft, IconCheck, IconCopy } from "@tabler/icons-react";
 import { ageFrom, patientVariables, shownSets } from "@poised/clinical";
 import { AUDIENCE_LABELS } from "@/features/chapters/types";
 import { api } from "@/lib/api";
+import { nationalIdLabel } from "@/lib/config";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { StatusBadge } from "./EpisodeList";
 import { GeneralNotes } from "./GeneralNotes";
@@ -49,7 +50,9 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
       </Anchor>
       <Group justify="space-between">
         <Group gap="sm">
-          <Title order={3}>{patientName(e)}</Title>
+          <Title order={3}>
+            <Anchor component={Link} to={`${base}/patients/${e.patientId}`} inherit>{patientName(e)}</Anchor>
+          </Title>
           <StatusBadge status={e.status} />
         </Group>
         <Button component={Link} to={`${path}/poa`} variant="default">POA Summary</Button>
@@ -59,11 +62,13 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
           <Detail label="Hospital number" value={e.hospitalNumber} />
           <Detail label="Procedure" value={e.procedure} />
-          <Detail label="Date of birth" value={`${formatDate(e.dateOfBirth)} (age ${ageFrom(e.dateOfBirth)})`} />
+          <Detail label={nationalIdLabel()} value={e.nationalId ?? ""} />
           <Detail label="Anaesthetic" value={e.anaesthetic} />
-          <Detail label="Phone number" value={e.phone} />
+          <Detail label="Date of birth" value={`${formatDate(e.dateOfBirth)} (age ${ageFrom(e.dateOfBirth)})`} />
           <Detail label="Consultant" value={e.consultant} />
+          <Detail label="Mobile" value={e.mobile} />
           <Detail label="Health questionnaire" value={`${e.questionnaireName} v${e.versionNo}`} />
+          <Detail label="Email" value={e.email} />
           <Detail label="Created" value={formatDateTime(e.createdAt)} />
         </SimpleGrid>
       </Card>

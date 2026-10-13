@@ -10,6 +10,7 @@ import {
 import { IconPrinter } from "@tabler/icons-react";
 import { ageFrom, patientVariables, poaSummary, reportedBmi, type PoaCapture, type PoaSet } from "@poised/clinical";
 import { api } from "@/lib/api";
+import { nationalIdLabel } from "@/lib/config";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { StatusBadge } from "./EpisodeList";
 import { useEpisode } from "./EpisodePage";
@@ -40,7 +41,8 @@ export default function PoaSummary({ base, episodeId }: { base: string; episodeI
         <Anchor component={Link} to={path} fw={700} underline="always">{patientName(e)}</Anchor>
         <StatusBadge status={e.status} />
         <Text size="sm">Hospital number: <b>{e.hospitalNumber || "—"}</b></Text>
-        <Text size="sm">Phone number: <b>{e.phone || "—"}</b></Text>
+        <Text size="sm">{nationalIdLabel()}: <b>{e.nationalId || "—"}</b></Text>
+        <Text size="sm">Mobile: <b>{e.mobile || "—"}</b></Text>
       </Group>
       <Group justify="space-between">
         <Title order={2}>POA Summary</Title>
@@ -91,9 +93,10 @@ function Summary({ tab, episode: e, events, hq, path, onChanged }: SummaryProps)
         <Stack gap={6}>
           <Detail label="Patient name" value={patientName(e)} />
           <Detail label="Hospital number" value={e.hospitalNumber} />
+          <Detail label={nationalIdLabel()} value={e.nationalId ?? ""} />
           <Detail label="Date of birth" value={formatDate(e.dateOfBirth)} />
           <Detail label="Age" value={String(ageFrom(e.dateOfBirth))} />
-          <Detail label="Phone number" value={e.phone} />
+          <Detail label="Mobile" value={e.mobile} />
           <Detail label="Consultant" value={e.consultant} />
         </Stack>
         <Stack gap={6}>
