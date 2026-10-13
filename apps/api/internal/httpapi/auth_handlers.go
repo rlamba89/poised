@@ -23,7 +23,8 @@ func (s *server) devUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, users)
 }
 
-// devLogin signs in as a seeded user and sets the token cookie. Replaced by SSO later.
+// devLogin signs in as any user (seeded or invited) and sets the token cookie. Cognito replaces
+// it outside local development (S12).
 func (s *server) devLogin(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		UserID uuid.UUID `json:"userId"`
@@ -38,6 +39,14 @@ func (s *server) devLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		serverError(w, "get user", err)
+		return
+	}
+	// An invited account's first sign-in must come before its invite expires (STF-01).
+	if err := s.checkInvites(r.Context(), u.ID); errors.Is(err, errInviteExpired) {
+		writeError(w, http.StatusForbidden, inviteExpired)
+		return
+	} else if err != nil {
+		serverError(w, "check invites", err)
 		return
 	}
 	token, err := auth.Issue(s.secret, auth.User{ID: u.ID, Name: u.Name}, time.Now())

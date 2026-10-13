@@ -8,26 +8,38 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/rlamba89/poised/apps/api/internal/clock"
+	"github.com/rlamba89/poised/apps/api/internal/cognito"
 	"github.com/rlamba89/poised/apps/api/internal/config"
 	"github.com/rlamba89/poised/apps/api/internal/db"
 )
 
-// Deps is what the routers need. Later plans add the clock, SMS, email, S3, Cognito and
-// evaluate; tests pass fakes.
+// Deps is what the routers need. Later plans add SMS, email, S3 and evaluate; tests pass fakes.
 type Deps struct {
-	Pool   *pgxpool.Pool
-	Config config.Config // the token secret, DEV_LOGIN and the per-country values
+	Pool    *pgxpool.Pool
+	Config  config.Config  // the token secret, DEV_LOGIN and the per-country values
+	Cognito cognito.Client // staff accounts and their invitations (S09; the real one in S12)
+	Clock   clock.Clock    // nil: the system clock
 }
 
 type server struct {
-	pool   *pgxpool.Pool // for transactions; queries inside them use db.New(tx)
-	q      db.Querier
-	secret []byte
-	cfg    config.Config
+	pool    *pgxpool.Pool // for transactions; queries inside them use db.New(tx)
+	q       db.Querier
+	secret  []byte
+	cfg     config.Config
+	cognito cognito.Client
+	clock   clock.Clock
 }
 
 func newServer(d Deps) *server {
-	return &server{pool: d.Pool, q: db.New(d.Pool), secret: []byte(d.Config.TokenSecret), cfg: d.Config}
+	if d.Cognito == nil {
+		panic("httpapi: Deps.Cognito is not set") // a missing one would lose every invitation
+	}
+	if d.Clock == nil {
+		d.Clock = clock.Real{}
+	}
+	return &server{pool: d.Pool, q: db.New(d.Pool), secret: []byte(d.Config.TokenSecret), cfg: d.Config,
+		cognito: d.Cognito, clock: d.Clock}
 }
 
 // NewStaffRouter serves the staff API: /api/o/…, /api/me, /api/codes, /api/categories,
@@ -70,6 +82,14 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/me", user(s.me))
 	mux.HandleFunc("GET /api/codes", user(s.searchCodes))
 	mux.HandleFunc("GET /api/categories", user(s.listCategories))
+
+	// The trust's staff (S09): whole-trust admins only.
+	mux.HandleFunc("GET /api/o/{oid}/staff", org(s.listStaff))
+	mux.HandleFunc("POST /api/o/{oid}/staff/invites", org(s.inviteStaff))
+	mux.HandleFunc("DELETE /api/o/{oid}/staff/{uid}", org(s.removeStaff)) // all their access to the trust
+	// One membership: {scope} is "trust" (the whole trust) or a hospital id.
+	mux.HandleFunc("PATCH /api/o/{oid}/staff/{uid}/access/{scope}", org(s.updateStaffAccess))
+	mux.HandleFunc("DELETE /api/o/{oid}/staff/{uid}/access/{scope}", org(s.removeStaffAccess))
 
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/questionnaires", hosp(s.listQuestionnaires))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires", hosp(s.createQuestionnaire))

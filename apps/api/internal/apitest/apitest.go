@@ -33,6 +33,8 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
+	"github.com/rlamba89/poised/apps/api/internal/clock"
+	"github.com/rlamba89/poised/apps/api/internal/cognito"
 	"github.com/rlamba89/poised/apps/api/internal/config"
 	"github.com/rlamba89/poised/apps/api/internal/httpapi"
 )
@@ -159,14 +161,16 @@ func moduleDir() (string, error) {
 // Client sends requests to a test's own API server. New returns one that isn't signed in;
 // LoginAs returns another that is.
 type Client struct {
-	DB   *pgxpool.Pool // the test's database, for asserting rows with plain SQL
-	base string
-	http *http.Client
+	DB      *pgxpool.Pool     // the test's database, for asserting rows with plain SQL
+	Clock   *clock.Fake       // the server's clock: move it with Clock.Add
+	Cognito *cognito.Recorder // the server's Cognito: what it was asked to do
+	base    string
+	http    *http.Client
 }
 
 // New gives the test its own database, copied from the migrated template, and a real
-// router (httpapi.NewRouter, with DEV_LOGIN on) serving it over HTTP. Both are removed when
-// the test ends.
+// router (httpapi.NewRouter, with DEV_LOGIN on) serving it over HTTP, with a fake clock and a
+// recording Cognito. Both are removed when the test ends.
 func New(t *testing.T) (*Client, *Fixtures) {
 	t.Helper()
 	return NewWith(t, Options{})
@@ -216,7 +220,8 @@ func NewWith(t *testing.T, opts Options) (*Client, *Fixtures) {
 	if err != nil {
 		t.Fatalf("apitest: connect to %s: %v", name, err)
 	}
-	srv := httptest.NewServer(router(httpapi.Deps{Pool: pool, Config: cfg}))
+	clk, cog := &clock.Fake{}, &cognito.Recorder{}
+	srv := httptest.NewServer(router(httpapi.Deps{Pool: pool, Config: cfg, Cognito: cog, Clock: clk}))
 	t.Cleanup(func() {
 		srv.Close()
 		pool.Close()
@@ -224,7 +229,7 @@ func NewWith(t *testing.T, opts Options) (*Client, *Fixtures) {
 			t.Errorf("apitest: drop %s: %v", name, err)
 		}
 	})
-	return &Client{DB: pool, base: srv.URL, http: srv.Client()}, &Fixtures{db: pool}
+	return &Client{DB: pool, Clock: clk, Cognito: cog, base: srv.URL, http: srv.Client()}, &Fixtures{db: pool}
 }
 
 // LoginAs signs in through the real POST /api/dev/login and returns a client that keeps
@@ -235,7 +240,7 @@ func (c *Client) LoginAs(t *testing.T, u User) *Client {
 	if err != nil {
 		t.Fatal(err)
 	}
-	signed := &Client{DB: c.DB, base: c.base, http: &http.Client{Transport: c.http.Transport, Jar: jar}}
+	signed := &Client{DB: c.DB, Clock: c.Clock, Cognito: c.Cognito, base: c.base, http: &http.Client{Transport: c.http.Transport, Jar: jar}}
 	if r := signed.Do("POST", "/api/dev/login", map[string]any{"userId": u.ID}); r.Code != http.StatusNoContent {
 		t.Fatalf("apitest: sign in as %s: %s", u.Name, r)
 	}
@@ -274,14 +279,18 @@ func (c *Client) Do(method, path string, body any) *Resp {
 	if err != nil {
 		return &Resp{Code: res.StatusCode, Body: []byte("apitest: read body: " + err.Error())}
 	}
-	return &Resp{Code: res.StatusCode, Body: b}
+	return &Resp{Code: res.StatusCode, Body: b, headers: res.Header}
 }
 
 // Resp is a response's status code and raw body.
 type Resp struct {
-	Code int
-	Body []byte
+	Code    int
+	Body    []byte
+	headers http.Header
 }
+
+// Header is the response's header called name, or "".
+func (r *Resp) Header(name string) string { return r.headers.Get(name) }
 
 func (r *Resp) String() string { return fmt.Sprintf("%d %s", r.Code, bytes.TrimSpace(r.Body)) }
 

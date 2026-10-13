@@ -154,6 +154,18 @@ type QuestionnaireVersion struct {
 	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
+type StaffInvite struct {
+	ID         uuid.UUID          `json:"id"`
+	OrgID      uuid.UUID          `json:"orgId"`
+	HospitalID uuid.NullUUID      `json:"hospitalId"`
+	UserID     uuid.UUID          `json:"userId"`
+	Role       string             `json:"role"`
+	InvitedBy  uuid.NullUUID      `json:"invitedBy"`
+	CreatedAt  time.Time          `json:"createdAt"`
+	ExpiresAt  time.Time          `json:"expiresAt"`
+	AcceptedAt pgtype.Timestamptz `json:"acceptedAt"`
+}
+
 type User struct {
 	ID         uuid.UUID `json:"id"`
 	Name       string    `json:"name"`

@@ -11,8 +11,14 @@ import (
 )
 
 type Querier interface {
+	AcceptInvites(ctx context.Context, arg AcceptInvitesParams) error
 	AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams) error
+	AddMembership(ctx context.Context, arg AddMembershipParams) error
+	// Whether the account has an invite not yet accepted: it has never signed in.
+	AwaitingFirstSignIn(ctx context.Context, userID uuid.UUID) (bool, error)
 	CompleteReview(ctx context.Context, arg CompleteReviewParams) (int64, error)
+	// The trust's whole-trust admins other than this user.
+	CountOtherTrustAdmins(ctx context.Context, arg CountOtherTrustAdminsParams) (int64, error)
 	CreateChapter(ctx context.Context, arg CreateChapterParams) (uuid.UUID, error)
 	// Creates nothing (no row) unless the patient is the trust's and the version is published and
 	// one this hospital uses.
@@ -26,10 +32,15 @@ type Querier interface {
 	CreatePatient(ctx context.Context, arg CreatePatientParams) (uuid.UUID, error)
 	// A new questionnaire is the trust's, for all its hospitals.
 	CreateQuestionnaire(ctx context.Context, arg CreateQuestionnaireParams) (uuid.UUID, error)
+	CreateStaffInvite(ctx context.Context, arg CreateStaffInviteParams) error
+	// Nothing is returned when the email is already taken (by an invite running at the same time).
+	CreateUserIfNew(ctx context.Context, arg CreateUserIfNewParams) ([]uuid.UUID, error)
 	CreateVersion(ctx context.Context, arg CreateVersionParams) (uuid.UUID, error)
 	DeleteChapter(ctx context.Context, id uuid.UUID) error
+	DeleteMembership(ctx context.Context, arg DeleteMembershipParams) error
 	DeleteOptionList(ctx context.Context, arg DeleteOptionListParams) (int64, error)
 	DeleteQuestionnaire(ctx context.Context, arg DeleteQuestionnaireParams) error
+	DeleteUserOrgMemberships(ctx context.Context, arg DeleteUserOrgMembershipsParams) error
 	DraftNameExists(ctx context.Context, arg DraftNameExistsParams) (bool, error)
 	GetChapter(ctx context.Context, arg GetChapterParams) (GetChapterRow, error)
 	GetChapterMeta(ctx context.Context, arg GetChapterMetaParams) (GetChapterMetaRow, error)
@@ -39,9 +50,15 @@ type Querier interface {
 	// Whose the list is: NULL for the trust's, else the hospital whose own it is.
 	GetOptionListOwner(ctx context.Context, arg GetOptionListOwnerParams) (uuid.NullUUID, error)
 	GetQuestionnaire(ctx context.Context, arg GetQuestionnaireParams) (GetQuestionnaireRow, error)
+	// One person's rows of ListStaff.
+	GetStaffMember(ctx context.Context, arg GetStaffMemberParams) ([]GetStaffMemberRow, error)
 	GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error)
+	GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error)
 	GetVersionChapter(ctx context.Context, arg GetVersionChapterParams) (GetVersionChapterRow, error)
 	HasNonDraftVersion(ctx context.Context, questionnaireID uuid.UUID) (bool, error)
+	HospitalInOrg(ctx context.Context, arg HospitalInOrgParams) (bool, error)
+	// At sign-in: how many invites wait for the first sign-in, and how many of those are still open.
+	InviteState(ctx context.Context, arg InviteStateParams) (InviteStateRow, error)
 	IsPlatformAdmin(ctx context.Context, userID uuid.UUID) (bool, error)
 	ListCategories(ctx context.Context) ([]Category, error)
 	// Every chapter lookup joins up to the questionnaire, so it is scoped to the trust and hospital.
@@ -67,10 +84,21 @@ type Querier interface {
 	// Questionnaires belong to a trust (org_id). hospital_id NULL means every hospital of the trust
 	// uses it; otherwise only that hospital sees it. Each lookup is scoped to the trust and hospital.
 	ListQuestionnaires(ctx context.Context, arg ListQuestionnairesParams) ([]ListQuestionnairesRow, error)
+	// Everyone with access to the trust, one row per membership (a person may have several: the whole
+	// trust and/or some hospitals), each person's whole-trust one first, then by hospital name. invite_expires_at is set while the
+	// person's account is waiting for its first sign-in: the latest deadline of their open invites
+	// (the join keeps only the latest of them).
+	ListStaff(ctx context.Context, orgID uuid.UUID) ([]ListStaffRow, error)
 	ListUsers(ctx context.Context) ([]ListUsersRow, error)
 	ListVersionChapters(ctx context.Context, versionID uuid.UUID) ([]ListVersionChaptersRow, error)
 	// Serialises creates in one trust so the unique-draft-name check can't race.
 	LockOrgQuestionnaires(ctx context.Context, orgID uuid.UUID) error
+	// Staff, invites and memberships (plan C1, session S09).
+	// Serialises staff changes in one trust, so two admins can't both remove the last admin, or
+	// give one person two memberships.
+	LockOrgStaff(ctx context.Context, orgID uuid.UUID) error
+	// The user's role in one membership: the whole trust (hospital_id NULL) or one hospital.
+	MembershipRole(ctx context.Context, arg MembershipRoleParams) (string, error)
 	Ping(ctx context.Context) (int32, error)
 	// Publishes the draft and retires the version published before it (LCY-01), in one statement.
 	// Returns 0 when the version is no longer a draft.
@@ -104,7 +132,10 @@ type Querier interface {
 	// Changes nothing if the status is no longer `loaded_status`, the one the caller read: the
 	// workflow (the patient's submit, completing the review) may have moved it on since.
 	UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (int64, error)
+	// Moves one membership to another scope and/or role.
+	UpdateMembership(ctx context.Context, arg UpdateMembershipParams) error
 	UpdateOptionList(ctx context.Context, arg UpdateOptionListParams) (int64, error)
+	UserOrgMemberships(ctx context.Context, arg UserOrgMembershipsParams) ([]UserOrgMembershipsRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

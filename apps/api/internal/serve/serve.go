@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/rlamba89/poised/apps/api/internal/cognito"
 	"github.com/rlamba89/poised/apps/api/internal/config"
 	"github.com/rlamba89/poised/apps/api/internal/httpapi"
 )
@@ -29,7 +30,7 @@ func Main(name string, router func(httpapi.Deps) http.Handler) {
 	}
 	defer pool.Close()
 
-	srv := &http.Server{Addr: cfg.Addr, Handler: router(httpapi.Deps{Pool: pool, Config: cfg})}
+	srv := &http.Server{Addr: cfg.Addr, Handler: router(httpapi.Deps{Pool: pool, Config: cfg, Cognito: cognito.Local{}})}
 	devLogin := "off"
 	if cfg.DevLogin {
 		devLogin = "on"

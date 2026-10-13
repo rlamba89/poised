@@ -46,6 +46,8 @@ func TestPatientRouter(t *testing.T) {
 		p.Do("GET", at(h, "/episodes"), nil).Want(t, http.StatusNotFound)
 		p.Do("GET", at(h, "/questionnaires"), nil).Want(t, http.StatusNotFound)
 		p.Do("GET", "/api/o/"+h.Org.String()+"/episodes", nil).Want(t, http.StatusNotFound)
+		p.Do("GET", "/api/o/"+h.Org.String()+"/staff", nil).Want(t, http.StatusNotFound)
+		p.Do("POST", "/api/o/"+h.Org.String()+"/staff/invites", map[string]any{"email": "a@b.example"}).Want(t, http.StatusNotFound)
 	})
 }
 
@@ -63,6 +65,7 @@ func TestStaffRouter(t *testing.T) {
 		signed.Do("GET", at(h, "/episodes"), nil).Want(t, http.StatusOK)
 		signed.Do("GET", at(h, "/questionnaires"), nil).Want(t, http.StatusOK)
 		signed.Do("GET", "/api/o/"+h.Org.String()+"/episodes", nil).Want(t, http.StatusOK)
+		signed.Do("GET", "/api/o/"+h.Org.String()+"/staff", nil).Want(t, http.StatusForbidden) // served; Alex isn't an admin
 	})
 	t.Run("serves health and config", func(t *testing.T) {
 		s.Do("GET", "/api/health", nil).Want(t, http.StatusOK)
