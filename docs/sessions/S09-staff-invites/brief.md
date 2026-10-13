@@ -2,6 +2,8 @@
 
 **Plan:** C1 ([c1-trusts-staff.md](../../plans/c1-trusts-staff.md)), part 2 of 5.
 **Requirements:** STF-01, STF-02, STF-04.
+*Local phase (12 Oct): runs on Rahul's Mac only. No AWS, and no real email or SMS.*
+
 **Depends on:** S08 verified.
 
 **Ask Rahul first:** nothing new. The plan's choices stand: invites expire after 7 days, and the scope is the whole trust or one hospital.

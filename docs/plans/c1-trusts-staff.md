@@ -73,7 +73,7 @@
 
 ## Status
 
-**In progress: S08 (trusts, hospitals, memberships, role ladder, hospital picker) verified 13 Oct 2026 (test report 4 all passed; [verify.md](../sessions/S08-trusts-permissions/verify.md)).** S09–S11 (local) and S12 (Cognito, AWS phase) are next.
+**In progress: S08 (trusts, hospitals, memberships, role ladder, hospital picker) verified 13 Oct 2026 (test report 4 all passed; [verify.md](../sessions/S08-trusts-permissions/verify.md)). S09 (staff list, invites, change role, remove access) verified 13 Oct (test report 2 all passed; [verify.md](../sessions/S09-staff-invites/verify.md), [build notes](../sessions/S09-staff-invites/build-notes.md)).** S10–S11 (local) and S12 (Cognito, AWS phase) are next.
 
 Differences from the plan so far (S08; details in [decisions.md](../decisions.md) §2 and the [S08 build notes](../sessions/S08-trusts-permissions/build-notes.md)):
 - Hospital routes are `/api/o/{oid}/h/{hid}/…`; the only trust route so far is `GET /api/o/{oid}/episodes` ("All hospitals").
@@ -81,3 +81,9 @@ Differences from the plan so far (S08; details in [decisions.md](../decisions.md
 - `hospitals.timezone` NULL means the deployment's default.
 - Patient records moved to the trust in S08 (Rahul's answer, 12 Oct), ahead of C2.
 - The trust's questionnaires and option lists can be changed only by whole-trust super clinicians and admins (Rahul, 12 Oct).
+
+Differences and choices in S09 (details in [decisions.md](../decisions.md) §2, 13 Oct "S09"):
+- Only **whole-trust admins** manage staff; an admin of one hospital can't.
+- A person can hold **several memberships in one trust** (Rahul, 13 Oct). Each is changed or removed at `PATCH/DELETE …/staff/{uid}/access/{scope}` (`scope` = `trust` or a hospital id); `DELETE …/staff/{uid}` removes them all. The plan's `PATCH …/staff/{uid}` became the per-membership PATCH.
+- The membership is added when the invite is made. The 7-day expiry is the deadline for a **new account's first sign-in** (as Cognito's temporary password); after it, sign-in is refused until the admin resends the invite.
+- The last whole-trust admin can't be removed or demoted. Emails are unique whatever their case.

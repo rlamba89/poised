@@ -30,6 +30,28 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 13 Oct 2026: S09, staff invites, roles and removing access (builder, automatic run; verified 13 Oct)
+
+- **Only a trust's whole-trust admins manage its staff** (`GET/POST/PATCH/DELETE /api/o/{oid}/staff…`). An admin of one hospital gets 403, like a clinician or super clinician; non-members get 404. **Reason:** Rahul's S08 rule that only whole-trust staff change trust-level things, and these are trust routes. The web app shows **Staff** only to them (`canManageStaff` in `apps/web/src/lib/auth.tsx`).
+- ~~**One membership per person per trust.**~~ *Superseded 13 Oct by Rahul's answer below.*
+- **A person can hold several memberships in one trust** (Rahul, 13 Oct, S09 answers; STF-02 "a role in each"): the whole trust and/or some of its hospitals, each with its own role, e.g. clinician at A1 and A2 but not A3.
+  - **Routes:** `PATCH/DELETE /api/o/{oid}/staff/{uid}/access/{scope}` change or remove **one** membership, where `{scope}` is `trust` or a hospital id (PATCH body `{hospitalId|null, role}`, both required: it can move the membership and/or change its role; moving onto a scope they already hold is 409). `DELETE /api/o/{oid}/staff/{uid}` removes all of their memberships in that trust (the account and invite rows stay). The person-level PATCH was dropped.
+  - **Inviting** someone already in the trust to a scope they don't hold **adds** that membership; to a scope they hold is 409 ("already has that access") unless their account is still waiting for its first sign-in, when it resends with that role.
+  - **`GET …/staff`** returns one row per person with `access: [{hospitalId, hospitalName, role}]`, the whole trust first. The Staff screen shows each access on its own line with **Change** and **Remove**, and per person **Add access**, **Resend invite** and **Remove from trust**.
+- **The membership is added when the invite is made. The 7-day expiry is the deadline for a new account's first sign-in**, matching Cognito's temporary password (AdminCreateUser, 7 days, RESEND when expired).
+  - An account is "waiting" while it has an invite with no `accepted_at`. Its first sign-in accepts them all, unless every one has expired: then sign-in is **403 "Your invitation has expired…"** (the dev login now; S12's Cognito sign-in must call the same `checkInvites`).
+  - Inviting an account that has signed in or was seeded only adds the membership (STF-02); its invite row is accepted at once and Cognito isn't called.
+  - Inviting a waiting account again (from this trust or another) adds that access here (or takes the new role where they already hold it), keeps their other access, opens a new 7-day invite and calls `ResendInvite`: the Staff screen's **Resend invite**.
+- **The last whole-trust admin can't be removed, demoted or narrowed to one hospital** (409). **Reason:** otherwise a trust could lock itself out until the superadmin (S10) steps in.
+- **Emails are unique whatever their case** (migration 00007: `users_email_key` is a unique index on `lower(email)`); new accounts are stored in lower case. **Reason:** STF-02 (never a second account).
+- **The invite takes an optional name;** without one, the email is the account's name until S12 knows better.
+- **`httpapi.Deps` gained `Cognito` (`internal/cognito.Client`: `CreateUser`, `ResendInvite`) and `Clock` (`internal/clock`).** `cognito.Local` (the local servers) only logs; `cognito.Recorder` and `clock.Fake` are the test fakes, on every `apitest` client (`c.Cognito`, `c.Clock`). `Cognito` is required (a missing one panics at start-up); a nil `Clock` is the system clock. The session token's expiry still uses the system clock.
+- **The Cognito call is the last step inside the invite's transaction,** so its failure rolls everything back (500).
+- **Testing two signed-in people in one browser: `http://tester.localhost:3000`** reaches the same dev server and keeps its own cookie (found by the S09 tester). `http://[::1]:3000` works too, but Claude in Chrome refuses to open it; `127.0.0.1` doesn't answer (Vite listens on the IPv6 loopback only).
+- **Dialogs that collect input start afresh each time they open** (S09 test report 1, F-1: the Invite dialog kept the last access and role, so the next person could get "Whole trust · Admin" unnoticed). The Staff page remounts its dialog's form with a `key` bumped on every open.
+- **Rahul confirmed (13 Oct)** the other S09 choices: only whole-trust admins manage staff; access starts at the invite, with 7 days for the first sign-in; the last whole-trust admin is protected.
+- **Details:** [S09 build notes](sessions/S09-staff-invites/build-notes.md).
+
 ### 12 Oct 2026: S08, trusts, hospitals and the role ladder (builder, automatic run; for verification)
 
 - **Every staff route is under `/api/o/{oid}/h/{hid}/…`**, plus one trust route, `GET /api/o/{oid}/episodes` ("All hospitals", STF-03). The web app mirrors it: `/o/:orgId/h/:hospitalId/…`, and `/` is the hospital picker.
@@ -501,7 +523,7 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
 
 ## 5. Open items (as of 8 Oct 2026)
 
-- **Next work:** S08 (plan C1, trusts and permissions) verified 13 Oct; its minor follow-ups are in [pending.md](pending.md) §3. Next: S09. Plan **F3** ([plans/f3-lambda-entrypoints.md](plans/f3-lambda-entrypoints.md)), session S05 (the local half) verified 12 Oct; its minor follow-ups are in [pending.md](pending.md) §3. F3's Lambda half is S06 (AWS phase). Plan F2 is done (S04 verified 12 Oct; the verifier checked T-19 in the production build, so no hand check is needed). **Rahul to click Print once** on a POA Summary. Plan F1 is done (S03 verified 12 Oct); its six minor e2e follow-ups are in [S03's verify.md](sessions/S03-e2e-journeys/verify.md).
+- **Next work:** S09 (plan C1, staff invites) verified 13 Oct ([verify.md](sessions/S09-staff-invites/verify.md)); its minor follow-ups are in [pending.md](pending.md) §3. Next: S10. S08 (trusts and permissions) verified 13 Oct; its minor follow-ups are in [pending.md](pending.md) §3. Plan **F3** ([plans/f3-lambda-entrypoints.md](plans/f3-lambda-entrypoints.md)), session S05 (the local half) verified 12 Oct; its minor follow-ups are in [pending.md](pending.md) §3. F3's Lambda half is S06 (AWS phase). Plan F2 is done (S04 verified 12 Oct; the verifier checked T-19 in the production build, so no hand check is needed). **Rahul to click Print once** on a POA Summary. Plan F1 is done (S03 verified 12 Oct); its six minor e2e follow-ups are in [S03's verify.md](sessions/S03-e2e-journeys/verify.md).
 - **The `dev` branch** (on `origin` too; commit `557be2c`, 7 Oct): *settled 12 Oct: ignored entirely* (§2). Delete it later if wanted.
 - **Build order: decided 12 Oct.** Local first (S04, S05, S08–S11, S13–S16), then the AWS phase (S06, S07, S12, S17), as in §2.
 - **No domain chosen yet.** `<domain>` in the docs is a placeholder.

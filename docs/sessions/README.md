@@ -113,7 +113,7 @@ Everything runs on your Mac. Email and SMS are captured, not sent; the dev login
 | [S04](S04-react-vite/brief.md) | F2 | Next.js → React + Vite + React Router | Answered 12 Oct: rename to Poised | Verified (12 Oct) |
 | [S05](S05-lambda-entrypoints/brief.md) | F3 | `internal/config` (per-country values), the staff and patient routers split, `GET /api/config`; local only | — | Verified (12 Oct) |
 | [S08](S08-trusts-permissions/brief.md) | C1 | Trusts, hospitals, memberships, role ladder, hospital picker | Answer the brief's questions (incl. the `dev` branch) | Verified (13 Oct) |
-| [S09](S09-staff-invites/brief.md) | C1 | Staff list, invites, change role, remove access | — | Not started |
+| [S09](S09-staff-invites/brief.md) | C1 | Staff list, invites, change role, remove access | — | Verified (13 Oct) |
 | [S10](S10-superadmin-console/brief.md) | C1 | Superadmin console: trusts, hospitals, suspend, opt-ins, settings | Answer the brief's questions | Not started |
 | [S11](S11-audit-log/brief.md) | C1 | Audit log and CSV export | Answer the brief's questions | Not started |
 | [S13](S13-patient-records/brief.md) | C2 | Patient records, NHS number check, search, episodes per hospital | Answer the brief's questions | Not started |
