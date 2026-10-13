@@ -44,7 +44,7 @@ JOIN hospitals h ON h.id = e.hospital_id
 JOIN patients p ON p.id = e.patient_id
 JOIN questionnaire_versions v ON v.id = e.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE e.org_id = sqlc.arg(org_id)
+WHERE e.org_id = sqlc.arg(org_id) AND h.status = 'active' -- a suspended hospital's are kept, not shown (ORG-03)
   AND (sqlc.arg(all_hospitals)::boolean OR e.hospital_id = ANY (sqlc.arg(hospital_ids)::uuid[]))
   AND (sqlc.arg(status)::text = '' OR e.status = sqlc.arg(status))
 ORDER BY e.created_at DESC;
@@ -84,8 +84,11 @@ ORDER BY ev.created_at, ev.id;
 -- The patient's link: no sign-in, the token is the key.
 SELECT e.id, e.status, e.patient_submitted_at, e.version_id,
        p.first_name, p.last_name, p.date_of_birth, p.sex,
-       q.name AS questionnaire_name
+       q.name AS questionnaire_name,
+       (o.status = 'active' AND h.status = 'active')::boolean AS open -- false while suspended (ORG-03)
 FROM episodes e
+JOIN orgs o ON o.id = e.org_id
+JOIN hospitals h ON h.id = e.hospital_id
 JOIN patients p ON p.id = e.patient_id
 JOIN questionnaire_versions v ON v.id = e.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id

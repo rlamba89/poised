@@ -5,7 +5,7 @@ export
 API := apps/api
 GOOSE := cd $(API) && go tool goose -dir db/migrations postgres "$(DATABASE_URL)"
 
-.PHONY: dev staff-api patient-api test test-integration e2e-setup e2e lint db-up migrate migrate-down seed sqlc
+.PHONY: dev staff-api patient-api test test-integration e2e-setup e2e lint db-up migrate migrate-down seed sqlc platform-admin
 
 node_modules: package-lock.json
 	npm install
@@ -45,6 +45,12 @@ migrate-down: .env
 
 seed: .env
 	cd $(API) && go run ./cmd/seed
+
+# Adds a superadmin by hand (A-21), e.g. make platform-admin EMAIL=you@example.org NAME="Your Name".
+# Run it once per environment; running it again changes nothing.
+platform-admin: .env
+	@test -n "$(EMAIL)" || (echo 'Usage: make platform-admin EMAIL=you@example.org [NAME="Your Name"]' && exit 2)
+	cd $(API) && go run ./cmd/platform-admin add "$(EMAIL)" "$(NAME)"
 
 sqlc:
 	cd $(API) && go tool sqlc generate -f db/sqlc.yaml

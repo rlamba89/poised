@@ -1,0 +1,201 @@
+package settings
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
+
+func raw(s string) json.RawMessage { return json.RawMessage(s) }
+
+func TestEveryKeyHasAValidDefault(t *testing.T) {
+	seen := map[string]bool{}
+	for _, d := range Defs {
+		if seen[d.Key] {
+			t.Errorf("%s is defined twice", d.Key)
+		}
+		seen[d.Key] = true
+		if d.Label == "" || d.Group == "" {
+			t.Errorf("%s needs a label and a group", d.Key)
+		}
+		if _, msg := Validate(d.Key, d.Default); msg != "" {
+			t.Errorf("%s: its default %s is refused: %s", d.Key, d.Default, msg)
+		}
+		if d.OptIn && d.Level != Hospital {
+			t.Errorf("%s: opt-ins are set per hospital too (ORG-05)", d.Key)
+		}
+	}
+	// ORG-04's list, by level.
+	for _, k := range []string{"retentionYears", "crossTrustPrefill"} {
+		if d, ok := Lookup(k); !ok || d.Level != TrustOnly {
+			t.Errorf("%s should be trust-only", k)
+		}
+	}
+	for _, k := range []string{"feature.assessments", "feature.proms", "feature.files", "feature.observations",
+		"instrument.eq5d5l", "instrument.oxfordHip", "instrument.oxfordKnee", "branding.logoUrl", "contact.phone",
+		"contact.email", "defaultHq", "reminders.days", "reminders.notRespondingDay", "autoArchive.afterDischargeDays",
+		"autoArchive.inactiveMonths", "whatHappensNext", "templates.inviteSms", "templates.inviteEmail",
+		"templates.reminderSms", "templates.reminderEmail"} {
+		if d, ok := Lookup(k); !ok || d.Level != Hospital {
+			t.Errorf("%s should be a setting a hospital can override", k)
+		}
+	}
+}
+
+func TestEffective(t *testing.T) {
+	platform := Platform()
+	t.Run("nothing set: the platform defaults", func(t *testing.T) {
+		got := Effective(platform, nil, nil)
+		if string(got["retentionYears"]) != "8" || string(got["reminders.days"]) != "[2,5]" || string(got["feature.proms"]) != "false" {
+			t.Errorf("got %v", got)
+		}
+		if len(got) != len(Defs) {
+			t.Errorf("every key should have a value: got %d of %d", len(got), len(Defs))
+		}
+	})
+	t.Run("the trust's value beats the default", func(t *testing.T) {
+		got := Effective(platform, Values{"retentionYears": raw("10"), "contact.phone": raw(`"0100"`)}, nil)
+		if string(got["retentionYears"]) != "10" || string(got["contact.phone"]) != `"0100"` {
+			t.Errorf("got %v", got)
+		}
+	})
+	t.Run("a hospital overrides only what it may", func(t *testing.T) {
+		org := Values{"retentionYears": raw("10"), "contact.phone": raw(`"0100"`), "crossTrustPrefill": raw("true")}
+		hosp := Values{"retentionYears": raw("2"), "crossTrustPrefill": raw("false"), "contact.phone": raw(`"0200"`)}
+		got := Effective(platform, org, hosp)
+		if string(got["retentionYears"]) != "10" || string(got["crossTrustPrefill"]) != "true" {
+			t.Errorf("trust-only settings must come from the trust: %v", got)
+		}
+		if string(got["contact.phone"]) != `"0200"` {
+			t.Errorf("the hospital's phone should win: %v", got)
+		}
+	})
+	t.Run("a hospital that sets nothing follows the trust", func(t *testing.T) {
+		got := Effective(platform, Values{"contact.email": raw(`"a@t.example"`)}, Values{})
+		if string(got["contact.email"]) != `"a@t.example"` {
+			t.Errorf("got %v", got)
+		}
+	})
+	t.Run("opt-in inheritance (ORG-05): trust off with a hospital on, and the reverse", func(t *testing.T) {
+		got := Effective(platform, Values{"feature.proms": raw("false")}, Values{"feature.proms": raw("true")})
+		if string(got["feature.proms"]) != "true" {
+			t.Errorf("hospital on should win over trust off: %v", got["feature.proms"])
+		}
+		got = Effective(platform, Values{"instrument.eq5d5l": raw("true")}, Values{"instrument.eq5d5l": raw("false")})
+		if string(got["instrument.eq5d5l"]) != "false" {
+			t.Errorf("hospital off should win over trust on: %v", got["instrument.eq5d5l"])
+		}
+		got = Effective(platform, Values{"instrument.eq5d5l": raw("true")}, Values{})
+		if string(got["instrument.eq5d5l"]) != "true" {
+			t.Errorf("a hospital that follows the trust should get its on: %v", got["instrument.eq5d5l"])
+		}
+	})
+	t.Run("unknown keys are ignored", func(t *testing.T) {
+		got := Effective(platform, Values{"nope": raw("1")}, Values{"nope2": raw("1")})
+		if _, ok := got["nope"]; ok {
+			t.Errorf("got %v", got)
+		}
+		if _, ok := got["nope2"]; ok {
+			t.Errorf("got %v", got)
+		}
+	})
+	t.Run("the platform defaults are a parameter", func(t *testing.T) {
+		p := Platform()
+		p["retentionYears"] = raw("9")
+		if got := Effective(p, nil, nil); string(got["retentionYears"]) != "9" {
+			t.Errorf("got %v", got["retentionYears"])
+		}
+	})
+}
+
+func TestValidate(t *testing.T) {
+	ok := []struct{ key, in, want string }{
+		{"retentionYears", "8", "8"},
+		{"crossTrustPrefill", "true", "true"},
+		{"feature.proms", "false", "false"},
+		{"branding.logoUrl", `" https://cdn.example/logo.png "`, `"https://cdn.example/logo.png"`},
+		{"branding.logoUrl", `""`, `""`},
+		{"contact.phone", `" 0100 000 0000 "`, `"0100 000 0000"`},
+		{"contact.email", `" POA@Hospital.Example "`, `"poa@hospital.example"`},
+		{"contact.email", `""`, `""`},
+		{"defaultHq", `""`, `""`},
+		{"defaultHq", `"6f1c2c1e-1111-4a6b-9c1d-000000000001"`, `"6f1c2c1e-1111-4a6b-9c1d-000000000001"`},
+		{"reminders.days", "[5, 2]", "[2,5]"},
+		{"reminders.days", "[]", "[]"},
+		{"reminders.notRespondingDay", "7", "7"},
+		{"autoArchive.afterDischargeDays", "30", "30"},
+		{"autoArchive.inactiveMonths", "6", "6"},
+		{"whatHappensNext", `"  Thanks.  "`, `"Thanks."`},
+		{"templates.inviteSms", `"Hi {{firstName}}, {{hospital}}: {{link}}"`, `"Hi {{firstName}}, {{hospital}}: {{link}}"`},
+	}
+	for _, c := range ok {
+		got, msg := Validate(c.key, raw(c.in))
+		if msg != "" || string(got) != c.want {
+			t.Errorf("Validate(%s, %s) = %s, %q; want %s", c.key, c.in, got, msg, c.want)
+		}
+	}
+	bad := []struct{ key, in string }{
+		{"nope", "1"},
+		{"retentionYears", "0"},
+		{"retentionYears", "101"},
+		{"retentionYears", "2.5"},
+		{"retentionYears", `"8"`},
+		{"crossTrustPrefill", `"yes"`},
+		{"feature.proms", "1"},
+		{"branding.logoUrl", `"javascript:alert(1)"`},
+		{"branding.logoUrl", `"logo.png"`},
+		{"branding.logoUrl", `"https://` + strings.Repeat("a", 2000) + `"`},
+		{"contact.phone", `"call us"`},
+		{"contact.phone", "123"},
+		{"contact.email", `"not-an-email"`},
+		{"defaultHq", `"not-a-uuid"`},
+		{"reminders.days", "[0]"},
+		{"reminders.days", "[61]"},
+		{"reminders.days", "[2, 2]"},
+		{"reminders.days", "[1,2,3,4,5,6]"},
+		{"reminders.days", `"2,5"`},
+		{"reminders.notRespondingDay", "0"},
+		{"autoArchive.afterDischargeDays", "366"},
+		{"autoArchive.inactiveMonths", "0"},
+		{"whatHappensNext", `"` + strings.Repeat("a", 2001) + `"`},
+		{"whatHappensNext", "null"},
+		{"templates.inviteSms", `"Hi {{firstName}}"`},            // no link
+		{"templates.inviteSms", `"Hi {{name}} {{link}}"`},        // unknown placeholder
+		{"templates.reminderEmail", `""`},                        // empty
+		{"templates.reminderEmail", `"{{link}} {{ hospital }}"`}, // a placeholder written oddly
+	}
+	for _, c := range bad {
+		if got, msg := Validate(c.key, raw(c.in)); msg == "" {
+			t.Errorf("Validate(%s, %s) = %s; want a refusal", c.key, c.in, got)
+		}
+	}
+}
+
+func TestOptInKeys(t *testing.T) {
+	for _, d := range Defs {
+		want := strings.HasPrefix(d.Key, "feature.") || strings.HasPrefix(d.Key, "instrument.")
+		if d.OptIn != want {
+			t.Errorf("%s: OptIn = %v", d.Key, d.OptIn)
+		}
+	}
+	if !IsOptIn("feature.proms") || IsOptIn("contact.phone") || IsOptIn("nope") {
+		t.Error("IsOptIn is wrong")
+	}
+}
+
+func TestDecodeAndApply(t *testing.T) {
+	v, err := Decode(raw(`{"reminders.days": [1, 5], "nope": 1, "contact.phone": "0100"}`))
+	if err != nil || len(v) != 2 || string(v["reminders.days"]) != "[1,5]" || string(v["contact.phone"]) != `"0100"` {
+		t.Fatalf("Decode = %v, %v", v, err)
+	}
+	if _, err := Decode(raw(`[]`)); err == nil {
+		t.Error("an array isn't settings")
+	}
+	got := Apply(v, map[string]json.RawMessage{"contact.phone": nil, "retentionYears": raw("9")})
+	if len(got) != 2 || string(got["retentionYears"]) != "9" || got["contact.phone"] != nil {
+		t.Errorf("Apply = %v", got)
+	}
+	if len(v) != 2 || string(v["contact.phone"]) != `"0100"` {
+		t.Error("Apply changed what it was given")
+	}
+}

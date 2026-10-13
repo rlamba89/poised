@@ -35,6 +35,10 @@ func (s *server) loadByToken(w http.ResponseWriter, r *http.Request) (db.GetEpis
 		serverError(w, "episode by token", err)
 		return e, false
 	}
+	if !e.Open { // the trust or hospital is suspended (ORG-03): the answers are kept
+		writeError(w, http.StatusForbidden, "This questionnaire isn't available at the moment. Please contact the hospital.")
+		return e, false
+	}
 	return e, true
 }
 

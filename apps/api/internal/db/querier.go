@@ -6,6 +6,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
 )
@@ -14,6 +15,8 @@ type Querier interface {
 	AcceptInvites(ctx context.Context, arg AcceptInvitesParams) error
 	AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams) error
 	AddMembership(ctx context.Context, arg AddMembershipParams) error
+	// Makes the user a superadmin (A-21); nothing changes if they already are.
+	AddPlatformAdmin(ctx context.Context, userID uuid.UUID) error
 	// Whether the account has an invite not yet accepted: it has never signed in.
 	AwaitingFirstSignIn(ctx context.Context, userID uuid.UUID) (bool, error)
 	CompleteReview(ctx context.Context, arg CompleteReviewParams) (int64, error)
@@ -23,10 +26,14 @@ type Querier interface {
 	// Creates nothing (no row) unless the patient is the trust's and the version is published and
 	// one this hospital uses.
 	CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (uuid.UUID, error)
+	// Nothing is returned when the trust already has a hospital of that name (any case).
+	CreateHospital(ctx context.Context, arg CreateHospitalParams) ([]uuid.UUID, error)
 	// A new draft copied from version `from_version_id` (LCY-06/07): same chapters, same content,
 	// so stable IDs and test cases carry over. Chapters get new row ids.
 	CreateNextVersion(ctx context.Context, arg CreateNextVersionParams) (uuid.UUID, error)
 	CreateOptionList(ctx context.Context, arg CreateOptionListParams) (uuid.UUID, error)
+	// Nothing is returned when the code is taken (any case).
+	CreateOrg(ctx context.Context, arg CreateOrgParams) ([]uuid.UUID, error)
 	// Patient records belong to the trust (org_id); an episode is at one of its hospitals. Every
 	// episode lookup is scoped to the hospital, or to the hospitals the caller can see.
 	CreatePatient(ctx context.Context, arg CreatePatientParams) (uuid.UUID, error)
@@ -49,6 +56,7 @@ type Querier interface {
 	GetEpisodeByToken(ctx context.Context, patientToken string) (GetEpisodeByTokenRow, error)
 	// Whose the list is: NULL for the trust's, else the hospital whose own it is.
 	GetOptionListOwner(ctx context.Context, arg GetOptionListOwnerParams) (uuid.NullUUID, error)
+	GetOrgForAdmin(ctx context.Context, id uuid.UUID) (GetOrgForAdminRow, error)
 	GetQuestionnaire(ctx context.Context, arg GetQuestionnaireParams) (GetQuestionnaireRow, error)
 	// One person's rows of ListStaff.
 	GetStaffMember(ctx context.Context, arg GetStaffMemberParams) ([]GetStaffMemberRow, error)
@@ -70,13 +78,22 @@ type Querier interface {
 	ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]ListEpisodesRow, error)
 	// Every hospital the user can work in, once per membership that reaches it: a trust-wide one
 	// (hospital_id NULL) reaches every hospital of the trust, a hospital one only that hospital.
-	// GET /api/me keeps the highest role per hospital.
+	// GET /api/me keeps the highest role per hospital. A trust-wide membership of a trust with no
+	// hospitals yet gives one row with no hospital (S10: a new trust's first admin). Suspended trusts
+	// and hospitals are left out (ORG-03), and so is a trust whose hospitals are all suspended: it
+	// isn't new, and there's nowhere to work (S10 verification 1, finding 2).
 	ListMyHospitals(ctx context.Context, userID uuid.UUID) ([]ListMyHospitalsRow, error)
 	// Option lists (OPT-07) belong to a trust: hospital_id NULL is the whole trust's, as every list
 	// made so far is; otherwise only that hospital sees it. Names are unique in the trust.
 	ListOptionLists(ctx context.Context, arg ListOptionListsParams) ([]ListOptionListsRow, error)
-	// The caller's memberships in one trust: hospital_id is NULL for a trust-wide one.
+	// A trust's hospitals, suspended ones included, by name.
+	ListOrgHospitals(ctx context.Context, orgID uuid.UUID) ([]ListOrgHospitalsRow, error)
+	// The caller's memberships in one trust: hospital_id is NULL for a trust-wide one. None when the
+	// trust is suspended; a membership of a suspended hospital is left out (ORG-03).
 	ListOrgMemberships(ctx context.Context, arg ListOrgMembershipsParams) ([]ListOrgMembershipsRow, error)
+	// The superadmin console and trust settings (plan C1, session S10).
+	// Every trust, for the platform admin: no patient data (OPS-06), only how many hospitals.
+	ListOrgsForAdmin(ctx context.Context) ([]ListOrgsForAdminRow, error)
 	ListPatients(ctx context.Context, orgID uuid.UUID) ([]ListPatientsRow, error)
 	// The HQs an episode can be given: each questionnaire's published version.
 	ListPublishedVersions(ctx context.Context, arg ListPublishedVersionsParams) ([]ListPublishedVersionsRow, error)
@@ -89,10 +106,19 @@ type Querier interface {
 	// person's account is waiting for its first sign-in: the latest deadline of their open invites
 	// (the join keeps only the latest of them).
 	ListStaff(ctx context.Context, orgID uuid.UUID) ([]ListStaffRow, error)
+	// The trust's whole-trust admins, for the platform admin, with each account's latest open
+	// invite (set while it waits for its first sign-in).
+	ListTrustAdmins(ctx context.Context, orgID uuid.UUID) ([]ListTrustAdminsRow, error)
 	ListUsers(ctx context.Context) ([]ListUsersRow, error)
 	ListVersionChapters(ctx context.Context, versionID uuid.UUID) ([]ListVersionChaptersRow, error)
+	// One hospital of the trust, locked until the transaction ends.
+	LockHospitalForAdmin(ctx context.Context, arg LockHospitalForAdminParams) (LockHospitalForAdminRow, error)
+	// A hospital of the trust and its stored settings, locked until the transaction ends.
+	LockHospitalSettings(ctx context.Context, arg LockHospitalSettingsParams) (json.RawMessage, error)
 	// Serialises creates in one trust so the unique-draft-name check can't race.
 	LockOrgQuestionnaires(ctx context.Context, orgID uuid.UUID) error
+	// The trust's stored settings, locked until the transaction ends so two changes can't lose one.
+	LockOrgSettings(ctx context.Context, id uuid.UUID) (json.RawMessage, error)
 	// Staff, invites and memberships (plan C1, session S09).
 	// Serialises staff changes in one trust, so two admins can't both remove the last admin, or
 	// give one person two memberships.
@@ -103,8 +129,11 @@ type Querier interface {
 	// Publishes the draft and retires the version published before it (LCY-01), in one statement.
 	// Returns 0 when the version is no longer a draft.
 	PublishVersion(ctx context.Context, arg PublishVersionParams) (int64, error)
+	// The trust's questionnaires that have a published version: the choices for its default HQ.
+	PublishedQuestionnairesInOrg(ctx context.Context, orgID uuid.UUID) ([]PublishedQuestionnairesInOrgRow, error)
 	// The caller's roles at a hospital of a trust: trust-wide, at that hospital, or both. None when
-	// they aren't a member, or the hospital isn't in that trust. Re-read on every request (STF-04).
+	// they aren't a member, the hospital isn't in that trust, or either is suspended (ORG-03).
+	// Re-read on every request (STF-04).
 	RolesAtHospital(ctx context.Context, arg RolesAtHospitalParams) ([]RolesAtHospitalRow, error)
 	// Saves only if nobody saved since the caller loaded `revision` (LCY-04).
 	SaveChapterContent(ctx context.Context, arg SaveChapterContentParams) (int32, error)
@@ -126,15 +155,29 @@ type Querier interface {
 	// ILIKE '%…%' is served by the pg_trgm GIN indexes.
 	SearchCodes(ctx context.Context, arg SearchCodesParams) ([]SearchCodesRow, error)
 	SetChapterPosition(ctx context.Context, arg SetChapterPositionParams) error
+	SetHospitalSettings(ctx context.Context, arg SetHospitalSettingsParams) error
+	SetHospitalStatus(ctx context.Context, arg SetHospitalStatusParams) error
+	SetOrgSettings(ctx context.Context, arg SetOrgSettingsParams) error
+	SetOrgStatus(ctx context.Context, arg SetOrgStatusParams) error
+	// At sign-in: how many memberships the user has, and how many are usable: in an active trust and,
+	// for a hospital one, an active hospital; for a trust-wide one, a trust with an active hospital or
+	// none yet (a new trust). None usable means sign-in is refused (ORG-03), as /api/me would list
+	// nothing (ListMyHospitals).
+	SignInState(ctx context.Context, userID uuid.UUID) (SignInStateRow, error)
 	SubmitPatientHQ(ctx context.Context, id uuid.UUID) (int64, error)
 	TouchVersion(ctx context.Context, arg TouchVersionParams) error
 	UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) error
 	// Changes nothing if the status is no longer `loaded_status`, the one the caller read: the
 	// workflow (the patient's submit, completing the review) may have moved it on since.
 	UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (int64, error)
+	// A name another hospital of the trust has fails on hospitals_org_name_key.
+	UpdateHospitalDetails(ctx context.Context, arg UpdateHospitalDetailsParams) error
 	// Moves one membership to another scope and/or role.
 	UpdateMembership(ctx context.Context, arg UpdateMembershipParams) error
 	UpdateOptionList(ctx context.Context, arg UpdateOptionListParams) (int64, error)
+	// A trust's details (S10 answers 3: the platform admin edits them at any time). A code another
+	// trust has fails on orgs_code_upper_key.
+	UpdateOrgDetails(ctx context.Context, arg UpdateOrgDetailsParams) error
 	UserOrgMemberships(ctx context.Context, arg UserOrgMembershipsParams) ([]UserOrgMembershipsRow, error)
 }
 

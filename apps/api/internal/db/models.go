@@ -90,6 +90,7 @@ type Hospital struct {
 	Status   string          `json:"status"`
 	Settings json.RawMessage `json:"settings"`
 	Timezone *string         `json:"timezone"`
+	Address  string          `json:"address"`
 }
 
 type Membership struct {
@@ -110,12 +111,15 @@ type OptionList struct {
 }
 
 type Org struct {
-	ID        uuid.UUID       `json:"id"`
-	Name      string          `json:"name"`
-	Code      string          `json:"code"`
-	Status    string          `json:"status"`
-	Settings  json.RawMessage `json:"settings"`
-	CreatedAt time.Time       `json:"createdAt"`
+	ID           uuid.UUID       `json:"id"`
+	Name         string          `json:"name"`
+	Code         string          `json:"code"`
+	Status       string          `json:"status"`
+	Settings     json.RawMessage `json:"settings"`
+	CreatedAt    time.Time       `json:"createdAt"`
+	ContactName  string          `json:"contactName"`
+	ContactEmail string          `json:"contactEmail"`
+	ContactPhone string          `json:"contactPhone"`
 }
 
 type Patient struct {

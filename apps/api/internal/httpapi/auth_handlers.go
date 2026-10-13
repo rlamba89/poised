@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -12,6 +13,26 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/role"
 )
+
+// suspended is the sign-in refusal for someone whose trusts and hospitals are all suspended.
+// S12's Cognito sign-in must call signInAllowed too.
+const suspended = "Your trust or hospital is suspended in Poised at the moment, so you can't sign in. Please contact your trust."
+
+// signInAllowed reports whether the user may sign in as far as suspension goes (ORG-03): a
+// platform admin always may; anyone else needs at least one usable membership, or none at all
+// (they then see "ask an admin to invite you"). Suspended trusts and hospitals stay out of
+// /api/me and every trust and hospital route either way.
+func (s *server) signInAllowed(ctx context.Context, user uuid.UUID) (bool, error) {
+	admin, err := s.q.IsPlatformAdmin(ctx, user)
+	if err != nil || admin {
+		return admin, err
+	}
+	st, err := s.q.SignInState(ctx, user)
+	if err != nil {
+		return false, err
+	}
+	return st.Total == 0 || st.Active > 0, nil
+}
 
 // devUsers lists seeded users for the stub login page.
 func (s *server) devUsers(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +60,15 @@ func (s *server) devLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		serverError(w, "get user", err)
+		return
+	}
+	// Someone whose every trust or hospital is suspended can't sign in (ORG-03), unless they're a
+	// platform admin: they must still reach the console, e.g. to re-activate it (S10 verification 1).
+	if ok, err := s.signInAllowed(r.Context(), u.ID); err != nil {
+		serverError(w, "sign-in state", err)
+		return
+	} else if !ok {
+		writeError(w, http.StatusForbidden, suspended)
 		return
 	}
 	// An invited account's first sign-in must come before its invite expires (STF-01).
@@ -128,12 +158,15 @@ func (s *server) myTrusts(rows []db.ListMyHospitalsRow) []meTrust {
 			name := higher.String()
 			t.Role = &name
 		}
-		if n := len(t.Hospitals); n == 0 || t.Hospitals[n-1].ID != m.HospitalID {
+		if !m.HospitalID.Valid { // a trust with no hospitals yet
+			continue
+		}
+		if n := len(t.Hospitals); n == 0 || t.Hospitals[n-1].ID != m.HospitalID.UUID {
 			tz := s.cfg.Country.TimeZone
 			if m.Timezone != nil {
 				tz = *m.Timezone
 			}
-			t.Hospitals = append(t.Hospitals, meHospital{ID: m.HospitalID, Name: m.HospitalName, TimeZone: tz})
+			t.Hospitals = append(t.Hospitals, meHospital{ID: m.HospitalID.UUID, Name: *m.HospitalName, TimeZone: tz})
 		}
 		h := &t.Hospitals[len(t.Hospitals)-1]
 		h.Role = role.Highest(h.Role, m.Role).String()

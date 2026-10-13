@@ -27,12 +27,17 @@ const (
 )
 
 // The demo trusts (S08): Trust A with Hospitals A1 and A2, Trust B with Hospital B1.
+// Each run puts them back to active, with these contacts and addresses and no settings of their own
+// (Poised's defaults), so each test round starts the same (S10).
 var demoTrusts = []struct {
 	id, name, code string
+	contact        [3]string   // name, email, phone
 	hospitals      [][2]string // id, name
 }{
-	{trustA, "Trust A", "TA", [][2]string{{hospitalA1, "Hospital A1"}, {hospitalA2, "Hospital A2"}}},
-	{trustB, "Trust B", "TB", [][2]string{{hospitalB1, "Hospital B1"}}},
+	{trustA, "Trust A", "TA", [3]string{"Ada Admin", "ada.admin@trust-a.example", ""},
+		[][2]string{{hospitalA1, "Hospital A1"}, {hospitalA2, "Hospital A2"}}},
+	{trustB, "Trust B", "TB", [3]string{"Max Multi", "max.multi@trust-b.example", ""},
+		[][2]string{{hospitalB1, "Hospital B1"}}},
 }
 
 // Each demo user and their memberships: a hospital of "" is the whole trust.
@@ -165,9 +170,15 @@ func seedDemo(ctx context.Context, tx pgx.Tx) error {
 			return fmt.Errorf("trust %s: %w", tr.name, err)
 		}
 		orgs[tr.id] = id
+		if _, err := tx.Exec(ctx, `UPDATE orgs SET status = 'active', settings = '{}', contact_name = $2, contact_email = $3, contact_phone = $4
+			WHERE id = $1`, id, tr.contact[0], tr.contact[1], tr.contact[2]); err != nil {
+			return fmt.Errorf("trust %s: %w", tr.name, err)
+		}
 		for _, h := range tr.hospitals {
-			if _, err := tx.Exec(ctx, `INSERT INTO hospitals (id, org_id, name) VALUES ($1, $2, $3)
-				ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`, h[0], id, h[1]); err != nil {
+			if _, err := tx.Exec(ctx, `INSERT INTO hospitals (id, org_id, name, address) VALUES ($1, $2, $3, $4)
+				ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, address = EXCLUDED.address, status = 'active',
+					timezone = NULL, settings = '{}'`,
+				h[0], id, h[1], "1 Example Road, "+h[1]); err != nil {
 				return fmt.Errorf("hospital %s: %w", h[1], err)
 			}
 		}

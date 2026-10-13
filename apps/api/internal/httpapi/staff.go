@@ -68,15 +68,8 @@ func (s *server) staffRowsOf(rows []db.ListStaffRow) []staffRow {
 	out := []staffRow{}
 	for _, r := range rows {
 		if n := len(out); n == 0 || out[n-1].UserID != r.UserID {
-			row := staffRow{UserID: r.UserID, Name: r.Name, Email: r.Email, Access: []staffAccessRow{}, Status: "active"}
-			if r.InviteExpiresAt.Valid {
-				t := r.InviteExpiresAt.Time
-				row.InviteExpiresAt = &t
-				row.Status = "invited"
-				if !s.clock.Now().Before(t) {
-					row.Status = "expired"
-				}
-			}
+			row := staffRow{UserID: r.UserID, Name: r.Name, Email: r.Email, Access: []staffAccessRow{}}
+			row.Status, row.InviteExpiresAt = s.inviteStatus(r.InviteExpiresAt)
 			out = append(out, row)
 		}
 		a := staffAccessRow{HospitalName: r.HospitalName, Role: r.Role}
@@ -86,6 +79,19 @@ func (s *server) staffRowsOf(rows []db.ListStaffRow) []staffRow {
 		out[len(out)-1].Access = append(out[len(out)-1].Access, a)
 	}
 	return out
+}
+
+// inviteStatus is an account's status from its latest open invite's deadline (none: it has
+// signed in, or was seeded): "active", or "invited" until the deadline and "expired" after it.
+func (s *server) inviteStatus(expires pgtype.Timestamptz) (string, *time.Time) {
+	if !expires.Valid {
+		return "active", nil
+	}
+	t := expires.Time
+	if !s.clock.Now().Before(t) {
+		return "expired", &t
+	}
+	return "invited", &t
 }
 
 // staffAccess is what a person can do in the trust: the whole trust (hospitalId null) or one
@@ -101,17 +107,26 @@ func (a staffAccess) parse() (hospital uuid.NullUUID, r role.Role, msg string) {
 	if !ok {
 		return hospital, r, "Choose a role: clinician, super clinician or admin."
 	}
-	switch raw := strings.TrimSpace(string(a.HospitalID)); raw {
-	case "":
+	if hospital, ok = parseHospitalID(a.HospitalID); !ok {
 		return hospital, r, hospitalNotHere
-	case "null":
-		return hospital, r, ""
 	}
-	if err := json.Unmarshal(a.HospitalID, &hospital.UUID); err != nil {
-		return hospital, r, hospitalNotHere
+	return hospital, r, ""
+}
+
+// parseHospitalID reads a body's "hospitalId": null is the whole trust, a uuid one hospital.
+// A missing one isn't either: it's never read as the whole trust.
+func parseHospitalID(raw json.RawMessage) (hospital uuid.NullUUID, ok bool) {
+	switch strings.TrimSpace(string(raw)) {
+	case "":
+		return hospital, false
+	case "null":
+		return hospital, true
+	}
+	if err := json.Unmarshal(raw, &hospital.UUID); err != nil {
+		return hospital, false
 	}
 	hospital.Valid = true
-	return hospital, r, ""
+	return hospital, true
 }
 
 type inviteInput struct {
@@ -176,6 +191,23 @@ func (s *server) listStaff(w http.ResponseWriter, r *http.Request) {
 // staffTx runs fn in a transaction holding the trust's staff lock, then commits. fn writes its
 // own refusal and returns false to roll back.
 func (s *server) staffTx(w http.ResponseWriter, r *http.Request, fn func(q *db.Queries) bool) bool {
+	return s.orgTx(w, r, orgID(r), fn)
+}
+
+// orgTx is staffTx for a trust named by the caller (the platform admin's routes have no place).
+func (s *server) orgTx(w http.ResponseWriter, r *http.Request, org uuid.UUID, fn func(q *db.Queries) bool) bool {
+	return s.inTx(w, r, func(q *db.Queries) bool {
+		if err := q.LockOrgStaff(r.Context(), org); err != nil {
+			serverError(w, "lock staff", err)
+			return false
+		}
+		return fn(q)
+	})
+}
+
+// inTx runs fn in a transaction, then commits. fn writes its own refusal and returns false to
+// roll back.
+func (s *server) inTx(w http.ResponseWriter, r *http.Request, fn func(q *db.Queries) bool) bool {
 	ctx := r.Context()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -183,12 +215,7 @@ func (s *server) staffTx(w http.ResponseWriter, r *http.Request, fn func(q *db.Q
 		return false
 	}
 	defer tx.Rollback(ctx)
-	q := db.New(tx)
-	if err := q.LockOrgStaff(ctx, orgID(r)); err != nil {
-		serverError(w, "lock staff", err)
-		return false
-	}
-	if !fn(q) {
+	if !fn(db.New(tx)) {
 		return false
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -253,7 +280,7 @@ func (s *server) inviteStaff(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
-	ctx, org, now := r.Context(), orgID(r), s.clock.Now()
+	ctx, org := r.Context(), orgID(r)
 
 	var out struct {
 		staffRow
@@ -263,68 +290,89 @@ func (s *server) inviteStaff(w http.ResponseWriter, r *http.Request) {
 		if !checkHospital(w, r, q, hospital) {
 			return false
 		}
-		user, created, err := findOrCreateAccount(ctx, q, in.Email, in.Name)
-		if err != nil {
-			serverError(w, "find or create the account", err)
+		user, existing, ok := s.inviteTo(w, r, q, org, hospital, in.Email, in.Name, rl, alreadyHas)
+		if !ok {
 			return false
 		}
-		existing := !created
-		waiting := !existing // a new account waits for its first sign-in
-		if existing {
-			if waiting, err = q.AwaitingFirstSignIn(ctx, user.ID); err != nil {
-				serverError(w, "invite state", err)
-				return false
-			}
-		}
-		held, err := membershipRole(ctx, q, user.ID, org, hospital)
-		if err != nil {
-			serverError(w, "membership", err)
-			return false
-		}
-		switch {
-		case held != "" && !waiting: // a working account: change that access instead
-			writeError(w, http.StatusConflict, fmt.Sprintf(alreadyHas, user.Name))
-			return false
-		case held != "": // not signed in yet: send the invite again, with this role there
-			err = q.UpdateMembership(ctx, db.UpdateMembershipParams{UserID: user.ID, OrgID: org, HospitalID: hospital, NewHospitalID: hospital, Role: rl.String()})
-		default: // another membership, on top of any they have (STF-02)
-			err = q.AddMembership(ctx, db.AddMembershipParams{UserID: user.ID, OrgID: org, HospitalID: hospital, Role: rl.String()})
-		}
-		if err != nil {
-			serverError(w, "add membership", err)
-			return false
-		}
-		accepted := pgtype.Timestamptz{Time: now, Valid: !waiting}
-		if err := q.CreateStaffInvite(ctx, db.CreateStaffInviteParams{
-			OrgID: org, HospitalID: hospital, UserID: user.ID, Role: rl.String(),
-			InvitedBy: uuid.NullUUID{UUID: currentUser(r).ID, Valid: true},
-			CreatedAt: now, ExpiresAt: now.Add(inviteLife), AcceptedAt: accepted,
-		}); err != nil {
-			serverError(w, "create invite", err)
-			return false
-		}
-		if out.staffRow, err = s.staffMember(ctx, q, org, user.ID); err != nil {
+		var err error
+		if out.staffRow, err = s.staffMember(ctx, q, org, user); err != nil {
 			serverError(w, "read staff", err)
 			return false
 		}
 		out.ExistingAccount = existing
-		// Last, so a failure rolls everything back. If the commit then fails, the Cognito account
-		// is left without ours; inviting again resends to it (S12 handles "already exists").
-		switch {
-		case !existing:
-			err = s.cognito.CreateUser(ctx, in.Email)
-		case waiting:
-			err = s.cognito.ResendInvite(ctx, user.Email)
-		}
-		if err != nil {
-			serverError(w, "cognito invite", err)
-			return false
-		}
 		return true
 	})
 	if ok {
 		writeJSON(w, http.StatusCreated, out)
 	}
+}
+
+// inviteTo invites email to the trust's whole trust (hospital not Valid) or one of its hospitals,
+// with a role, inside the caller's transaction: S09's rules, used by the Staff screen and by the
+// platform admin's new trust (S10). It writes its own refusal or error and returns ok false.
+//   - A new email gets an account (in Cognito too), which must sign in within inviteLife.
+//   - An account that has signed in (or was seeded) only gets the membership (STF-02).
+//   - An account still waiting for its first sign-in gets the access and a fresh invitation.
+//   - Access a working account already holds is refused (409) with conflict, a format taking the
+//     person's name.
+//
+// Cognito is called last, so its failure rolls everything back.
+func (s *server) inviteTo(w http.ResponseWriter, r *http.Request, q *db.Queries, org uuid.UUID, hospital uuid.NullUUID,
+	email, name string, rl role.Role, conflict string) (user uuid.UUID, existing, ok bool) {
+	ctx, now := r.Context(), s.clock.Now()
+	account, created, err := findOrCreateAccount(ctx, q, email, name)
+	if err != nil {
+		serverError(w, "find or create the account", err)
+		return user, false, false
+	}
+	existing = !created
+	waiting := !existing // a new account waits for its first sign-in
+	if existing {
+		if waiting, err = q.AwaitingFirstSignIn(ctx, account.ID); err != nil {
+			serverError(w, "invite state", err)
+			return user, false, false
+		}
+	}
+	held, err := membershipRole(ctx, q, account.ID, org, hospital)
+	if err != nil {
+		serverError(w, "membership", err)
+		return user, false, false
+	}
+	switch {
+	case held != "" && !waiting: // a working account: change that access instead
+		writeError(w, http.StatusConflict, fmt.Sprintf(conflict, account.Name))
+		return user, false, false
+	case held != "": // not signed in yet: send the invite again, with this role there
+		err = q.UpdateMembership(ctx, db.UpdateMembershipParams{UserID: account.ID, OrgID: org, HospitalID: hospital, NewHospitalID: hospital, Role: rl.String()})
+	default: // another membership, on top of any they have (STF-02)
+		err = q.AddMembership(ctx, db.AddMembershipParams{UserID: account.ID, OrgID: org, HospitalID: hospital, Role: rl.String()})
+	}
+	if err != nil {
+		serverError(w, "add membership", err)
+		return user, false, false
+	}
+	accepted := pgtype.Timestamptz{Time: now, Valid: !waiting}
+	if err := q.CreateStaffInvite(ctx, db.CreateStaffInviteParams{
+		OrgID: org, HospitalID: hospital, UserID: account.ID, Role: rl.String(),
+		InvitedBy: uuid.NullUUID{UUID: currentUser(r).ID, Valid: true},
+		CreatedAt: now, ExpiresAt: now.Add(inviteLife), AcceptedAt: accepted,
+	}); err != nil {
+		serverError(w, "create invite", err)
+		return user, false, false
+	}
+	// Last, so a failure rolls everything back. If the commit then fails, the Cognito account
+	// is left without ours; inviting again resends to it (S12 handles "already exists").
+	switch {
+	case !existing:
+		err = s.cognito.CreateUser(ctx, email)
+	case waiting:
+		err = s.cognito.ResendInvite(ctx, account.Email)
+	}
+	if err != nil {
+		serverError(w, "cognito invite", err)
+		return user, false, false
+	}
+	return account.ID, existing, true
 }
 
 // findOrCreateAccount returns the account with this email (any case), creating it when there's

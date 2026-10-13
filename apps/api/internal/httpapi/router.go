@@ -83,6 +83,21 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/codes", user(s.searchCodes))
 	mux.HandleFunc("GET /api/categories", user(s.listCategories))
 
+	// The superadmin console (S10): platform admins only (A-21). No patient data (OPS-06).
+	admin := func(h http.HandlerFunc) http.HandlerFunc { return requireUser(s.secret, requirePlatformAdmin(s.q, h)) }
+	mux.HandleFunc("GET /api/admin/opt-ins", admin(s.adminOptInDefs))
+	mux.HandleFunc("GET /api/admin/orgs", admin(s.adminListOrgs))
+	mux.HandleFunc("POST /api/admin/orgs", admin(s.adminCreateOrg))
+	mux.HandleFunc("GET /api/admin/orgs/{oid}", admin(s.adminGetOrg))
+	mux.HandleFunc("PATCH /api/admin/orgs/{oid}", admin(s.adminUpdateOrg)) // suspend, re-activate, opt-ins
+	mux.HandleFunc("POST /api/admin/orgs/{oid}/hospitals", admin(s.adminAddHospital))
+	mux.HandleFunc("PATCH /api/admin/orgs/{oid}/hospitals/{hid}", admin(s.adminUpdateHospital))
+	mux.HandleFunc("POST /api/admin/orgs/{oid}/admins", admin(s.adminInviteAdmin))
+
+	// The trust's settings and each hospital's (S10): whole-trust admins only.
+	mux.HandleFunc("GET /api/o/{oid}/settings", org(s.getTrustSettings))
+	mux.HandleFunc("PATCH /api/o/{oid}/settings", org(s.patchTrustSettings))
+
 	// The trust's staff (S09): whole-trust admins only.
 	mux.HandleFunc("GET /api/o/{oid}/staff", org(s.listStaff))
 	mux.HandleFunc("POST /api/o/{oid}/staff/invites", org(s.inviteStaff))

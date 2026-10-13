@@ -81,6 +81,14 @@ func (f *Fixtures) TrustUser(t *testing.T, org uuid.UUID, role string) User {
 	return u
 }
 
+// PlatformAdmin adds a superadmin (A-21): a platform_admins row and no memberships.
+func (f *Fixtures) PlatformAdmin(t *testing.T) User {
+	t.Helper()
+	u := f.User(t, Hospital{}, "")
+	f.exec(t, `INSERT INTO platform_admins (user_id) VALUES ($1)`, u.ID)
+	return u
+}
+
 // Member gives u a role at one hospital.
 func (f *Fixtures) Member(t *testing.T, u User, h Hospital, role string) {
 	t.Helper()
