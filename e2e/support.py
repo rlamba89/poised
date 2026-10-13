@@ -87,6 +87,20 @@ def invite_path(request: APIRequestContext, to: str) -> str:
     raise AssertionError(f"No invite has been captured for {to}")
 
 
+SIGNIN = re.compile(r"/s/([A-Za-z0-9_-]{43})")
+VERIFY = re.compile(r"/v/([A-Za-z0-9_-]{43})")
+
+
+def link_path(request: APIRequestContext, to: str, pattern: re.Pattern = SIGNIN) -> str:
+    """The path of the newest captured link matching `pattern` sent to `to`: a sign-in link
+    (/s/<token>, S15) unless another pattern is given (VERIFY: a new contact's /v/<token>)."""
+    for m in captured(request, to):
+        found = pattern.search(m["body"])
+        if found:
+            return found.group(0)
+    raise AssertionError(f"No {pattern.pattern} link has been captured for {to}")
+
+
 def _ok(res, what: str):
     assert res.ok, f"{what} → {res.status}: {res.text()}"
     return res

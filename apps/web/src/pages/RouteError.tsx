@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Link, useRouteError } from "react-router";
+import { Link, useLocation, useRouteError } from "react-router";
 import { Anchor, Button, Center, Loader, Stack, Text, Title } from "@mantine/core";
 import { isChunkLoadError, reloadOnce } from "@/lib/chunkError";
+import { isPatientPage } from "@/features/patient/links";
 
 function sessionStore(): Storage | null {
   try {
@@ -15,6 +16,8 @@ function sessionStore(): Storage | null {
 // the app was updated while open), it reloads once, as Next.js did; otherwise it offers Reload.
 export function RouteError() {
   const error = useRouteError();
+  // A patient is never sent to the staff sign-in: their way back in is a sign-in link (S15).
+  const patient = isPatientPage(useLocation().pathname);
   const chunk = isChunkLoadError(error);
   const [reloading, setReloading] = useState(chunk);
   useEffect(() => {
@@ -36,8 +39,8 @@ export function RouteError() {
           {chunk ? "This page couldn't be loaded. Check your connection, then reload." : "Please reload the page."}
         </Text>
         <Button onClick={() => window.location.reload()}>Reload</Button>
-        <Anchor component={Link} to="/" size="sm">
-          Go to the start page
+        <Anchor component={Link} to={patient ? "/home" : "/"} size="sm">
+          {patient ? "Go to your questionnaires" : "Go to the start page"}
         </Anchor>
       </Stack>
     </Center>

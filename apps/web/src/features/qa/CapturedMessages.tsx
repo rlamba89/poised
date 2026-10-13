@@ -26,6 +26,14 @@ export function CapturedMessages() {
   const [shown, setShown] = useState<Message[] | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [reset, setReset] = useState("");
+
+  // Sign-in links and contact changes are limited per address and per network (S15); every
+  // request from this machine is one network, so a tester clears the counts here to start again.
+  const resetLimits = () =>
+    api("/qa/rate-limits", { method: "DELETE" })
+      .then(() => setReset("Sign-in limits cleared: links can be asked for again."))
+      .catch((e: Error) => setReset(e.message));
 
   const load = useCallback((recipient: string) => {
     setLoading(true);
@@ -59,6 +67,10 @@ export function CapturedMessages() {
             <Button type="submit" loading={loading}>Show</Button>
           </Group>
         </form>
+        <Group gap="sm">
+          <Button variant="default" size="xs" onClick={resetLimits}>Reset sign-in limits</Button>
+          {reset && <Text size="sm" c="dimmed" data-testid="limits-reset">{reset}</Text>}
+        </Group>
         {error && <Alert color="red">{error}</Alert>}
         {!shown && !error && <Loader />}
         {shown && shown.length === 0 && <Text c="dimmed">No messages{to.trim() ? " to that address" : ""} yet.</Text>}

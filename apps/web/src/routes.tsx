@@ -28,6 +28,12 @@ export const routes: RouteObject[] = [
         path: "/home/episodes/:eid",
         lazy: async () => ({ Component: (await import("@/pages/PatientEpisode")).PatientEpisode }),
       },
+      // A returning patient (S15): a sign-in link by mobile or email, then their home, every
+      // trust's questionnaires; and the link that confirms a new mobile or email.
+      { id: "patient-home", path: "/home", lazy: async () => ({ Component: (await import("@/pages/PatientHomePage")).PatientHomePage }) },
+      { id: "patient-signin", path: "/signin", lazy: async () => ({ Component: (await import("@/pages/PatientSignin")).PatientSignin }) },
+      { id: "signin-link", path: "/s/:token", lazy: async () => ({ Component: (await import("@/pages/SigninLinkPage")).SigninLinkPage }) },
+      { id: "verify-contact", path: "/v/:token", lazy: async () => ({ Component: (await import("@/pages/VerifyContact")).VerifyContact }) },
       // The captured texts and emails (MESSAGING=capture: local and QA only).
       { id: "qa-messages", path: "/qa/messages", lazy: async () => ({ Component: (await import("@/pages/QaMessages")).QaMessages }) },
       {

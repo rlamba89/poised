@@ -15,6 +15,10 @@ describe("routes", () => {
     ["/login", "login", {}],
     ["/i/tok123", "invite", { token: "tok123" }],
     ["/home/episodes/e1", "patient-episode", { eid: "e1" }],
+    ["/home", "patient-home", {}],
+    ["/signin", "patient-signin", {}],
+    ["/s/tok123", "signin-link", { token: "tok123" }],
+    ["/v/tok123", "verify-contact", { token: "tok123" }],
     ["/qa/messages", "qa-messages", {}],
     ["/p/tok123", "not-found", {}], // the old link (before S14) is gone
     ["/o/o1/h/h1/questionnaires", "questionnaires", { orgId: "o1", hospitalId: "h1" }],

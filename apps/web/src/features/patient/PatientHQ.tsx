@@ -131,6 +131,19 @@ export default function PatientHQ({ path, onBehalf }: Props) {
     e.preventDefault();
     if (await flushRef.current()) navigate(onBehalf.back);
   };
+  // The patient's way back to their home, every trust's questionnaires (S15). Like Sign out, it
+  // saves the answer just typed first and waits for it (S15 verification 1), so the home shows
+  // it; if the save is refused, the patient stays, with the save's message (a 401: "Not saved").
+  const goHome = async (e: React.MouseEvent) => {
+    if (!flushRef.current) return;
+    e.preventDefault();
+    if (await flushRef.current()) navigate("/home");
+  };
+  const homeLink = isPatient && (
+    <Anchor component={Link} to="/home" size="sm" mb="md" display="inline-block" onClick={goHome}>
+      <Group gap={4}><IconArrowLeft size={14} /> Your questionnaires</Group>
+    </Anchor>
+  );
   const backLink = onBehalf && (
     <Anchor component={Link} to={onBehalf.back} size="sm" onClick={leave} mb="md" display="inline-block">
       <Group gap={4}><IconArrowLeft size={14} /> Episode</Group>
@@ -139,10 +152,15 @@ export default function PatientHQ({ path, onBehalf }: Props) {
 
   if (ended) return <PatientFrame hospital={hq?.hospital}><SignedOut message={ended.message} lost={ended.lost} /></PatientFrame>;
   if (!hq || !vars) {
+    const waiting = error ? <Alert color="red" m="md">{error}</Alert> : <Center h="60vh"><Loader /></Center>;
+    if (isPatient) {
+      // e.g. another person's episode address: "not found", with the way back to their own (S15).
+      return <PatientFrame>{homeLink}{waiting}</PatientFrame>;
+    }
     return (
       <Box>
         {backLink}
-        {error ? <Alert color="red" m="md">{error}</Alert> : <Center h="60vh"><Loader /></Center>}
+        {waiting}
       </Box>
     );
   }
@@ -296,7 +314,7 @@ export default function PatientHQ({ path, onBehalf }: Props) {
       </Box>
     );
   }
-  return <PatientFrame hospital={hq.hospital} onSignOut={signOut}>{body}</PatientFrame>;
+  return <PatientFrame hospital={hq.hospital} onSignOut={signOut}>{homeLink}{body}</PatientFrame>;
 }
 
 /** The patient's pages: Poised's bar with their hospital's name, on a phone-sized column. */
@@ -330,6 +348,8 @@ export function SignedOut({ message, lost = {} }: { message: string; lost?: Lost
         </Alert>
       )}
       <Text mt="xs">{message}</Text>
+      <Text mt="xs" size="sm" c="dimmed">You can also sign in with your mobile number or email address.</Text>
+      <Button mt="md" variant="default" component={Link} to="/signin">Get a sign-in link</Button>
     </Card>
   );
 }
