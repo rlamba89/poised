@@ -73,7 +73,7 @@
 
 ## Status
 
-**In progress: S08 (trusts, hospitals, memberships, role ladder, hospital picker) verified 13 Oct 2026 (test report 4 all passed; [verify.md](../sessions/S08-trusts-permissions/verify.md)). S09 (staff list, invites, change role, remove access) verified 13 Oct (test report 2 all passed; [verify.md](../sessions/S09-staff-invites/verify.md), [build notes](../sessions/S09-staff-invites/build-notes.md)). S10 (superadmin console, suspend, opt-ins, settings, editing details) tested 13 Oct (test report 2 all passed), verification 1's fixes retested (test report 3 all passed; [build notes](../sessions/S10-superadmin-console/build-notes.md)), verified 13 Oct ([verify.md](../sessions/S10-superadmin-console/verify.md), verification 2).** S11 (local) and S12 (Cognito, AWS phase) are next.
+**In progress: S08 (trusts, hospitals, memberships, role ladder, hospital picker) verified 13 Oct 2026 (test report 4 all passed; [verify.md](../sessions/S08-trusts-permissions/verify.md)). S09 (staff list, invites, change role, remove access) verified 13 Oct (test report 2 all passed; [verify.md](../sessions/S09-staff-invites/verify.md), [build notes](../sessions/S09-staff-invites/build-notes.md)). S10 (superadmin console, suspend, opt-ins, settings, editing details) tested 13 Oct (test report 2 all passed), verification 1's fixes retested (test report 3 all passed; [build notes](../sessions/S10-superadmin-console/build-notes.md)), verified 13 Oct ([verify.md](../sessions/S10-superadmin-console/verify.md), verification 2).** **S11 (audit log and CSV export) tested 13 Oct (test report 1 all passed); verification 1's and test report 2's fixes retested (test report 3 all passed); verified 13 Oct** ([verify.md](../sessions/S11-audit-log/verify.md), verification 2; [build notes](../sessions/S11-audit-log/build-notes.md)). S12 (Cognito, AWS phase) comes later.
 
 Differences from the plan so far (S08; details in [decisions.md](../decisions.md) §2 and the [S08 build notes](../sessions/S08-trusts-permissions/build-notes.md)):
 - Hospital routes are `/api/o/{oid}/h/{hid}/…`; the only trust route so far is `GET /api/o/{oid}/episodes` ("All hospitals").
@@ -93,3 +93,8 @@ Differences and choices in S10 (details in [decisions.md](../decisions.md) §2, 
 - The platform admin's `PATCH` routes also **edit a trust's and a hospital's details** at any time (Rahul, 13 Oct). Two extra routes: `POST /api/admin/orgs/{oid}/admins` and `GET /api/admin/opt-ins`.
 - Trust settings (`GET/PATCH /api/o/{oid}/settings`) are for whole-trust admins only, as Staff is.
 - Suspension is enforced: no new sign-in when all of a person's memberships are suspended, no access on the next request, and the patient's link closed.
+
+Differences and choices in S11 (details in [decisions.md](../decisions.md) §2, 13 Oct "S11"):
+- One `audit_log` row per patient-data **request** (Rahul, 12 Oct), written by the `audited` middleware with IDs only; "no row, no data" (the response is held until the row is written).
+- `GET /api/o/{oid}/audit` is for whole-trust admins only; the CSV is `?format=csv` on the same route. Reading and exporting the log are logged too.
+- The patient's own link is logged (actor `patient`). Refusals after the membership check are logged with their status; earlier ones aren't.

@@ -166,6 +166,29 @@ docker compose up -d --force-recreate db
     - **A PATCH with `"optIns": {}` is refused "Nothing to change."** even when it also changes the status or details (`admin.go` `statusPatch.validate`). The UI never sends it.
     - **The journeys assume the seeded Sam Superadmin is staff of no trust.** Test report 3 left him admin of QA Trust Seven, so his sign-in went to that hospital and two J6 journeys failed until `make seed` (which resets the demo users' memberships) was run. Run `make seed` before `make e2e` after a manual test round.
   - **Email subjects and per-status messages (EPI-08)** aren't settings yet; add them with the sessions that send them (S14–S16, C3).
+- **The audit log (S11)** ([build notes](sessions/S11-audit-log/build-notes.md)):
+  - **The CSV export has no size limit and is buffered twice** (`writeAuditCSV`, then the "no row, no data" hold in `heldResponse`). The full local export is already **5.6 MB**; on AWS it will pass **Lambda's 6 MB response limit**. Before the AWS phase (S06/S17): export to S3 and return a pre-signed link, or stream it (writing the export's row first). (S11 verification 1, finding 5.)
+  - **Export CSV is a plain download link** (`AuditPage.tsx`): a 400, 403 or 500 is saved as a file holding `{"error": …}`, and the page says nothing. Fetch it and show the error instead, when convenient (finding 6).
+  - **The audit insert is a separate statement after the handler's own write** (`audited`): if it fails after a POST saved, the user gets a 500 for a change that happened and a retry duplicates the patient, episode or note; if a handler panics after saving, `recoverPanics` answers 500 and no row is written. Rare; the root fix is writing the row in the handler's transaction when handlers move to transactions, and a deferred status-500 row would close the panic case (finding 7).
+  - **`heldResponse` hides the real writer** from `http.MaxBytesReader`, so an oversized body doesn't mark the connection to close. Harmless today; add an `Unwrap` or pass the real writer to the reader (finding 8).
+  - **The screen shows the newest 500 rows** with no paging; the CSV has them all.
+  - **Rows don't record the IP address or browser.** Add them if a trust or the DSPT asks.
+  - **The "Who" filter's list is a `DISTINCT` over the trust's whole log** (`ListAuditUsers`); add an index or read it from memberships plus removed staff when the log is large.
+  - **Retention isn't built:** nothing is deleted (Rahul, 12 Oct). Deleting rows past the trust's retention period needs a deliberate change to the append-only trigger.
+  - **Found by S11's test report 1** (cosmetic; [test-report-1.md](sessions/S11-audit-log/test-report-1.md)):
+    - **The CSV's Patients column has names only,** while the screen shows "Name (hospital number)". The record IDs have their own column; add the hospital number to the CSV if admins want it (`writeAuditCSV` in `audit.go`).
+    - **The Audit screen's Who dropdown is as narrow as its field,** so "Name (email)" options wrap onto two lines (`AuditPage.tsx`; e.g. Mantine `comboboxProps={{ width: "target" }}` → a wider dropdown).
+  - **Found by S11's test report 3** (cosmetic; [test-report-3.md](sessions/S11-audit-log/test-report-3.md)):
+    - **While a changed filter loads, the previous rows stay with no spinner** (the spinner shows only before the first table). On a slow connection the address already shows the new filter over the old rows for a moment. Show the spinner (or dim the table) whenever a load is in flight (`AuditPage.tsx`, `loading`).
+    - **Opened straight onto a refused search, Who lists no people**, because the people come only from a successful load; it recovers after Clear. Send the people list with the refusal, or load it separately.
+  - **Found by S11's verification 2** ([verify.md](sessions/S11-audit-log/verify.md); none blocks):
+    - **Filtered by a patient, a list row's ten names usually don't include that patient** (`auditListRows` in `audit.go`): searching "Bloggs" gave 333 list rows, none naming Jo Bloggs among its ten. Put the matched patients first in each row when the `patient` filter is set. Small and worth doing soon: it's the main way the screen is used.
+    - **Every list load writes every listed patient's ID into its row** (`listPatients`, `writeEpisodes`), so row size and GIN index writes grow with the trust (about 800 KB per row at 50k patients). This follows Rahul's "the record IDs it touched"; revisit (e.g. store the filters a list used instead) before a large trust goes live.
+    - **A short Patient search ("a") records every patient it matches** as looked up by the admin, and sends them all to `ListAudit`'s `&&`. Consider a minimum length, or a cap on matches.
+    - **`audited` sends the response without a row when the trust is unknown** (`audit.go`, the `e.org == uuid.Nil` branch). Today only an unknown patient link reaches it; a future route wrapped outside `requireHospital`/`requireOrg`, or a `/api/p/…` handler that skips `loadByToken`, would skip the log silently. Answer 500 there unless the response is a 404.
+    - **The spinner can stay on** if a bad-day link loads while an earlier load is still running (`AuditPage.tsx`: the bad-day branch doesn't clear `loading`). Back or a link only; cosmetic.
+    - **The export sends the browser's time zone,** which Go's zone database might not know; that export answers 400 and the plain link saves the error as the file (see "plain download link" above). `parseAuditFilter` also repeats `validTimeZone` (`admin.go`).
+  - **AUD-01's questionnaire change history** (who changed what in authoring, before and after) isn't part of this log, which covers patient data only.
 - **Lifebox import:**
   - Conditions that cross Question Sets on pages and questions are still dropped with a warning.
   - Lifebox has no Question Set-level conditions to import.

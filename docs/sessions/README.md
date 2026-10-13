@@ -115,7 +115,7 @@ Everything runs on your Mac. Email and SMS are captured, not sent; the dev login
 | [S08](S08-trusts-permissions/brief.md) | C1 | Trusts, hospitals, memberships, role ladder, hospital picker | Answer the brief's questions (incl. the `dev` branch) | Verified (13 Oct) |
 | [S09](S09-staff-invites/brief.md) | C1 | Staff list, invites, change role, remove access | — | Verified (13 Oct) |
 | [S10](S10-superadmin-console/brief.md) | C1 | Superadmin console: trusts, hospitals, suspend, opt-ins, settings | Answer the brief's questions | Verified (13 Oct) |
-| [S11](S11-audit-log/brief.md) | C1 | Audit log and CSV export | Answer the brief's questions | Not started |
+| [S11](S11-audit-log/brief.md) | C1 | Audit log and CSV export | Answered 12 Oct | Verified (13 Oct) |
 | [S13](S13-patient-records/brief.md) | C2 | Patient records, NHS number check, search, episodes per hospital | Answer the brief's questions | Not started |
 | [S14](S14-patient-invites/brief.md) | C2 | Invites by SMS and email, magic link + date of birth, submit | Answer: what the patient link returns | Not started |
 | [S15](S15-patient-home/brief.md) | C2 | Patient accounts across trusts, sign-in link, patient home | Answer the brief's questions | Not started |

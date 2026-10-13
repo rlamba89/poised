@@ -2,6 +2,8 @@
 
 **Plan:** C1 ([c1-trusts-staff.md](../../plans/c1-trusts-staff.md)), part 4 of 5.
 **Requirements:** STF-06.
+*Local phase (12 Oct): runs on Rahul's Mac only. No AWS, and no real email or SMS.*
+
 **Depends on:** S10 verified.
 
 **Ask Rahul first:**
