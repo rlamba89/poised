@@ -1,7 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { Alert, Anchor, AppShell, Badge, Button, Group, Select, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
-import { AuthProvider, HospitalContext, findHospital, hospitalBase, homePath, roleLabel, useMe, type Here } from "@/lib/auth";
+import { AuthProvider, HospitalContext, canManageStaff, findHospital, hospitalBase, homePath, roleLabel, useMe, type Here } from "@/lib/auth";
 
 function NoAccess() {
   return (
@@ -26,7 +26,9 @@ function Shell({ children }: { children: React.ReactNode }) {
       const h = t.hospitals.find((x) => x.id === id);
       if (!h || h.id === hospitalId) continue;
       const section = pathname.includes("/episodes") ? "episodes" : /\/(questionnaires|chapters)/.test(pathname) ? "questionnaires" : null;
-      navigate(section ? `${hospitalBase(t.id, h.id)}/${section}` : homePath(t, h));
+      // Staff stays Staff within the trust, if they manage its staff (S09).
+      const staff = pathname.endsWith("/staff") && t.id === orgId && canManageStaff(t);
+      navigate(staff ? `${hospitalBase(t.id, h.id)}/staff` : section ? `${hospitalBase(t.id, h.id)}/${section}` : homePath(t, h));
     }
   };
   const nav = (href: string, label: string) => (
@@ -68,6 +70,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             />
             {here && nav(`${here.base}/questionnaires`, "Questionnaires")}
             {here && nav(`${here.base}/episodes`, "Episodes")}
+            {here && canManageStaff(here.trust) && nav(`${here.base}/staff`, "Staff")}
           </Group>
           <Group wrap="nowrap" style={{ flexShrink: 0 }}>
             <Text size="sm" visibleFrom="md">{me.user.name}</Text>

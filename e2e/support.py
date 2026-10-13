@@ -75,6 +75,16 @@ class Api:
         """A path of the hospital: /o/<trust>/h/<hospital><path>."""
         return f"{self.base}{path}"
 
+    def o(self, path: str) -> str:
+        """A path of the hospital's trust: /o/<trust><path>."""
+        return f"{self.base.split('/h/')[0]}{path}"
+
+    # Staff (S09)
+
+    def invite(self, email: str, name: str, hospital_id: str | None, role: str) -> dict:
+        """Invites someone to this trust: hospital_id None is the whole trust. Needs a whole-trust admin."""
+        return self.call("POST", self.o("/staff/invites"), {"email": email, "name": name, "hospitalId": hospital_id, "role": role})
+
     # Questionnaires
 
     def draft_hq(self, data_file: str, name: str) -> dict:

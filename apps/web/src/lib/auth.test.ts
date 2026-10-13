@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allHospitals, atLeast, canChange, findHospital, homePath, startPath, type Here, type Hospital, type Me, type Trust } from "./auth";
+import { allHospitals, atLeast, canChange, canManageStaff, findHospital, homePath, startPath, type Here, type Hospital, type Me, type Trust } from "./auth";
 
 const hospital = (id: string, role: Hospital["role"]): Hospital => ({ id, name: `Hospital ${id}`, timeZone: "UTC", role });
 const trustA: Trust = { id: "ta", name: "Trust A", code: "TA", role: "super_clinician", hospitals: [hospital("a1", "super_clinician"), hospital("a2", "admin")] };
@@ -52,5 +52,14 @@ describe("changing content (S08 answers, 5)", () => {
   it("needs only the role at this hospital for the hospital's own content", () => {
     expect(canChange(at(local, local.hospitals[0]), "c1", "super_clinician")).toBe(true);
     expect(canChange(at(trustB, trustB.hospitals[0]), "b1", "super_clinician")).toBe(false);
+  });
+});
+
+describe("who manages staff (S09)", () => {
+  it("is only the trust's whole-trust admins", () => {
+    expect(canManageStaff({ ...trustA, role: "admin" })).toBe(true);
+    expect(canManageStaff(trustA)).toBe(false); // a whole-trust super clinician
+    // An admin of one hospital only (trust role null) can't, even with "admin" at that hospital.
+    expect(canManageStaff({ ...trustB, role: null, hospitals: [hospital("b1", "admin")] })).toBe(false);
   });
 });

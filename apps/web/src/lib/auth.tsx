@@ -87,6 +87,9 @@ export function canChange(here: Here, ownerHospitalId: string | null | undefined
   return ownerHospitalId ? atLeast(here.role, need) : atLeast(here.trust.role, need);
 }
 
+/** Whether the user manages the trust's staff (S09): only admins of the whole trust can. The API checks the same. */
+export const canManageStaff = (trust: Trust) => atLeast(trust.role, "admin");
+
 export function useHospital(): Here {
   const here = useContext(HospitalContext);
   if (!here) throw new Error("useHospital must be used inside the hospital layout");

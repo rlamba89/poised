@@ -21,6 +21,7 @@ describe("routes", () => {
     ["/o/o1/h/h1/episodes/e1", "episode", { orgId: "o1", hospitalId: "h1", eid: "e1" }],
     ["/o/o1/h/h1/episodes/e1/poa", "poa", { orgId: "o1", hospitalId: "h1", eid: "e1" }],
     ["/o/o1/h/h1/episodes/e1/sets/c1", "validate", { orgId: "o1", hospitalId: "h1", eid: "e1", cid: "c1" }],
+    ["/o/o1/h/h1/staff", "staff", { orgId: "o1", hospitalId: "h1" }],
   ])("%s is the %s page", (path, id, params) => {
     const got = page(path);
     expect(got.id).toBe(id);
@@ -35,6 +36,7 @@ describe("routes", () => {
     "/o/o1/h/h1/episodes/e1",
     "/o/o1/h/h1/episodes/e1/poa",
     "/o/o1/h/h1/episodes/e1/sets/c1",
+    "/o/o1/h/h1/staff",
   ])("puts %s inside the hospital layout", (path) => {
     const matches = matchRoutes(routes, path) ?? [];
     const layout = matches.find((m) => m.route.id === "hospital");
