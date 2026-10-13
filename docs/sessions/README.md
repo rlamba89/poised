@@ -118,7 +118,7 @@ Everything runs on your Mac. Email and SMS are captured, not sent; the dev login
 | [S11](S11-audit-log/brief.md) | C1 | Audit log and CSV export | Answered 12 Oct | Verified (13 Oct) |
 | [S13](S13-patient-records/brief.md) | C2 | Patient records, NHS number check, search, episodes per hospital | Answered 12 Oct | Verified (13 Oct) |
 | [S14](S14-patient-invites/brief.md) | C2 | Invites by SMS and email, magic link + date of birth, submit | Answered 12 Oct | Verified (13 Oct, verification 3; X-1 skipped by Rahul, in pending.md) |
-| [S15](S15-patient-home/brief.md) | C2 | Patient accounts across trusts, sign-in link, patient home | Answer the brief's questions | Not started |
+| [S15](S15-patient-home/brief.md) | C2 | Patient accounts across trusts, sign-in link, patient home | Answered 12 Oct (PAT-10 built now) | Verified (13 Oct, verification 2; the unjoined-twin sign-in is an accepted risk; R-6 a hand check) |
 | [S16](S16-jobs-reminders/brief.md) | C2 | Jobs, reminders and "not responding", run by a local timer; messages captured | Answer the brief's questions | Not started |
 
 ### AWS phase: later, before the first demo or customer, with you there

@@ -2,6 +2,8 @@
 
 **Plan:** C2 ([c2-patients-signin.md](../../plans/c2-patients-signin.md)), part 3 of 4.
 **Requirements:** PAT-06, PAT-07, PAT-11, PX-08, A-3.
+*Local phase (12 Oct): runs on Rahul's Mac only. No AWS, and no real email or SMS.*
+
 **Depends on:** S14 verified.
 
 **Ask Rahul first:**
