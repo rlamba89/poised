@@ -20,6 +20,8 @@ type Querier interface {
 	// contact. More than one without a name: people sharing the contact and the birthday, such as twins
 	// (S15 answers 6 and 8).
 	AccountsForSignin(ctx context.Context, arg AccountsForSigninParams) ([]AccountsForSigninRow, error)
+	// An entry written by the jobs (S16): a reminder, "not responding".
+	AddAutomaticEpisodeEvent(ctx context.Context, arg AddAutomaticEpisodeEventParams) error
 	AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams) error
 	AddHit(ctx context.Context, arg AddHitParams) error
 	AddMembership(ctx context.Context, arg AddMembershipParams) error
@@ -29,6 +31,11 @@ type Querier interface {
 	AuditPatientNames(ctx context.Context, arg AuditPatientNamesParams) ([]AuditPatientNamesRow, error)
 	// Whether the account has an invite not yet accepted: it has never signed in.
 	AwaitingFirstSignIn(ctx context.Context, userID uuid.UUID) (bool, error)
+	// Takes one due job: its run_at moves to lease_until, so no other runner sees it as due while
+	// this one runs it (FOR UPDATE SKIP LOCKED: a row another runner is taking at the same moment is
+	// skipped). If this runner dies, the job is due again at lease_until. Nothing stays locked while
+	// the job runs, so a runner holds one database connection at a time.
+	ClaimDueJob(ctx context.Context, arg ClaimDueJobParams) (ClaimDueJobRow, error)
 	CompleteReview(ctx context.Context, arg CompleteReviewParams) (int64, error)
 	// Another account with the same details (date of birth, first name, surname) already signs in with this
 	// contact: two accounts would then answer the same sign-in, so the change is refused.
@@ -36,6 +43,9 @@ type Querier interface {
 	CountHits(ctx context.Context, arg CountHitsParams) (int32, error)
 	// The trust's whole-trust admins other than this user.
 	CountOtherTrustAdmins(ctx context.Context, arg CountOtherTrustAdminsParams) (int64, error)
+	// Takes reminder number `count` for the episode before it's sent, so it's sent at most once even
+	// if two runners decide at once. No row: it was already taken, or the HQ has been sent.
+	CountReminder(ctx context.Context, arg CountReminderParams) (int64, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (uuid.UUID, error)
 	CreateChapter(ctx context.Context, arg CreateChapterParams) (uuid.UUID, error)
 	// A sign-in link (kind signin) to a contact, or a verification link (kind verify) for an
@@ -73,6 +83,13 @@ type Querier interface {
 	DraftNameExists(ctx context.Context, arg DraftNameExistsParams) (bool, error)
 	DropOldHits(ctx context.Context, arg DropOldHitsParams) error
 	EndPatientSession(ctx context.Context, arg EndPatientSessionParams) error
+	// Counts a wrong date of birth on an invite link against its episode (S16 test report 1): all the
+	// episode's live invite links share max_attempts tries, and the last locks them all together.
+	// No row: the link was already locked (or replaced).
+	FailInviteDob(ctx context.Context, arg FailInviteDobParams) (int32, error)
+	// The job failed: try again at run_at.
+	FailJob(ctx context.Context, arg FailJobParams) error
+	// Sign-in links (S15) only: an invite's tries are its episode's (FailInviteDob).
 	// Counts a wrong date of birth, locking the link at max_attempts. No row: it was already locked.
 	FailLinkDob(ctx context.Context, arg FailLinkDobParams) (int32, error)
 	// A record joining an account fills in a contact the account doesn't have yet (never replaces
@@ -86,6 +103,7 @@ type Querier interface {
 	// sharing a birthday and a first name, on one phone stay apart). The oldest, if (rarely) more
 	// than one.
 	FindAccountForRecord(ctx context.Context, arg FindAccountForRecordParams) (uuid.UUID, error)
+	FinishJob(ctx context.Context, arg FinishJobParams) error
 	GetAccount(ctx context.Context, id uuid.UUID) (GetAccountRow, error)
 	GetChapter(ctx context.Context, arg GetChapterParams) (GetChapterRow, error)
 	GetChapterMeta(ctx context.Context, arg GetChapterMetaParams) (GetChapterMetaRow, error)
@@ -96,9 +114,13 @@ type Querier interface {
 	// An episode's HQ as the patient fills it in: for the patient's session (the handler checks the
 	// episode is theirs) or staff completing it on their behalf (it checks the hospital).
 	GetEpisodeForm(ctx context.Context, id uuid.UUID) (GetEpisodeFormRow, error)
-	// The episode's working invite, for staff: when it was sent, and whether five wrong dates of
-	// birth locked it. No row: no invite has been sent.
+	// The episode's working invite, for staff: when the newest link was sent, and whether five wrong
+	// dates of birth locked the episode (any of its live links locked: they lock together). No row:
+	// no invite has been sent.
 	GetEpisodeInvite(ctx context.Context, episodeID uuid.NullUUID) (GetEpisodeInviteRow, error)
+	// What the follow-up decides on: the episode's state, whether the patient has started (any
+	// answers of theirs, or entered for them), and the hospital's zone and settings.
+	GetFollowup(ctx context.Context, id uuid.UUID) (GetFollowupRow, error)
 	// The trust's record of one of this hospital's patients; no row for anyone else.
 	GetHospitalPatient(ctx context.Context, arg GetHospitalPatientParams) (GetHospitalPatientRow, error)
 	// What an invite needs: who to send it to, the hospital's name and its trust's and own settings
@@ -110,6 +132,8 @@ type Querier interface {
 	// Whose the list is: NULL for the trust's, else the hospital whose own it is.
 	GetOptionListOwner(ctx context.Context, arg GetOptionListOwnerParams) (uuid.NullUUID, error)
 	GetOrgForAdmin(ctx context.Context, id uuid.UUID) (GetOrgForAdminRow, error)
+	// MESSAGING=capture only: how far ahead of real time the jobs timer runs, and its last run.
+	GetQAJobsClock(ctx context.Context) (GetQAJobsClockRow, error)
 	GetQuestionnaire(ctx context.Context, arg GetQuestionnaireParams) (GetQuestionnaireRow, error)
 	// One person's rows of ListStaff.
 	GetStaffMember(ctx context.Context, arg GetStaffMemberParams) ([]GetStaffMemberRow, error)
@@ -141,6 +165,7 @@ type Querier interface {
 	// Every chapter lookup joins up to the questionnaire, so it is scoped to the trust and hospital.
 	ListChapters(ctx context.Context, versionID uuid.UUID) ([]ListChaptersRow, error)
 	ListEpisodeAnswers(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeAnswersRow, error)
+	// user_name is NULL for the patient's entries and the automatic ones.
 	ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeEventsRow, error)
 	// One trust's episodes: at every hospital when all_hospitals (a trust-wide member's "All
 	// hospitals", STF-03), else only at the hospitals listed.
@@ -215,14 +240,18 @@ type Querier interface {
 	// Rate limits (PAT-11): rate_limit_hits.
 	// Hits on one key are counted and added one request at a time.
 	LockRateKey(ctx context.Context, key string) error
+	// No row: already marked, or the HQ has been sent.
+	MarkNotResponding(ctx context.Context, arg MarkNotRespondingParams) (int64, error)
 	// The trust's patients that a "Patient" filter names: part of their name ("Jane Smith" or
 	// "Smith Jane"), part of a hospital number on one of their episodes (S13 moved it there), their
 	// national ID (exactly, as normalised), or their record's id.
 	MatchAuditPatients(ctx context.Context, arg MatchAuditPatientsParams) ([]uuid.UUID, error)
 	// The user's role in one membership: the whole trust (hospital_id NULL) or one hospital.
 	MembershipRole(ctx context.Context, arg MembershipRoleParams) (string, error)
-	// The right date of birth: the count starts again. No row: the link was locked meanwhile.
-	PassLinkDob(ctx context.Context, id uuid.UUID) (int64, error)
+	NoteQAJobsTick(ctx context.Context, arg NoteQAJobsTickParams) error
+	// The right date of birth on an invite link: the episode's count starts again. No row: the link
+	// was locked meanwhile.
+	PassInviteDob(ctx context.Context, id uuid.UUID) (int64, error)
 	// The trust's record with this national ID, if any, for matching typed details.
 	PatientByNationalID(ctx context.Context, arg PatientByNationalIDParams) (PatientByNationalIDRow, error)
 	// The trust's records born on one day, for the duplicate check (patient.Decide), with whether each
@@ -234,6 +263,10 @@ type Querier interface {
 	PublishVersion(ctx context.Context, arg PublishVersionParams) (int64, error)
 	// The trust's questionnaires that have a published version: the choices for its default HQ.
 	PublishedQuestionnairesInOrg(ctx context.Context, orgID uuid.UUID) ([]PublishedQuestionnairesInOrgRow, error)
+	// The job ran: look again at run_at.
+	RescheduleJob(ctx context.Context, arg RescheduleJobParams) error
+	// A Resend: the new link starts with the episode's five tries again.
+	ResetEpisodeDob(ctx context.Context, id uuid.UUID) error
 	// MESSAGING=capture only (local, QA): a tester's fresh start.
 	ResetRateLimits(ctx context.Context) error
 	// An invite whose messages all failed: its link never reached anyone.
@@ -283,6 +316,7 @@ type Querier interface {
 	SetHospitalStatus(ctx context.Context, arg SetHospitalStatusParams) error
 	SetOrgSettings(ctx context.Context, arg SetOrgSettingsParams) error
 	SetOrgStatus(ctx context.Context, arg SetOrgStatusParams) error
+	SetQAJobsClock(ctx context.Context, offsetMinutes int32) error
 	// The patient's own change (PAT-10) is made to every trust's record of them, so invites and
 	// reminders go to the new contact. Returns the records changed, for each trust's audit log.
 	SetRecordsContact(ctx context.Context, arg SetRecordsContactParams) ([]SetRecordsContactRow, error)
@@ -291,6 +325,11 @@ type Querier interface {
 	// none yet (a new trust). None usable means sign-in is refused (ORG-03), as /api/me would list
 	// nothing (ListMyHospitals).
 	SignInState(ctx context.Context, userID uuid.UUID) (SignInStateRow, error)
+	// Scheduled jobs (S16): internal/jobs. Only follow-ups exist so far: an episode's reminders and
+	// "not responding".
+	// The first invite that reaches the patient starts the follow-up: the reminder days count from
+	// it. Later invites (Resend) change nothing.
+	StartFollowup(ctx context.Context, arg StartFollowupParams) error
 	// After the right date of birth: a session for the person's account (all their records), tied
 	// to the link it was opened with.
 	StartPatientSession(ctx context.Context, arg StartPatientSessionParams) (uuid.UUID, error)

@@ -76,6 +76,10 @@ type Episode struct {
 	OrgID              uuid.UUID          `json:"orgId"`
 	HospitalNumber     string             `json:"hospitalNumber"`
 	PatientSubmittedBy uuid.NullUUID      `json:"patientSubmittedBy"`
+	InvitedAt          pgtype.Timestamptz `json:"invitedAt"`
+	RemindersSent      int32              `json:"remindersSent"`
+	NotRespondingAt    pgtype.Timestamptz `json:"notRespondingAt"`
+	DobFailedAttempts  int32              `json:"dobFailedAttempts"`
 }
 
 type EpisodeAnswer struct {
@@ -96,6 +100,7 @@ type EpisodeEvent struct {
 	Text      string        `json:"text"`
 	UserID    uuid.NullUUID `json:"userId"`
 	CreatedAt time.Time     `json:"createdAt"`
+	Automatic bool          `json:"automatic"`
 }
 
 type Hospital struct {
@@ -106,6 +111,18 @@ type Hospital struct {
 	Settings json.RawMessage `json:"settings"`
 	Timezone *string         `json:"timezone"`
 	Address  string          `json:"address"`
+}
+
+type Job struct {
+	ID        uuid.UUID          `json:"id"`
+	Kind      string             `json:"kind"`
+	EpisodeID uuid.NullUUID      `json:"episodeId"`
+	Payload   json.RawMessage    `json:"payload"`
+	RunAt     time.Time          `json:"runAt"`
+	DoneAt    pgtype.Timestamptz `json:"doneAt"`
+	Attempts  int32              `json:"attempts"`
+	LastError string             `json:"lastError"`
+	CreatedAt time.Time          `json:"createdAt"`
 }
 
 type LoginLink struct {
@@ -191,6 +208,13 @@ type PatientSession struct {
 type PlatformAdmin struct {
 	UserID    uuid.UUID `json:"userId"`
 	CreatedAt time.Time `json:"createdAt"`
+}
+
+type QaJobsClock struct {
+	ID            bool               `json:"id"`
+	OffsetMinutes int32              `json:"offsetMinutes"`
+	LastTickAt    pgtype.Timestamptz `json:"lastTickAt"`
+	LastTickAsOf  pgtype.Timestamptz `json:"lastTickAsOf"`
 }
 
 type Questionnaire struct {

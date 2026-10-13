@@ -33,6 +33,9 @@ type Config struct {
 	// default, and required explicitly with CONFIG_STRICT) stores them in sent_messages and sends
 	// nothing; GET /api/qa/messages, which has no sign-in, reads them.
 	Messaging string
+	// JOBS_TIMER: the local all-in-one server (cmd/api, make dev) runs the scheduled jobs every
+	// minute (S16) unless it's false. On AWS a schedule runs the jobs Lambda instead (S17).
+	JobsTimer bool
 	Country   Country
 }
 
@@ -129,7 +132,9 @@ func Load(getenv func(string) string) (Config, error) {
 		}
 		return getenv("MESSAGING")
 	}
+	jobsTimer := getenv("JOBS_TIMER") == "" || flag("JOBS_TIMER")
 	c := Config{
+		JobsTimer:   jobsTimer,
 		DatabaseURL: need("DATABASE_URL"),
 		TokenSecret: need("TOKEN_SECRET"),
 		Addr:        getenv("API_ADDR"),

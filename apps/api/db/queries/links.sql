@@ -14,6 +14,10 @@ RETURNING id, created_at;
 -- the other.
 SELECT id FROM episodes WHERE id = $1 FOR UPDATE;
 
+-- name: ResetEpisodeDob :exec
+-- A Resend: the new link starts with the episode's five tries again.
+UPDATE episodes SET dob_failed_attempts = 0 WHERE id = $1;
+
 -- name: RevokeOlderInviteLinks :exec
 -- An invite went: the episode's links older than it stop working (only the newest works, even
 -- when two resends cross: each revokes only what came before it).
@@ -40,6 +44,7 @@ WHERE l.token_hash = $1 AND l.kind = 'invite' AND l.revoked_at IS NULL
   AND (l.expires_at IS NULL OR l.expires_at > sqlc.arg(now)::timestamptz);
 
 -- name: FailLinkDob :one
+-- Sign-in links (S15) only: an invite's tries are its episode's (FailInviteDob).
 -- Counts a wrong date of birth, locking the link at max_attempts. No row: it was already locked.
 UPDATE login_links
 SET failed_dob_attempts = failed_dob_attempts + 1,
@@ -47,17 +52,47 @@ SET failed_dob_attempts = failed_dob_attempts + 1,
 WHERE id = sqlc.arg(id) AND locked_at IS NULL
 RETURNING failed_dob_attempts;
 
--- name: PassLinkDob :execrows
--- The right date of birth: the count starts again. No row: the link was locked meanwhile.
-UPDATE login_links SET failed_dob_attempts = 0, used_at = now()
-WHERE id = $1 AND locked_at IS NULL;
+-- name: FailInviteDob :one
+-- Counts a wrong date of birth on an invite link against its episode (S16 test report 1): all the
+-- episode's live invite links share max_attempts tries, and the last locks them all together.
+-- No row: the link was already locked (or replaced).
+WITH bumped AS (
+    UPDATE episodes e SET dob_failed_attempts = e.dob_failed_attempts + 1
+    FROM login_links l
+    WHERE l.id = sqlc.arg(id) AND l.kind = 'invite' AND l.locked_at IS NULL AND l.revoked_at IS NULL
+      AND e.id = l.episode_id
+    RETURNING e.id, e.dob_failed_attempts
+), locked AS (
+    UPDATE login_links SET locked_at = now()
+    FROM bumped
+    WHERE login_links.episode_id = bumped.id AND login_links.kind = 'invite'
+      AND login_links.revoked_at IS NULL AND login_links.locked_at IS NULL
+      AND bumped.dob_failed_attempts >= sqlc.arg(max_attempts)::int
+    RETURNING login_links.id
+)
+SELECT dob_failed_attempts FROM bumped;
+
+-- name: PassInviteDob :execrows
+-- The right date of birth on an invite link: the episode's count starts again. No row: the link
+-- was locked meanwhile.
+WITH passed AS (
+    UPDATE login_links SET failed_dob_attempts = 0, used_at = now()
+    WHERE login_links.id = $1 AND login_links.locked_at IS NULL
+    RETURNING login_links.episode_id
+)
+UPDATE episodes SET dob_failed_attempts = 0 FROM passed WHERE episodes.id = passed.episode_id;
 
 -- name: GetEpisodeInvite :one
--- The episode's working invite, for staff: when it was sent, and whether five wrong dates of
--- birth locked it. No row: no invite has been sent.
-SELECT created_at AS sent_at, locked_at FROM login_links
-WHERE episode_id = $1 AND kind = 'invite' AND revoked_at IS NULL
-ORDER BY created_at DESC LIMIT 1;
+-- The episode's working invite, for staff: when the newest link was sent, and whether five wrong
+-- dates of birth locked the episode (any of its live links locked: they lock together). No row:
+-- no invite has been sent.
+SELECT l.created_at AS sent_at, coalesce(l.locked_at, (
+           SELECT x.locked_at FROM login_links x
+           WHERE x.episode_id = l.episode_id AND x.kind = 'invite' AND x.revoked_at IS NULL AND x.locked_at IS NOT NULL
+           ORDER BY x.locked_at DESC LIMIT 1)) AS locked_at
+FROM login_links l
+WHERE l.episode_id = $1 AND l.kind = 'invite' AND l.revoked_at IS NULL
+ORDER BY l.created_at DESC LIMIT 1;
 
 -- name: GetInviteDetails :one
 -- What an invite needs: who to send it to, the hospital's name and its trust's and own settings

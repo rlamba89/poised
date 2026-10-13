@@ -294,6 +294,15 @@ func Fill(v Values, key string, vars map[string]string) (string, error) {
 	}), nil
 }
 
+// Get decodes the setting key in v (the effective values) into dst, e.g. reminders.days into an
+// []int. An error means the stored value isn't of the setting's type.
+func Get(v Values, key string, dst any) error {
+	if !strict(v[key], dst) {
+		return fmt.Errorf("settings: %s is %s, which can't be read", key, v[key])
+	}
+	return nil
+}
+
 // strict decodes raw into v, refusing null and anything of another type.
 func strict(raw json.RawMessage, v any) bool {
 	if len(raw) == 0 || string(raw) == "null" {

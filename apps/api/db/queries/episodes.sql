@@ -43,6 +43,7 @@ ORDER BY e.created_at DESC;
 -- name: GetEpisode :one
 SELECT e.id, e.status, e.procedure, e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
        e.patient_submitted_at, e.review_completed_at, e.created_at, e.version_id, e.hospital_number,
+       e.invited_at, e.reminders_sent, e.not_responding_at, -- the follow-up (S16)
        reviewer.name AS review_completed_by_name, submitter.name AS patient_submitted_by_name,
        p.id AS patient_id, p.first_name, p.last_name, p.date_of_birth, p.sex, p.national_id, p.national_id_type,
        p.mobile, p.email,
@@ -66,8 +67,13 @@ WHERE id = sqlc.arg(id) AND status = sqlc.arg(loaded_status);
 -- name: AddEpisodeEvent :exec
 INSERT INTO episode_events (episode_id, kind, text, user_id) VALUES ($1, $2, $3, $4);
 
+-- name: AddAutomaticEpisodeEvent :exec
+-- An entry written by the jobs (S16): a reminder, "not responding".
+INSERT INTO episode_events (episode_id, kind, text, automatic) VALUES ($1, 'event', $2, true);
+
 -- name: ListEpisodeEvents :many
-SELECT ev.id, ev.kind, ev.text, ev.created_at, u.name AS user_name
+-- user_name is NULL for the patient's entries and the automatic ones.
+SELECT ev.id, ev.kind, ev.text, ev.created_at, u.name AS user_name, ev.automatic
 FROM episode_events ev
 LEFT JOIN users u ON u.id = ev.user_id
 WHERE ev.episode_id = $1

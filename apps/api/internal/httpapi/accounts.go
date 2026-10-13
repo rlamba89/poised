@@ -313,9 +313,11 @@ func (s *server) signinDob(w http.ResponseWriter, r *http.Request) {
 		case !still: // the contact was changed away from since the link went
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": signinLinkExpired, "code": "expired"})
 		case named:
-			s.wrongDob(w, r, l.ID, signinLocked, "That date of birth and name don't match our records. Please check them and try again.")
+			n, err := s.q.FailLinkDob(r.Context(), db.FailLinkDobParams{ID: l.ID, MaxAttempts: maxDobAttempts})
+			s.wrongDob(w, n, err, signinLocked, "That date of birth and name don't match our records. Please check them and try again.")
 		default:
-			s.wrongDob(w, r, l.ID, signinLocked, "")
+			n, err := s.q.FailLinkDob(r.Context(), db.FailLinkDobParams{ID: l.ID, MaxAttempts: maxDobAttempts})
+			s.wrongDob(w, n, err, signinLocked, "")
 		}
 		return
 	}

@@ -58,7 +58,11 @@ func readLink(t *testing.T, w *clinic, token string) linkRow {
 	t.Helper()
 	var l linkRow
 	hash := sha256.Sum256([]byte(token))
-	if err := w.db.QueryRow(t.Context(), `SELECT failed_dob_attempts, locked_at, used_at FROM login_links WHERE token_hash = $1`,
+	// An invite's wrong tries are counted on its episode (S16 test report 1): all its links share
+	// them. A sign-in link's are its own.
+	if err := w.db.QueryRow(t.Context(), `SELECT CASE WHEN l.kind = 'invite' THEN e.dob_failed_attempts ELSE l.failed_dob_attempts END,
+		l.locked_at, l.used_at
+		FROM login_links l LEFT JOIN episodes e ON e.id = l.episode_id WHERE l.token_hash = $1`,
 		hash[:]).Scan(&l.Attempts, &l.Locked, &l.Used); err != nil {
 		t.Fatal(err)
 	}

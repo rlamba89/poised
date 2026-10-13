@@ -17,11 +17,14 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/config"
 	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/httpapi"
+	"github.com/rlamba89/poised/apps/api/internal/jobs"
 	"github.com/rlamba89/poised/apps/api/internal/messaging"
 )
 
-// Main runs the router built by router until the server fails. name is for the log.
-func Main(name string, router func(httpapi.Deps) http.Handler) {
+// Main runs the router built by router until the server fails. name is for the log. With
+// jobsTimer (cmd/api only) it also runs the scheduled jobs every minute, unless JOBS_TIMER=false
+// (S16): on AWS a schedule runs the jobs Lambda instead (S17).
+func Main(name string, router func(httpapi.Deps) http.Handler, jobsTimer bool) {
 	cfg, err := config.Load(os.Getenv)
 	if err != nil {
 		log.Fatalf("%s: %v", name, err)
@@ -35,13 +38,18 @@ func Main(name string, router func(httpapi.Deps) http.Handler) {
 	// MESSAGING=capture is the only mode until S17 (config.Load refuses any other): texts and
 	// emails are stored in sent_messages, never sent.
 	capture := messaging.Capture{DB: db.New(pool)}
-	srv := &http.Server{Addr: cfg.Addr, Handler: router(httpapi.Deps{Pool: pool, Config: cfg, Cognito: cognito.Local{},
-		SMS: capture, Email: capture})}
-	devLogin := "off"
+	deps := httpapi.Deps{Pool: pool, Config: cfg, Cognito: cognito.Local{}, SMS: capture, Email: capture}
+	srv := &http.Server{Addr: cfg.Addr, Handler: router(deps)}
+	devLogin, timer := "off", "off"
 	if cfg.DevLogin {
 		devLogin = "on"
 	}
-	log.Printf("%s listening on %s (dev login %s, messaging %s, locale %s, time zone %s)",
-		name, cfg.Addr, devLogin, cfg.Messaging, cfg.Country.Locale, cfg.Country.TimeZone)
+	if jobsTimer && cfg.JobsTimer {
+		timer = "every " + jobs.TimerInterval.String()
+		// Testers' clock offset applies only where messages are captured (local and QA).
+		go httpapi.NewJobsRunner(deps).Every(context.Background(), jobs.TimerInterval, cfg.Messaging == config.MessagingCapture)
+	}
+	log.Printf("%s listening on %s (dev login %s, messaging %s, jobs timer %s, locale %s, time zone %s)",
+		name, cfg.Addr, devLogin, cfg.Messaging, timer, cfg.Country.Locale, cfg.Country.TimeZone)
 	log.Fatal(srv.ListenAndServe())
 }

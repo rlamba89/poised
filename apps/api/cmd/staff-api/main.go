@@ -8,4 +8,4 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/serve"
 )
 
-func main() { serve.Main("staff-api", httpapi.NewStaffRouter) }
+func main() { serve.Main("staff-api", httpapi.NewStaffRouter, false) }

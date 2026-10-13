@@ -12,6 +12,8 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/cognito"
 	"github.com/rlamba89/poised/apps/api/internal/config"
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/invite"
+	"github.com/rlamba89/poised/apps/api/internal/jobs"
 	"github.com/rlamba89/poised/apps/api/internal/messaging"
 )
 
@@ -34,6 +36,8 @@ type server struct {
 	clock   clock.Clock
 	sms     messaging.SMS
 	email   messaging.Email
+	inviter invite.Sender // the patient's invites and Resend (S14); reminders use it too (S16)
+	jobs    jobs.Runner   // the scheduled jobs, for the QA "run jobs as of" route (S16)
 }
 
 func newServer(d Deps) *server {
@@ -46,8 +50,11 @@ func newServer(d Deps) *server {
 	if d.Clock == nil {
 		d.Clock = clock.Real{}
 	}
+	inviter := invite.Sender{Pool: d.Pool, SMS: d.SMS, Email: d.Email, Clock: d.Clock,
+		AppURL: d.Config.Country.AppURL, PhoneCountry: d.Config.Country.PhoneCountry}
 	return &server{pool: d.Pool, q: db.New(d.Pool), secret: []byte(d.Config.TokenSecret), cfg: d.Config,
-		cognito: d.Cognito, clock: d.Clock, sms: d.SMS, email: d.Email}
+		cognito: d.Cognito, clock: d.Clock, sms: d.SMS, email: d.Email, inviter: inviter,
+		jobs: jobs.Runner{Pool: d.Pool, Inviter: inviter, DefaultZone: d.Config.Country.TimeZone}}
 }
 
 // NewStaffRouter serves the staff API: /api/o/…, /api/me, /api/codes, /api/categories,
@@ -73,6 +80,10 @@ func mount(s *server, groups ...func(*server, *http.ServeMux)) http.Handler {
 	if s.cfg.Messaging == config.MessagingCapture { // the captured SMS and email (local and QA only)
 		mux.HandleFunc("GET /api/qa/messages", s.qaMessages)
 		mux.HandleFunc("DELETE /api/qa/rate-limits", s.qaResetRateLimits) // a tester's fresh start (S15)
+		// The scheduled jobs (S16): run them as of a later time, or move the local timer's clock.
+		mux.HandleFunc("GET /api/qa/jobs", s.qaJobs)
+		mux.HandleFunc("POST /api/qa/jobs/run", s.qaRunJobs)
+		mux.HandleFunc("PUT /api/qa/jobs/clock", s.qaSetJobsClock)
 	}
 	for _, add := range groups {
 		add(s, mux)

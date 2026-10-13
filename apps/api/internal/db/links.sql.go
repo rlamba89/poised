@@ -64,6 +64,39 @@ func (q *Queries) EndPatientSession(ctx context.Context, arg EndPatientSessionPa
 	return err
 }
 
+const failInviteDob = `-- name: FailInviteDob :one
+WITH bumped AS (
+    UPDATE episodes e SET dob_failed_attempts = e.dob_failed_attempts + 1
+    FROM login_links l
+    WHERE l.id = $1 AND l.kind = 'invite' AND l.locked_at IS NULL AND l.revoked_at IS NULL
+      AND e.id = l.episode_id
+    RETURNING e.id, e.dob_failed_attempts
+), locked AS (
+    UPDATE login_links SET locked_at = now()
+    FROM bumped
+    WHERE login_links.episode_id = bumped.id AND login_links.kind = 'invite'
+      AND login_links.revoked_at IS NULL AND login_links.locked_at IS NULL
+      AND bumped.dob_failed_attempts >= $2::int
+    RETURNING login_links.id
+)
+SELECT dob_failed_attempts FROM bumped
+`
+
+type FailInviteDobParams struct {
+	ID          uuid.UUID `json:"id"`
+	MaxAttempts int32     `json:"maxAttempts"`
+}
+
+// Counts a wrong date of birth on an invite link against its episode (S16 test report 1): all the
+// episode's live invite links share max_attempts tries, and the last locks them all together.
+// No row: the link was already locked (or replaced).
+func (q *Queries) FailInviteDob(ctx context.Context, arg FailInviteDobParams) (int32, error) {
+	row := q.db.QueryRow(ctx, failInviteDob, arg.ID, arg.MaxAttempts)
+	var dob_failed_attempts int32
+	err := row.Scan(&dob_failed_attempts)
+	return dob_failed_attempts, err
+}
+
 const failLinkDob = `-- name: FailLinkDob :one
 UPDATE login_links
 SET failed_dob_attempts = failed_dob_attempts + 1,
@@ -77,6 +110,7 @@ type FailLinkDobParams struct {
 	ID          uuid.UUID `json:"id"`
 }
 
+// Sign-in links (S15) only: an invite's tries are its episode's (FailInviteDob).
 // Counts a wrong date of birth, locking the link at max_attempts. No row: it was already locked.
 func (q *Queries) FailLinkDob(ctx context.Context, arg FailLinkDobParams) (int32, error) {
 	row := q.db.QueryRow(ctx, failLinkDob, arg.MaxAttempts, arg.ID)
@@ -86,9 +120,13 @@ func (q *Queries) FailLinkDob(ctx context.Context, arg FailLinkDobParams) (int32
 }
 
 const getEpisodeInvite = `-- name: GetEpisodeInvite :one
-SELECT created_at AS sent_at, locked_at FROM login_links
-WHERE episode_id = $1 AND kind = 'invite' AND revoked_at IS NULL
-ORDER BY created_at DESC LIMIT 1
+SELECT l.created_at AS sent_at, coalesce(l.locked_at, (
+           SELECT x.locked_at FROM login_links x
+           WHERE x.episode_id = l.episode_id AND x.kind = 'invite' AND x.revoked_at IS NULL AND x.locked_at IS NOT NULL
+           ORDER BY x.locked_at DESC LIMIT 1)) AS locked_at
+FROM login_links l
+WHERE l.episode_id = $1 AND l.kind = 'invite' AND l.revoked_at IS NULL
+ORDER BY l.created_at DESC LIMIT 1
 `
 
 type GetEpisodeInviteRow struct {
@@ -96,8 +134,9 @@ type GetEpisodeInviteRow struct {
 	LockedAt pgtype.Timestamptz `json:"lockedAt"`
 }
 
-// The episode's working invite, for staff: when it was sent, and whether five wrong dates of
-// birth locked it. No row: no invite has been sent.
+// The episode's working invite, for staff: when the newest link was sent, and whether five wrong
+// dates of birth locked the episode (any of its live links locked: they lock together). No row:
+// no invite has been sent.
 func (q *Queries) GetEpisodeInvite(ctx context.Context, episodeID uuid.NullUUID) (GetEpisodeInviteRow, error) {
 	row := q.db.QueryRow(ctx, getEpisodeInvite, episodeID)
 	var i GetEpisodeInviteRow
@@ -266,18 +305,33 @@ func (q *Queries) LockEpisode(ctx context.Context, id uuid.UUID) (uuid.UUID, err
 	return id_2, err
 }
 
-const passLinkDob = `-- name: PassLinkDob :execrows
-UPDATE login_links SET failed_dob_attempts = 0, used_at = now()
-WHERE id = $1 AND locked_at IS NULL
+const passInviteDob = `-- name: PassInviteDob :execrows
+WITH passed AS (
+    UPDATE login_links SET failed_dob_attempts = 0, used_at = now()
+    WHERE login_links.id = $1 AND login_links.locked_at IS NULL
+    RETURNING login_links.episode_id
+)
+UPDATE episodes SET dob_failed_attempts = 0 FROM passed WHERE episodes.id = passed.episode_id
 `
 
-// The right date of birth: the count starts again. No row: the link was locked meanwhile.
-func (q *Queries) PassLinkDob(ctx context.Context, id uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, passLinkDob, id)
+// The right date of birth on an invite link: the episode's count starts again. No row: the link
+// was locked meanwhile.
+func (q *Queries) PassInviteDob(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, passInviteDob, id)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const resetEpisodeDob = `-- name: ResetEpisodeDob :exec
+UPDATE episodes SET dob_failed_attempts = 0 WHERE id = $1
+`
+
+// A Resend: the new link starts with the episode's five tries again.
+func (q *Queries) ResetEpisodeDob(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, resetEpisodeDob, id)
+	return err
 }
 
 const revokeLink = `-- name: RevokeLink :exec

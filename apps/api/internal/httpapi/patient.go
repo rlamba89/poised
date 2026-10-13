@@ -107,10 +107,12 @@ func (s *server) linkDob(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	if !sameDate(dob, l.DateOfBirth) {
-		s.wrongDob(w, r, l.ID, linkLocked, "")
+		// The episode's live links share the tries, and lock together (S16 test report 1).
+		n, err := s.q.FailInviteDob(ctx, db.FailInviteDobParams{ID: l.ID, MaxAttempts: maxDobAttempts})
+		s.wrongDob(w, n, err, linkLocked, "")
 		return
 	}
-	n, err := s.q.PassLinkDob(ctx, l.ID)
+	n, err := s.q.PassInviteDob(ctx, l.ID)
 	if err != nil {
 		serverError(w, "right date of birth", err)
 		return
@@ -132,11 +134,12 @@ func (s *server) linkDob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]uuid.UUID{"episodeId": l.EpisodeID.UUID})
 }
 
-// wrongDob counts a wrong date of birth on a link: 401 with the tries left, or the lock at the
-// fifth (locked is what the lock's message says to do). mismatch is what didn't match ("": the
-// date of birth).
-func (s *server) wrongDob(w http.ResponseWriter, r *http.Request, link uuid.UUID, locked, mismatch string) {
-	n, err := s.q.FailLinkDob(r.Context(), db.FailLinkDobParams{ID: link, MaxAttempts: maxDobAttempts})
+// wrongDob answers a wrong date of birth, given the tries used so far (n) and the error from
+// counting it (pgx.ErrNoRows: already locked): 401 with the tries left, or the lock at the fifth
+// (locked is what the lock's message says to do). mismatch is what didn't match ("": the date of
+// birth). An invite's tries are its episode's (FailInviteDob); a sign-in link's are its own
+// (FailLinkDob).
+func (s *server) wrongDob(w http.ResponseWriter, n int32, err error, locked, mismatch string) {
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && n >= maxDobAttempts) {
 		writeLocked(w, locked)
 		return

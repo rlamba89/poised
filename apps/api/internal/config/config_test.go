@@ -46,6 +46,22 @@ func TestLoadLocalDefaults(t *testing.T) {
 	if c.DevLogin {
 		t.Error("the dev login is on by default; it must be off unless DEV_LOGIN=true")
 	}
+	if !c.JobsTimer {
+		t.Error("the jobs timer is off by default; it must be on unless JOBS_TIMER=false")
+	}
+}
+
+func TestLoadJobsTimer(t *testing.T) {
+	e := required()
+	e["JOBS_TIMER"] = "false"
+	c, err := config.Load(e.get)
+	if err != nil || c.JobsTimer {
+		t.Errorf("JOBS_TIMER=false: on %v, err %v", c.JobsTimer, err)
+	}
+	e["JOBS_TIMER"] = "true"
+	if c, err := config.Load(e.get); err != nil || !c.JobsTimer {
+		t.Errorf("JOBS_TIMER=true: on %v, err %v", c.JobsTimer, err)
+	}
 }
 
 func TestLoadReadsEveryValue(t *testing.T) {
@@ -158,6 +174,7 @@ func TestLoadRefusesBadValues(t *testing.T) {
 		{"APP_URL", "ftp://uk.example.test"},
 		{"APP_URL", "https://"},
 		{"DEV_LOGIN", "yes please"},
+		{"JOBS_TIMER", "off"},
 		{"CONFIG_STRICT", "maybe"},
 	}
 	for _, tc := range cases {

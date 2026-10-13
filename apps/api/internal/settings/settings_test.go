@@ -233,3 +233,21 @@ func TestFill(t *testing.T) {
 		}
 	})
 }
+
+func TestGet(t *testing.T) {
+	v := Platform()
+	var days []int
+	if err := Get(v, "reminders.days", &days); err != nil || len(days) != 2 || days[0] != 2 || days[1] != 5 {
+		t.Errorf("reminders.days = %v, %v", days, err)
+	}
+	var n int
+	if err := Get(v, "reminders.notRespondingDay", &n); err != nil || n != 7 {
+		t.Errorf("reminders.notRespondingDay = %v, %v", n, err)
+	}
+	if err := Get(Values{"reminders.days": raw(`"2,5"`)}, "reminders.days", &days); err == nil {
+		t.Error("a string read as a day list")
+	}
+	if err := Get(Values{}, "reminders.days", &days); err == nil {
+		t.Error("a missing value read")
+	}
+}

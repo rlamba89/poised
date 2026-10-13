@@ -14,6 +14,21 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addAutomaticEpisodeEvent = `-- name: AddAutomaticEpisodeEvent :exec
+INSERT INTO episode_events (episode_id, kind, text, automatic) VALUES ($1, 'event', $2, true)
+`
+
+type AddAutomaticEpisodeEventParams struct {
+	EpisodeID uuid.UUID `json:"episodeId"`
+	Text      string    `json:"text"`
+}
+
+// An entry written by the jobs (S16): a reminder, "not responding".
+func (q *Queries) AddAutomaticEpisodeEvent(ctx context.Context, arg AddAutomaticEpisodeEventParams) error {
+	_, err := q.db.Exec(ctx, addAutomaticEpisodeEvent, arg.EpisodeID, arg.Text)
+	return err
+}
+
 const addEpisodeEvent = `-- name: AddEpisodeEvent :exec
 INSERT INTO episode_events (episode_id, kind, text, user_id) VALUES ($1, $2, $3, $4)
 `
@@ -100,6 +115,7 @@ func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (u
 const getEpisode = `-- name: GetEpisode :one
 SELECT e.id, e.status, e.procedure, e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
        e.patient_submitted_at, e.review_completed_at, e.created_at, e.version_id, e.hospital_number,
+       e.invited_at, e.reminders_sent, e.not_responding_at, -- the follow-up (S16)
        reviewer.name AS review_completed_by_name, submitter.name AS patient_submitted_by_name,
        p.id AS patient_id, p.first_name, p.last_name, p.date_of_birth, p.sex, p.national_id, p.national_id_type,
        p.mobile, p.email,
@@ -131,6 +147,9 @@ type GetEpisodeRow struct {
 	CreatedAt              time.Time          `json:"createdAt"`
 	VersionID              uuid.UUID          `json:"versionId"`
 	HospitalNumber         string             `json:"hospitalNumber"`
+	InvitedAt              pgtype.Timestamptz `json:"invitedAt"`
+	RemindersSent          int32              `json:"remindersSent"`
+	NotRespondingAt        pgtype.Timestamptz `json:"notRespondingAt"`
 	ReviewCompletedByName  *string            `json:"reviewCompletedByName"`
 	PatientSubmittedByName *string            `json:"patientSubmittedByName"`
 	PatientID              uuid.UUID          `json:"patientId"`
@@ -162,6 +181,9 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 		&i.CreatedAt,
 		&i.VersionID,
 		&i.HospitalNumber,
+		&i.InvitedAt,
+		&i.RemindersSent,
+		&i.NotRespondingAt,
 		&i.ReviewCompletedByName,
 		&i.PatientSubmittedByName,
 		&i.PatientID,
@@ -307,7 +329,7 @@ func (q *Queries) ListEpisodeAnswers(ctx context.Context, episodeID uuid.UUID) (
 }
 
 const listEpisodeEvents = `-- name: ListEpisodeEvents :many
-SELECT ev.id, ev.kind, ev.text, ev.created_at, u.name AS user_name
+SELECT ev.id, ev.kind, ev.text, ev.created_at, u.name AS user_name, ev.automatic
 FROM episode_events ev
 LEFT JOIN users u ON u.id = ev.user_id
 WHERE ev.episode_id = $1
@@ -320,8 +342,10 @@ type ListEpisodeEventsRow struct {
 	Text      string    `json:"text"`
 	CreatedAt time.Time `json:"createdAt"`
 	UserName  *string   `json:"userName"`
+	Automatic bool      `json:"automatic"`
 }
 
+// user_name is NULL for the patient's entries and the automatic ones.
 func (q *Queries) ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeEventsRow, error) {
 	rows, err := q.db.Query(ctx, listEpisodeEvents, episodeID)
 	if err != nil {
@@ -337,6 +361,7 @@ func (q *Queries) ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([
 			&i.Text,
 			&i.CreatedAt,
 			&i.UserName,
+			&i.Automatic,
 		); err != nil {
 			return nil, err
 		}

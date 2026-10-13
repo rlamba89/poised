@@ -171,6 +171,11 @@ func seedDemo(ctx context.Context, tx pgx.Tx) error {
 	if _, err := tx.Exec(ctx, `DELETE FROM rate_limit_hits`); err != nil {
 		return fmt.Errorf("rate limits: %w", err)
 	}
+	// …and with the jobs timer's clock back on real time (S16), so a tester's "move the clock
+	// ahead" doesn't send reminders on the next round's new episodes.
+	if _, err := tx.Exec(ctx, `UPDATE qa_jobs_clock SET offset_minutes = 0`); err != nil {
+		return fmt.Errorf("jobs clock: %w", err)
+	}
 	orgs := map[string]string{} // the fixed trust id → its id in this database
 	for _, tr := range demoTrusts {
 		id, err := seedTrust(ctx, tx, tr.id, tr.name, tr.code, tr.hospitals[0][0])
