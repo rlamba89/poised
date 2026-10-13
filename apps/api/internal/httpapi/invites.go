@@ -63,7 +63,7 @@ func (s *server) invite(r *http.Request, episodeID, by uuid.UUID, again bool) (i
 		return inviteResult{}, err
 	}
 	link, err := s.q.CreateInviteLink(ctx, db.CreateInviteLinkParams{
-		TokenHash: auth.HashLinkToken(token), PatientID: d.PatientID,
+		TokenHash: auth.HashLinkToken(token), PatientID: uuid.NullUUID{UUID: d.PatientID, Valid: true},
 		EpisodeID: uuid.NullUUID{UUID: d.ID, Valid: true}, CreatedBy: uuid.NullUUID{UUID: by, Valid: by != uuid.Nil},
 	})
 	if err != nil {
@@ -207,4 +207,16 @@ func (s *server) qaMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rows)
+}
+
+// qaResetRateLimits is DELETE /api/qa/rate-limits (MESSAGING=capture only): forgets every sign-in
+// and verification request counted (S15), so a tester or a journey run from one machine, which all
+// counts as one IP address, can start again without waiting an hour. Like the captured messages,
+// it never exists where real messages are sent.
+func (s *server) qaResetRateLimits(w http.ResponseWriter, r *http.Request) {
+	if err := s.q.ResetRateLimits(r.Context()); err != nil {
+		serverError(w, "reset rate limits", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

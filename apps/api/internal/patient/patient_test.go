@@ -41,7 +41,10 @@ func TestEmail(t *testing.T) {
 			t.Errorf("Email(%q) = %q, %v; want %q", in, got, ok, want)
 		}
 	}
-	for _, bad := range []string{"ada", "ada@", "@example.test", "Ada <ada@example.test>", "ada@example.test, bob@example.test", "ada @example.test"} {
+	long := strings.Repeat("a", 65) + "@example.test"                  // a local part over 64
+	longer := "a@" + strings.Repeat("b", 250) + ".example"               // over 254 in all
+	for _, bad := range []string{"ada", "ada@", "@example.test", "Ada <ada@example.test>", "ada@example.test, bob@example.test", "ada @example.test",
+		"😀😀@example.org", "ada@exämple.test", long, longer} {
 		if got, ok := patient.Email(bad); ok {
 			t.Errorf("Email(%q) = %q, want refused", bad, got)
 		}

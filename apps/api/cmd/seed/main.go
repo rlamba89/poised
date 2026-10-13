@@ -166,6 +166,11 @@ func seedCodes(ctx context.Context, tx pgx.Tx, dir string) error {
 }
 
 func seedDemo(ctx context.Context, tx pgx.Tx) error {
+	// Every test round starts with no sign-in rate limits counted (S15): a manual tester or a
+	// journey run from this machine shares one IP address's 10 an hour.
+	if _, err := tx.Exec(ctx, `DELETE FROM rate_limit_hits`); err != nil {
+		return fmt.Errorf("rate limits: %w", err)
+	}
 	orgs := map[string]string{} // the fixed trust id → its id in this database
 	for _, tr := range demoTrusts {
 		id, err := seedTrust(ctx, tx, tr.id, tr.name, tr.code, tr.hospitals[0][0])

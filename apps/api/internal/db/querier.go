@@ -9,11 +9,19 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	AcceptInvites(ctx context.Context, arg AcceptInvitesParams) error
+	// Whether any account signs in with this mobile or email (a sign-in link is sent only then).
+	AccountHasContact(ctx context.Context, contact string) (bool, error)
+	// Who the sign-in link's date of birth (and name, when given) names, among the accounts with its
+	// contact. More than one without a name: people sharing the contact and the birthday, such as twins
+	// (S15 answers 6 and 8).
+	AccountsForSignin(ctx context.Context, arg AccountsForSigninParams) ([]AccountsForSigninRow, error)
 	AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams) error
+	AddHit(ctx context.Context, arg AddHitParams) error
 	AddMembership(ctx context.Context, arg AddMembershipParams) error
 	// Makes the user a superadmin (A-21); nothing changes if they already are.
 	AddPlatformAdmin(ctx context.Context, userID uuid.UUID) error
@@ -22,16 +30,24 @@ type Querier interface {
 	// Whether the account has an invite not yet accepted: it has never signed in.
 	AwaitingFirstSignIn(ctx context.Context, userID uuid.UUID) (bool, error)
 	CompleteReview(ctx context.Context, arg CompleteReviewParams) (int64, error)
+	// Another account with the same details (date of birth, first name, surname) already signs in with this
+	// contact: two accounts would then answer the same sign-in, so the change is refused.
+	ContactTaken(ctx context.Context, arg ContactTakenParams) (bool, error)
+	CountHits(ctx context.Context, arg CountHitsParams) (int32, error)
 	// The trust's whole-trust admins other than this user.
 	CountOtherTrustAdmins(ctx context.Context, arg CountOtherTrustAdminsParams) (int64, error)
+	CreateAccount(ctx context.Context, arg CreateAccountParams) (uuid.UUID, error)
 	CreateChapter(ctx context.Context, arg CreateChapterParams) (uuid.UUID, error)
+	// A sign-in link (kind signin) to a contact, or a verification link (kind verify) for an
+	// account's new contact. Both expire.
+	CreateContactLink(ctx context.Context, arg CreateContactLinkParams) (uuid.UUID, error)
 	// Creates nothing (no row) unless the patient is the trust's and the version is published and
 	// one this hospital uses.
 	CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (uuid.UUID, error)
 	// Nothing is returned when the trust already has a hospital of that name (any case).
 	CreateHospital(ctx context.Context, arg CreateHospitalParams) ([]uuid.UUID, error)
-	// Patient links (plan C2, S14): invites now, sign-in links with S15. Only a token's hash is
-	// stored (auth.HashLinkToken).
+	// Patient links (plan C2): invites (S14); sign-in and contact verification links (S15) are in
+	// accounts.sql. Only a token's hash is stored (auth.HashLinkToken).
 	// A new invite link, stored before its messages go (so it works the moment they arrive). Once
 	// they've gone it replaces the older ones (RevokeOlderInviteLinks); if none went, it's revoked
 	// itself (RevokeLink) and the old link carries on.
@@ -55,11 +71,27 @@ type Querier interface {
 	DeleteQuestionnaire(ctx context.Context, arg DeleteQuestionnaireParams) error
 	DeleteUserOrgMemberships(ctx context.Context, arg DeleteUserOrgMembershipsParams) error
 	DraftNameExists(ctx context.Context, arg DraftNameExistsParams) (bool, error)
+	DropOldHits(ctx context.Context, arg DropOldHitsParams) error
 	EndPatientSession(ctx context.Context, arg EndPatientSessionParams) error
 	// Counts a wrong date of birth, locking the link at max_attempts. No row: it was already locked.
 	FailLinkDob(ctx context.Context, arg FailLinkDobParams) (int32, error)
+	// A record joining an account fills in a contact the account doesn't have yet (never replaces
+	// one), unless another account of the same person's details (date of birth, first name) uses it.
+	FillAccountContacts(ctx context.Context, arg FillAccountContactsParams) error
+	// Records that just joined take the account's mobile or email where they have none (S15 answers
+	// 7), so every hospital can reach the patient at the contact they use. Never replaces one.
+	FillRecordContacts(ctx context.Context, ids []uuid.UUID) error
+	// The account a record joins (PAT-07): the same date of birth, the same mobile or email, and the
+	// same first name and surname, ignoring case and spaces (S15 answers 6 and 8: twins, or cousins
+	// sharing a birthday and a first name, on one phone stay apart). The oldest, if (rarely) more
+	// than one.
+	FindAccountForRecord(ctx context.Context, arg FindAccountForRecordParams) (uuid.UUID, error)
+	GetAccount(ctx context.Context, id uuid.UUID) (GetAccountRow, error)
 	GetChapter(ctx context.Context, arg GetChapterParams) (GetChapterRow, error)
 	GetChapterMeta(ctx context.Context, arg GetChapterMetaParams) (GetChapterMetaRow, error)
+	// A sign-in or verification link, used or not, expired or not (the handler says which).
+	// A replaced (revoked) verification link is returned too, and refused as expired.
+	GetContactLinkByHash(ctx context.Context, arg GetContactLinkByHashParams) (GetContactLinkByHashRow, error)
 	GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpisodeRow, error)
 	// An episode's HQ as the patient fills it in: for the patient's session (the handler checks the
 	// episode is theirs) or staff completing it on their behalf (it checks the hospital).
@@ -94,6 +126,10 @@ type Querier interface {
 	// At sign-in: how many invites wait for the first sign-in, and how many of those are still open.
 	InviteState(ctx context.Context, arg InviteStateParams) (InviteStateRow, error)
 	IsPlatformAdmin(ctx context.Context, userID uuid.UUID) (bool, error)
+	JoinAccount(ctx context.Context, arg JoinAccountParams) error
+	// The person's other records, in any trust, not yet joined: the same date of birth, the account's
+	// first name and surname, and one of the contacts they've just proved (a link reached them there).
+	JoinMatchingRecords(ctx context.Context, arg JoinMatchingRecordsParams) ([]JoinMatchingRecordsRow, error)
 	// One trust's log, newest first, with the filters that are set: someone (a staff member, or
 	// patients_only for the patient's link), a time range [from_at, to_at), and patients (any of
 	// patient_ids, when by_patient).
@@ -109,6 +145,10 @@ type Querier interface {
 	// One trust's episodes: at every hospital when all_hospitals (a trust-wide member's "All
 	// hospitals", STF-03), else only at the hospitals listed.
 	ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]ListEpisodesRow, error)
+	// The person's home (PX-08): every episode of every record joined to their account, in every
+	// trust, newest first, with the hospital's name. Suspended trusts and hospitals are left out
+	// (ORG-03). org, hospital and patient ids are for the audit log, never sent.
+	ListHome(ctx context.Context, accountID uuid.NullUUID) ([]ListHomeRow, error)
 	// Every hospital the user can work in, once per membership that reaches it: a trust-wide one
 	// (hospital_id NULL) reaches every hospital of the trust, a hospital one only that hospital.
 	// GET /api/me keeps the highest role per hospital. A trust-wide membership of a trust with no
@@ -149,6 +189,10 @@ type Querier interface {
 	ListTrustAdmins(ctx context.Context, orgID uuid.UUID) ([]ListTrustAdminsRow, error)
 	ListUsers(ctx context.Context) ([]ListUsersRow, error)
 	ListVersionChapters(ctx context.Context, versionID uuid.UUID) ([]ListVersionChaptersRow, error)
+	LockAccount(ctx context.Context, id uuid.UUID) (LockAccountRow, error)
+	// Accounts are matched by date of birth: one person's records join one at a time, so two first
+	// visits at once (from two trusts' invites) can't make two accounts.
+	LockBirthDate(ctx context.Context, dateOfBirth pgtype.Date) error
 	// Taken before an invite's links are replaced, so two resends at once are applied one after
 	// the other.
 	LockEpisode(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
@@ -164,6 +208,13 @@ type Querier interface {
 	// Serialises staff changes in one trust, so two admins can't both remove the last admin, or
 	// give one person two memberships.
 	LockOrgStaff(ctx context.Context, orgID uuid.UUID) error
+	// Patient accounts (plan C2, S15; A-3, PAT-06, PAT-07, PAT-10): one per person, joined by each
+	// trust's record of them; sign-in links to a contact; the home; changing a contact.
+	// The invited record, locked while it joins an account (two first sign-ins at once make one).
+	LockPatientForAccount(ctx context.Context, id uuid.UUID) (LockPatientForAccountRow, error)
+	// Rate limits (PAT-11): rate_limit_hits.
+	// Hits on one key are counted and added one request at a time.
+	LockRateKey(ctx context.Context, key string) error
 	// The trust's patients that a "Patient" filter names: part of their name ("Jane Smith" or
 	// "Smith Jane"), part of a hospital number on one of their episodes (S13 moved it there), their
 	// national ID (exactly, as normalised), or their record's id.
@@ -183,11 +234,15 @@ type Querier interface {
 	PublishVersion(ctx context.Context, arg PublishVersionParams) (int64, error)
 	// The trust's questionnaires that have a published version: the choices for its default HQ.
 	PublishedQuestionnairesInOrg(ctx context.Context, orgID uuid.UUID) ([]PublishedQuestionnairesInOrgRow, error)
+	// MESSAGING=capture only (local, QA): a tester's fresh start.
+	ResetRateLimits(ctx context.Context) error
 	// An invite whose messages all failed: its link never reached anyone.
 	RevokeLink(ctx context.Context, id uuid.UUID) error
 	// An invite went: the episode's links older than it stop working (only the newest works, even
 	// when two resends cross: each revokes only what came before it).
 	RevokeOlderInviteLinks(ctx context.Context, arg RevokeOlderInviteLinksParams) error
+	// A newer request for the same kind of contact (mobile or email) replaces the older links.
+	RevokeVerifyLinks(ctx context.Context, arg RevokeVerifyLinksParams) error
 	// The caller's roles at a hospital of a trust: trust-wide, at that hospital, or both. None when
 	// they aren't a member, the hospital isn't in that trust, or either is suspended (ORG-03).
 	// Re-read on every request (STF-04).
@@ -222,23 +277,29 @@ type Querier interface {
 	// LIKE pattern, lower case and escaped); born on birth when it's set. max_rows is one more than
 	// is shown, so the caller knows there are more.
 	SearchPatients(ctx context.Context, arg SearchPatientsParams) ([]SearchPatientsRow, error)
+	SetAccountContact(ctx context.Context, arg SetAccountContactParams) error
 	SetChapterPosition(ctx context.Context, arg SetChapterPositionParams) error
 	SetHospitalSettings(ctx context.Context, arg SetHospitalSettingsParams) error
 	SetHospitalStatus(ctx context.Context, arg SetHospitalStatusParams) error
 	SetOrgSettings(ctx context.Context, arg SetOrgSettingsParams) error
 	SetOrgStatus(ctx context.Context, arg SetOrgStatusParams) error
+	// The patient's own change (PAT-10) is made to every trust's record of them, so invites and
+	// reminders go to the new contact. Returns the records changed, for each trust's audit log.
+	SetRecordsContact(ctx context.Context, arg SetRecordsContactParams) ([]SetRecordsContactRow, error)
 	// At sign-in: how many memberships the user has, and how many are usable: in an active trust and,
 	// for a hospital one, an active hospital; for a trust-wide one, a trust with an active hospital or
 	// none yet (a new trust). None usable means sign-in is refused (ORG-03), as /api/me would list
 	// nothing (ListMyHospitals).
 	SignInState(ctx context.Context, userID uuid.UUID) (SignInStateRow, error)
-	// After the right date of birth: a session for the link's patient.
+	// After the right date of birth: a session for the person's account (all their records), tied
+	// to the link it was opened with.
 	StartPatientSession(ctx context.Context, arg StartPatientSessionParams) (uuid.UUID, error)
 	// submitted_by: the staff member who sent it on the patient's behalf (PAT-09), NULL for the patient.
 	SubmitPatientHQ(ctx context.Context, arg SubmitPatientHQParams) (int64, error)
-	// Every patient request: the session's patient, if the session is live (not signed out, seen
-	// since idle_since) and its link still works (not replaced by a resend, not locked). It counts
-	// as activity. No row: the session has ended.
+	// Every patient request: the session's account, if the session is live (not signed out, seen
+	// since idle_since) and its link wasn't replaced by a resend or locked. It counts as activity.
+	// A link's expiry governs only opening it: a session from a 15-minute sign-in link lasts like any
+	// other. No row: the session has ended.
 	TouchPatientSession(ctx context.Context, arg TouchPatientSessionParams) (uuid.UUID, error)
 	TouchVersion(ctx context.Context, arg TouchVersionParams) error
 	UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) error
@@ -253,6 +314,9 @@ type Querier interface {
 	// A trust's details (S10 answers 3: the platform admin edits them at any time). A code another
 	// trust has fails on orgs_code_upper_key.
 	UpdateOrgDetails(ctx context.Context, arg UpdateOrgDetailsParams) error
+	// A sign-in or verification link works once, until it expires. No row: used, locked or expired
+	// meanwhile.
+	UseContactLink(ctx context.Context, arg UseContactLinkParams) (int64, error)
 	UserOrgMemberships(ctx context.Context, arg UserOrgMembershipsParams) ([]UserOrgMembershipsRow, error)
 }
 

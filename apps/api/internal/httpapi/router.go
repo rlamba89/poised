@@ -72,6 +72,7 @@ func mount(s *server, groups ...func(*server, *http.ServeMux)) http.Handler {
 	mux.HandleFunc("GET /api/config", s.publicConfig)
 	if s.cfg.Messaging == config.MessagingCapture { // the captured SMS and email (local and QA only)
 		mux.HandleFunc("GET /api/qa/messages", s.qaMessages)
+		mux.HandleFunc("DELETE /api/qa/rate-limits", s.qaResetRateLimits) // a tester's fresh start (S15)
 	}
 	for _, add := range groups {
 		add(s, mux)
@@ -173,6 +174,16 @@ func (s *server) patientRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/p/episodes/{eid}", session(s.audited("link.view", s.patientForm)))
 	mux.HandleFunc("PUT /api/p/episodes/{eid}/answers/{cid}", session(s.audited("link.save", s.savePatientForm)))
 	mux.HandleFunc("POST /api/p/episodes/{eid}/submit", session(s.audited("link.submit", s.submitPatientForm)))
+
+	// Accounts across trusts (S15): a returning patient's sign-in link (by mobile or email, then
+	// Continue and their date of birth, as an invite), their home, and changing a contact. The
+	// home and the changes write a row to each trust's log whose records they read or changed.
+	mux.HandleFunc("POST /api/p/signin", noStore(s.requestSignin))
+	mux.HandleFunc("POST /api/p/signin/{token}/continue", noStore(s.signinContinue))
+	mux.HandleFunc("POST /api/p/signin/{token}/dob", noStore(s.audited("account.join", s.signinDob)))
+	mux.HandleFunc("GET /api/p/home", session(s.audited("home.view", s.patientHome)))
+	mux.HandleFunc("POST /api/p/contact", session(s.requestContactChange))
+	mux.HandleFunc("POST /api/p/contact/{token}/confirm", noStore(s.audited("contact.update", s.confirmContact)))
 }
 
 // publicConfig is the deployment's public per-country values (A-20), read once by the web app.

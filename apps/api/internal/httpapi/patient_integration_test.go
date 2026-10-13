@@ -573,7 +573,7 @@ func TestPatientSessionEndsOnTheServer(t *testing.T) {
 	t.Run("happy path: the right date of birth starts a session row; the cookie holds no record id", func(t *testing.T) {
 		e := w.fx.Episode(t, w.hq, w.cara)
 		p, v := open(e)
-		if n := sessions(e, "s.ended_at IS NULL AND s.patient_id = l.patient_id"); n != 1 {
+		if n := sessions(e, "s.ended_at IS NULL AND s.account_id = (SELECT account_id FROM patients WHERE id = l.patient_id)"); n != 1 {
 			t.Fatalf("live sessions = %d", n)
 		}
 		for _, part := range strings.Split(v, ".")[:2] {

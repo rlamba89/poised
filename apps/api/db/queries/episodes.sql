@@ -77,7 +77,7 @@ ORDER BY ev.created_at, ev.id;
 -- An episode's HQ as the patient fills it in: for the patient's session (the handler checks the
 -- episode is theirs) or staff completing it on their behalf (it checks the hospital).
 SELECT e.id, e.status, e.patient_submitted_at, e.version_id,
-       e.org_id, e.hospital_id, e.patient_id, -- for the checks and the audit log, never sent to the patient
+       e.org_id, e.hospital_id, e.patient_id, p.account_id, -- for the checks and the audit log, never sent to the patient
        p.first_name, p.last_name, p.date_of_birth, p.sex,
        q.name AS questionnaire_name, h.name AS hospital_name, h.timezone,
        (o.status = 'active' AND h.status = 'active')::boolean AS open -- false while suspended (ORG-03)

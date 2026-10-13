@@ -66,15 +66,15 @@ func (s *server) loadLink(w http.ResponseWriter, r *http.Request) (db.GetLinkByH
 		return l, false
 	}
 	if l.LockedAt.Valid {
-		writeLocked(w)
+		writeLocked(w, linkLocked)
 		return l, false
 	}
 	return l, true
 }
 
-// writeLocked is the locked link's refusal; code "locked" lets the page say what to do.
-func writeLocked(w http.ResponseWriter) {
-	writeJSON(w, http.StatusForbidden, map[string]string{"error": linkLocked, "code": "locked"})
+// writeLocked is a locked link's refusal; code "locked" lets the page say what to do.
+func writeLocked(w http.ResponseWriter, msg string) {
+	writeJSON(w, http.StatusForbidden, map[string]string{"error": msg, "code": "locked"})
 }
 
 // linkContinue is the Continue button: it says whether the link works, and returns only the
@@ -107,22 +107,7 @@ func (s *server) linkDob(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	if !sameDate(dob, l.DateOfBirth) {
-		n, err := s.q.FailLinkDob(ctx, db.FailLinkDobParams{ID: l.ID, MaxAttempts: maxDobAttempts})
-		if errors.Is(err, pgx.ErrNoRows) || (err == nil && n >= maxDobAttempts) {
-			writeLocked(w)
-			return
-		}
-		if err != nil {
-			serverError(w, "wrong date of birth", err)
-			return
-		}
-		left := maxDobAttempts - n
-		tries := "tries"
-		if left == 1 {
-			tries = "try"
-		}
-		writeError(w, http.StatusUnauthorized, fmt.Sprintf(
-			"That date of birth doesn't match the hospital's records. Please check it and try again. You have %d %s left.", left, tries))
+		s.wrongDob(w, r, l.ID, linkLocked, "")
 		return
 	}
 	n, err := s.q.PassLinkDob(ctx, l.ID)
@@ -131,18 +116,54 @@ func (s *server) linkDob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if n == 0 { // locked by a wrong date sent at the same moment
-		writeLocked(w)
+		writeLocked(w, linkLocked)
 		return
 	}
-	session, err := s.q.StartPatientSession(ctx, db.StartPatientSessionParams{LinkID: l.ID, PatientID: l.PatientID, Now: s.clock.Now()})
+	// The record joins the person's account (or starts one), with their other records that
+	// share its contacts and date of birth (S15, PAT-07); the session is the account's.
+	account, err := s.joinAccount(r, l.PatientID, l.DateOfBirth)
 	if err != nil {
-		serverError(w, "start session", err)
+		serverError(w, "join account", err)
 		return
 	}
-	if !s.setPatientSession(w, session) {
+	if !s.startSession(w, r, l.ID, account) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]uuid.UUID{"episodeId": l.EpisodeID.UUID})
+}
+
+// wrongDob counts a wrong date of birth on a link: 401 with the tries left, or the lock at the
+// fifth (locked is what the lock's message says to do). mismatch is what didn't match ("": the
+// date of birth).
+func (s *server) wrongDob(w http.ResponseWriter, r *http.Request, link uuid.UUID, locked, mismatch string) {
+	n, err := s.q.FailLinkDob(r.Context(), db.FailLinkDobParams{ID: link, MaxAttempts: maxDobAttempts})
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && n >= maxDobAttempts) {
+		writeLocked(w, locked)
+		return
+	}
+	if err != nil {
+		serverError(w, "wrong date of birth", err)
+		return
+	}
+	left := maxDobAttempts - n
+	tries := "tries"
+	if left == 1 {
+		tries = "try"
+	}
+	if mismatch == "" {
+		mismatch = "That date of birth doesn't match our records. Please check it and try again."
+	}
+	writeError(w, http.StatusUnauthorized, fmt.Sprintf("%s You have %d %s left.", mismatch, left, tries))
+}
+
+// startSession starts the account's session, opened with the link, and sets its cookie.
+func (s *server) startSession(w http.ResponseWriter, r *http.Request, link, account uuid.UUID) bool {
+	session, err := s.q.StartPatientSession(r.Context(), db.StartPatientSessionParams{LinkID: link, AccountID: account, Now: s.clock.Now()})
+	if err != nil {
+		serverError(w, "start session", err)
+		return false
+	}
+	return s.setPatientSession(w, session)
 }
 
 // sameDate compares a typed date with a stored one, by calendar date.
@@ -195,7 +216,7 @@ func (s *server) requirePatient(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		now := s.clock.Now()
-		patient, err := s.q.TouchPatientSession(r.Context(), db.TouchPatientSessionParams{ID: session, Now: now, IdleSince: now.Add(-auth.PatientIdle)})
+		account, err := s.q.TouchPatientSession(r.Context(), db.TouchPatientSessionParams{ID: session, Now: now, IdleSince: now.Add(-auth.PatientIdle)})
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusUnauthorized, sessionEnded)
 			return
@@ -207,7 +228,7 @@ func (s *server) requirePatient(next http.HandlerFunc) http.HandlerFunc {
 		if !s.setPatientSession(w, session) {
 			return
 		}
-		next(w, r.WithContext(withPatient(r.Context(), patient)))
+		next(w, r.WithContext(withAccount(r.Context(), account)))
 	}
 }
 
@@ -240,14 +261,20 @@ type form struct {
 	enteredBy uuid.UUID // uuid.Nil: the patient
 }
 
-// loadPatientForm is {eid} for the patient's session: one of their own episodes, or 404.
+// loadPatientForm is {eid} for the patient's session: an episode of one of their records, in any
+// trust (all joined to their account, S15), or 404.
 func (s *server) loadPatientForm(w http.ResponseWriter, r *http.Request) (form, bool) {
 	f, ok := s.loadForm(w, r)
-	if ok && f.PatientID != patientOf(r) {
+	if ok && !f.ownedBy(accountOf(r)) {
 		writeError(w, http.StatusNotFound, episodeNotFound)
 		return f, false
 	}
 	return f, ok
+}
+
+// ownedBy reports whether the episode's patient record has joined the account.
+func (f form) ownedBy(account uuid.UUID) bool {
+	return account != uuid.Nil && f.AccountID.Valid && f.AccountID.UUID == account
 }
 
 // loadStaffForm is {eid} at the staff member's hospital, or 404.
@@ -277,11 +304,11 @@ func (s *server) loadForm(w http.ResponseWriter, r *http.Request) (form, bool) {
 		return form{}, false
 	}
 	f := form{GetEpisodeFormRow: e}
-	if patientOf(r) == uuid.Nil && e.HospitalID != hospitalID(r) {
+	if accountOf(r) == uuid.Nil && e.HospitalID != hospitalID(r) {
 		return f, true // staff at another hospital: refused by loadStaffForm, and not in this trust's log
 	}
-	if patientOf(r) != uuid.Nil && e.PatientID != patientOf(r) {
-		return f, true // another patient's: refused by loadPatientForm, and logged nowhere
+	if accountOf(r) != uuid.Nil && !f.ownedBy(accountOf(r)) {
+		return f, true // another person's: refused by loadPatientForm, and logged nowhere
 	}
 	a := auditOf(r)
 	a.org, a.hospital = e.OrgID, e.HospitalID

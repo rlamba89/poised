@@ -23,7 +23,7 @@ RETURNING id, created_at
 
 type CreateInviteLinkParams struct {
 	TokenHash []byte        `json:"tokenHash"`
-	PatientID uuid.UUID     `json:"patientId"`
+	PatientID uuid.NullUUID `json:"patientId"`
 	EpisodeID uuid.NullUUID `json:"episodeId"`
 	CreatedBy uuid.NullUUID `json:"createdBy"`
 }
@@ -33,8 +33,8 @@ type CreateInviteLinkRow struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// Patient links (plan C2, S14): invites now, sign-in links with S15. Only a token's hash is
-// stored (auth.HashLinkToken).
+// Patient links (plan C2): invites (S14); sign-in and contact verification links (S15) are in
+// accounts.sql. Only a token's hash is stored (auth.HashLinkToken).
 // A new invite link, stored before its messages go (so it works the moment they arrive). Once
 // they've gone it replaces the older ones (RevokeOlderInviteLinks); if none went, it's revoked
 // itself (RevokeLink) and the old link carries on.
@@ -147,7 +147,7 @@ func (q *Queries) GetInviteDetails(ctx context.Context, id uuid.UUID) (GetInvite
 }
 
 const getLinkByHash = `-- name: GetLinkByHash :one
-SELECT l.id, l.patient_id, l.episode_id, l.locked_at,
+SELECT l.id, e.patient_id, l.episode_id, l.locked_at,
        e.org_id, e.hospital_id, h.name AS hospital_name, p.date_of_birth,
        (o.status = 'active' AND h.status = 'active')::boolean AS open -- false while suspended (ORG-03)
 FROM login_links l
@@ -310,20 +310,21 @@ func (q *Queries) RevokeOlderInviteLinks(ctx context.Context, arg RevokeOlderInv
 }
 
 const startPatientSession = `-- name: StartPatientSession :one
-INSERT INTO patient_sessions (link_id, patient_id, created_at, last_seen_at)
+INSERT INTO patient_sessions (link_id, account_id, created_at, last_seen_at)
 VALUES ($1, $2, $3, $3)
 RETURNING id
 `
 
 type StartPatientSessionParams struct {
 	LinkID    uuid.UUID `json:"linkId"`
-	PatientID uuid.UUID `json:"patientId"`
+	AccountID uuid.UUID `json:"accountId"`
 	Now       time.Time `json:"now"`
 }
 
-// After the right date of birth: a session for the link's patient.
+// After the right date of birth: a session for the person's account (all their records), tied
+// to the link it was opened with.
 func (q *Queries) StartPatientSession(ctx context.Context, arg StartPatientSessionParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, startPatientSession, arg.LinkID, arg.PatientID, arg.Now)
+	row := q.db.QueryRow(ctx, startPatientSession, arg.LinkID, arg.AccountID, arg.Now)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
@@ -335,8 +336,7 @@ FROM login_links l
 WHERE s.id = $2 AND l.id = s.link_id
   AND s.ended_at IS NULL AND s.last_seen_at > $3::timestamptz
   AND l.revoked_at IS NULL AND l.locked_at IS NULL
-  AND (l.expires_at IS NULL OR l.expires_at > $1)
-RETURNING s.patient_id
+RETURNING s.account_id
 `
 
 type TouchPatientSessionParams struct {
@@ -345,12 +345,13 @@ type TouchPatientSessionParams struct {
 	IdleSince time.Time `json:"idleSince"`
 }
 
-// Every patient request: the session's patient, if the session is live (not signed out, seen
-// since idle_since) and its link still works (not replaced by a resend, not locked). It counts
-// as activity. No row: the session has ended.
+// Every patient request: the session's account, if the session is live (not signed out, seen
+// since idle_since) and its link wasn't replaced by a resend or locked. It counts as activity.
+// A link's expiry governs only opening it: a session from a 15-minute sign-in link lasts like any
+// other. No row: the session has ended.
 func (q *Queries) TouchPatientSession(ctx context.Context, arg TouchPatientSessionParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, touchPatientSession, arg.Now, arg.ID, arg.IdleSince)
-	var patient_id uuid.UUID
-	err := row.Scan(&patient_id)
-	return patient_id, err
+	var account_id uuid.UUID
+	err := row.Scan(&account_id)
+	return account_id, err
 }

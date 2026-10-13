@@ -55,6 +55,9 @@ var auditActions = map[string]string{
 	"link.view":          "Patient opened their questionnaire",
 	"link.save":          "Patient saved answers",
 	"link.submit":        "Patient sent their answers",
+	"home.view":          "Patient opened their home", // S15: a row per hospital it listed
+	"account.join":       "Patient's record joined their sign-in account",
+	"contact.update":     "Patient changed their contact details",
 	"audit.view":         "Viewed the audit log",
 	"audit.export":       "Exported the audit log",
 }
@@ -69,6 +72,32 @@ type auditEntry struct {
 	hospital uuid.UUID // uuid.Nil: a trust route
 	patients idSet
 	episodes idSet
+	// more are the request's further rows: a patient's request can read or change records in
+	// several trusts and hospitals (their home, a contact change, S15), and each trust's log
+	// gets its own row.
+	more []*auditEntry
+}
+
+// also is the request's row for another trust (and hospital, uuid.Nil for none), and action:
+// the one already started, or a new one.
+func (e *auditEntry) also(action string, org, hospital uuid.UUID) *auditEntry {
+	for _, m := range e.more {
+		if m.action == action && m.org == org && m.hospital == hospital {
+			return m
+		}
+	}
+	m := &auditEntry{action: action, org: org, hospital: hospital}
+	e.more = append(e.more, m)
+	return m
+}
+
+// rows are the entries to write: this one if it has a trust, and the further ones.
+func (e *auditEntry) rows() []*auditEntry {
+	var out []*auditEntry
+	if e.org != uuid.Nil {
+		out = append(out, e)
+	}
+	return append(out, e.more...)
 }
 
 // idSet is a list of IDs without repeats, in the order first added. A list screen can touch every
@@ -124,13 +153,13 @@ func (s *server) audited(action string, next http.HandlerFunc) http.HandlerFunc 
 		e := &auditEntry{action: action, org: p.Org, hospital: p.Hospital}
 		held := &heldResponse{header: http.Header{}}
 		next(held, r.WithContext(context.WithValue(r.Context(), auditKey, e)))
-		if e.org == uuid.Nil { // the patient's link with a token that names no episode
-			held.sendTo(w)
-			return
-		}
-		if err := s.writeAudit(r, e, held.code()); err != nil {
-			serverError(w, "audit "+action, err)
-			return
+		// None: the patient's link with a token that names no episode, or a patient request that
+		// touched no trust's records.
+		for _, row := range e.rows() {
+			if err := s.writeAudit(r, row, held.code()); err != nil {
+				serverError(w, "audit "+row.action, err)
+				return
+			}
 		}
 		held.sendTo(w)
 	}

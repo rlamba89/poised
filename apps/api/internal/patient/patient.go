@@ -36,11 +36,21 @@ func Mobile(s, country string) (string, bool) {
 }
 
 // Email returns the address in lower case, or "" for an empty one. ok is false unless it's a
-// single plain address (no display name, no list).
+// single plain address (no display name, no list) in plain ASCII, at most 254 characters with a
+// local part of at most 64 (RFC 5321's limits; S15 answers 7: no emoji or over-long addresses,
+// which email providers refuse anyway).
 func Email(s string) (string, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return "", true
+	}
+	if len(s) > 254 || strings.Index(s, "@") > 64 {
+		return "", false
+	}
+	for _, r := range s {
+		if r < '!' || r > '~' {
+			return "", false
+		}
 	}
 	a, err := mail.ParseAddress(s)
 	if err != nil || a.Address != s || a.Name != "" || !strings.Contains(s[strings.LastIndex(s, "@")+1:], ".") {

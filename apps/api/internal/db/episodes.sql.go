@@ -181,7 +181,7 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 
 const getEpisodeForm = `-- name: GetEpisodeForm :one
 SELECT e.id, e.status, e.patient_submitted_at, e.version_id,
-       e.org_id, e.hospital_id, e.patient_id, -- for the checks and the audit log, never sent to the patient
+       e.org_id, e.hospital_id, e.patient_id, p.account_id, -- for the checks and the audit log, never sent to the patient
        p.first_name, p.last_name, p.date_of_birth, p.sex,
        q.name AS questionnaire_name, h.name AS hospital_name, h.timezone,
        (o.status = 'active' AND h.status = 'active')::boolean AS open -- false while suspended (ORG-03)
@@ -202,6 +202,7 @@ type GetEpisodeFormRow struct {
 	OrgID              uuid.UUID          `json:"orgId"`
 	HospitalID         uuid.UUID          `json:"hospitalId"`
 	PatientID          uuid.UUID          `json:"patientId"`
+	AccountID          uuid.NullUUID      `json:"accountId"`
 	FirstName          string             `json:"firstName"`
 	LastName           string             `json:"lastName"`
 	DateOfBirth        pgtype.Date        `json:"dateOfBirth"`
@@ -225,6 +226,7 @@ func (q *Queries) GetEpisodeForm(ctx context.Context, id uuid.UUID) (GetEpisodeF
 		&i.OrgID,
 		&i.HospitalID,
 		&i.PatientID,
+		&i.AccountID,
 		&i.FirstName,
 		&i.LastName,
 		&i.DateOfBirth,

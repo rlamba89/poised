@@ -226,8 +226,15 @@ func TestAuditRowsWritten(t *testing.T) {
 		// A wrong date of birth is recorded with its 401, then the right one.
 		oneAudit(t, w.clinic, "link.dob", func() *apitest.Resp { return patient.Do("POST", linkPath(w.ep, "/dob"), dob("1999-09-09")) }, 401).
 			touched(t, ids(pat), ids(ep))
-		oneAudit(t, w.clinic, "link.dob", func() *apitest.Resp { return patient.Do("POST", linkPath(w.ep, "/dob"), dob(w.ep.DateOfBirth)) }, 200).
-			at(t, w.a.Org, &a, nil)
+		// The first right one also joins the record to the patient's account (S15): a second row,
+		// account.join, for the trust's record (no hospital).
+		rows := audits(t, w.clinic, func() *apitest.Resp { return patient.Do("POST", linkPath(w.ep, "/dob"), dob(w.ep.DateOfBirth)) }, 200)
+		if len(rows) != 2 || rows[0].Action != "link.dob" || rows[1].Action != "account.join" {
+			t.Fatalf("rows %+v", rows)
+		}
+		rows[0].at(t, w.a.Org, &a, nil)
+		rows[1].at(t, w.a.Org, nil, nil)
+		rows[1].touched(t, ids(pat), nil)
 		row = oneAudit(t, w.clinic, "link.view", func() *apitest.Resp { return patient.Do("GET", patientPath(w.ep, ""), nil) }, 200)
 		row.at(t, w.a.Org, &a, nil)
 		row.touched(t, ids(pat), ids(ep))
@@ -446,10 +453,10 @@ func TestListAudit(t *testing.T) {
 
 	t.Run("happy path: newest first, with names read now", func(t *testing.T) {
 		l := getAudit(t, w.adaC, w.a.Org, nil)
-		if got := l.actions(); !slices.Equal(got, []string{"link.view", "link.dob", "link.open", "episode.view", "episode.list"}) {
+		if got := l.actions(); !slices.Equal(got, []string{"link.view", "account.join", "link.dob", "link.open", "episode.view", "episode.list"}) {
 			t.Fatalf("actions = %v", got)
 		}
-		view := l.Rows[3]
+		view := l.Rows[4]
 		if view.UserName != w.cara.Name || view.UserID == nil || *view.UserID != w.cara.ID || view.Actor != "staff" ||
 			view.HospitalName != hospitalName || view.ActionLabel == "" || view.Status != 200 ||
 			view.Route != "GET /api/o/{oid}/h/{hid}/episodes/{eid}" {
@@ -478,7 +485,7 @@ func TestListAudit(t *testing.T) {
 			t.Errorf("Cara's = %v", got)
 		}
 		l = getAudit(t, w.adaC, w.a.Org, url.Values{"user": {"patient"}})
-		if got := l.actions(); !slices.Equal(got, []string{"link.view", "link.dob", "link.open"}) {
+		if got := l.actions(); !slices.Equal(got, []string{"link.view", "account.join", "link.dob", "link.open"}) {
 			t.Errorf("the patient's = %v", got)
 		}
 		if l := getAudit(t, w.adaC, w.a.Org, url.Values{"user": {w.bob.ID.String()}}); len(l.Rows) != 0 {
@@ -495,7 +502,7 @@ func TestListAudit(t *testing.T) {
 			t.Errorf("before an hour ago = %v", got)
 		}
 		q = url.Values{"from": {now.Format(time.RFC3339Nano)}, "to": {now.Add(time.Second).Format(time.RFC3339Nano)}, "user": {"patient"}}
-		if got := getAudit(t, w.adaC, w.a.Org, q).actions(); !slices.Equal(got, []string{"link.view", "link.dob", "link.open"}) {
+		if got := getAudit(t, w.adaC, w.a.Org, q).actions(); !slices.Equal(got, []string{"link.view", "account.join", "link.dob", "link.open"}) {
 			t.Errorf("exactly now = %v", got)
 		}
 		q = url.Values{"from": {now.Add(-72 * time.Hour).Format(time.RFC3339)}, "to": {now.Add(-24 * time.Hour).Format(time.RFC3339)}}

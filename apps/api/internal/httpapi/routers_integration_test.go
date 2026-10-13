@@ -34,7 +34,10 @@ func TestPatientRouter(t *testing.T) {
 	ep := fx.Episode(t, hq, alex)
 
 	t.Run("serves the patient's link and their session", func(t *testing.T) {
-		p.AsPatient(t, ep.Link, ep.DateOfBirth).Do("GET", patientPath(ep, ""), nil).Want(t, http.StatusOK)
+		b := p.AsPatient(t, ep.Link, ep.DateOfBirth)
+		b.Do("GET", patientPath(ep, ""), nil).Want(t, http.StatusOK)
+		b.Do("GET", "/api/p/home", nil).Want(t, http.StatusOK)
+		p.Do("POST", "/api/p/signin", map[string]string{"contact": "nobody@example.org"}).Want(t, http.StatusAccepted)
 		p.Do("POST", "/api/p/logout", nil).Want(t, http.StatusNoContent)
 	})
 	t.Run("serves health and config", func(t *testing.T) {
@@ -89,6 +92,9 @@ func TestStaffRouter(t *testing.T) {
 			c.Do("GET", patientPath(ep, ""), nil).Want(t, http.StatusNotFound)
 			c.Do("PUT", patientPath(ep, "/answers/"+hq.Chapters[0].String()), map[string]any{"data": map[string]any{}}).Want(t, http.StatusNotFound)
 			c.Do("POST", patientPath(ep, "/submit"), nil).Want(t, http.StatusNotFound)
+			c.Do("POST", "/api/p/signin", map[string]string{"contact": "a@b.example"}).Want(t, http.StatusNotFound)
+			c.Do("GET", "/api/p/home", nil).Want(t, http.StatusNotFound)
+			c.Do("POST", "/api/p/contact", map[string]string{"contact": "a@b.example"}).Want(t, http.StatusNotFound)
 		}
 		if n := count(t, s.DB, `SELECT count(*) FROM episode_answers WHERE episode_id = $1`, ep.ID); n != 0 {
 			t.Errorf("%d answers rows written through the staff router", n)

@@ -112,7 +112,7 @@ type LoginLink struct {
 	ID                uuid.UUID          `json:"id"`
 	TokenHash         []byte             `json:"tokenHash"`
 	Kind              string             `json:"kind"`
-	PatientID         uuid.UUID          `json:"patientId"`
+	PatientID         uuid.NullUUID      `json:"patientId"`
 	EpisodeID         uuid.NullUUID      `json:"episodeId"`
 	CreatedBy         uuid.NullUUID      `json:"createdBy"`
 	CreatedAt         time.Time          `json:"createdAt"`
@@ -121,6 +121,8 @@ type LoginLink struct {
 	RevokedAt         pgtype.Timestamptz `json:"revokedAt"`
 	FailedDobAttempts int32              `json:"failedDobAttempts"`
 	LockedAt          pgtype.Timestamptz `json:"lockedAt"`
+	Contact           *string            `json:"contact"`
+	AccountID         uuid.NullUUID      `json:"accountId"`
 }
 
 type Membership struct {
@@ -167,13 +169,23 @@ type Patient struct {
 	CreatedAt      time.Time     `json:"createdAt"`
 }
 
+type PatientAccount struct {
+	ID           uuid.UUID   `json:"id"`
+	Mobile       string      `json:"mobile"`
+	Email        string      `json:"email"`
+	DateOfBirth  pgtype.Date `json:"dateOfBirth"`
+	CreatedAt    time.Time   `json:"createdAt"`
+	FirstNameKey string      `json:"firstNameKey"`
+	LastNameKey  string      `json:"lastNameKey"`
+}
+
 type PatientSession struct {
 	ID         uuid.UUID          `json:"id"`
 	LinkID     uuid.UUID          `json:"linkId"`
-	PatientID  uuid.UUID          `json:"patientId"`
 	CreatedAt  time.Time          `json:"createdAt"`
 	LastSeenAt time.Time          `json:"lastSeenAt"`
 	EndedAt    pgtype.Timestamptz `json:"endedAt"`
+	AccountID  uuid.UUID          `json:"accountId"`
 }
 
 type PlatformAdmin struct {
@@ -198,6 +210,11 @@ type QuestionnaireVersion struct {
 	Status          string    `json:"status"`
 	UpdatedBy       uuid.UUID `json:"updatedBy"`
 	UpdatedAt       time.Time `json:"updatedAt"`
+}
+
+type RateLimitHit struct {
+	Key string    `json:"key"`
+	At  time.Time `json:"at"`
 }
 
 type SentMessage struct {

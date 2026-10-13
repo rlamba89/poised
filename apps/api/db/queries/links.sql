@@ -1,5 +1,5 @@
--- Patient links (plan C2, S14): invites now, sign-in links with S15. Only a token's hash is
--- stored (auth.HashLinkToken).
+-- Patient links (plan C2): invites (S14); sign-in and contact verification links (S15) are in
+-- accounts.sql. Only a token's hash is stored (auth.HashLinkToken).
 
 -- name: CreateInviteLink :one
 -- A new invite link, stored before its messages go (so it works the moment they arrive). Once
@@ -28,7 +28,7 @@ UPDATE login_links SET revoked_at = now() WHERE id = $1;
 -- name: GetLinkByHash :one
 -- A link that works: not replaced, not expired, its episode's patient the link's. Locked links
 -- are returned (locked_at), so the patient is told to ask for a new one.
-SELECT l.id, l.patient_id, l.episode_id, l.locked_at,
+SELECT l.id, e.patient_id, l.episode_id, l.locked_at,
        e.org_id, e.hospital_id, h.name AS hospital_name, p.date_of_birth,
        (o.status = 'active' AND h.status = 'active')::boolean AS open -- false while suspended (ORG-03)
 FROM login_links l
@@ -83,22 +83,23 @@ ORDER BY id DESC
 LIMIT 100;
 
 -- name: StartPatientSession :one
--- After the right date of birth: a session for the link's patient.
-INSERT INTO patient_sessions (link_id, patient_id, created_at, last_seen_at)
-VALUES (sqlc.arg(link_id), sqlc.arg(patient_id), sqlc.arg(now), sqlc.arg(now))
+-- After the right date of birth: a session for the person's account (all their records), tied
+-- to the link it was opened with.
+INSERT INTO patient_sessions (link_id, account_id, created_at, last_seen_at)
+VALUES (sqlc.arg(link_id), sqlc.arg(account_id), sqlc.arg(now), sqlc.arg(now))
 RETURNING id;
 
 -- name: TouchPatientSession :one
--- Every patient request: the session's patient, if the session is live (not signed out, seen
--- since idle_since) and its link still works (not replaced by a resend, not locked). It counts
--- as activity. No row: the session has ended.
+-- Every patient request: the session's account, if the session is live (not signed out, seen
+-- since idle_since) and its link wasn't replaced by a resend or locked. It counts as activity.
+-- A link's expiry governs only opening it: a session from a 15-minute sign-in link lasts like any
+-- other. No row: the session has ended.
 UPDATE patient_sessions s SET last_seen_at = sqlc.arg(now)
 FROM login_links l
 WHERE s.id = sqlc.arg(id) AND l.id = s.link_id
   AND s.ended_at IS NULL AND s.last_seen_at > sqlc.arg(idle_since)::timestamptz
   AND l.revoked_at IS NULL AND l.locked_at IS NULL
-  AND (l.expires_at IS NULL OR l.expires_at > sqlc.arg(now))
-RETURNING s.patient_id;
+RETURNING s.account_id;
 
 -- name: EndPatientSession :exec
 UPDATE patient_sessions SET ended_at = sqlc.arg(now) WHERE id = sqlc.arg(id) AND ended_at IS NULL;

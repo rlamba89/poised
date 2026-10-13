@@ -175,13 +175,14 @@ func currentUser(r *http.Request) auth.User {
 	return u
 }
 
-// withPatient puts the patient's record id (their session's) in the context.
-func withPatient(ctx context.Context, patient uuid.UUID) context.Context {
-	return context.WithValue(ctx, patientKey, patient)
+// withAccount puts the signed-in patient's account (their session's, S15) in the context.
+func withAccount(ctx context.Context, account uuid.UUID) context.Context {
+	return context.WithValue(ctx, patientKey, account)
 }
 
-// patientOf is the signed-in patient's record id (requirePatient), or uuid.Nil on other routes.
-func patientOf(r *http.Request) uuid.UUID {
+// accountOf is the signed-in patient's account (requirePatient): every trust's record of them
+// has joined it. uuid.Nil on other routes.
+func accountOf(r *http.Request) uuid.UUID {
 	p, _ := r.Context().Value(patientKey).(uuid.UUID)
 	return p
 }
