@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allHospitals, atLeast, canChange, canManageSettings, canManageStaff, findHospital, homePath, startPath, switchPath, type Here, type Hospital, type Me, type Trust } from "./auth";
+import { allHospitals, atLeast, canChange, canManageSettings, canManageStaff, canSeeAudit, findHospital, homePath, startPath, switchPath, type Here, type Hospital, type Me, type Trust } from "./auth";
 
 const hospital = (id: string, role: Hospital["role"]): Hospital => ({ id, name: `Hospital ${id}`, timeZone: "UTC", role });
 const trustA: Trust = { id: "ta", name: "Trust A", code: "TA", role: "super_clinician", hospitals: [hospital("a1", "super_clinician"), hospital("a2", "admin")] };
@@ -90,11 +90,21 @@ describe("switching hospital from the header", () => {
   it("keeps Staff and Settings where the user manages the hospital's trust", () => {
     expect(switchPath("/o/ta/h/a1/settings", adminA, adminA.hospitals[1])).toBe("/o/ta/h/a2/settings");
     expect(switchPath("/o/ta/h/a1/staff", adminA, adminA.hospitals[1])).toBe("/o/ta/h/a2/staff");
+    expect(switchPath("/o/ta/h/a1/audit", adminA, adminA.hospitals[1])).toBe("/o/ta/h/a2/audit"); // S11
     // From a trust where they're refused to one they manage (S10 test report 1: Max landed on Questionnaires).
     expect(switchPath("/o/tb/h/b1/settings", adminA, adminA.hospitals[0])).toBe("/o/ta/h/a1/settings");
   });
   it("goes to the start page where they don't manage the trust", () => {
     expect(switchPath("/o/ta/h/a1/settings", trustB, trustB.hospitals[0])).toBe("/o/tb/h/b1/episodes");
     expect(switchPath("/o/ta/h/a1/staff", trustA, trustA.hospitals[1])).toBe("/o/ta/h/a2/questionnaires");
+    expect(switchPath("/o/ta/h/a1/audit", trustB, trustB.hospitals[0])).toBe("/o/tb/h/b1/episodes");
+  });
+});
+
+describe("who sees the audit log (S11)", () => {
+  it("is only the trust's whole-trust admins, as for Staff and Settings", () => {
+    expect(canSeeAudit({ ...trustA, role: "admin" })).toBe(true);
+    expect(canSeeAudit(trustA)).toBe(false); // a whole-trust super clinician
+    expect(canSeeAudit({ ...trustB, hospitals: [hospital("b1", "admin")] })).toBe(false); // an admin of one hospital
   });
 });

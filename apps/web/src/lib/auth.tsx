@@ -30,13 +30,14 @@ export function homePath(t: Trust, h: Hospital): string {
 /**
  * Where switching to hospital `h` of trust `t` from the header goes, from the page at `pathname`.
  * It keeps the section: Episodes stays Episodes, Questionnaires (and the editor or preview) stays
- * Questionnaires (S08), and Staff or Settings stays so where the user manages that trust (S09, S10);
+ * Questionnaires (S08), and Staff, Settings or Audit stays so where the user manages that trust (S09–S11);
  * anything else goes to the role's start page.
  */
 export function switchPath(pathname: string, t: Trust, h: Hospital): string {
   const base = hospitalBase(t.id, h.id);
   if (pathname.endsWith("/staff") && canManageStaff(t)) return `${base}/staff`;
   if (pathname.endsWith("/settings") && canManageSettings(t)) return `${base}/settings`;
+  if (pathname.endsWith("/audit") && canSeeAudit(t)) return `${base}/audit`;
   if (pathname.includes("/episodes")) return `${base}/episodes`;
   if (/\/(questionnaires|chapters)/.test(pathname)) return `${base}/questionnaires`;
   return homePath(t, h);
@@ -111,6 +112,9 @@ export const canManageStaff = (trust: Trust) => atLeast(trust.role, "admin");
 
 /** Whether the user changes the trust's settings (S10): only admins of the whole trust, as for staff. The API checks the same. */
 export const canManageSettings = canManageStaff;
+
+/** Whether the user reads the trust's audit log (S11): only admins of the whole trust. The API checks the same. */
+export const canSeeAudit = canManageStaff;
 
 export function useHospital(): Here {
   const here = useContext(HospitalContext);

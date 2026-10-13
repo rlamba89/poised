@@ -23,6 +23,7 @@ describe("routes", () => {
     ["/o/o1/h/h1/episodes/e1/sets/c1", "validate", { orgId: "o1", hospitalId: "h1", eid: "e1", cid: "c1" }],
     ["/o/o1/h/h1/staff", "staff", { orgId: "o1", hospitalId: "h1" }],
     ["/o/o1/h/h1/settings", "settings", { orgId: "o1", hospitalId: "h1" }],
+    ["/o/o1/h/h1/audit", "audit", { orgId: "o1", hospitalId: "h1" }],
     ["/admin", "admin-trusts", {}],
     ["/admin/trusts/new", "admin-new-trust", {}],
     ["/admin/trusts/o1", "admin-trust", { orgId: "o1" }],
@@ -42,6 +43,7 @@ describe("routes", () => {
     "/o/o1/h/h1/episodes/e1/sets/c1",
     "/o/o1/h/h1/staff",
     "/o/o1/h/h1/settings",
+    "/o/o1/h/h1/audit",
   ])("puts %s inside the hospital layout", (path) => {
     const matches = matchRoutes(routes, path) ?? [];
     const layout = matches.find((m) => m.route.id === "hospital");

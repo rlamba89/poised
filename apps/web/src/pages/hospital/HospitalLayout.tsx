@@ -1,7 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { Alert, Anchor, AppShell, Badge, Button, Group, Select, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
-import { AuthProvider, HospitalContext, canManageSettings, canManageStaff, findHospital, hospitalBase, roleLabel, switchPath, useMe, type Here } from "@/lib/auth";
+import { AuthProvider, HospitalContext, canManageSettings, canManageStaff, canSeeAudit, findHospital, hospitalBase, roleLabel, switchPath, useMe, type Here } from "@/lib/auth";
 
 function NoAccess() {
   return (
@@ -68,6 +68,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             {here && nav(`${here.base}/episodes`, "Episodes")}
             {here && canManageStaff(here.trust) && nav(`${here.base}/staff`, "Staff")}
             {here && canManageSettings(here.trust) && nav(`${here.base}/settings`, "Settings")}
+            {here && canSeeAudit(here.trust) && nav(`${here.base}/audit`, "Audit")}
             {me.platformAdmin && nav("/admin", "Platform admin")}
           </Group>
           <Group wrap="nowrap" style={{ flexShrink: 0 }}>
