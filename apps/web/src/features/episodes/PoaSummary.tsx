@@ -139,11 +139,15 @@ function Summary({ tab, episode: e, events, hq, path, onChanged }: SummaryProps)
   );
 }
 
-/** "Validated by X on …" for the clinician's answers; "Patient on …" for the patient's. */
+/**
+ * "Validated by X on …" for the clinician's answers; "Patient on …" for the patient's, or
+ * "Patient (entered by X) on …" where staff entered them on the patient's behalf (PAT-09).
+ */
 function byLine(validated: boolean, e: Episode, hq: EpisodeHQ, setId: string): string {
   const row = hq.clinician[setId];
   if (validated && row) return `${row.validatedAt ? "Validated by" : "Saved by"} ${row.updatedByName} on ${formatDateTime(row.validatedAt ?? row.updatedAt)}`;
-  return e.patientSubmittedAt ? `Patient on ${formatDateTime(e.patientSubmittedAt)}` : "Patient, not sent yet";
+  const who = hq.enteredBy[setId] ? `Patient (entered by ${hq.enteredBy[setId]})` : "Patient";
+  return e.patientSubmittedAt ? `${who} on ${formatDateTime(e.patientSubmittedAt)}` : `${who}, not sent yet`;
 }
 
 function SetSection({ set, byLine, validated }: { set: PoaSet; byLine: string; validated: boolean }) {

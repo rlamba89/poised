@@ -1,0 +1,22 @@
+{
+  "description": "Made-up HQ for the journeys that type a text answer (S14 verification 2): one patient Question Set with a text question and a Yes/No question.",
+  "chapters": [
+    {
+      "name": "Your medicines",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_medicines",
+            "title": "Medicines",
+            "elements": [
+              {"type": "text", "name": "q_medicines", "title": "What medicines do you take?"},
+              {"type": "radiogroup", "name": "q_thinners", "title": "Do you take blood thinners?",
+               "choices": [{"value": "o_yes", "text": "Yes"}, {"value": "o_no", "text": "No"}]}
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

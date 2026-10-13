@@ -5,7 +5,8 @@ Added here:
   - `base_url`: E2E_BASE_URL, default http://localhost:3000 (`make dev`);
   - `as_user("Alex Author")`: that seeded user's API session at Hospital A1 (or the hospital
     named), for setting up data (support.Api);
-  - `patient_link(episode)`: the patient's API session, through their link (support.Patient);
+  - `patient_link(episode)`: the patient's API session, through the link in their captured invite
+    and their date of birth (support.Patient, S14);
   - `phone`: a browser context on an emulated iPhone 13 (WebKit), for the patient's journeys.
 """
 

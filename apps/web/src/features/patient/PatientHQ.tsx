@@ -1,8 +1,13 @@
-// Step 3 of plan-workflow.md: the patient fills in their HQ through their link (no sign-in).
+// Step 3 of plan-workflow.md: the patient fills in their HQ, once their link and date of birth
+// have started a session (S14). Staff use the same form to fill it in on the patient's behalf
+// (PAT-09, `onBehalf`): only the API path and a few words differ.
 // Question Sets are listed as tiles; each opens in the patient view, answers save as they go
 // (PX-05), and "Send my answers" submits the whole HQ once every set is complete. Saves carry the
-// set's revision: if the link is open on another device that saved since, the save gets a 409 and
-// the page asks for a reload instead of overwriting (S02a).
+// set's revision: if the HQ is open on another device that saved since, the save gets a 409 and
+// the page asks for a reload instead of overwriting (S02a). A 401 means the patient's session
+// ended (30 minutes idle, a resend or a lock): the page says so, and the link in their message
+// starts a new one. If a save or Send was what got refused, it also says what wasn't kept
+// (`lostWork`): nothing may be lost without a word (S14 verification 1).
 //
 // Two copies of the answers, kept apart (S02a verify.md, verifications 1 and 2):
 //   - what the server has: the answers loaded with the HQ, then each save it accepts (each set's
@@ -11,24 +16,33 @@
 // A set counts as complete only when the server's answers are complete and its draft is saved
 // (isSetReadyToSend), so a change whose save failed keeps "Send my answers" disabled.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Badge, Box, Button, Card, Center, Container, Group, Loader, Modal, Stack, Text, Title } from "@mantine/core";
+import { Alert, Anchor, Badge, Box, Button, Card, Center, Container, Group, Loader, Modal, Stack, Text, Title } from "@mantine/core";
+import { Link, useNavigate } from "react-router";
 import { IconArrowLeft, IconCircleCheck } from "@tabler/icons-react";
+
 import { Model } from "survey-core";
 import { Survey } from "survey-react-ui";
 import "survey-core/survey-core.css";
 import {
-  answerSaver, isSetReadyToSend, modelFor, patientVariables, registerClinicalProperties, sameAnswer, shownSets, type Answers, type AnswerSaver,
-  type ChapterJson, type EpisodePatient,
+  answerSaver, isSetReadyToSend, modelFor, registerClinicalProperties, sameAnswer, shownSets, type Answers, type AnswerSaver,
+  type ChapterJson, type SamplePatient,
 } from "@poised/clinical";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
+import { lostWork, type Lost } from "./signedOut";
 import { showUnits } from "@/features/preview/units";
 
 registerClinicalProperties();
 
 type QuestionSet = { id: string; name: string; description: string; icon: string; content: ChapterJson };
+/**
+ * Who the HQ is for: the first name for "Hello Sam", and the survey's {patientName}, {patientAge}
+ * and {patientSex}, worked out by the server. Never the date of birth (S14 answers 1).
+ */
+type FormPatient = { firstName: string; name: string; age: number; sex: string };
 /** The HQ as loaded. Nothing changes it afterwards: later saves are tracked by each set's saver. */
 type HQ = {
-  patient: EpisodePatient;
+  patient: FormPatient;
+  hospital: string;
   questionnaireName: string;
   submitted: boolean;
   chapters: QuestionSet[];
@@ -39,7 +53,14 @@ type HQ = {
 
 const SAVE_DELAY_MS = 600;
 
-export default function PatientHQ({ token }: { token: string }) {
+type Props = {
+  /** The form's API path: `/p/episodes/<id>` for the patient, `<hospital>/episodes/<id>/patient-form` for staff. */
+  path: string;
+  /** Staff filling it in for the patient (PAT-09): where to go back to, the episode's page. */
+  onBehalf?: { back: string };
+};
+
+export default function PatientHQ({ path, onBehalf }: Props) {
   const [hq, setHq] = useState<HQ | null>(null);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -57,10 +78,33 @@ export default function PatientHQ({ token }: { token: string }) {
   const savers = useRef(new Map<string, AnswerSaver<Answers>>());
 
   const [reloading, setReloading] = useState(false);
+  // The open set's "save now": sends a change still waiting for its autosave (and a text box's
+  // value not yet committed). Sign out and the on-behalf form's Episode link call it before they
+  // leave, so the answer just typed is never dropped (S14 verification 2). True when nothing is
+  // left unsaved.
+  const flushRef = useRef<(() => Promise<boolean>) | null>(null);
+  const navigate = useNavigate();
+  // The patient's session ended (401): nothing more can be loaded or saved here. `lost` is what
+  // the refused request was carrying.
+  const [ended, setEnded] = useState<{ message: string; lost: Lost } | null>(null);
+  // A boolean, not the onBehalf object: a new object on each render would reload the form and
+  // drop what staff were typing (S14 verification 1).
+  const isPatient = !onBehalf;
+  const endedBy = useCallback(
+    (lost: Lost = {}) =>
+      (e: unknown): never => {
+        if (isPatient && e instanceof ApiError && e.status === 401) {
+          setEnded((was) => ({ message: e.message, lost: { ...was?.lost, ...lost } }));
+        }
+        throw e;
+      },
+    [isPatient],
+  );
 
   const load = useCallback(() => {
     setReloading(true);
-    return api<HQ>(`/p/${token}`)
+    return api<HQ>(path)
+      .catch(endedBy())
       .then((h) => {
         savers.current = new Map();
         setDrafts({});
@@ -71,17 +115,36 @@ export default function PatientHQ({ token }: { token: string }) {
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setReloading(false));
-  }, [token]);
+  }, [path, endedBy]);
   useEffect(() => {
     load();
   }, [load]);
 
-  const vars = useMemo(() => (hq ? patientVariables(hq.patient) : null), [hq]);
+  const vars = useMemo<SamplePatient | null>(() => (hq ? { name: hq.patient.name, age: hq.patient.age, sex: hq.patient.sex } : null), [hq]);
 
   const setDraft = useCallback((id: string, data: Answers) => setDrafts((d) => ({ ...d, [id]: data })), []);
 
+  // Staff leaving the on-behalf form: the answer just typed is saved first; if it can't be, they
+  // stay, with the save's message showing.
+  const leave = async (e: React.MouseEvent) => {
+    if (!onBehalf || !flushRef.current) return;
+    e.preventDefault();
+    if (await flushRef.current()) navigate(onBehalf.back);
+  };
+  const backLink = onBehalf && (
+    <Anchor component={Link} to={onBehalf.back} size="sm" onClick={leave} mb="md" display="inline-block">
+      <Group gap={4}><IconArrowLeft size={14} /> Episode</Group>
+    </Anchor>
+  );
+
+  if (ended) return <PatientFrame hospital={hq?.hospital}><SignedOut message={ended.message} lost={ended.lost} /></PatientFrame>;
   if (!hq || !vars) {
-    return error ? <Alert color="red" m="md">{error}</Alert> : <Center h="60vh"><Loader /></Center>;
+    return (
+      <Box>
+        {backLink}
+        {error ? <Alert color="red" m="md">{error}</Alert> : <Center h="60vh"><Loader /></Center>}
+      </Box>
+    );
   }
 
   const saverFor = (id: string) => {
@@ -89,7 +152,9 @@ export default function PatientHQ({ token }: { token: string }) {
     if (!saver) {
       saver = answerSaver<Answers>(
         hq.revisions[id] ?? 0,
-        (data, revision) => api<{ revision: number }>(`/p/${token}/answers/${id}`, { method: "PUT", body: JSON.stringify({ data, revision }) }),
+        (data, revision) =>
+          api<{ revision: number }>(`${path}/answers/${id}`, { method: "PUT", body: JSON.stringify({ data, revision }) })
+            .catch(endedBy({ unsavedSet: hq.chapters.find((c) => c.id === id)?.name ?? "a section" })),
         hq.answers[id] ?? {},
       );
       savers.current.set(id, saver);
@@ -108,7 +173,7 @@ export default function PatientHQ({ token }: { token: string }) {
   const send = async () => {
     setSending(true);
     try {
-      await api(`/p/${token}/submit`, { method: "POST" });
+      await api(`${path}/submit`, { method: "POST" }).catch(endedBy({ unsent: true }));
       setHq({ ...hq, submitted: true });
       setConfirming(false);
     } catch (e) {
@@ -118,18 +183,26 @@ export default function PatientHQ({ token }: { token: string }) {
     }
   };
 
-  return (
-    <Box bg="gray.0" mih="100vh">
-      <Box bg="dark.8" c="white" py="sm" px="md">
-        <Text fw={700}>Poised</Text>
-      </Box>
-      <Container size="md" py="lg">
+  const body = (
+    <>
+        {onBehalf && !hq.submitted && (
+          <Alert color="blue" mb="md" data-testid="on-behalf-banner">
+            You&apos;re filling in {hq.patient.name}&apos;s health questionnaire for them. The answers are saved as theirs, marked as entered by you.
+          </Alert>
+        )}
         {error && <Alert color="red" mb="md" withCloseButton onClose={() => setError("")}>{error}</Alert>}
         {conflict ? (
           <Card withBorder p="xl" data-testid="patient-conflict">
             <Title order={3}>Your answers weren&apos;t saved</Title>
             <Text mt="xs">{conflict}</Text>
             <Button mt="md" loading={reloading} onClick={load}>Reload</Button>
+          </Card>
+        ) : hq.submitted && onBehalf ? (
+          <Card withBorder p="xl" ta="center">
+            <IconCircleCheck size={48} color="var(--mantine-color-green-6)" style={{ margin: "0 auto" }} />
+            <Title order={3} mt="sm">Sent for {hq.patient.name}</Title>
+            <Text mt="xs">The answers are with the team for review.</Text>
+            <Button mt="md" component={Link} to={onBehalf.back}>Back to the episode</Button>
           </Card>
         ) : hq.submitted ? (
           <Card withBorder p="xl" ta="center">
@@ -148,13 +221,16 @@ export default function PatientHQ({ token }: { token: string }) {
             onConflict={setConflict}
             onError={setError}
             onClose={() => setOpenId(null)}
+            flushRef={flushRef}
           />
         ) : (
           <Stack>
             <div>
               <Title order={2}>{hq.questionnaireName}</Title>
               <Text c="dimmed">
-                Hello {hq.patient.firstName}. Please complete each section. Your answers are saved as you go, so you can come back later.
+                {onBehalf
+                  ? `For ${hq.patient.name}. Complete each section with them. Answers are saved as you go.`
+                  : `Hello ${hq.patient.firstName}. Please complete each section. Your answers are saved as you go, so you can come back later.`}
               </Text>
             </div>
             {sets.map((s) => {
@@ -182,21 +258,79 @@ export default function PatientHQ({ token }: { token: string }) {
             })}
             <Group justify="flex-end">
               <Text size="sm" c="dimmed">{done.size} of {sets.length} sections complete</Text>
-              <Button size="md" disabled={done.size < sets.length} onClick={() => setConfirming(true)}>Send my answers</Button>
+              <Button size="md" disabled={done.size < sets.length} onClick={() => setConfirming(true)}>
+                {onBehalf ? "Send the answers" : "Send my answers"}
+              </Button>
             </Group>
           </Stack>
         )}
-      </Container>
-      <Modal opened={confirming} onClose={() => setConfirming(false)} title="Send your answers?">
+      <Modal opened={confirming} onClose={() => setConfirming(false)} title={onBehalf ? "Send the answers?" : "Send your answers?"}>
         <Stack>
-          <Text>Once sent, you can&apos;t change your answers here. The hospital team will contact you if they need anything else.</Text>
+          <Text>
+            {onBehalf
+              ? "Once sent, the answers can't be changed here, and the episode moves to Ready for review."
+              : "Once sent, you can't change your answers here. The hospital team will contact you if they need anything else."}
+          </Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setConfirming(false)}>Not yet</Button>
-            <Button onClick={send} loading={sending}>Send my answers</Button>
+            <Button onClick={send} loading={sending}>{onBehalf ? "Send the answers" : "Send my answers"}</Button>
           </Group>
         </Stack>
       </Modal>
+    </>
+  );
+  const signOut = async () => {
+    const openSet = open?.name ?? "a section";
+    const kept = flushRef.current ? await flushRef.current() : true; // the answer just typed goes first
+    await api("/p/logout", { method: "POST" }).catch(() => undefined); // the cookie is gone either way once it expires
+    setEnded((was) => ({
+      message: "You've signed out. To come back, open the link in your text message or email again.",
+      lost: { ...was?.lost, ...(kept ? {} : { unsavedSet: openSet }) },
+    }));
+  };
+  if (onBehalf) {
+    return (
+      <Box>
+        {backLink}
+        {body}
+      </Box>
+    );
+  }
+  return <PatientFrame hospital={hq.hospital} onSignOut={signOut}>{body}</PatientFrame>;
+}
+
+/** The patient's pages: Poised's bar with their hospital's name, on a phone-sized column. */
+export function PatientFrame({ hospital, onSignOut, children }: { hospital?: string; onSignOut?: () => void; children: React.ReactNode }) {
+  return (
+    <Box bg="gray.0" mih="100vh">
+      <Group bg="dark.8" c="white" py="sm" px="md" justify="space-between" wrap="nowrap">
+        <Text fw={700}>Poised</Text>
+        <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+          {hospital && <Text size="sm" truncate>{hospital}</Text>}
+          {onSignOut && <Button size="compact-sm" variant="white" color="dark" onClick={onSignOut}>Sign out</Button>}
+        </Group>
+      </Group>
+      <Container size="md" py="lg">{children}</Container>
     </Box>
+  );
+}
+
+/**
+ * The patient's session ended (30 minutes without a request, a resend, a lock, or signed out),
+ * with what a refused save or Send didn't keep.
+ */
+export function SignedOut({ message, lost = {} }: { message: string; lost?: Lost }) {
+  const notes = lostWork(lost);
+  return (
+    <Card withBorder p="xl" data-testid="patient-signed-out">
+      <Title order={3}>You&apos;ve been signed out</Title>
+      {notes.length > 0 && (
+        <Alert color="orange" mt="sm" title="Not saved" data-testid="patient-lost-work">
+          <Stack gap={4}>{notes.map((n) => <Text key={n} size="sm">{n}</Text>)}</Stack>
+        </Alert>
+      )}
+      <Text mt="xs">{message}</Text>
+    </Card>
   );
 }
 
@@ -205,19 +339,23 @@ type SetFormProps = {
   /** What to show: the set's draft, else what the server has. */
   data: Answers;
   saver: AnswerSaver<Answers>;
-  vars: ReturnType<typeof patientVariables>;
+  vars: SamplePatient;
   onChange: (data: Answers) => void;
   /** Called with the 409's message; the page then shows it with Reload instead of the set. */
   onConflict: (message: string) => void;
   onError: (message: string) => void;
   onClose: () => void;
+  /** Set to this set's "save now" while it's open (see PatientHQ's flushRef). */
+  flushRef: React.MutableRefObject<(() => Promise<boolean>) | null>;
 };
 
 /** One Question Set in the patient view. Answers save shortly after each change. */
-function SetForm({ set, data, saver, vars, onChange, onConflict, onError, onClose }: SetFormProps) {
+function SetForm({ set, data, saver, vars, onChange, onConflict, onError, onClose, flushRef }: SetFormProps) {
   // "Not saved" while what's on screen differs from what the server has (e.g. after a failed save).
   const [status, setStatus] = useState<"saving" | "saved" | "unsaved">(() => (sameAnswer(data, saver.confirmed ?? {}) ? "saved" : "unsaved"));
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // A change is waiting for its autosave (the timer is running).
+  const pending = useRef(false);
   const latest = useRef(data);
 
   const model = useMemo(() => {
@@ -225,35 +363,59 @@ function SetForm({ set, data, saver, vars, onChange, onConflict, onError, onClos
     showUnits(m);
     m.showPageTitles = false;
     m.completeText = "Finish this section";
+    // A text answer counts as it's typed, not only when its box loses the focus, so "save now"
+    // (Sign out, leaving the on-behalf form) always has it (S14 verification 2).
+    m.textUpdateMode = "onTyping";
     m.data = data;
     return m;
     // Built once per set: answers then live in the model.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [set]);
 
-  /** Saves the latest answers; false if the answers changed on another device. */
-  const save = useCallback(async () => {
+  /** Saves the latest answers now; whether the server has them, and whether it refused them as stale. */
+  const persist = useCallback(async () => {
     clearTimeout(timer.current);
+    pending.current = false;
     // Nothing to save if the server already has these answers: a tab left open elsewhere mustn't
     // overwrite newer answers, or be told it can't. A save that failed is sent again here.
     const answers = latest.current;
     if (sameAnswer(answers, saver.confirmed ?? {})) {
       setStatus("saved");
-      return true;
+      return { ok: true, conflict: false };
     }
     setStatus("saving");
     const result = await saver.save(answers);
     setStatus(result.ok ? "saved" : "unsaved");
     if (!result.ok && result.conflict) onConflict(result.message);
     else if (!result.ok) onError(result.message);
-    return result.ok || !result.conflict;
+    return { ok: result.ok, conflict: !result.ok && result.conflict };
   }, [saver, onConflict, onError]);
+
+  /** Saves the latest answers; false if the answers changed on another device. */
+  const save = useCallback(async () => {
+    const r = await persist();
+    return r.ok || !r.conflict;
+  }, [persist]);
+
+  // "Save now" for the page (Sign out, the on-behalf Episode link): a text box commits its value
+  // only when it loses the focus, so take the focus off first.
+  useEffect(() => {
+    flushRef.current = async () => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      latest.current = model.data;
+      return (await persist()).ok;
+    };
+    return () => {
+      flushRef.current = null;
+    };
+  }, [flushRef, model, persist]);
 
   useEffect(() => {
     const changed = () => {
       latest.current = model.data;
       onChange(model.data);
       clearTimeout(timer.current);
+      pending.current = true;
       timer.current = setTimeout(save, SAVE_DELAY_MS);
     };
     const completed = async () => {
@@ -269,8 +431,19 @@ function SetForm({ set, data, saver, vars, onChange, onConflict, onError, onClos
     };
   }, [model, save, onChange, onClose]);
 
-  // A save still waiting when the set closes (e.g. for the Reload message) mustn't run later.
-  useEffect(() => () => clearTimeout(timer.current), []);
+  // Leaving the set by an in-app change (a link, a route change) sends a save still waiting rather
+  // than dropping it (S14 verification 2). After a 409 the saver refuses it without a request, so
+  // the Reload message's set doesn't overwrite newer answers; a 401 shows the "Not saved" message.
+  // This cleanup does NOT run when the page itself unloads (the patient's browser Back, a reload,
+  // closing the tab): a change from the last ~0.6 s is then lost (S14 test report 4, X-1; in
+  // pending.md).
+  useEffect(
+    () => () => {
+      clearTimeout(timer.current);
+      if (pending.current) void saver.save(latest.current);
+    },
+    [saver],
+  );
 
   const back = async () => {
     if (await save()) onClose();

@@ -6,10 +6,11 @@ User journeys through the real app in real browsers, with Playwright and pytest 
 | --- | --- | --- | --- |
 | J1 | `journeys/test_j1_author.py` | **Author:** signs in, creates a questionnaire, adds a Question Set, a page and a question, reloads and finds it kept. The preview shows the question. | Desktop Chromium |
 | J2 | `journeys/test_j2_publish.py` | **Publish:** publishing is blocked by a logic problem. The author follows the header's problem list to the condition, fixes it, publishes, then clicks **Create new version**. | Desktop Chromium |
-| J3 | `journeys/test_j3_patient.py` | **Patient:** the clinician creates an episode and copies the link. The patient opens it on a phone, fills in every Question Set (leaving part-way and coming back), and sends it. The episode is Ready for review. | Clinician: desktop Chromium. Patient: **iPhone 13** (WebKit, Safari's engine) |
+| J3 | `journeys/test_j3_patient.py` | **Patient:** the clinician creates an episode, which texts the patient their invite (captured, S14). The patient opens the link on a phone, taps Continue, confirms their date of birth, fills in every Question Set (leaving part-way and coming back), and sends it. The episode is Ready for review. | Clinician: desktop Chromium. Patient: **iPhone 13** (WebKit, Safari's engine) |
 | J4 | `journeys/test_j4_clinician_validates.py` | **Clinician validates:** corrects one answer ("Patient answered: Yes" appears), validates every Question Set and completes the review. **Two tabs:** a stale tab's Validate shows "changed somewhere else" with **Reload**, and Reload shows the newer answer. | Desktop Chromium |
 | J5 | `journeys/test_j5_poa_summary.py` | **POA Summary:** both tabs, with the corrected answer marked on the validated one. The status changes and General notes records it; a comment is added; **Print** is there. | Desktop Chromium |
 | J6 | `journeys/test_j6_onboarding.py` | **Onboarding a trust (S10):** the platform admin creates a trust and a hospital and invites its first admin; that admin, in their own browser, invites a clinician, who signs in. Also: suspending a trust refuses its admin's sign-in until it's re-activated; only platform admins reach `/admin`; a duplicate code is refused; a trust admin gives one hospital its own phone number. | Desktop Chromium |
+| J7 | `journeys/test_j7_patient_invites.py` | **Patient invites (S14):** J7: a clinician creates a patient and episode; the captured-messages page shows the text and the email; the patient opens the text's link (nothing about them shows before their date of birth), gets the date wrong once, then right, and fills in and sends the HQ; the link still opens later. J7b: five wrong dates of birth lock the link; the clinician sees the lock, resends, and only the new link works. **On the patient's behalf** (PAT-09): a clinician fills in and sends the HQ; "entered by" shows on the episode and the POA Summary. **Leaving straight after typing:** Sign out (patient) and the on-behalf form's ← Episode link keep the text and choice just entered (`data/medicines-hq.json`). **Session ended:** after a Resend, the patient's next change shows "Your latest change in About you wasn't saved…". | Clinician: desktop Chromium. Patient: **iPhone 13** (WebKit) |
 | Patients | `journeys/test_patient_records.py` | **Patient records (S13):** on the New episode page, a clinician at Hospital A1 types the details of a patient known only at A2 (A1's search can't find them) and the episode links silently, showing nothing of A2; a wrong NHS number and a mismatched date of birth are refused without the stored details; a possible duplicate known elsewhere names nobody (Create anyway), and one at this hospital offers Use this record; the search by surname, NHS number, hospital number and short surname + date of birth, and a second open episode. | Desktop Chromium |
 | Trusts | `journeys/test_trusts.py` | **Trusts and hospitals (S08):** a member of two trusts picks a hospital and switches trust from the header, with their role in each; a trust admin's **All hospitals** list; a clinician at Hospital A1 can't open Hospital A2's episode by its URL; a super clinician of one hospital can view but not change the trust's questionnaires, in the editor or the Preview; the header fits a 390px window. | Desktop Chromium (one case at 390px) |
 
@@ -99,6 +100,11 @@ None were added for these journeys. These already existed:
 | `set-<Question Set name>` | The patient's section cards (`PatientHQ.tsx`) | A card has no accessible name, and every card has a **Start** button. |
 | `save-status` | The editor's header: "All changes saved" (`QuestionnaireEditor.tsx`) | Plain text, with no role. |
 | `validate-save-status` | The Validate page's "Saved" (`ValidateSet.tsx`) | Plain text, with no role. |
+| `invite` | The episode's **Patient's invite** card (`EpisodePage.tsx`, S14) | A card has no accessible name. |
+| `dob-error` | The wrong-date-of-birth message on the patient's link (`InviteLink.tsx`, S14) | An alert with no name; J7 reads the tries left. |
+| `captured-message` | One message on the captured-messages page (`CapturedMessages.tsx`, S14) | A card has no accessible name. |
+| `on-behalf-banner` | "You're filling in …'s health questionnaire for them" (`PatientHQ.tsx`, S14) | An alert with no name. |
+| `hq-set-<Question Set name>` | A row of the episode's Health questionnaire table (`EpisodePage.tsx`) | Already there; the on-behalf journey reads its "entered by". |
 
 ## Files
 
@@ -107,7 +113,7 @@ e2e/
   requirements.txt   pinned pytest, pytest-playwright, playwright
   pytest.ini         headless; traces kept on failure, in test-results/
   conftest.py        fixtures: base_url, as_user, patient_link, phone
-  support.py         API set-up (Api, Patient) and the choose / pick helpers
+  support.py         API set-up (Api, Patient), the captured invites (invite_path), and the choose / pick helpers
   data/              made-up questionnaires the journeys set up
   journeys/          one file per journey
 ```

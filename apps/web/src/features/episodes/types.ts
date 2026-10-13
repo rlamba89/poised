@@ -19,8 +19,9 @@ export type Episode = EpisodeRow & {
   consultant: string;
   nurseAsa: number | null;
   anaesthetistAsa: number | null;
-  patientToken: string;
   patientSubmittedAt: string | null;
+  /** Who sent the HQ on the patient's behalf (PAT-09), or null: the patient did. */
+  patientSubmittedByName: string | null;
   reviewCompletedAt: string | null;
   reviewCompletedByName: string | null;
   versionId: string;
@@ -32,6 +33,9 @@ export type Episode = EpisodeRow & {
   mobile: string;
   email: string;
 };
+
+/** The patient's working invite (S14), or null before one is sent: when, and whether five wrong dates of birth locked it. */
+export type EpisodeInvite = { sentAt: string; lockedAt: string | null } | null;
 
 export type EpisodeEvent = { id: string; kind: "event" | "comment"; text: string; createdAt: string; userName: string | null };
 

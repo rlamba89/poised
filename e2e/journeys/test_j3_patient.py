@@ -1,12 +1,13 @@
-"""J3 Patient: the clinician creates an episode and copies the link. The patient opens it on a phone,
-fills every Question Set (leaving part-way and coming back keeps the answers) and sends it. The
-episode is then Ready for review."""
+"""J3 Patient: the clinician creates an episode, which texts and emails the patient their invite
+(captured, S14). The patient opens the link on a phone, taps Continue, confirms their date of
+birth, fills every Question Set (leaving part-way and coming back keeps the answers) and sends it.
+The episode is then Ready for review."""
 
 import re
 
 from playwright.sync_api import BrowserContext, Page, expect
 
-from support import choose, nhs_number, pick, sign_in, unique
+from support import choose, invite_path, nhs_number, pick, sign_in, unique
 
 # The new patient's date of birth (Mantine adds " *" to a required field's label), not the search's.
 DOB = re.compile(r"^Date of birth\W*$")
@@ -20,7 +21,6 @@ def test_patient_fills_in_and_sends_their_hq_on_a_phone(page: Page, phone: Brows
     # this new (made-up) patient, so she types their details from the referral.
     nhs = nhs_number()
     base = sign_in(page.context, "Cara Clinician")
-    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
     page.goto(f"{base}/episodes")
     page.get_by_role("link", name="New episode").click()
     expect(page).to_have_url(f"{base}/episodes/new")
@@ -44,18 +44,18 @@ def test_patient_fills_in_and_sends_their_hq_on_a_phone(page: Page, phone: Brows
     expect(page.get_by_role("combobox", name="Episode status")).to_have_value("HQ not complete")
     expect(page.get_by_role("combobox", name="Episode status")).to_be_disabled()
     expect(page.get_by_text("Episode created", exact=True)).to_be_visible()  # General notes
+    expect(page.get_by_text("Invite sent by text message.", exact=True)).to_be_visible()  # the mobile only
     # Dates use the deployment's locale from GET /api/config (A-20): en-GB, make dev's default.
     expect(page.get_by_text("17 May 1980 (age")).to_be_visible()
 
-    # …and copies the patient's link.
-    page.get_by_role("button", name="Copy").click()
-    expect(page.get_by_role("button", name="Copied")).to_be_visible()
-    link = page.evaluate("navigator.clipboard.readText()")
-    expect(page.get_by_role("textbox", name="Patient link")).to_have_value(link)
-
-    # The patient opens it on their phone.
+    # The patient taps the link in their text message (captured, not sent), on their phone.
     patient = phone.new_page()
-    patient.goto(link)
+    patient.goto(invite_path(page.context.request, "+447700900123"))
+    patient.get_by_role("button", name="Continue").click()
+    patient.get_by_label("Day").fill("17")
+    patient.get_by_label("Month").fill("5")
+    patient.get_by_label("Year").fill("1980")
+    patient.get_by_role("button", name="Continue").click()
     expect(patient.get_by_role("heading", name=hq["name"])).to_be_visible()
     expect(patient.get_by_text("Hello Sam.")).to_be_visible()
     # Only the patient's two Question Sets: the clinician's "Nurse checks" never appears.
@@ -98,7 +98,7 @@ def test_patient_fills_in_and_sends_their_hq_on_a_phone(page: Page, phone: Brows
     patient.reload()  # opening the link again shows the thank-you page, not the form
     expect(patient.get_by_role("heading", name="Thank you, Sam")).to_be_visible()
 
-    # The clinician sees the episode is ready for review, and the link is gone.
+    # The clinician sees the episode is ready for review, and the invite is no longer offered.
     page.reload()
     expect(page.get_by_role("combobox", name="Episode status")).to_have_value("Ready for review")
-    expect(page.get_by_role("textbox", name="Patient link")).to_be_hidden()
+    expect(page.get_by_test_id("invite")).to_be_hidden()

@@ -1,11 +1,12 @@
-// One episode: the patient, the procedure, the patient's link, the Question Sets to validate
-// (Step 4 of plan-workflow.md), the status and the General notes.
+// One episode: the patient, the procedure, the patient's invite (S14: resend it, or fill in the HQ
+// on their behalf), the Question Sets to validate (Step 4 of plan-workflow.md), the status and the
+// General notes.
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import {
-  Alert, Anchor, Badge, Button, Card, Center, CopyButton, Group, Loader, SimpleGrid, Stack, Table, Text, TextInput, Title,
+  Alert, Anchor, Badge, Button, Card, Center, Group, Loader, SimpleGrid, Stack, Table, Text, Title,
 } from "@mantine/core";
-import { IconArrowLeft, IconCheck, IconCopy } from "@tabler/icons-react";
+import { IconArrowLeft } from "@tabler/icons-react";
 import { ageFrom, patientVariables, shownSets } from "@poised/clinical";
 import { AUDIENCE_LABELS } from "@/features/chapters/types";
 import { api } from "@/lib/api";
@@ -15,9 +16,9 @@ import { StatusBadge } from "./EpisodeList";
 import { GeneralNotes } from "./GeneralNotes";
 import { currentAnswers, useEpisodeHQ } from "./hq";
 import { StatusSelect } from "./StatusSelect";
-import { patientName, type Episode, type EpisodeEvent } from "./types";
+import { patientName, type Episode, type EpisodeEvent, type EpisodeInvite } from "./types";
 
-export type EpisodeDetail = { episode: Episode; events: EpisodeEvent[] };
+export type EpisodeDetail = { episode: Episode; events: EpisodeEvent[]; invite: EpisodeInvite };
 
 /** Loads an episode and its events; `reload` refetches both. */
 export function useEpisode(base: string, episodeId: string) {
@@ -41,7 +42,6 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
   const path = `${base}/episodes/${episodeId}`;
   if (!data) return error ? <Alert color="red">{error}</Alert> : <Center h="40vh"><Loader /></Center>;
   const e = data.episode;
-  const link = `${window.location.origin}/p/${e.patientToken}`;
 
   return (
     <Stack maw={960} mx="auto">
@@ -73,24 +73,7 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
         </SimpleGrid>
       </Card>
 
-      {e.status === "hq_not_complete" && (
-        <Card withBorder>
-          <Text fw={600} mb={4}>Patient link</Text>
-          <Text size="sm" c="dimmed" mb="xs">
-            Send this link to the patient. Anyone who has it can fill in the HQ, so share it only with the patient.
-          </Text>
-          <Group gap="xs" wrap="nowrap">
-            <TextInput readOnly value={link} style={{ flex: 1 }} aria-label="Patient link" />
-            <CopyButton value={link}>
-              {({ copied, copy }) => (
-                <Button variant="default" leftSection={copied ? <IconCheck size={14} /> : <IconCopy size={14} />} onClick={copy}>
-                  {copied ? "Copied" : "Copy"}
-                </Button>
-              )}
-            </CopyButton>
-          </Group>
-        </Card>
-      )}
+      {e.status === "hq_not_complete" && <Invite path={path} episode={e} invite={data.invite} onSent={reload} />}
 
       <QuestionSets base={base} episode={e} onReviewed={reload} />
 
@@ -103,6 +86,51 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
         <GeneralNotes path={path} events={data.events} onAdded={reload} />
       </Card>
     </Stack>
+  );
+}
+
+/**
+ * The patient's invite while they haven't sent their answers (S14): when it was sent (the
+ * General notes say how), whether five wrong dates of birth locked it, Resend, and filling in the
+ * HQ on the patient's behalf (PAT-09).
+ */
+function Invite({ path, episode, invite, onSent }: { path: string; episode: Episode; invite: EpisodeInvite; onSent: () => void }) {
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const resend = async () => {
+    setSending(true);
+    try {
+      const { message } = await api<{ message: string }>(`${path}/resend-invite`, { method: "POST" });
+      setResult({ ok: true, text: message });
+      onSent();
+    } catch (err) {
+      setResult({ ok: false, text: (err as Error).message });
+      onSent(); // a failed send is in the General notes too
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <Card withBorder data-testid="invite">
+      <Text fw={600} mb={4}>Patient&apos;s invite</Text>
+      <Text size="sm" c="dimmed" mb="xs">
+        {invite
+          ? `Last sent ${formatDateTime(invite.sentAt)}. The patient opens the link in their text message or email, then confirms their date of birth. The General notes say how it was sent.`
+          : "No invite has been sent. The General notes say why."}
+      </Text>
+      {invite?.lockedAt && (
+        <Alert color="red" mb="xs" title="The link is locked">
+          The date of birth was entered wrongly 5 times ({formatDateTime(invite.lockedAt)}). Resend the invite to send the patient a new link.
+        </Alert>
+      )}
+      {result && <Alert color={result.ok ? "green" : "red"} mb="xs">{result.text}</Alert>}
+      <Group gap="xs">
+        <Button variant="default" onClick={resend} loading={sending} disabled={!episode.mobile && !episode.email}>
+          {invite ? "Resend invite" : "Send invite"}
+        </Button>
+        <Button variant="default" component={Link} to={`${path}/patient-form`}>Fill in for the patient</Button>
+      </Group>
+    </Card>
   );
 }
 
@@ -153,6 +181,9 @@ function QuestionSets({ base, episode, onReviewed }: { base: string; episode: Ep
       </Group>
       {waiting && <Text size="sm" c="dimmed" mb="xs">Waiting for the patient to send their answers. Validation starts once they have.</Text>}
       {reviewing && !allValidated && <Text size="sm" c="dimmed" mb="xs">Validate every Question Set to complete the HQ review.</Text>}
+      {episode.patientSubmittedByName && (
+        <Text size="sm" mb="xs">Sent by {episode.patientSubmittedByName} on the patient&apos;s behalf on {formatDateTime(episode.patientSubmittedAt ?? "")}.</Text>
+      )}
       {episode.reviewCompletedAt && (
         <Text size="sm" mb="xs">HQ review completed by {episode.reviewCompletedByName} on {formatDateTime(episode.reviewCompletedAt)}.</Text>
       )}
@@ -175,6 +206,7 @@ function QuestionSets({ base, episode, onReviewed }: { base: string; episode: Ep
                   ) : (
                     <Text size="sm" c="dimmed">{waiting ? "Waiting for the patient" : row ? "In progress" : "Not started"}</Text>
                   )}
+                  {hq.enteredBy[s.id] && <Text size="xs" c="orange.8">Patient&apos;s answers entered by {hq.enteredBy[s.id]}</Text>}
                 </Table.Td>
                 <Table.Td ta="right">
                   {!waiting && (

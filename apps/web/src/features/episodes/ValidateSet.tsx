@@ -150,6 +150,11 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
         </Alert>
       )}
       {editable && set.audience === "patient" && !patient && <Alert color="orange">The patient didn&apos;t answer this Question Set.</Alert>}
+      {hq.enteredBy[set.id] && (
+        <Alert color="orange" data-testid="entered-by">
+          The patient&apos;s answers here were entered by {hq.enteredBy[set.id]} on the patient&apos;s behalf.
+        </Alert>
+      )}
       {conflict && (
         <Alert color="red" title="Not saved">
           <Group justify="space-between" wrap="nowrap">

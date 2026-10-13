@@ -6,6 +6,7 @@ never collide and nothing needs cleaning up.
 """
 
 import json
+import re
 import secrets
 from datetime import datetime
 from pathlib import Path
@@ -66,6 +67,24 @@ def pick(page: Page, label: str, option: str) -> None:
     page.get_by_role("combobox", name=label).click()
     page.get_by_role("option", name=option, exact=True).click()
     expect(page.get_by_role("combobox", name=label)).to_have_value(option)
+
+
+INVITE = re.compile(r"/i/([A-Za-z0-9_-]{43})")
+
+
+def captured(request: APIRequestContext, to: str) -> list[dict]:
+    """The captured texts and emails to `to`, newest first (MESSAGING=capture, S14)."""
+    return _ok(request.get("/api/qa/messages", params={"to": to}), "GET /api/qa/messages").json()
+
+
+def invite_path(request: APIRequestContext, to: str) -> str:
+    """The path of the link in the newest invite sent to `to` (a mobile in E.164, or an email):
+    /i/<token>. The app's address in it is APP_URL; the journeys open the path on their own."""
+    for m in captured(request, to):
+        found = INVITE.search(m["body"])
+        if found:
+            return found.group(0)
+    raise AssertionError(f"No invite has been captured for {to}")
 
 
 def _ok(res, what: str):
@@ -138,16 +157,18 @@ class Api:
 
     def episode(self, hq: dict, last_name: str, hospital_number: str = "E2E", **patient) -> dict:
         """An episode on the published HQ for a made-up patient, typed as on the New episode page
-        (S13): Sam <last_name>, born 1980-05-17, unless `patient` says otherwise (e.g.
-        nationalId=…, mobile=…). The trust's record is linked to silently if it matches one."""
-        details = {"firstName": "Sam", "lastName": last_name, "dateOfBirth": "1980-05-17", "sex": "female", **patient}
+        (S13): Sam <last_name>, born 1980-05-17, with a new made-up email (so their invite can be
+        found, S14), unless `patient` says otherwise (e.g. nationalId=…, mobile=…). The trust's
+        record is linked to silently if it matches one."""
+        email = f"e2e.{secrets.token_hex(5)}@e2e.example"
+        details = {"firstName": "Sam", "lastName": last_name, "dateOfBirth": "1980-05-17", "sex": "female", "email": email, **patient}
         eid = self.call("POST", self.h("/episodes"), {
             "patient": details, "versionId": hq["versionId"], "hospitalNumber": hospital_number,
             "procedure": "Knee replacement", "anaesthetic": "General", "consultant": "Dr Example",
         })["id"]
         e = self.call("GET", self.h(f"/episodes/{eid}"))["episode"]
-        return {"id": eid, "token": e["patientToken"], "name": f"{e['firstName']} {e['lastName']}", "hq": hq,
-                "patientId": e["patientId"]}
+        return {"id": eid, "name": f"{e['firstName']} {e['lastName']}", "hq": hq, "patientId": e["patientId"],
+                "email": e["email"], "mobile": e["mobile"], "dob": details["dateOfBirth"]}
 
     def validate(self, episode: dict, set_name: str, answers: dict) -> None:
         """Saves the clinician's answers for one Question Set and validates it."""
@@ -165,20 +186,24 @@ class Api:
 
 
 class Patient:
-    """The patient's link, with no sign-in, as their phone would use it."""
+    """The patient, as their phone would be (S14): the link from their captured invite email,
+    Continue and their date of birth, then their session (a cookie this context keeps)."""
 
     def __init__(self, playwright: Playwright, base_url: str, episode: dict):
         self.request = playwright.request.new_context(base_url=base_url)
         self.episode = episode
+        token = invite_path(self.request, episode["email"]).removeprefix("/i/")
+        _ok(self.request.post(f"/api/p/links/{token}/continue"), "POST continue")
+        _ok(self.request.post(f"/api/p/links/{token}/dob", data={"dateOfBirth": episode["dob"]}), "POST date of birth")
+        self.path = f"/api/p/episodes/{episode['id']}"
 
     def answer(self, set_name: str, answers: dict) -> None:
         cid = self.episode["hq"]["chapters"][set_name]
-        token = self.episode["token"]
-        revision = _ok(self.request.get(f"/api/p/{token}"), "GET patient HQ").json()["revisions"].get(cid, 0)
-        _ok(self.request.put(f"/api/p/{token}/answers/{cid}", data={"data": answers, "revision": revision}), "PUT patient answers")
+        revision = _ok(self.request.get(self.path), "GET patient HQ").json()["revisions"].get(cid, 0)
+        _ok(self.request.put(f"{self.path}/answers/{cid}", data={"data": answers, "revision": revision}), "PUT patient answers")
 
     def submit(self) -> None:
-        _ok(self.request.post(f"/api/p/{self.episode['token']}/submit"), "POST submit")
+        _ok(self.request.post(f"{self.path}/submit"), "POST submit")
 
     def dispose(self) -> None:
         self.request.dispose()

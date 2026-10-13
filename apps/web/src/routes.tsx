@@ -21,7 +21,15 @@ export const routes: RouteObject[] = [
     children: [
       { id: "home", path: "/", lazy: async () => ({ Component: (await import("@/pages/Home")).Home }) },
       { id: "login", path: "/login", lazy: async () => ({ Component: (await import("@/pages/Login")).Login }) },
-      { id: "patient", path: "/p/:token", lazy: async () => ({ Component: (await import("@/pages/Patient")).Patient }) },
+      // The patient's invite link (S14): Continue, then their date of birth, then their questionnaire.
+      { id: "invite", path: "/i/:token", lazy: async () => ({ Component: (await import("@/pages/InviteLinkPage")).InviteLinkPage }) },
+      {
+        id: "patient-episode",
+        path: "/home/episodes/:eid",
+        lazy: async () => ({ Component: (await import("@/pages/PatientEpisode")).PatientEpisode }),
+      },
+      // The captured texts and emails (MESSAGING=capture: local and QA only).
+      { id: "qa-messages", path: "/qa/messages", lazy: async () => ({ Component: (await import("@/pages/QaMessages")).QaMessages }) },
       {
         // No path of its own, so /o/:orgId/h/:hospitalId alone isn't a page.
         id: "hospital",
@@ -83,6 +91,12 @@ export const routes: RouteObject[] = [
             id: "audit",
             path: `${h}/audit`,
             lazy: async () => ({ Component: (await import("@/pages/hospital/Audit")).Audit }),
+          },
+          {
+            // Staff filling in the patient's HQ for them (PAT-09, S14).
+            id: "patient-form",
+            path: `${h}/episodes/:eid/patient-form`,
+            lazy: async () => ({ Component: (await import("@/pages/hospital/PatientForm")).PatientForm }),
           },
           {
             id: "validate",

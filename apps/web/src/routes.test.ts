@@ -13,7 +13,10 @@ describe("routes", () => {
   it.each([
     ["/", "home", {}],
     ["/login", "login", {}],
-    ["/p/tok123", "patient", { token: "tok123" }],
+    ["/i/tok123", "invite", { token: "tok123" }],
+    ["/home/episodes/e1", "patient-episode", { eid: "e1" }],
+    ["/qa/messages", "qa-messages", {}],
+    ["/p/tok123", "not-found", {}], // the old link (before S14) is gone
     ["/o/o1/h/h1/questionnaires", "questionnaires", { orgId: "o1", hospitalId: "h1" }],
     ["/o/o1/h/h1/questionnaires/q1", "editor", { orgId: "o1", hospitalId: "h1", qid: "q1" }],
     ["/o/o1/h/h1/chapters/c1/preview", "preview", { orgId: "o1", hospitalId: "h1", cid: "c1" }],
@@ -23,6 +26,7 @@ describe("routes", () => {
     ["/o/o1/h/h1/patients/p1", "patient-record", { orgId: "o1", hospitalId: "h1", pid: "p1" }],
     ["/o/o1/h/h1/episodes/e1/poa", "poa", { orgId: "o1", hospitalId: "h1", eid: "e1" }],
     ["/o/o1/h/h1/episodes/e1/sets/c1", "validate", { orgId: "o1", hospitalId: "h1", eid: "e1", cid: "c1" }],
+    ["/o/o1/h/h1/episodes/e1/patient-form", "patient-form", { orgId: "o1", hospitalId: "h1", eid: "e1" }],
     ["/o/o1/h/h1/staff", "staff", { orgId: "o1", hospitalId: "h1" }],
     ["/o/o1/h/h1/settings", "settings", { orgId: "o1", hospitalId: "h1" }],
     ["/o/o1/h/h1/audit", "audit", { orgId: "o1", hospitalId: "h1" }],
@@ -45,6 +49,7 @@ describe("routes", () => {
     "/o/o1/h/h1/patients/p1",
     "/o/o1/h/h1/episodes/e1/poa",
     "/o/o1/h/h1/episodes/e1/sets/c1",
+    "/o/o1/h/h1/episodes/e1/patient-form",
     "/o/o1/h/h1/staff",
     "/o/o1/h/h1/settings",
     "/o/o1/h/h1/audit",
@@ -57,7 +62,7 @@ describe("routes", () => {
     expect(layout?.params.hospitalId).toBe("h1");
   });
 
-  it.each(["/", "/login", "/p/tok123", "/o/o1/h/h1/episodes/e1/poa", "/nope"])(
+  it.each(["/", "/login", "/i/tok123", "/home/episodes/e1", "/o/o1/h/h1/episodes/e1/poa", "/nope"])(
     "%s is under the root route, whose error screen catches a page that fails to load",
     (path) => {
       const root = matchRoutes(routes, path)?.[0].route;
@@ -70,6 +75,12 @@ describe("routes", () => {
     const matches = matchRoutes(routes, path) ?? [];
     expect(matches.some((m) => m.route.id === "admin")).toBe(true);
     expect(matches.some((m) => m.route.id === "hospital")).toBe(false);
+  });
+
+  it.each(["/i/tok123", "/home/episodes/e1", "/qa/messages"])("keeps %s out of the staff and admin layouts (no staff sign-in)", (path) => {
+    const ids = (matchRoutes(routes, path) ?? []).map((m) => m.route.id);
+    expect(ids).not.toContain("hospital");
+    expect(ids).not.toContain("admin");
   });
 
   it.each(["/nope", "/admin/nope", "/admin/trusts", "/h/h1", "/o/o1/h/h1/nope", "/o/o1/h/h1/episodes/e1/nope", "/o/o1/h/h1/patients", "/p", "/login/extra"])(

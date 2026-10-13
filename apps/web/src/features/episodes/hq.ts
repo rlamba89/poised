@@ -19,6 +19,8 @@ export type EpisodeHQ = {
   chapters: HQSet[];
   /** The patient's answers per Question Set, frozen once sent. */
   patient: Record<string, Answers>;
+  /** Who entered the patient's answers for them, per Question Set (PAT-09); absent where the patient did. */
+  enteredBy: Record<string, string>;
   /** The clinician's row per Question Set: final answers and the "Validated by" stamp. */
   clinician: Record<string, AnswerRow>;
 };
@@ -34,12 +36,15 @@ export function useEpisodeHQ(base: string, episodeId: string) {
       api<{ chapters: HQSet[]; answers: AnswerRow[] }>(`${base}/episodes/${episodeId}/hq`)
         .then(({ chapters, answers }) => {
           const patient: Record<string, Answers> = {};
+          const enteredBy: Record<string, string> = {};
           const clinician: Record<string, AnswerRow> = {};
           for (const a of answers) {
-            if (a.actor === "patient") patient[a.chapterId] = a.data;
-            else clinician[a.chapterId] = a;
+            if (a.actor === "patient") {
+              patient[a.chapterId] = a.data;
+              if (a.updatedByName) enteredBy[a.chapterId] = a.updatedByName; // staff, on the patient's behalf
+            } else clinician[a.chapterId] = a;
           }
-          setHq({ chapters, patient, clinician });
+          setHq({ chapters, patient, enteredBy, clinician });
         })
         .catch((e: Error) => setError(e.message)),
     [base, episodeId],
