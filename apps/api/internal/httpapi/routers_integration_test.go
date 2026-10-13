@@ -4,6 +4,7 @@ package httpapi_test
 
 import (
 	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/rlamba89/poised/apps/api/internal/apitest"
@@ -45,6 +46,8 @@ func TestPatientRouter(t *testing.T) {
 		}
 		p.Do("GET", at(h, "/episodes"), nil).Want(t, http.StatusNotFound)
 		p.Do("GET", at(h, "/questionnaires"), nil).Want(t, http.StatusNotFound)
+		p.Do("GET", at(h, "/patients?q=Patient"), nil).Want(t, http.StatusNotFound)
+		p.Do("GET", at(h, "/patients/"+ep.PatientID.String()), nil).Want(t, http.StatusNotFound)
 		p.Do("GET", "/api/o/"+h.Org.String()+"/episodes", nil).Want(t, http.StatusNotFound)
 		p.Do("GET", "/api/o/"+h.Org.String()+"/staff", nil).Want(t, http.StatusNotFound)
 		p.Do("POST", "/api/o/"+h.Org.String()+"/staff/invites", map[string]any{"email": "a@b.example"}).Want(t, http.StatusNotFound)
@@ -118,15 +121,17 @@ func TestConfig(t *testing.T) {
 	country := map[string]string{
 		"APP_URL": "https://ca.example.test", "DEFAULT_TIME_ZONE": "America/Toronto",
 		"DEFAULT_LOCALE": "fr-CA", "PHONE_COUNTRY": "CA", "CONFIG_STRICT": "true",
+		"NATIONAL_ID_TYPE": "nhs", // the only scheme built so far
 	}
 	c, fx := apitest.NewWith(t, apitest.Options{Env: country})
-	want := map[string]any{"locale": "fr-CA", "timeZone": "America/Toronto"}
+	want := map[string]any{"locale": "fr-CA", "timeZone": "America/Toronto",
+		"nationalId": map[string]any{"type": "nhs", "label": "NHS number"}}
 	check := func(t *testing.T, r *apitest.Resp) {
 		t.Helper()
 		r.Want(t, http.StatusOK)
 		var got map[string]any
 		r.Decode(t, &got)
-		if len(got) != len(want) || got["locale"] != want["locale"] || got["timeZone"] != want["timeZone"] {
+		if !reflect.DeepEqual(got, want) {
 			t.Errorf("config = %v, want exactly %v", got, want)
 		}
 	}
@@ -145,9 +150,12 @@ func TestConfig(t *testing.T) {
 		d, _ := apitest.New(t)
 		r := d.Do("GET", "/api/config", nil)
 		r.Want(t, http.StatusOK)
-		var got map[string]string
+		var got struct {
+			Locale, TimeZone string
+			NationalID       struct{ Type string }
+		}
 		r.Decode(t, &got)
-		if got["locale"] != "en-GB" || got["timeZone"] != "Europe/London" {
+		if got.Locale != "en-GB" || got.TimeZone != "Europe/London" || got.NationalID.Type != "nhs" {
 			t.Errorf("config = %v, want the local UK defaults", got)
 		}
 	})

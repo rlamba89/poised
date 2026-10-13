@@ -10,10 +10,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/episode"
+	"github.com/rlamba89/poised/apps/api/internal/patient"
 	"github.com/rlamba89/poised/apps/api/internal/role"
 )
 
@@ -21,72 +21,6 @@ const episodeNotFound = "Episode not found."
 
 // Patients and episodes need no role check: everyone in a hospital is at least a clinician, and
 // sees all its data (A-5). The middleware has checked they're a member here.
-
-var sexes = map[string]bool{"female": true, "male": true, "other": true, "unknown": true}
-
-type patientInput struct {
-	FirstName      string `json:"firstName"`
-	LastName       string `json:"lastName"`
-	DateOfBirth    string `json:"dateOfBirth"` // YYYY-MM-DD
-	Sex            string `json:"sex"`
-	HospitalNumber string `json:"hospitalNumber"`
-	Phone          string `json:"phone"`
-	Email          string `json:"email"`
-}
-
-// validate trims the fields and returns the date of birth, or a plain-language problem.
-func (in *patientInput) validate(now time.Time) (time.Time, string) {
-	for _, f := range []*string{&in.FirstName, &in.LastName, &in.DateOfBirth, &in.HospitalNumber, &in.Phone, &in.Email} {
-		*f = strings.TrimSpace(*f)
-	}
-	dob, err := time.Parse(time.DateOnly, in.DateOfBirth)
-	switch {
-	case in.FirstName == "" || in.LastName == "":
-		return dob, "Enter the patient's first and last name."
-	case err != nil || dob.After(now) || dob.Year() < 1900:
-		return dob, "Enter a valid date of birth."
-	case !sexes[in.Sex]:
-		return dob, "Choose the patient's sex."
-	}
-	return dob, ""
-}
-
-// listPatients lists the trust's patient records: staff at any of its hospitals can open an
-// episode for one, though each hospital sees only its own episodes (S08 answers, 12 Oct).
-func (s *server) listPatients(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.q.ListPatients(r.Context(), orgID(r))
-	if err != nil {
-		serverError(w, "list patients", err)
-		return
-	}
-	for _, p := range rows {
-		auditOf(r).touched(p.ID, uuid.Nil)
-	}
-	writeJSON(w, http.StatusOK, rows)
-}
-
-func (s *server) createPatient(w http.ResponseWriter, r *http.Request) {
-	var in patientInput
-	if !readJSON(w, r, 8<<10, &in) {
-		return
-	}
-	dob, msg := in.validate(time.Now())
-	if msg != "" {
-		writeError(w, http.StatusBadRequest, msg)
-		return
-	}
-	id, err := s.q.CreatePatient(r.Context(), db.CreatePatientParams{
-		OrgID: orgID(r), FirstName: in.FirstName, LastName: in.LastName,
-		DateOfBirth: pgtype.Date{Time: dob, Valid: true}, Sex: in.Sex,
-		HospitalNumber: in.HospitalNumber, Phone: in.Phone, Email: in.Email,
-	})
-	if err != nil {
-		serverError(w, "create patient", err)
-		return
-	}
-	auditOf(r).touched(id, uuid.Nil)
-	writeJSON(w, http.StatusCreated, map[string]uuid.UUID{"id": id})
-}
 
 // listPublishedHQs lists the questionnaires an episode can be given: the published versions of
 // those this hospital uses.
@@ -127,16 +61,40 @@ func (s *server) writeEpisodes(w http.ResponseWriter, r *http.Request, arg db.Li
 	writeJSON(w, http.StatusOK, rows)
 }
 
-// createEpisode gives a patient a published HQ and a link to fill it in.
+// createEpisode gives a patient a published HQ and a link to fill it in (the New episode page).
+// The patient is either one of this hospital's, found by the search (patientId), or typed in
+// (patient): then the trust's existing record is linked to silently when the identifiers agree,
+// or a new one is created (resolvePatient). The response is the episode's id only.
 func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		PatientID   uuid.UUID `json:"patientId"`
-		VersionID   uuid.UUID `json:"versionId"`
-		Procedure   string    `json:"procedure"`
-		Anaesthetic string    `json:"anaesthetic"`
-		Consultant  string    `json:"consultant"`
+		PatientID      *uuid.UUID    `json:"patientId"`
+		Patient        *patientInput `json:"patient"`
+		CreateAnyway   bool          `json:"createAnyway"`   // after a possible-duplicate warning
+		VersionID      string        `json:"versionId"`      // a string, so "" (nothing chosen) gets its own message
+		HospitalNumber string        `json:"hospitalNumber"` // this hospital's label for the patient (PAT-01b)
+		Procedure      string        `json:"procedure"`
+		Anaesthetic    string        `json:"anaesthetic"`
+		Consultant     string        `json:"consultant"`
 	}
 	if !readJSON(w, r, 8<<10, &in) {
+		return
+	}
+	in.HospitalNumber = strings.TrimSpace(in.HospitalNumber)
+	versionID, versionErr := uuid.Parse(in.VersionID)
+	var typed patient.Details
+	var sex, msg string
+	switch {
+	case (in.PatientID == nil) == (in.Patient == nil):
+		msg = "Choose a patient from the search, or enter a new patient's details."
+	case versionErr != nil || versionID == uuid.Nil:
+		msg = "Choose a published HQ."
+	case len(in.HospitalNumber) > 50:
+		msg = "The hospital number is too long (50 characters at most)."
+	case in.Patient != nil:
+		typed, sex, msg = s.details(*in.Patient, time.Now())
+	}
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 	token, err := episode.NewToken()
@@ -144,20 +102,56 @@ func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "token", err)
 		return
 	}
-	id, err := s.q.CreateEpisode(r.Context(), db.CreateEpisodeParams{
-		OrgID: orgID(r), HospitalID: hospitalID(r), PatientID: in.PatientID, VersionID: in.VersionID,
+
+	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		serverError(w, "begin", err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	var pid uuid.UUID
+	if in.PatientID != nil {
+		p, err := q.GetHospitalPatient(ctx, db.GetHospitalPatientParams{ID: *in.PatientID, OrgID: orgID(r), HospitalID: hospitalID(r)})
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusBadRequest, "That isn't one of this hospital's patients. Search again, or enter their details.")
+			return
+		}
+		if err != nil {
+			serverError(w, "get patient", err)
+			return
+		}
+		pid = p.ID
+	} else {
+		pid, err = s.resolvePatient(ctx, w, r, q, typed, sex, in.CreateAnyway)
+		if errors.Is(err, errAnswered) {
+			return
+		}
+		if err != nil {
+			serverError(w, "patient record", err)
+			return
+		}
+	}
+	id, err := q.CreateEpisode(ctx, db.CreateEpisodeParams{
+		OrgID: orgID(r), HospitalID: hospitalID(r), PatientID: pid, VersionID: versionID,
 		Procedure: strings.TrimSpace(in.Procedure), Anaesthetic: strings.TrimSpace(in.Anaesthetic),
-		Consultant: strings.TrimSpace(in.Consultant), PatientToken: token, CreatedBy: currentUser(r).ID,
+		Consultant: strings.TrimSpace(in.Consultant), HospitalNumber: in.HospitalNumber,
+		PatientToken: token, CreatedBy: currentUser(r).ID,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, http.StatusBadRequest, "Choose a patient and a published HQ.")
+		writeError(w, http.StatusBadRequest, "Choose a published HQ.")
 		return
 	}
 	if err != nil {
 		serverError(w, "create episode", err)
 		return
 	}
-	auditOf(r).touched(in.PatientID, id)
+	if err := tx.Commit(ctx); err != nil {
+		serverError(w, "commit", err)
+		return
+	}
+	auditOf(r).touched(pid, id)
 	s.event(r, id, "Episode created", currentUser(r).ID)
 	writeJSON(w, http.StatusCreated, map[string]uuid.UUID{"id": id})
 }

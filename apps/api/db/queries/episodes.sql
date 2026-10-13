@@ -1,16 +1,6 @@
 -- Patient records belong to the trust (org_id); an episode is at one of its hospitals. Every
 -- episode lookup is scoped to the hospital, or to the hospitals the caller can see.
 
--- name: CreatePatient :one
-INSERT INTO patients (org_id, first_name, last_name, date_of_birth, sex, hospital_number, phone, email)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id;
-
--- name: ListPatients :many
-SELECT id, first_name, last_name, date_of_birth, sex, hospital_number, phone, email
-FROM patients WHERE org_id = $1
-ORDER BY last_name, first_name;
-
 -- name: ListPublishedVersions :many
 -- The HQs an episode can be given: each questionnaire's published version.
 SELECT v.id AS version_id, v.version_no, q.name
@@ -23,9 +13,10 @@ ORDER BY q.name;
 -- name: CreateEpisode :one
 -- Creates nothing (no row) unless the patient is the trust's and the version is published and
 -- one this hospital uses.
-INSERT INTO episodes (org_id, hospital_id, patient_id, version_id, procedure, anaesthetic, consultant, patient_token, created_by)
+INSERT INTO episodes (org_id, hospital_id, patient_id, version_id, procedure, anaesthetic, consultant, hospital_number,
+                      patient_token, created_by)
 SELECT sqlc.arg(org_id), sqlc.arg(hospital_id), p.id, v.id, sqlc.arg(procedure), sqlc.arg(anaesthetic),
-       sqlc.arg(consultant), sqlc.arg(patient_token), sqlc.arg(created_by)
+       sqlc.arg(consultant), sqlc.arg(hospital_number), sqlc.arg(patient_token), sqlc.arg(created_by)
 FROM patients p, questionnaire_versions v
 JOIN questionnaires q ON q.id = v.questionnaire_id
 WHERE p.id = sqlc.arg(patient_id) AND p.org_id = sqlc.arg(org_id)
@@ -37,7 +28,7 @@ RETURNING id;
 -- One trust's episodes: at every hospital when all_hospitals (a trust-wide member's "All
 -- hospitals", STF-03), else only at the hospitals listed.
 SELECT e.id, e.hospital_id, h.name AS hospital_name, e.status, e.procedure, e.created_at,
-       e.patient_id, p.first_name, p.last_name, p.hospital_number,
+       e.patient_id, p.first_name, p.last_name, e.hospital_number,
        q.name AS questionnaire_name, v.version_no
 FROM episodes e
 JOIN hospitals h ON h.id = e.hospital_id
@@ -51,9 +42,10 @@ ORDER BY e.created_at DESC;
 
 -- name: GetEpisode :one
 SELECT e.id, e.status, e.procedure, e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
-       e.patient_token, e.patient_submitted_at, e.review_completed_at, e.created_at, e.version_id,
+       e.patient_token, e.patient_submitted_at, e.review_completed_at, e.created_at, e.version_id, e.hospital_number,
        reviewer.name AS review_completed_by_name,
-       p.id AS patient_id, p.first_name, p.last_name, p.date_of_birth, p.sex, p.hospital_number, p.phone, p.email,
+       p.id AS patient_id, p.first_name, p.last_name, p.date_of_birth, p.sex, p.national_id, p.national_id_type,
+       p.mobile, p.email,
        q.name AS questionnaire_name, v.version_no
 FROM episodes e
 JOIN patients p ON p.id = e.patient_id

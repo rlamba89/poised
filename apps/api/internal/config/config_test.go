@@ -24,6 +24,7 @@ func country() env {
 	e["DEFAULT_TIME_ZONE"] = "America/Toronto"
 	e["DEFAULT_LOCALE"] = "en-CA"
 	e["PHONE_COUNTRY"] = "CA"
+	e["NATIONAL_ID_TYPE"] = "nhs" // the only scheme built so far (internal/nationalid)
 	return e
 }
 
@@ -35,7 +36,7 @@ func TestLoadLocalDefaults(t *testing.T) {
 	if c.DatabaseURL != "postgres://x" || c.TokenSecret != "s3cret" {
 		t.Errorf("database URL and secret = %q, %q", c.DatabaseURL, c.TokenSecret)
 	}
-	want := config.Country{AppURL: "http://localhost:3000", TimeZone: "Europe/London", Locale: "en-GB", PhoneCountry: "GB"}
+	want := config.Country{AppURL: "http://localhost:3000", TimeZone: "Europe/London", Locale: "en-GB", PhoneCountry: "GB", NationalIDType: "nhs"}
 	if c.Country != want {
 		t.Errorf("country = %+v, want the local UK defaults %+v", c.Country, want)
 	}
@@ -55,7 +56,7 @@ func TestLoadReadsEveryValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config.Country{AppURL: "https://ca.example.test", TimeZone: "America/Toronto", Locale: "en-CA", PhoneCountry: "CA"}
+	want := config.Country{AppURL: "https://ca.example.test", TimeZone: "America/Toronto", Locale: "en-CA", PhoneCountry: "CA", NationalIDType: "nhs"}
 	if c.Country != want {
 		t.Errorf("country = %+v, want %+v", c.Country, want)
 	}
@@ -114,7 +115,7 @@ func TestLoadStrict(t *testing.T) {
 		if err == nil {
 			t.Fatalf("no error; got %+v", c)
 		}
-		for _, name := range []string{"APP_URL", "DEFAULT_TIME_ZONE", "DEFAULT_LOCALE", "PHONE_COUNTRY"} {
+		for _, name := range []string{"APP_URL", "DEFAULT_TIME_ZONE", "DEFAULT_LOCALE", "PHONE_COUNTRY", "NATIONAL_ID_TYPE"} {
 			if !strings.Contains(err.Error(), name) {
 				t.Errorf("error %q doesn't name %s", err, name)
 			}
@@ -150,6 +151,8 @@ func TestLoadRefusesBadValues(t *testing.T) {
 		{"DEFAULT_LOCALE", "en_GB"},
 		{"PHONE_COUNTRY", "gb"},
 		{"PHONE_COUNTRY", "GBR"},
+		{"NATIONAL_ID_TYPE", "ssn"}, // no validator for it
+		{"NATIONAL_ID_TYPE", "NHS"},
 		{"APP_URL", "uk.example.test"},
 		{"APP_URL", "ftp://uk.example.test"},
 		{"APP_URL", "https://"},
@@ -177,7 +180,9 @@ func TestPublic(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := c.Public()
-	if got != (config.Public{Locale: "en-CA", TimeZone: "America/Toronto"}) {
+	want := config.Public{Locale: "en-CA", TimeZone: "America/Toronto",
+		NationalID: config.PublicNationalID{Type: "nhs", Label: "NHS number"}}
+	if got != want {
 		t.Errorf("public = %+v", got)
 	}
 }

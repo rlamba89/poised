@@ -67,11 +67,14 @@ var demoUsers = []struct {
 
 type membership struct{ trust, hospital, role string }
 
-// Made-up patients only (NFR-03), all Trust A's records.
-var demoPatients = []struct{ id, first, last, dob, sex, number, phone string }{
-	{"00000000-0000-4000-8000-0000000000c1", "Jo", "Bloggs", "1974-12-11", "male", "TEST0001", "07700 900001"},
-	{"00000000-0000-4000-8000-0000000000c2", "Pat", "Example", "1961-03-02", "female", "TEST0002", "07700 900002"},
-	{"00000000-0000-4000-8000-0000000000c3", "Robin", "Sample", "1990-07-21", "other", "TEST0003", "07700 900003"},
+// Made-up patients only (NFR-03), all Trust A's records, with no episodes: no hospital finds them
+// by searching, but typing their details on the New episode page links to them silently (S13).
+// NHS numbers are made up in the 999 range with valid check digits; mobiles are Ofcom's drama
+// range (07700 900xxx). Pat has no NHS number, so name + date of birth + contact matches her.
+var demoPatients = []struct{ id, first, last, dob, sex, nhs, mobile, email string }{
+	{"00000000-0000-4000-8000-0000000000c1", "Jo", "Bloggs", "1974-12-11", "male", "9990001006", "+447700900001", "jo.bloggs@example.test"},
+	{"00000000-0000-4000-8000-0000000000c2", "Pat", "Example", "1961-03-02", "female", "", "+447700900002", "pat.example@example.test"},
+	{"00000000-0000-4000-8000-0000000000c3", "Robin", "Sample", "1990-07-21", "other", "9990001014", "", ""},
 }
 
 func main() {
@@ -209,9 +212,18 @@ func seedDemo(ctx context.Context, tx pgx.Tx) error {
 		}
 	}
 	for _, p := range demoPatients {
-		if _, err := tx.Exec(ctx, `INSERT INTO patients (id, org_id, first_name, last_name, date_of_birth, sex, hospital_number, phone)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (id) DO NOTHING`,
-			p.id, orgs[trustA], p.first, p.last, p.dob, p.sex, p.number, p.phone); err != nil {
+		var nhs, typ any // NULL: no NHS number
+		if p.nhs != "" {
+			nhs, typ = p.nhs, "nhs"
+		}
+		// Each run puts the demo records back as they were seeded.
+		if _, err := tx.Exec(ctx, `INSERT INTO patients (id, org_id, first_name, last_name, date_of_birth, sex, national_id,
+				national_id_type, mobile, email)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			ON CONFLICT (id) DO UPDATE SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name,
+				date_of_birth = EXCLUDED.date_of_birth, sex = EXCLUDED.sex, national_id = EXCLUDED.national_id,
+				national_id_type = EXCLUDED.national_id_type, mobile = EXCLUDED.mobile, email = EXCLUDED.email`,
+			p.id, orgs[trustA], p.first, p.last, p.dob, p.sex, nhs, typ, p.mobile, p.email); err != nil {
 			return fmt.Errorf("patient %s: %w", p.last, err)
 		}
 	}

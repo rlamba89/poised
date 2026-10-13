@@ -184,6 +184,41 @@ func (f *Fixtures) EpisodeAt(t *testing.T, hq HQ, h Hospital, by User) Episode {
 	return e
 }
 
+// PatientRecord is a made-up patient's details, for Patient. Dates are YYYY-MM-DD; a NationalID
+// is an NHS number (the only scheme built), and the mobile is in E.164.
+type PatientRecord struct {
+	FirstName, LastName, DateOfBirth, NationalID, Mobile, Email string
+}
+
+// Patient adds a trust's patient record, with no episodes.
+func (f *Fixtures) Patient(t *testing.T, org uuid.UUID, p PatientRecord) uuid.UUID {
+	t.Helper()
+	var id, typ *string
+	if p.NationalID != "" {
+		nhs := "nhs"
+		id, typ = &p.NationalID, &nhs
+	}
+	var pid uuid.UUID
+	f.scan(t, &pid, `INSERT INTO patients (org_id, first_name, last_name, date_of_birth, sex, national_id, national_id_type, mobile, email)
+		VALUES ($1, $2, $3, $4, 'unknown', $5, $6, $7, $8) RETURNING id`,
+		org, p.FirstName, p.LastName, p.DateOfBirth, id, typ, p.Mobile, p.Email)
+	return pid
+}
+
+// EpisodeOf adds an episode on the HQ for an existing patient at a hospital of the HQ's trust,
+// with a hospital number ("" for none).
+func (f *Fixtures) EpisodeOf(t *testing.T, hq HQ, h Hospital, patient uuid.UUID, by User, hospitalNumber string) Episode {
+	t.Helper()
+	token, err := episode.NewToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := Episode{Token: token, PatientID: patient}
+	f.scan(t, &e.ID, `INSERT INTO episodes (org_id, hospital_id, patient_id, version_id, patient_token, created_by, hospital_number)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`, h.Org, h.ID, patient, hq.VersionID, token, by.ID, hospitalNumber)
+	return e
+}
+
 func (f *Fixtures) scan(t *testing.T, dest any, sql string, args ...any) {
 	t.Helper()
 	if err := f.db.QueryRow(context.Background(), sql, args...).Scan(dest); err != nil {

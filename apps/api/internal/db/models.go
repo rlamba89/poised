@@ -75,6 +75,7 @@ type Episode struct {
 	CreatedBy          uuid.UUID          `json:"createdBy"`
 	CreatedAt          time.Time          `json:"createdAt"`
 	OrgID              uuid.UUID          `json:"orgId"`
+	HospitalNumber     string             `json:"hospitalNumber"`
 }
 
 type EpisodeAnswer struct {
@@ -137,15 +138,18 @@ type Org struct {
 }
 
 type Patient struct {
-	ID             uuid.UUID   `json:"id"`
-	FirstName      string      `json:"firstName"`
-	LastName       string      `json:"lastName"`
-	DateOfBirth    pgtype.Date `json:"dateOfBirth"`
-	Sex            string      `json:"sex"`
-	HospitalNumber string      `json:"hospitalNumber"`
-	Phone          string      `json:"phone"`
-	Email          string      `json:"email"`
-	OrgID          uuid.UUID   `json:"orgId"`
+	ID             uuid.UUID     `json:"id"`
+	FirstName      string        `json:"firstName"`
+	LastName       string        `json:"lastName"`
+	DateOfBirth    pgtype.Date   `json:"dateOfBirth"`
+	Sex            string        `json:"sex"`
+	Mobile         string        `json:"mobile"`
+	Email          string        `json:"email"`
+	OrgID          uuid.UUID     `json:"orgId"`
+	NationalID     *string       `json:"nationalId"`
+	NationalIDType *string       `json:"nationalIdType"`
+	AccountID      uuid.NullUUID `json:"accountId"`
+	CreatedAt      time.Time     `json:"createdAt"`
 }
 
 type PlatformAdmin struct {

@@ -34,15 +34,18 @@ ORDER BY u.name, u.email;
 
 -- name: MatchAuditPatients :many
 -- The trust's patients that a "Patient" filter names: part of their name ("Jane Smith" or
--- "Smith Jane"), their hospital number, or their record's id.
-SELECT id FROM patients
-WHERE org_id = sqlc.arg(org_id) AND (
-    id::text = lower(sqlc.arg(query)::text)
-    OR strpos(lower(first_name || ' ' || last_name), lower(sqlc.arg(query))) > 0
-    OR strpos(lower(last_name || ' ' || first_name), lower(sqlc.arg(query))) > 0
-    OR (hospital_number <> '' AND strpos(lower(hospital_number), lower(sqlc.arg(query))) > 0));
+-- "Smith Jane"), part of a hospital number on one of their episodes (S13 moved it there), their
+-- national ID (exactly, as normalised), or their record's id.
+SELECT p.id FROM patients p
+WHERE p.org_id = sqlc.arg(org_id) AND (
+    p.id::text = lower(sqlc.arg(query)::text)
+    OR strpos(lower(p.first_name || ' ' || p.last_name), lower(sqlc.arg(query))) > 0
+    OR strpos(lower(p.last_name || ' ' || p.first_name), lower(sqlc.arg(query))) > 0
+    OR (sqlc.arg(national_id)::text <> '' AND p.national_id = sqlc.arg(national_id))
+    OR EXISTS (SELECT 1 FROM episodes e WHERE e.patient_id = p.id AND e.org_id = p.org_id
+               AND e.hospital_number <> '' AND strpos(lower(e.hospital_number), lower(sqlc.arg(query))) > 0));
 
 -- name: AuditPatientNames :many
 -- The names of the trust's patients in a page of the log, read now (the log holds only IDs).
-SELECT id, first_name, last_name, hospital_number FROM patients
+SELECT id, first_name, last_name, coalesce(national_id, '')::text AS national_id FROM patients
 WHERE org_id = $1 AND id = ANY (sqlc.arg(ids)::uuid[]);

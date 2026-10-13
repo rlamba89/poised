@@ -14,7 +14,7 @@ import (
 )
 
 const auditPatientNames = `-- name: AuditPatientNames :many
-SELECT id, first_name, last_name, hospital_number FROM patients
+SELECT id, first_name, last_name, coalesce(national_id, '')::text AS national_id FROM patients
 WHERE org_id = $1 AND id = ANY ($2::uuid[])
 `
 
@@ -24,10 +24,10 @@ type AuditPatientNamesParams struct {
 }
 
 type AuditPatientNamesRow struct {
-	ID             uuid.UUID `json:"id"`
-	FirstName      string    `json:"firstName"`
-	LastName       string    `json:"lastName"`
-	HospitalNumber string    `json:"hospitalNumber"`
+	ID         uuid.UUID `json:"id"`
+	FirstName  string    `json:"firstName"`
+	LastName   string    `json:"lastName"`
+	NationalID string    `json:"nationalId"`
 }
 
 // The names of the trust's patients in a page of the log, read now (the log holds only IDs).
@@ -44,7 +44,7 @@ func (q *Queries) AuditPatientNames(ctx context.Context, arg AuditPatientNamesPa
 			&i.ID,
 			&i.FirstName,
 			&i.LastName,
-			&i.HospitalNumber,
+			&i.NationalID,
 		); err != nil {
 			return nil, err
 		}
@@ -219,23 +219,27 @@ func (q *Queries) ListAuditUsers(ctx context.Context, orgID uuid.UUID) ([]ListAu
 }
 
 const matchAuditPatients = `-- name: MatchAuditPatients :many
-SELECT id FROM patients
-WHERE org_id = $1 AND (
-    id::text = lower($2::text)
-    OR strpos(lower(first_name || ' ' || last_name), lower($2)) > 0
-    OR strpos(lower(last_name || ' ' || first_name), lower($2)) > 0
-    OR (hospital_number <> '' AND strpos(lower(hospital_number), lower($2)) > 0))
+SELECT p.id FROM patients p
+WHERE p.org_id = $1 AND (
+    p.id::text = lower($2::text)
+    OR strpos(lower(p.first_name || ' ' || p.last_name), lower($2)) > 0
+    OR strpos(lower(p.last_name || ' ' || p.first_name), lower($2)) > 0
+    OR ($3::text <> '' AND p.national_id = $3)
+    OR EXISTS (SELECT 1 FROM episodes e WHERE e.patient_id = p.id AND e.org_id = p.org_id
+               AND e.hospital_number <> '' AND strpos(lower(e.hospital_number), lower($2)) > 0))
 `
 
 type MatchAuditPatientsParams struct {
-	OrgID uuid.UUID `json:"orgId"`
-	Query string    `json:"query"`
+	OrgID      uuid.UUID `json:"orgId"`
+	Query      string    `json:"query"`
+	NationalID string    `json:"nationalId"`
 }
 
 // The trust's patients that a "Patient" filter names: part of their name ("Jane Smith" or
-// "Smith Jane"), their hospital number, or their record's id.
+// "Smith Jane"), part of a hospital number on one of their episodes (S13 moved it there), their
+// national ID (exactly, as normalised), or their record's id.
 func (q *Queries) MatchAuditPatients(ctx context.Context, arg MatchAuditPatientsParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, matchAuditPatients, arg.OrgID, arg.Query)
+	rows, err := q.db.Query(ctx, matchAuditPatients, arg.OrgID, arg.Query, arg.NationalID)
 	if err != nil {
 		return nil, err
 	}

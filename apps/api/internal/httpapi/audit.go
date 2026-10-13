@@ -33,8 +33,10 @@ import (
 
 // auditActions are the actions written to audit_log.action, and how people read them.
 var auditActions = map[string]string{
-	"patient.list":       "Listed patients",
-	"patient.create":     "Added a patient",
+	"patient.search":     "Searched patients",
+	"patient.view":       "Opened a patient",
+	"patient.list":       "Listed patients", // before S13
+	"patient.create":     "Added a patient", // before S13: now with the episode (episode.create)
 	"episode.list":       "Listed episodes",
 	"episode.list_trust": "Listed episodes (all hospitals)",
 	"episode.create":     "Created an episode",
@@ -286,9 +288,9 @@ type auditListRow struct {
 }
 
 type auditPatient struct {
-	ID             uuid.UUID `json:"id"`
-	Name           string    `json:"name"`
-	HospitalNumber string    `json:"hospitalNumber"`
+	ID         uuid.UUID `json:"id"`
+	Name       string    `json:"name"`
+	NationalID string    `json:"nationalId"` // "" if none
 }
 
 func (s *server) listAudit(w http.ResponseWriter, r *http.Request) {
@@ -303,7 +305,8 @@ func (s *server) listAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	if f.patient != "" {
-		ids, err := s.q.MatchAuditPatients(ctx, db.MatchAuditPatientsParams{OrgID: orgID(r), Query: f.patient})
+		ids, err := s.q.MatchAuditPatients(ctx, db.MatchAuditPatientsParams{OrgID: orgID(r), Query: f.patient,
+			NationalID: s.cfg.Country.NationalID().Normalise(f.patient)})
 		if err != nil {
 			serverError(w, "match patients", err)
 			return
@@ -371,7 +374,7 @@ func (s *server) auditListRows(ctx context.Context, org uuid.UUID, rows []db.Lis
 			return nil, err
 		}
 		for _, p := range found {
-			names[p.ID] = auditPatient{ID: p.ID, Name: p.FirstName + " " + p.LastName, HospitalNumber: p.HospitalNumber}
+			names[p.ID] = auditPatient{ID: p.ID, Name: p.FirstName + " " + p.LastName, NationalID: p.NationalID}
 		}
 	}
 	out := make([]auditListRow, 0, len(rows))

@@ -36,8 +36,6 @@ type Querier interface {
 	CreateOptionList(ctx context.Context, arg CreateOptionListParams) (uuid.UUID, error)
 	// Nothing is returned when the code is taken (any case).
 	CreateOrg(ctx context.Context, arg CreateOrgParams) ([]uuid.UUID, error)
-	// Patient records belong to the trust (org_id); an episode is at one of its hospitals. Every
-	// episode lookup is scoped to the hospital, or to the hospitals the caller can see.
 	CreatePatient(ctx context.Context, arg CreatePatientParams) (uuid.UUID, error)
 	// A new questionnaire is the trust's, for all its hospitals.
 	CreateQuestionnaire(ctx context.Context, arg CreateQuestionnaireParams) (uuid.UUID, error)
@@ -56,6 +54,8 @@ type Querier interface {
 	GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpisodeRow, error)
 	// The patient's link: no sign-in, the token is the key.
 	GetEpisodeByToken(ctx context.Context, patientToken string) (GetEpisodeByTokenRow, error)
+	// The trust's record of one of this hospital's patients; no row for anyone else.
+	GetHospitalPatient(ctx context.Context, arg GetHospitalPatientParams) (GetHospitalPatientRow, error)
 	// Whose the list is: NULL for the trust's, else the hospital whose own it is.
 	GetOptionListOwner(ctx context.Context, arg GetOptionListOwnerParams) (uuid.NullUUID, error)
 	GetOrgForAdmin(ctx context.Context, id uuid.UUID) (GetOrgForAdminRow, error)
@@ -106,7 +106,10 @@ type Querier interface {
 	// The superadmin console and trust settings (plan C1, session S10).
 	// Every trust, for the platform admin: no patient data (OPS-06), only how many hospitals.
 	ListOrgsForAdmin(ctx context.Context) ([]ListOrgsForAdminRow, error)
-	ListPatients(ctx context.Context, orgID uuid.UUID) ([]ListPatientsRow, error)
+	// A patient's episodes at this hospital only, newest first: never another hospital's.
+	ListPatientEpisodesHere(ctx context.Context, arg ListPatientEpisodesHereParams) ([]ListPatientEpisodesHereRow, error)
+	// Patient records belong to the trust (org_id); an episode is at one of its hospitals. Every
+	// episode lookup is scoped to the hospital, or to the hospitals the caller can see.
 	// The HQs an episode can be given: each questionnaire's published version.
 	ListPublishedVersions(ctx context.Context, arg ListPublishedVersionsParams) ([]ListPublishedVersionsRow, error)
 	// A questionnaire shows its latest version: the draft if there is one, else the last published.
@@ -136,10 +139,16 @@ type Querier interface {
 	// give one person two memberships.
 	LockOrgStaff(ctx context.Context, orgID uuid.UUID) error
 	// The trust's patients that a "Patient" filter names: part of their name ("Jane Smith" or
-	// "Smith Jane"), their hospital number, or their record's id.
+	// "Smith Jane"), part of a hospital number on one of their episodes (S13 moved it there), their
+	// national ID (exactly, as normalised), or their record's id.
 	MatchAuditPatients(ctx context.Context, arg MatchAuditPatientsParams) ([]uuid.UUID, error)
 	// The user's role in one membership: the whole trust (hospital_id NULL) or one hospital.
 	MembershipRole(ctx context.Context, arg MembershipRoleParams) (string, error)
+	// The trust's record with this national ID, if any, for matching typed details.
+	PatientByNationalID(ctx context.Context, arg PatientByNationalIDParams) (PatientByNationalIDRow, error)
+	// The trust's records born on one day, for the duplicate check (patient.Decide), with whether each
+	// is this hospital's patient and its latest hospital number here: only those may be shown.
+	PatientsBornOn(ctx context.Context, arg PatientsBornOnParams) ([]PatientsBornOnRow, error)
 	Ping(ctx context.Context) (int32, error)
 	// Publishes the draft and retires the version published before it (LCY-01), in one statement.
 	// Returns 0 when the version is no longer a draft.
@@ -169,6 +178,14 @@ type Querier interface {
 	// CLN-09: part of the code or description, within one code set, active only.
 	// ILIKE '%…%' is served by the pg_trgm GIN indexes.
 	SearchCodes(ctx context.Context, arg SearchCodesParams) ([]SearchCodesRow, error)
+	// The trust's patient records (plan C2, S13). A record is the trust's (org_id); "this hospital's
+	// patients" are those with at least one episode here, and only they are ever listed or shown at
+	// a hospital (decisions.md, 11 Oct).
+	// This hospital's patients matching a search (patient.ParseSearch): the national ID, the
+	// hospital number here (exactly, ignoring case), or the start of the surname (surname_prefix is a
+	// LIKE pattern, lower case and escaped); born on birth when it's set. max_rows is one more than
+	// is shown, so the caller knows there are more.
+	SearchPatients(ctx context.Context, arg SearchPatientsParams) ([]SearchPatientsRow, error)
 	SetChapterPosition(ctx context.Context, arg SetChapterPositionParams) error
 	SetHospitalSettings(ctx context.Context, arg SetHospitalSettingsParams) error
 	SetHospitalStatus(ctx context.Context, arg SetHospitalStatusParams) error

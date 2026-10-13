@@ -105,7 +105,17 @@ func TestHospitalScopedClinicianSeesOnlyTheirHospital(t *testing.T) {
 		}
 	})
 	t.Run("but they can open an episode at their hospital for a patient first seen at the other", func(t *testing.T) {
-		r := w.cara.Do("POST", w.a1.Path("/episodes"), map[string]any{"patientId": w.ep2.PatientID, "versionId": w.hq.VersionID})
+		// Not by the record's id: A2's patient isn't one of A1's (S13)…
+		refused(t, w.cara.Do("POST", w.a1.Path("/episodes"), map[string]any{"patientId": w.ep2.PatientID, "versionId": w.hq.VersionID}),
+			http.StatusBadRequest)
+		// …but by typing their NHS number, date of birth and surname, which links silently.
+		var last string
+		if err := w.anon.DB.QueryRow(t.Context(), `UPDATE patients SET national_id = '9434765919', national_id_type = 'nhs'
+			WHERE id = $1 RETURNING last_name`, w.ep2.PatientID).Scan(&last); err != nil {
+			t.Fatal(err)
+		}
+		r := w.cara.Do("POST", w.a1.Path("/episodes"), map[string]any{"versionId": w.hq.VersionID, "patient": map[string]string{
+			"firstName": "T", "lastName": last, "dateOfBirth": "1970-01-01", "sex": "unknown", "nationalId": "9434765919"}})
 		r.Want(t, http.StatusCreated)
 		var got struct{ ID uuid.UUID }
 		r.Decode(t, &got)

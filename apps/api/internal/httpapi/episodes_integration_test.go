@@ -5,7 +5,6 @@ package httpapi_test
 import (
 	"net/http"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -126,113 +125,6 @@ func saveAnswers(t *testing.T, w *clinic, e apitest.Episode, chapter uuid.UUID, 
 // epPath is a path under /api/o/{trust}/h/{hospital}/episodes/{episode}.
 func epPath(hospital apitest.Hospital, e apitest.Episode, rest string) string {
 	return at(hospital, "/episodes/"+e.ID.String()+rest)
-}
-
-func TestListPatients(t *testing.T) {
-	t.Parallel()
-	w := newClinic(t)
-	theirs := w.fx.Episode(t, w.fx.PublishedHQ(t, w.b, w.bea, "basic.json"), w.bob)
-	ids := func(t *testing.T, r *apitest.Resp) []uuid.UUID {
-		r.Want(t, http.StatusOK)
-		var got []struct{ ID uuid.UUID }
-		r.Decode(t, &got)
-		var out []uuid.UUID
-		for _, p := range got {
-			out = append(out, p.ID)
-		}
-		return out
-	}
-
-	t.Run("happy path: the trust's patient records, a patient seen only at its other hospital included", func(t *testing.T) {
-		// S08 answers (12 Oct): a hospital-scoped clinician sees the trust's patient record, so
-		// they can open an episode here, though not the other hospital's episodes.
-		elsewhere := w.fx.EpisodeAt(t, w.hq, w.a2, w.cara)
-		got := ids(t, w.clinician.Do("GET", at(w.a, "/patients"), nil))
-		if len(got) != 2 || !slices.Contains(got, w.ep.PatientID) || !slices.Contains(got, elsewhere.PatientID) {
-			t.Errorf("patients = %v, want %s and %s", got, w.ep.PatientID, elsewhere.PatientID)
-		}
-	})
-	t.Run("no sign-in", func(t *testing.T) {
-		refused(t, w.anon.Do("GET", at(w.a, "/patients"), nil), http.StatusUnauthorized)
-	})
-	t.Run("role: every member is a clinician at least, so the case is a clinician at the trust's other hospital", func(t *testing.T) {
-		refused(t, w.site2.Do("GET", at(w.a, "/patients"), nil), http.StatusNotFound)
-	})
-	t.Run("another trust", func(t *testing.T) {
-		refused(t, w.otherClin.Do("GET", at(w.a, "/patients"), nil), http.StatusNotFound)
-		if got := ids(t, w.otherClin.Do("GET", at(w.b, "/patients"), nil)); len(got) != 1 || got[0] != theirs.PatientID {
-			t.Errorf("B's patients = %v, want only B's %s", got, theirs.PatientID)
-		}
-	})
-	t.Run("invalid input: not a hospital id", func(t *testing.T) {
-		for _, p := range badIDs(w.a, "/patients") {
-			refused(t, w.clinician.Do("GET", p, nil), http.StatusNotFound)
-		}
-	})
-}
-
-func TestCreatePatient(t *testing.T) {
-	t.Parallel()
-	w := newClinic(t)
-	create := func(c *apitest.Client, h apitest.Hospital, body any) *apitest.Resp {
-		return c.Do("POST", at(h, "/patients"), body)
-	}
-	body := map[string]string{"firstName": " Ada ", "lastName": " Lovelace ", "dateOfBirth": "1985-12-10",
-		"sex": "female", "hospitalNumber": " H123 ", "phone": " 07700 900123 ", "email": " ada@example.test "}
-	patients := func(t *testing.T) int { return count(t, w.db, "SELECT count(*) FROM patients") }
-	before := patients(t)
-
-	t.Run("no sign-in", func(t *testing.T) {
-		refused(t, create(w.anon, w.a, body), http.StatusUnauthorized)
-	})
-	t.Run("role: every member is a clinician at least, so the case is a clinician at the trust's other hospital", func(t *testing.T) {
-		refused(t, create(w.site2, w.a, body), http.StatusNotFound)
-	})
-	t.Run("another trust", func(t *testing.T) {
-		refused(t, create(w.otherClin, w.a, body), http.StatusNotFound)
-	})
-	t.Run("invalid input", func(t *testing.T) {
-		with := func(k, v string) map[string]string {
-			b := map[string]string{}
-			for key, val := range body {
-				b[key] = val
-			}
-			b[k] = v
-			return b
-		}
-		for _, bad := range []any{
-			with("firstName", "  "),
-			with("lastName", ""),
-			with("dateOfBirth", "10/12/1985"),
-			with("dateOfBirth", time.Now().AddDate(0, 0, 2).Format(time.DateOnly)),
-			with("dateOfBirth", "1899-12-31"),
-			with("sex", "f"),
-			`{"firstName":`,
-		} {
-			refused(t, create(w.clinician, w.a, bad), http.StatusBadRequest)
-		}
-	})
-	if n := patients(t); n != before {
-		t.Fatalf("refusals wrote patients: %d, want %d", n, before)
-	}
-	t.Run("happy path: trimmed, the trust's record", func(t *testing.T) {
-		r := create(w.clinician, w.a, body)
-		r.Want(t, http.StatusCreated)
-		var got struct{ ID uuid.UUID }
-		r.Decode(t, &got)
-		var org uuid.UUID
-		var first, last, dob, sex, number, phone, email string
-		err := w.db.QueryRow(t.Context(), `SELECT org_id, first_name, last_name, date_of_birth::text, sex,
-			hospital_number, phone, email FROM patients WHERE id = $1`, got.ID).Scan(
-			&org, &first, &last, &dob, &sex, &number, &phone, &email)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if org != w.a.Org || first != "Ada" || last != "Lovelace" || dob != "1985-12-10" || sex != "female" ||
-			number != "H123" || phone != "07700 900123" || email != "ada@example.test" {
-			t.Errorf("row = %v %q %q %q %q %q %q %q", org, first, last, dob, sex, number, phone, email)
-		}
-	})
 }
 
 func TestListPublishedHQs(t *testing.T) {

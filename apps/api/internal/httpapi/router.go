@@ -129,8 +129,9 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/o/{oid}/h/{hid}/option-lists/{lid}", hosp(s.deleteOptionList))
 
 	// Patient data: each request writes one audit row (audited, S11; STF-06).
-	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/patients", hosp(s.audited("patient.list", s.listPatients)))
-	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/patients", hosp(s.audited("patient.create", s.createPatient)))
+	// Patients (S13): this hospital's only. A new patient is created with their first episode.
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/patients", hosp(s.audited("patient.search", s.searchPatients)))
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/patients/{pid}", hosp(s.audited("patient.view", s.getPatient)))
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/published-hqs", hosp(s.listPublishedHQs))
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes", hosp(s.audited("episode.list", s.listEpisodes)))
 	mux.HandleFunc("GET /api/o/{oid}/episodes", org(s.audited("episode.list_trust", s.listTrustEpisodes))) // "All hospitals" (STF-03)

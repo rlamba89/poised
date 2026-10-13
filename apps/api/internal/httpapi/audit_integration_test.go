@@ -144,23 +144,19 @@ func TestAuditRowsWritten(t *testing.T) {
 	ep, pat := w.ep.ID, w.ep.PatientID
 	atA2 := w.fx.EpisodeAt(t, w.hq, w.a2, w.ada) // at the trust's other hospital
 
-	t.Run("listing the trust's patients records every patient listed", func(t *testing.T) {
-		row := oneAudit(t, w.clinic, "patient.list", func() *apitest.Resp { return w.clinician.Do("GET", at(w.a, "/patients"), nil) }, 200)
+	t.Run("searching the hospital's patients records every patient found", func(t *testing.T) {
+		// Both fixture patients are "Patient …"; only A's is found at A.
+		row := oneAudit(t, w.clinic, "patient.search", func() *apitest.Resp { return w.clinician.Do("GET", at(w.a, "/patients?q=Patient"), nil) }, 200)
 		row.at(t, w.a.Org, &a, &w.cara)
-		row.touched(t, ids(pat, atA2.PatientID), nil)
+		row.touched(t, ids(pat), nil)
 		if row.Route != "GET /api/o/{oid}/h/{hid}/patients" || row.Status != 200 {
 			t.Errorf("route %q status %d", row.Route, row.Status)
 		}
 	})
-	t.Run("adding a patient records the new record", func(t *testing.T) {
-		body := map[string]string{"firstName": "Audit", "lastName": "Added", "dateOfBirth": "1980-02-03", "sex": "female"}
-		row := oneAudit(t, w.clinic, "patient.create", func() *apitest.Resp { return w.clinician.Do("POST", at(w.a, "/patients"), body) }, 201)
-		var id uuid.UUID
-		if err := w.db.QueryRow(t.Context(), `SELECT id FROM patients WHERE last_name = 'Added'`).Scan(&id); err != nil {
-			t.Fatal(err)
-		}
+	t.Run("opening a patient records them and the episodes shown", func(t *testing.T) {
+		row := oneAudit(t, w.clinic, "patient.view", func() *apitest.Resp { return w.clinician.Do("GET", at(w.a, "/patients/"+pat.String()), nil) }, 200)
 		row.at(t, w.a.Org, &a, &w.cara)
-		row.touched(t, ids(id), nil)
+		row.touched(t, ids(pat), ids(ep))
 	})
 	t.Run("a hospital's episode list records its episodes and their patients", func(t *testing.T) {
 		row := oneAudit(t, w.clinic, "episode.list", func() *apitest.Resp { return w.clinician.Do("GET", at(w.a, "/episodes"), nil) }, 200)
@@ -180,6 +176,28 @@ func TestAuditRowsWritten(t *testing.T) {
 			t.Fatal(err)
 		}
 		row.touched(t, ids(pat), ids(id))
+	})
+	t.Run("creating an episode for a new patient records the new record", func(t *testing.T) {
+		body := map[string]any{"versionId": w.hq.VersionID, "procedure": "New", "patient": map[string]string{
+			"firstName": "Audit", "lastName": "Added", "dateOfBirth": "1980-02-03", "sex": "female"}}
+		row := oneAudit(t, w.clinic, "episode.create", func() *apitest.Resp { return w.clinician.Do("POST", at(w.a, "/episodes"), body) }, 201)
+		var id, eid uuid.UUID
+		if err := w.db.QueryRow(t.Context(), `SELECT p.id, e.id FROM patients p JOIN episodes e ON e.patient_id = p.id
+			WHERE p.last_name = 'Added'`).Scan(&id, &eid); err != nil {
+			t.Fatal(err)
+		}
+		row.at(t, w.a.Org, &a, &w.cara)
+		row.touched(t, ids(id), ids(eid))
+	})
+	t.Run("a possible duplicate names nobody known only elsewhere, so it records nobody", func(t *testing.T) {
+		var first, last string
+		if err := w.db.QueryRow(t.Context(), `SELECT first_name, last_name FROM patients WHERE id = $1`, atA2.PatientID).Scan(&first, &last); err != nil {
+			t.Fatal(err)
+		}
+		body := map[string]any{"versionId": w.hq.VersionID, "patient": map[string]string{
+			"firstName": first, "lastName": last, "dateOfBirth": "1970-01-01", "sex": "female"}}
+		row := oneAudit(t, w.clinic, "episode.create", func() *apitest.Resp { return w.clinician.Do("POST", at(w.a, "/episodes"), body) }, 409)
+		row.touched(t, nil, nil)
 	})
 	for _, c := range []struct {
 		action, method, path string
@@ -281,7 +299,7 @@ func TestAuditFailsClosed(t *testing.T) {
 	}
 	for _, r := range []*apitest.Resp{
 		w.clinician.Do("GET", epPath(w.a, w.ep, ""), nil),
-		w.clinician.Do("GET", at(w.a, "/patients"), nil),
+		w.clinician.Do("GET", at(w.a, "/patients?q="+url.QueryEscape(last)), nil),
 		w.anon.Do("GET", patientPath(w.ep, ""), nil),
 	} {
 		refused(t, r, http.StatusInternalServerError)
@@ -327,9 +345,9 @@ type auditList struct {
 		Route        string
 		Status       int
 		Patients     []struct {
-			ID             uuid.UUID
-			Name           string
-			HospitalNumber string
+			ID         uuid.UUID
+			Name       string
+			NationalID string
 		}
 		PatientCount int
 		EpisodeIDs   []uuid.UUID
@@ -376,7 +394,11 @@ func TestListAudit(t *testing.T) {
 		WHERE h.id = $1 AND p.id = $2`, w.a.ID, w.ep.PatientID).Scan(&hospitalName, &first, &last); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.db.Exec(t.Context(), `UPDATE patients SET hospital_number = 'HN-AUD-1' WHERE id = $1`, w.ep.PatientID); err != nil {
+	// The hospital number is on the episode (S13); the record has the NHS number.
+	if _, err := w.db.Exec(t.Context(), `UPDATE episodes SET hospital_number = 'HN-AUD-1' WHERE id = $1`, w.ep.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.db.Exec(t.Context(), `UPDATE patients SET national_id = '9434765919', national_id_type = 'nhs' WHERE id = $1`, w.ep.PatientID); err != nil {
 		t.Fatal(err)
 	}
 	// Two days ago: Cara opens the episode list. Now: Cara opens the episode; the patient opens their link.
@@ -402,7 +424,7 @@ func TestListAudit(t *testing.T) {
 			t.Errorf("row = %+v", view)
 		}
 		if len(view.Patients) != 1 || view.Patients[0].ID != w.ep.PatientID || view.Patients[0].Name != first+" "+last ||
-			view.Patients[0].HospitalNumber != "HN-AUD-1" || !slices.Equal(view.EpisodeIDs, ids(w.ep.ID)) {
+			view.Patients[0].NationalID != "9434765919" || !slices.Equal(view.EpisodeIDs, ids(w.ep.ID)) {
 			t.Errorf("records = %+v %v", view.Patients, view.EpisodeIDs)
 		}
 		if l.Rows[0].Actor != "patient" || l.Rows[0].UserID != nil {
@@ -450,7 +472,7 @@ func TestListAudit(t *testing.T) {
 		}
 	})
 	t.Run("filter by patient: name, either order, hospital number or record id", func(t *testing.T) {
-		for _, q := range []string{last, strings.ToUpper(first + " " + last), last + " " + first, "hn-aud", w.ep.PatientID.String()} {
+		for _, q := range []string{last, strings.ToUpper(first + " " + last), last + " " + first, "hn-aud", "943 476 5919", w.ep.PatientID.String()} {
 			got := getAudit(t, w.adaC, w.a.Org, url.Values{"patient": {q}, "user": {w.cara.ID.String()}}).actions()
 			if !slices.Equal(got, []string{"episode.view", "episode.list"}) {
 				t.Errorf("patient %q = %v", q, got)
@@ -553,13 +575,11 @@ func TestListAudit(t *testing.T) {
 func TestAuditListCapsPatientsPerRow(t *testing.T) {
 	t.Parallel()
 	w := newAuditWorld(t)
-	_, err := w.db.Exec(t.Context(), `INSERT INTO patients (org_id, first_name, last_name, date_of_birth, sex, hospital_number)
-		SELECT $1, 'Many', 'Patient ' || n, '1970-01-01', 'unknown', 'HN-' || n FROM generate_series(1, 40) AS n`, w.a.Org)
-	if err != nil {
-		t.Fatal(err)
+	for range 40 { // 41 episodes at A, each with its own patient
+		w.fx.Episode(t, w.hq, w.cara)
 	}
-	for range 2 { // two lists of every patient: 41 each
-		w.clinician.Do("GET", at(w.a, "/patients"), nil).Want(t, http.StatusOK)
+	for range 2 { // two lists of every episode and its patient: 41 each
+		w.clinician.Do("GET", at(w.a, "/episodes"), nil).Want(t, http.StatusOK)
 	}
 	r := w.adaC.Do("GET", auditPath(w.a.Org, nil), nil)
 	r.Want(t, http.StatusOK)
@@ -569,19 +589,10 @@ func TestAuditListCapsPatientsPerRow(t *testing.T) {
 		t.Fatalf("rows %d", len(l.Rows))
 	}
 	for _, row := range l.Rows {
-		if row.PatientCount != 41 || len(row.Patients) != 10 || row.Patients[0].Name == "" {
-			t.Errorf("count %d patients %d", row.PatientCount, len(row.Patients))
+		if row.PatientCount != 41 || len(row.Patients) != 10 || row.Patients[0].Name == "" ||
+			row.EpisodeCount != 41 || len(row.EpisodeIDs) != 10 {
+			t.Errorf("patients %d/%d episodes %d/%d", len(row.Patients), row.PatientCount, len(row.EpisodeIDs), row.EpisodeCount)
 		}
-	}
-	// Episodes too: a list of 30 episodes gives 10 ids and the count.
-	for range 29 {
-		w.fx.Episode(t, w.hq, w.cara)
-	}
-	w.clinician.Do("GET", at(w.a, "/episodes"), nil).Want(t, http.StatusOK)
-	var eps auditList
-	w.adaC.Do("GET", auditPath(w.a.Org, url.Values{"user": {w.cara.ID.String()}}), nil).Decode(t, &eps)
-	if e := eps.Rows[0]; e.Action != "episode.list" || e.EpisodeCount != 30 || len(e.EpisodeIDs) != 10 || e.PatientCount != 30 {
-		t.Errorf("episode list row: %s episodes %d/%d patients %d", e.Action, len(e.EpisodeIDs), e.EpisodeCount, e.PatientCount)
 	}
 	if len(r.Body) > 12_000 {
 		t.Errorf("the page is %d bytes for two rows: patients aren't capped", len(r.Body))
@@ -590,18 +601,18 @@ func TestAuditListCapsPatientsPerRow(t *testing.T) {
 	one.Want(t, http.StatusOK)
 	var single auditList
 	one.Decode(t, &single)
-	if len(single.Rows) != 3 || single.Rows[1].PatientCount != 41 { // the episode list, then the two patient lists
+	if len(single.Rows) != 2 || single.Rows[1].PatientCount != 41 { // the two episode lists
 		t.Errorf("filtered: %d rows", len(single.Rows))
 	}
 
 	c := w.adaC.Do("GET", auditPath(w.a.Org, url.Values{"format": {"csv"}, "user": {w.cara.ID.String()}}), nil)
 	c.Want(t, http.StatusOK)
 	recs, err := csv.NewReader(strings.NewReader(string(c.Body))).ReadAll()
-	if err != nil || len(recs) != 4 {
+	if err != nil || len(recs) != 3 {
 		t.Fatalf("records %d err %v", len(recs), err)
 	}
-	if ids := strings.Split(recs[1][7], "; "); len(ids) != 30 {
-		t.Errorf("the CSV's episode list row has %d episode ids, want 30", len(ids))
+	if ids := strings.Split(recs[1][7], "; "); len(ids) != 41 {
+		t.Errorf("the CSV's episode list row has %d episode ids, want 41", len(ids))
 	}
 	if names, pids := strings.Split(recs[2][5], "; "), strings.Split(recs[2][6], "; "); len(names) != 41 || len(pids) != 41 {
 		t.Errorf("the CSV row has %d names and %d ids, want 41", len(names), len(pids))

@@ -1,7 +1,8 @@
 // Package config reads the API's settings from environment variables, once, at start-up.
 //
 // It is the only Go package that may hold a per-country value (A-20, saas-requirements §13
-// "Countries"): the web address, the default time zone and locale, and the phone country.
+// "Countries"): the web address, the default time zone and locale, the phone country and the
+// patient identifier scheme.
 // Each deployment sets them in its environment; local dev falls back to the UK defaults below.
 // With CONFIG_STRICT=true (on AWS) there is no fallback: a missing value stops start-up, so a
 // deployment can never quietly run as the UK.
@@ -18,6 +19,8 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata" // the zone database is built in, so no zone depends on the host (e.g. Lambda)
+
+	"github.com/rlamba89/poised/apps/api/internal/nationalid"
 )
 
 // Config is everything the API reads from its environment.
@@ -35,17 +38,34 @@ type Country struct {
 	TimeZone     string // DEFAULT_TIME_ZONE: an IANA zone
 	Locale       string // DEFAULT_LOCALE: a BCP 47 tag, for formatting dates
 	PhoneCountry string // PHONE_COUNTRY: ISO 3166-1 alpha-2, the only country SMS goes to (PAT-11)
+	// NATIONAL_ID_TYPE: the patient identifier scheme, a type in internal/nationalid (S13)
+	NationalIDType string
+}
+
+// NationalID is the deployment's patient identifier scheme. Load has checked it exists.
+func (c Country) NationalID() nationalid.Scheme {
+	s, _ := nationalid.Lookup(c.NationalIDType)
+	return s
 }
 
 // Public is what GET /api/config tells the browser. Nothing secret goes in here.
 type Public struct {
-	Locale   string `json:"locale"`
-	TimeZone string `json:"timeZone"`
+	Locale     string           `json:"locale"`
+	TimeZone   string           `json:"timeZone"`
+	NationalID PublicNationalID `json:"nationalId"`
+}
+
+// PublicNationalID names the patient identifier, so staff screens can label it ("NHS number").
+type PublicNationalID struct {
+	Type  string `json:"type"`
+	Label string `json:"label"`
 }
 
 // Public returns the values the web app may read.
 func (c Config) Public() Public {
-	return Public{Locale: c.Country.Locale, TimeZone: c.Country.TimeZone}
+	id := c.Country.NationalID()
+	return Public{Locale: c.Country.Locale, TimeZone: c.Country.TimeZone,
+		NationalID: PublicNationalID{Type: id.Type, Label: id.Label}}
 }
 
 // localDefaults are used only outside strict mode, for development on a laptop.
@@ -54,6 +74,7 @@ var localDefaults = map[string]string{
 	"DEFAULT_TIME_ZONE": "Europe/London",
 	"DEFAULT_LOCALE":    "en-GB",
 	"PHONE_COUNTRY":     "GB",
+	"NATIONAL_ID_TYPE":  "nhs",
 }
 
 var (
@@ -99,10 +120,11 @@ func Load(getenv func(string) string) (Config, error) {
 		Addr:        getenv("API_ADDR"),
 		DevLogin:    flag("DEV_LOGIN"),
 		Country: Country{
-			AppURL:       strings.TrimSuffix(country("APP_URL"), "/"),
-			TimeZone:     country("DEFAULT_TIME_ZONE"),
-			Locale:       country("DEFAULT_LOCALE"),
-			PhoneCountry: country("PHONE_COUNTRY"),
+			AppURL:         strings.TrimSuffix(country("APP_URL"), "/"),
+			TimeZone:       country("DEFAULT_TIME_ZONE"),
+			Locale:         country("DEFAULT_LOCALE"),
+			PhoneCountry:   country("PHONE_COUNTRY"),
+			NationalIDType: country("NATIONAL_ID_TYPE"),
 		},
 	}
 	if c.Addr == "" {
@@ -141,6 +163,11 @@ func (c Country) validate() []error {
 	}
 	if c.PhoneCountry != "" && !countryRe.MatchString(c.PhoneCountry) {
 		errs = append(errs, fmt.Errorf("PHONE_COUNTRY must be a two-letter country code such as CA, not %q", c.PhoneCountry))
+	}
+	if c.NationalIDType != "" {
+		if _, ok := nationalid.Lookup(c.NationalIDType); !ok {
+			errs = append(errs, fmt.Errorf("NATIONAL_ID_TYPE must be a patient identifier scheme the API has a validator for (internal/nationalid), not %q", c.NationalIDType))
+		}
 	}
 	return errs
 }
