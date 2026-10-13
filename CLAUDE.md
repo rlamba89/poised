@@ -58,6 +58,7 @@ make test-integration       # API → database tests (-tags integration): a fres
 make lint                   # go vet (with the integration tag) + tsc --noEmit
 make e2e-setup              # once: e2e/.venv (Python 3.12+), pinned Playwright + pytest, Chromium and WebKit
 make e2e                    # journeys J1–J5 in real browsers against make dev (ARGS=--headed to watch)
+make platform-admin EMAIL=… # add a superadmin by hand (A-21); idempotent
 make sqlc                   # regenerate apps/api/internal/db after editing apps/api/db/queries/*.sql
 make migrate-down           # roll back the last migration
 ```

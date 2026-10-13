@@ -73,7 +73,7 @@
 
 ## Status
 
-**In progress: S08 (trusts, hospitals, memberships, role ladder, hospital picker) verified 13 Oct 2026 (test report 4 all passed; [verify.md](../sessions/S08-trusts-permissions/verify.md)). S09 (staff list, invites, change role, remove access) verified 13 Oct (test report 2 all passed; [verify.md](../sessions/S09-staff-invites/verify.md), [build notes](../sessions/S09-staff-invites/build-notes.md)).** S10–S11 (local) and S12 (Cognito, AWS phase) are next.
+**In progress: S08 (trusts, hospitals, memberships, role ladder, hospital picker) verified 13 Oct 2026 (test report 4 all passed; [verify.md](../sessions/S08-trusts-permissions/verify.md)). S09 (staff list, invites, change role, remove access) verified 13 Oct (test report 2 all passed; [verify.md](../sessions/S09-staff-invites/verify.md), [build notes](../sessions/S09-staff-invites/build-notes.md)). S10 (superadmin console, suspend, opt-ins, settings, editing details) tested 13 Oct (test report 2 all passed), verification 1's fixes retested (test report 3 all passed; [build notes](../sessions/S10-superadmin-console/build-notes.md)), verified 13 Oct ([verify.md](../sessions/S10-superadmin-console/verify.md), verification 2).** S11 (local) and S12 (Cognito, AWS phase) are next.
 
 Differences from the plan so far (S08; details in [decisions.md](../decisions.md) §2 and the [S08 build notes](../sessions/S08-trusts-permissions/build-notes.md)):
 - Hospital routes are `/api/o/{oid}/h/{hid}/…`; the only trust route so far is `GET /api/o/{oid}/episodes` ("All hospitals").
@@ -87,3 +87,9 @@ Differences and choices in S09 (details in [decisions.md](../decisions.md) §2, 
 - A person can hold **several memberships in one trust** (Rahul, 13 Oct). Each is changed or removed at `PATCH/DELETE …/staff/{uid}/access/{scope}` (`scope` = `trust` or a hospital id); `DELETE …/staff/{uid}` removes them all. The plan's `PATCH …/staff/{uid}` became the per-membership PATCH.
 - The membership is added when the invite is made. The 7-day expiry is the deadline for a **new account's first sign-in** (as Cognito's temporary password); after it, sign-in is refused until the admin resends the invite.
 - The last whole-trust admin can't be removed or demoted. Emails are unique whatever their case.
+
+Differences and choices in S10 (details in [decisions.md](../decisions.md) §2, 13 Oct "S10"):
+- Settings are `internal/settings` (`Defs`, `Effective`); **every ORG-04 setting** exists now (Rahul, 12 Oct). The opt-ins are set by the platform admin only (Rahul, 13 Oct).
+- The platform admin's `PATCH` routes also **edit a trust's and a hospital's details** at any time (Rahul, 13 Oct). Two extra routes: `POST /api/admin/orgs/{oid}/admins` and `GET /api/admin/opt-ins`.
+- Trust settings (`GET/PATCH /api/o/{oid}/settings`) are for whole-trust admins only, as Staff is.
+- Suspension is enforced: no new sign-in when all of a person's memberships are suspended, no access on the next request, and the patient's link closed.

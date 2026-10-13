@@ -2,6 +2,8 @@
 
 **Plan:** C1 ([c1-trusts-staff.md](../../plans/c1-trusts-staff.md)), part 3 of 5.
 **Requirements:** ORG-01…05, A-21, OPS-06 (no patient data for the superadmin).
+*Local phase (12 Oct): runs on Rahul's Mac only. No AWS, and no real email or SMS.*
+
 **Depends on:** S09 verified.
 
 **Ask Rahul first:**
