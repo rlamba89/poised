@@ -16,7 +16,7 @@ Agreed 2 Oct 2026. These plans turn [../saas-requirements.md](../saas-requiremen
 | F3 | [Go API: Lambda entry points](f3-lambda-entrypoints.md) | staff-api, patient-api and jobs entry points over one shared router; local dev unchanged | In progress: S05 (local half) verified 12 Oct; the Lambda half is S06 (AWS phase) |
 | F4 | [AWS and pipeline](f4-aws-pipeline.md) | CDK (Python), Neon, Amplify, API Gateway, Lambdas, CodePipeline with test gates, the QA environment, the per-country config and "add a country" runbook (A-20), and the idle cost measured | Not started |
 | C1 | [Trusts and staff](c1-trusts-staff.md) | Trusts, hospitals, opt-ins, Cognito staff sign-in with MFA, roles, invites, audit log, the hand-made superadmin, and nothing hardcoded for the UK (A-20) | In progress: S08, S09 and S10 verified (13 Oct); S11 verified (13 Oct); S12 (Cognito) is in the AWS phase |
-| C2 | [Patients and sign-in](c2-patients-signin.md) | Patient records by NHS number, magic-link sign-in, invites by SMS/email, patient home, jobs and reminders | In progress: S13 verified (13 Oct) |
+| C2 | [Patients and sign-in](c2-patients-signin.md) | Patient records by NHS number, magic-link sign-in, invites by SMS/email, patient home, jobs and reminders | In progress: S13 verified (13 Oct); S14 verified (13 Oct) |
 | C3 | [Episode lifecycle](c3-episode-lifecycle.md) | Procedures, `episode_forms`, every status, worklists, tasks, cancel, archive | Not started |
 | C4 | [Question keys and pre-fill](c4-question-keys-prefill.md) | Keys, question library, "Same as…", pre-fill and confirmation screens | Not started |
 | C5 | [Authoring additions](c5-authoring-additions.md) | Capture blocks, Summary element, Video and Information elements, content library | Not started |

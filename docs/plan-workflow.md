@@ -145,6 +145,7 @@ Each step is committed on its own, with Go handler tests and Vitest tests as bef
 - The `episode_events` row "Episode created" is written.
 
 ### Step 3: the patient fills in the HQ
+*Superseded 13 Oct 2026 (S14): the link no longer opens the HQ by itself. It is `/i/:token`: Continue, then the patient's date of birth, then a session cookie and `/api/p/episodes/{eid}` ([C2](plans/c2-patients-signin.md)). Only the token's hash is stored (`login_links`), and `episodes.patient_token` is gone.*
 - **Routes** (no login; the token is the key):
   - `GET /api/p/{token}`: the episode, the patient's name and the stripped patient-audience chapters, with the patient's answers so far
   - `PUT /api/p/{token}/answers/{cid}`: autosave

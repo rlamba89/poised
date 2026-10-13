@@ -2,17 +2,21 @@
 
 **Plan:** C2 ([c2-patients-signin.md](../../plans/c2-patients-signin.md)), part 2 of 4.
 **Requirements:** PAT-03, PAT-04, PAT-05, PAT-09, A-4.
+*Local phase (12 Oct): runs on Rahul's Mac only. No AWS, and no real email or SMS.*
+
 **Depends on:** S13 verified.
 
-**Ask Rahul first:** nothing new. The SMS wording follows PAT-03's example, and the hospital's name comes from the hospital record.
+**Ask Rahul first:**
+1. **What the patient API returns before and after the date-of-birth check** (decisions §5; [pending.md](../../pending.md) §3). Today `GET /api/p/{token}` includes the date of birth, which would give the check away. **Recommended:** before the check, only the hospital's name and the Continue/date-of-birth screen; after it, the HQ without the date of birth or any other identifier the patient didn't type.
+
+The SMS wording follows PAT-03's example, and the hospital's name comes from the hospital record.
 
 ## Build
 
 - **`Deps.SMS` and `Deps.Email`,** with recording fakes.
-- **`MESSAGING=capture`** (locally and in QA): messages go to `sent_messages`. Two dev/QA-only ways to read them:
+- **`MESSAGING=capture`** (the only mode for now; real sending comes in S17): messages go to `sent_messages`. Two dev-only ways to read them:
   - `GET /api/qa/messages?to=`;
   - a small **captured-messages page**, for the tester.
-  - CDK refuses capture mode on any other stage.
 - **Creating an episode sends the invite** by SMS and/or email. Staff can resend it.
 - **`login_links`:**
   - only the hash of a 32-byte token is stored;
