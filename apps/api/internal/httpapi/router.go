@@ -106,6 +106,9 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/o/{oid}/staff/{uid}/access/{scope}", org(s.updateStaffAccess))
 	mux.HandleFunc("DELETE /api/o/{oid}/staff/{uid}/access/{scope}", org(s.removeStaffAccess))
 
+	// The audit log (S11): whole-trust admins only; ?format=csv exports it. Reading it is audited too.
+	mux.HandleFunc("GET /api/o/{oid}/audit", org(auditAdmin(s.audited("audit.view", s.listAudit))))
+
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/questionnaires", hosp(s.listQuestionnaires))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires", hosp(s.createQuestionnaire))
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/questionnaires/{qid}", hosp(s.getQuestionnaire))
@@ -125,25 +128,27 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/option-lists/{lid}", hosp(s.updateOptionList))
 	mux.HandleFunc("DELETE /api/o/{oid}/h/{hid}/option-lists/{lid}", hosp(s.deleteOptionList))
 
-	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/patients", hosp(s.listPatients))
-	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/patients", hosp(s.createPatient))
+	// Patient data: each request writes one audit row (audited, S11; STF-06).
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/patients", hosp(s.audited("patient.list", s.listPatients)))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/patients", hosp(s.audited("patient.create", s.createPatient)))
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/published-hqs", hosp(s.listPublishedHQs))
-	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes", hosp(s.listEpisodes))
-	mux.HandleFunc("GET /api/o/{oid}/episodes", org(s.listTrustEpisodes)) // "All hospitals" (STF-03)
-	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes", hosp(s.createEpisode))
-	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}", hosp(s.getEpisode))
-	mux.HandleFunc("PATCH /api/o/{oid}/h/{hid}/episodes/{eid}", hosp(s.updateEpisode))
-	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/notes", hosp(s.addEpisodeNote))
-	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/hq", hosp(s.episodeHQ))
-	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/episodes/{eid}/answers/{cid}", hosp(s.saveClinicianAnswers))
-	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/complete-review", hosp(s.completeReview))
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes", hosp(s.audited("episode.list", s.listEpisodes)))
+	mux.HandleFunc("GET /api/o/{oid}/episodes", org(s.audited("episode.list_trust", s.listTrustEpisodes))) // "All hospitals" (STF-03)
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes", hosp(s.audited("episode.create", s.createEpisode)))
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}", hosp(s.audited("episode.view", s.getEpisode)))
+	mux.HandleFunc("PATCH /api/o/{oid}/h/{hid}/episodes/{eid}", hosp(s.audited("episode.update", s.updateEpisode)))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/notes", hosp(s.audited("episode.note", s.addEpisodeNote)))
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/hq", hosp(s.audited("answers.view", s.episodeHQ)))
+	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/episodes/{eid}/answers/{cid}", hosp(s.audited("answers.save", s.saveClinicianAnswers)))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/complete-review", hosp(s.audited("review.complete", s.completeReview)))
 }
 
 // patientRoutes is the patient's link: no sign-in, the token is the key (plan-workflow.md Step 3).
+// Each request is audited with the patient as the actor (S11).
 func (s *server) patientRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/p/{token}", s.patientHQ)
-	mux.HandleFunc("PUT /api/p/{token}/answers/{cid}", s.savePatientAnswers)
-	mux.HandleFunc("POST /api/p/{token}/submit", s.submitPatientHQ)
+	mux.HandleFunc("GET /api/p/{token}", s.audited("link.view", s.patientHQ))
+	mux.HandleFunc("PUT /api/p/{token}/answers/{cid}", s.audited("link.save", s.savePatientAnswers))
+	mux.HandleFunc("POST /api/p/{token}/submit", s.audited("link.submit", s.submitPatientHQ))
 }
 
 // publicConfig is the deployment's public per-country values (A-20), read once by the web app.

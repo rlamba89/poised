@@ -59,6 +59,9 @@ func (s *server) listPatients(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "list patients", err)
 		return
 	}
+	for _, p := range rows {
+		auditOf(r).touched(p.ID, uuid.Nil)
+	}
 	writeJSON(w, http.StatusOK, rows)
 }
 
@@ -81,6 +84,7 @@ func (s *server) createPatient(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "create patient", err)
 		return
 	}
+	auditOf(r).touched(id, uuid.Nil)
 	writeJSON(w, http.StatusCreated, map[string]uuid.UUID{"id": id})
 }
 
@@ -117,6 +121,9 @@ func (s *server) writeEpisodes(w http.ResponseWriter, r *http.Request, arg db.Li
 		serverError(w, "list episodes", err)
 		return
 	}
+	for _, e := range rows {
+		auditOf(r).touched(e.PatientID, e.ID)
+	}
 	writeJSON(w, http.StatusOK, rows)
 }
 
@@ -150,6 +157,7 @@ func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "create episode", err)
 		return
 	}
+	auditOf(r).touched(in.PatientID, id)
 	s.event(r, id, "Episode created", currentUser(r).ID)
 	writeJSON(w, http.StatusCreated, map[string]uuid.UUID{"id": id})
 }
@@ -169,6 +177,7 @@ func (s *server) loadEpisode(w http.ResponseWriter, r *http.Request) (db.GetEpis
 		serverError(w, "get episode", err)
 		return row, false
 	}
+	auditOf(r).touched(row.PatientID, row.ID)
 	return row, true
 }
 

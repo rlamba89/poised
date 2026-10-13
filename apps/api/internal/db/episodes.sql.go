@@ -210,6 +210,7 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 
 const getEpisodeByToken = `-- name: GetEpisodeByToken :one
 SELECT e.id, e.status, e.patient_submitted_at, e.version_id,
+       e.org_id, e.hospital_id, e.patient_id, -- for the audit log only, never sent to the patient
        p.first_name, p.last_name, p.date_of_birth, p.sex,
        q.name AS questionnaire_name,
        (o.status = 'active' AND h.status = 'active')::boolean AS open -- false while suspended (ORG-03)
@@ -227,6 +228,9 @@ type GetEpisodeByTokenRow struct {
 	Status             string             `json:"status"`
 	PatientSubmittedAt pgtype.Timestamptz `json:"patientSubmittedAt"`
 	VersionID          uuid.UUID          `json:"versionId"`
+	OrgID              uuid.UUID          `json:"orgId"`
+	HospitalID         uuid.UUID          `json:"hospitalId"`
+	PatientID          uuid.UUID          `json:"patientId"`
 	FirstName          string             `json:"firstName"`
 	LastName           string             `json:"lastName"`
 	DateOfBirth        pgtype.Date        `json:"dateOfBirth"`
@@ -244,6 +248,9 @@ func (q *Queries) GetEpisodeByToken(ctx context.Context, patientToken string) (G
 		&i.Status,
 		&i.PatientSubmittedAt,
 		&i.VersionID,
+		&i.OrgID,
+		&i.HospitalID,
+		&i.PatientID,
 		&i.FirstName,
 		&i.LastName,
 		&i.DateOfBirth,
@@ -365,7 +372,7 @@ func (q *Queries) ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([
 
 const listEpisodes = `-- name: ListEpisodes :many
 SELECT e.id, e.hospital_id, h.name AS hospital_name, e.status, e.procedure, e.created_at,
-       p.first_name, p.last_name, p.hospital_number,
+       e.patient_id, p.first_name, p.last_name, p.hospital_number,
        q.name AS questionnaire_name, v.version_no
 FROM episodes e
 JOIN hospitals h ON h.id = e.hospital_id
@@ -392,6 +399,7 @@ type ListEpisodesRow struct {
 	Status            string    `json:"status"`
 	Procedure         string    `json:"procedure"`
 	CreatedAt         time.Time `json:"createdAt"`
+	PatientID         uuid.UUID `json:"patientId"`
 	FirstName         string    `json:"firstName"`
 	LastName          string    `json:"lastName"`
 	HospitalNumber    string    `json:"hospitalNumber"`
@@ -422,6 +430,7 @@ func (q *Queries) ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]L
 			&i.Status,
 			&i.Procedure,
 			&i.CreatedAt,
+			&i.PatientID,
 			&i.FirstName,
 			&i.LastName,
 			&i.HospitalNumber,

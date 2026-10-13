@@ -37,7 +37,7 @@ RETURNING id;
 -- One trust's episodes: at every hospital when all_hospitals (a trust-wide member's "All
 -- hospitals", STF-03), else only at the hospitals listed.
 SELECT e.id, e.hospital_id, h.name AS hospital_name, e.status, e.procedure, e.created_at,
-       p.first_name, p.last_name, p.hospital_number,
+       e.patient_id, p.first_name, p.last_name, p.hospital_number,
        q.name AS questionnaire_name, v.version_no
 FROM episodes e
 JOIN hospitals h ON h.id = e.hospital_id
@@ -83,6 +83,7 @@ ORDER BY ev.created_at, ev.id;
 -- name: GetEpisodeByToken :one
 -- The patient's link: no sign-in, the token is the key.
 SELECT e.id, e.status, e.patient_submitted_at, e.version_id,
+       e.org_id, e.hospital_id, e.patient_id, -- for the audit log only, never sent to the patient
        p.first_name, p.last_name, p.date_of_birth, p.sex,
        q.name AS questionnaire_name,
        (o.status = 'active' AND h.status = 'active')::boolean AS open -- false while suspended (ORG-03)

@@ -17,6 +17,8 @@ type Querier interface {
 	AddMembership(ctx context.Context, arg AddMembershipParams) error
 	// Makes the user a superadmin (A-21); nothing changes if they already are.
 	AddPlatformAdmin(ctx context.Context, userID uuid.UUID) error
+	// The names of the trust's patients in a page of the log, read now (the log holds only IDs).
+	AuditPatientNames(ctx context.Context, arg AuditPatientNamesParams) ([]AuditPatientNamesRow, error)
 	// Whether the account has an invite not yet accepted: it has never signed in.
 	AwaitingFirstSignIn(ctx context.Context, userID uuid.UUID) (bool, error)
 	CompleteReview(ctx context.Context, arg CompleteReviewParams) (int64, error)
@@ -65,9 +67,19 @@ type Querier interface {
 	GetVersionChapter(ctx context.Context, arg GetVersionChapterParams) (GetVersionChapterRow, error)
 	HasNonDraftVersion(ctx context.Context, questionnaireID uuid.UUID) (bool, error)
 	HospitalInOrg(ctx context.Context, arg HospitalInOrgParams) (bool, error)
+	// The audit log (plan C1, session S11; STF-06). Rows are only ever inserted (00009_audit_log.sql).
+	// at is the server's clock (Deps.Clock), so tests can place rows in time.
+	InsertAudit(ctx context.Context, arg InsertAuditParams) error
 	// At sign-in: how many invites wait for the first sign-in, and how many of those are still open.
 	InviteState(ctx context.Context, arg InviteStateParams) (InviteStateRow, error)
 	IsPlatformAdmin(ctx context.Context, userID uuid.UUID) (bool, error)
+	// One trust's log, newest first, with the filters that are set: someone (a staff member, or
+	// patients_only for the patient's link), a time range [from_at, to_at), and patients (any of
+	// patient_ids, when by_patient).
+	ListAudit(ctx context.Context, arg ListAuditParams) ([]ListAuditRow, error)
+	// The staff who appear in a trust's log, for the "Who" filter. People removed from the trust
+	// are still listed: their past actions stay (STF-04).
+	ListAuditUsers(ctx context.Context, orgID uuid.UUID) ([]ListAuditUsersRow, error)
 	ListCategories(ctx context.Context) ([]Category, error)
 	// Every chapter lookup joins up to the questionnaire, so it is scoped to the trust and hospital.
 	ListChapters(ctx context.Context, versionID uuid.UUID) ([]ListChaptersRow, error)
@@ -123,6 +135,9 @@ type Querier interface {
 	// Serialises staff changes in one trust, so two admins can't both remove the last admin, or
 	// give one person two memberships.
 	LockOrgStaff(ctx context.Context, orgID uuid.UUID) error
+	// The trust's patients that a "Patient" filter names: part of their name ("Jane Smith" or
+	// "Smith Jane"), their hospital number, or their record's id.
+	MatchAuditPatients(ctx context.Context, arg MatchAuditPatientsParams) ([]uuid.UUID, error)
 	// The user's role in one membership: the whole trust (hospital_id NULL) or one hospital.
 	MembershipRole(ctx context.Context, arg MembershipRoleParams) (string, error)
 	Ping(ctx context.Context) (int32, error)

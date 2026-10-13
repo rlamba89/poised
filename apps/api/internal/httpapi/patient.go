@@ -35,6 +35,9 @@ func (s *server) loadByToken(w http.ResponseWriter, r *http.Request) (db.GetEpis
 		serverError(w, "episode by token", err)
 		return e, false
 	}
+	a := auditOf(r) // the token names an episode: from here on the request is in its trust's log
+	a.org, a.hospital = e.OrgID, e.HospitalID
+	a.touched(e.PatientID, e.ID)
 	if !e.Open { // the trust or hospital is suspended (ORG-03): the answers are kept
 		writeError(w, http.StatusForbidden, "This questionnaire isn't available at the moment. Please contact the hospital.")
 		return e, false
