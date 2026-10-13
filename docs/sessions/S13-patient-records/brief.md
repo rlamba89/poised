@@ -2,7 +2,9 @@
 
 **Plan:** C2 ([c2-patients-signin.md](../../plans/c2-patients-signin.md)), part 1 of 4.
 **Requirements:** PAT-01, PAT-01a, PAT-01b, PAT-02.
-**Depends on:** S12 verified (or S11, if Rahul chose the features-first order).
+*Local phase (12 Oct): runs on Rahul's Mac only. No AWS, and no real email or SMS.*
+
+**Depends on:** S11 verified (local-first order, 12 Oct).
 
 **Ask Rahul first:**
 1. **Use `national_id` + `national_id_type` instead of an `nhs_number` column** (A-20, *Proposed*)? Only the NHS number's validator is built now. **Recommended: yes.**

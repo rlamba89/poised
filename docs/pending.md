@@ -189,6 +189,27 @@ docker compose up -d --force-recreate db
     - **The spinner can stay on** if a bad-day link loads while an earlier load is still running (`AuditPage.tsx`: the bad-day branch doesn't clear `loading`). Back or a link only; cosmetic.
     - **The export sends the browser's time zone,** which Go's zone database might not know; that export answers 400 and the plain link saves the error as the file (see "plain download link" above). `parseAuditFilter` also repeats `validTimeZone` (`admin.go`).
   - **AUD-01's questionnaire change history** (who changed what in authoring, before and after) isn't part of this log, which covers patient data only.
+- **Patient records (S13, [build notes](sessions/S13-patient-records/build-notes.md)):**
+  - **Nothing edits a patient record or an episode's hospital number after Create.** Patients update their own contacts in S15 (PAT-10); staff editing (and who may) isn't planned yet.
+  - **No merging of duplicate records:** "Create anyway" can make two records for one person, and a record created without an NHS number never gains one by linking.
+  - **NHS numbers are shown as 10 digits,** not the usual 3-3-4 spacing (a display format per scheme in `internal/nationalid` would do it).
+  - **The CSV's Patients column (S11) still has names only;** the screen now shows "Name (NHS number)".
+  - **For Rahul to decide: guessing a date of birth reveals a record (by design).** An NHS-number **mismatch** (409) tells a clinician the trust holds that NHS number; trying dates of birth until one matches then **links silently**, and the episode and patient pages show the trust's record (first name, mobile, email). Likewise name + date of birth + a guessed mobile links and shows the stored email. Every try is in the audit log ("Created an episode", refused 409), and a success creates a real episode. **Suggested follow-up:** a per-user limit on mismatches (e.g. 5 an hour, then refuse and alert the trust's admins), or an audit alert on repeated mismatches. (S13 test report 1, item 3.)
+  - **Rapid clicks on Create episode can send several requests** (three synthetic clicks in one tick sent three POSTs; a real double-click sent one). With an NHS number the unique index refuses the extras; without one, two records could be made. Disable the button synchronously on the first click (`NewEpisodePage.tsx`). Low risk. (Test report 1, item 4.)
+  - **Cosmetic (test report 1):** the Audit screen's Patient box placeholder says "Name or hospital number" though the NHS number works too (`AuditPage.tsx`). *(The patient page's Episodes highlight and the "not found" page's ← Episodes link were fixed after test report 2.)*
+  - **Change patient also empties a hospital number staff typed themselves** (test report 2, item 2), not only one filled in from the chosen patient. The safe side of the round 1 fix; keep a typed one if it matters (`NewEpisodePage.tsx`, `changePatient`).
+  - **The New episode search table has no visible "Patients found" heading** (it's the table's accessible name only). Cosmetic (test report 2).
+  - **Found by S13's test report 3** (cosmetic; [test-report-3.md](sessions/S13-patient-records/test-report-3.md)):
+    - **A patient chosen from the search isn't kept in the address,** so a reload drops the choice; one chosen from the patient page (`?patient=`) survives a reload. Consistent with "Change patient forgets the patient"; put `?patient=` on Choose too if wanted.
+    - **`…/episodes/new?patient=<a patient not at this hospital>`** shows "Patient not found." at the bottom, above Create episode, easy to miss on a short screen; show it at the top (and drop the parameter).
+    - **Cancel on New episode always goes to Episodes,** even when it was opened from a patient's page; returning there might be expected.
+  - **Found by S13's verification** (minor; [verify.md](sessions/S13-patient-records/verify.md)):
+    - **The `?patient=` load has no stale guard** (`NewEpisodePage.tsx`): Change patient clicked before it answers is undone by the late answer (the card shows again, so it's visible).
+    - **Two staff creating the same patient without an NHS number at the same moment make two records** (`resolvePatient`): only the NHS number has a unique index. An advisory lock on (trust, date of birth) would serialise them.
+    - **Name length counts bytes, not characters** (`patients.go`, `details`): non-Latin names are refused early (A-20).
+    - **`TooBroad` says "an " + the identifier's label** (`patient.go`): wrong for another country's label (A-20); reword.
+    - **The patient search ORs three conditions** (`patients.sql`, `SearchPatients`), so it can't use its indexes; a UNION of three indexed branches before a large trust.
+    - **The Audit filter compares `national_id` without its type** (`audit.sql`, `MatchAuditPatients`); harmless with one scheme per deployment.
 - **Lifebox import:**
   - Conditions that cross Question Sets on pages and questions are still dropped with a warning.
   - Lifebox has no Question Set-level conditions to import.

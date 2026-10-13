@@ -2,7 +2,11 @@
 
 **Goal:** real patients. A clinician creates a patient record (identified by NHS number) and an episode. The patient gets an SMS and email with a magic link, confirms their date of birth, and sees every episode from every trust on one home page. Reminders go out on schedule.
 
-**Requirements:** PAT-01…11, PX-08, PX-11, A-3, A-4, A-13, A-20. **Depends on:** C1.
+**Requirements:** PAT-01…11, PX-08, PX-11, A-3, A-4, A-13, A-20. **Local first (12 Oct, A-22):**
+- **S13–S16 run locally.** Messages are only captured, and a timer in the local server calls `jobs.RunDue`.
+- **S17, in the AWS phase:** the jobs Lambda, the EventBridge schedule, and real SES/SMS.
+
+**Depends on:** C1.
 
 **Not in C2:** pre-fill (C4), procedures and the other statuses (C3).
 
@@ -97,4 +101,8 @@ All of these are in the deployment's one database. *(On 8 Oct the London control
 
 ## Status
 
-Not started.
+- **S13 (patient records): built 13 Oct; tested 13 Oct (test report 3, all passed); verified 13 Oct ([verify.md](../sessions/S13-patient-records/verify.md)).** [Build notes](../sessions/S13-patient-records/build-notes.md). Differences from the plan:
+  - `national_id` + `national_id_type` (agreed), the scheme set per deployment by `NATIONAL_ID_TYPE`; only `nhs` is built.
+  - The search is `GET /api/o/{oid}/h/{hid}/patients?q=&dob=` (S08's URL shape), the date of birth its own parameter. A patient page, `GET …/patients/{pid}`, was added for the brief.
+  - Rahul's duplicate rule (S13 answers 2): the same name, date of birth **and** email or mobile links silently; the same name and date of birth otherwise warns, with Create anyway.
+  - `POST …/patients` is gone: a patient is created with their first episode.
