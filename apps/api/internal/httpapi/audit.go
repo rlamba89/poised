@@ -46,6 +46,12 @@ var auditActions = map[string]string{
 	"answers.view":       "Opened the answers",
 	"answers.save":       "Saved the clinician's answers",
 	"review.complete":    "Completed the HQ review",
+	"invite.resend":      "Resent the patient's invite",
+	"behalf.view":        "Opened the patient's HQ to fill in for them",
+	"behalf.save":        "Saved answers for the patient",
+	"behalf.submit":      "Sent the HQ for the patient",
+	"link.open":          "Patient opened their link", // S14: Continue
+	"link.dob":           "Patient entered their date of birth",
 	"link.view":          "Patient opened their questionnaire",
 	"link.save":          "Patient saved answers",
 	"link.submit":        "Patient sent their answers",

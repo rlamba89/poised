@@ -188,3 +188,23 @@ func TestParseSearch(t *testing.T) {
 		}
 	}
 }
+
+func TestSMSAllowed(t *testing.T) {
+	// PAT-11: texts go only to numbers in the deployment's country (PHONE_COUNTRY), which blocks
+	// SMS-pumping fraud. The numbers are made up (Ofcom's drama range, and 555 numbers).
+	for _, tc := range []struct {
+		mobile, country string
+		want            bool
+	}{
+		{"+447700900123", "GB", true},
+		{"+447700900123", "CA", false},
+		{"+12025550123", "GB", false},
+		{"+12025550123", "CA", true}, // +1 is shared by Canada and the US: the calling code decides
+		{"", "GB", false},
+		{"not a number", "GB", false},
+	} {
+		if got := patient.SMSAllowed(tc.mobile, tc.country); got != tc.want {
+			t.Errorf("SMSAllowed(%q, %q) = %v, want %v", tc.mobile, tc.country, got, tc.want)
+		}
+	}
+}

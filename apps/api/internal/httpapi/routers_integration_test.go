@@ -33,8 +33,9 @@ func TestPatientRouter(t *testing.T) {
 	hq := fx.PublishedHQ(t, h, alex, "workflow.json")
 	ep := fx.Episode(t, hq, alex)
 
-	t.Run("serves the patient's link", func(t *testing.T) {
-		p.Do("GET", patientPath(ep, ""), nil).Want(t, http.StatusOK)
+	t.Run("serves the patient's link and their session", func(t *testing.T) {
+		p.AsPatient(t, ep.Link, ep.DateOfBirth).Do("GET", patientPath(ep, ""), nil).Want(t, http.StatusOK)
+		p.Do("POST", "/api/p/logout", nil).Want(t, http.StatusNoContent)
 	})
 	t.Run("serves health and config", func(t *testing.T) {
 		p.Do("GET", "/api/health", nil).Want(t, http.StatusOK)
@@ -83,6 +84,8 @@ func TestStaffRouter(t *testing.T) {
 	})
 	t.Run("404 for the patient's link, signed in or not", func(t *testing.T) {
 		for _, c := range []*apitest.Client{s, signed} {
+			c.Do("POST", "/api/p/links/"+ep.Link+"/continue", nil).Want(t, http.StatusNotFound)
+			c.Do("POST", "/api/p/links/"+ep.Link+"/dob", map[string]string{"dateOfBirth": ep.DateOfBirth}).Want(t, http.StatusNotFound)
 			c.Do("GET", patientPath(ep, ""), nil).Want(t, http.StatusNotFound)
 			c.Do("PUT", patientPath(ep, "/answers/"+hq.Chapters[0].String()), map[string]any{"data": map[string]any{}}).Want(t, http.StatusNotFound)
 			c.Do("POST", patientPath(ep, "/submit"), nil).Want(t, http.StatusNotFound)
@@ -121,7 +124,8 @@ func TestConfig(t *testing.T) {
 	country := map[string]string{
 		"APP_URL": "https://ca.example.test", "DEFAULT_TIME_ZONE": "America/Toronto",
 		"DEFAULT_LOCALE": "fr-CA", "PHONE_COUNTRY": "CA", "CONFIG_STRICT": "true",
-		"NATIONAL_ID_TYPE": "nhs", // the only scheme built so far
+		"NATIONAL_ID_TYPE": "nhs",     // the only scheme built so far
+		"MESSAGING":        "capture", // strict needs it set (S14 verification 1)
 	}
 	c, fx := apitest.NewWith(t, apitest.Options{Env: country})
 	want := map[string]any{"locale": "fr-CA", "timeZone": "America/Toronto",

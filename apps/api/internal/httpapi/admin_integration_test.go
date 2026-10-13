@@ -448,6 +448,7 @@ func TestAdminSuspendTrust(t *testing.T) {
 	w := newAdminWorld(t)
 	hq := w.fx.PublishedHQ(t, w.a1, w.ada, "basic.json")
 	ep := w.fx.Episode(t, hq, w.ada)
+	epSession := w.c.AsPatient(t, ep.Link, ep.DateOfBirth) // opened before the suspension
 	// Someone in both trusts keeps trust B while A is suspended.
 	both := w.fx.User(t, w.a1, "clinician")
 	w.fx.TrustMember(t, both, w.b1.Org, "clinician")
@@ -468,8 +469,9 @@ func TestAdminSuspendTrust(t *testing.T) {
 		if !strings.Contains(r.Message(), "suspended") || r.Header("Set-Cookie") != "" {
 			t.Errorf("got %s %q", r, r.Header("Set-Cookie"))
 		}
-		// The patient's link is closed too.
-		w.c.Do("GET", "/api/p/"+ep.Token, nil).Want(t, http.StatusForbidden)
+		// The patient's link is closed too, and so is a session they already have.
+		w.c.Do("POST", "/api/p/links/"+ep.Link+"/continue", nil).Want(t, http.StatusForbidden)
+		epSession.Do("GET", "/api/p/episodes/"+ep.ID.String(), nil).Want(t, http.StatusForbidden)
 		// Someone in another trust still signs in and keeps it, without trust A.
 		w.c.Do("POST", "/api/dev/login", map[string]any{"userId": both.ID}).Want(t, http.StatusNoContent)
 		me := bothC.Do("GET", "/api/me", nil)
@@ -502,7 +504,8 @@ func TestAdminSuspendTrust(t *testing.T) {
 		patchAdmin(t, w, adminOrgPath(w.a1.Org, ""), map[string]any{"status": "active"}, http.StatusOK)
 		w.c.Do("POST", "/api/dev/login", map[string]any{"userId": w.cara.ID}).Want(t, http.StatusNoContent)
 		w.caC.Do("GET", w.a1.Path("/episodes"), nil).Want(t, http.StatusOK)
-		w.c.Do("GET", "/api/p/"+ep.Token, nil).Want(t, http.StatusOK)
+		w.c.Do("POST", "/api/p/links/"+ep.Link+"/continue", nil).Want(t, http.StatusOK)
+		epSession.Do("GET", "/api/p/episodes/"+ep.ID.String(), nil).Want(t, http.StatusOK)
 	})
 	t.Run("no sign-in", func(t *testing.T) {
 		w.c.Do("PATCH", adminOrgPath(w.a1.Org, ""), map[string]any{"status": "suspended"}).Want(t, http.StatusUnauthorized)

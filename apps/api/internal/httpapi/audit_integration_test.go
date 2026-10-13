@@ -216,17 +216,44 @@ func TestAuditRowsWritten(t *testing.T) {
 		})
 	}
 	t.Run("the patient's link: the patient is the actor, with the episode's trust and hospital", func(t *testing.T) {
-		row := oneAudit(t, w.clinic, "link.view", func() *apitest.Resp { return w.anon.Do("GET", patientPath(w.ep, ""), nil) }, 200)
+		patient := w.anon.NewBrowser(t)
+		row := oneAudit(t, w.clinic, "link.open", func() *apitest.Resp { return patient.Do("POST", linkPath(w.ep, "/continue"), nil) }, 200)
 		row.at(t, w.a.Org, &a, nil)
 		row.touched(t, ids(pat), ids(ep))
-		if strings.Contains(row.Route, w.ep.Token) || row.Route != "GET /api/p/{token}" {
+		if strings.Contains(row.Route, w.ep.Link) || row.Route != "POST /api/p/links/{token}/continue" {
 			t.Errorf("route %q: the link's token must never be stored", row.Route)
 		}
-		save := map[string]any{"data": map[string]any{"q_smokes": "o_yes"}, "revision": 0}
-		oneAudit(t, w.clinic, "link.save", func() *apitest.Resp { return w.anon.Do("PUT", patientPath(w.ep, "/answers/"+about.String()), save) }, 200).
+		// A wrong date of birth is recorded with its 401, then the right one.
+		oneAudit(t, w.clinic, "link.dob", func() *apitest.Resp { return patient.Do("POST", linkPath(w.ep, "/dob"), dob("1999-09-09")) }, 401).
 			touched(t, ids(pat), ids(ep))
-		oneAudit(t, w.clinic, "link.submit", func() *apitest.Resp { return w.anon.Do("POST", patientPath(w.ep, "/submit"), nil) }, 204).
+		oneAudit(t, w.clinic, "link.dob", func() *apitest.Resp { return patient.Do("POST", linkPath(w.ep, "/dob"), dob(w.ep.DateOfBirth)) }, 200).
 			at(t, w.a.Org, &a, nil)
+		row = oneAudit(t, w.clinic, "link.view", func() *apitest.Resp { return patient.Do("GET", patientPath(w.ep, ""), nil) }, 200)
+		row.at(t, w.a.Org, &a, nil)
+		row.touched(t, ids(pat), ids(ep))
+		save := map[string]any{"data": map[string]any{"q_smokes": "o_yes"}, "revision": 0}
+		oneAudit(t, w.clinic, "link.save", func() *apitest.Resp { return patient.Do("PUT", patientPath(w.ep, "/answers/"+about.String()), save) }, 200).
+			touched(t, ids(pat), ids(ep))
+		oneAudit(t, w.clinic, "link.submit", func() *apitest.Resp { return patient.Do("POST", patientPath(w.ep, "/submit"), nil) }, 204).
+			at(t, w.a.Org, &a, nil)
+	})
+	t.Run("staff filling in for the patient, and resending the invite", func(t *testing.T) {
+		other := w.fx.Episode(t, w.hq, w.cara)
+		save := map[string]any{"data": map[string]any{"q_smokes": "o_no"}, "revision": 0}
+		for _, c := range []struct {
+			action, method, path string
+			body                 any
+			want                 int
+		}{
+			{"behalf.view", "GET", "/patient-form", nil, 200},
+			{"behalf.save", "PUT", "/patient-form/answers/" + about.String(), save, 200},
+			{"behalf.submit", "POST", "/patient-form/submit", nil, 204},
+			{"invite.resend", "POST", "/resend-invite", nil, 409}, // already sent; the fixture's patient has no contacts anyway
+		} {
+			row := oneAudit(t, w.clinic, c.action, func() *apitest.Resp { return w.clinician.Do(c.method, epPath(w.a, other, c.path), c.body) }, c.want)
+			row.at(t, w.a.Org, &a, &w.cara)
+			row.touched(t, ids(other.PatientID), ids(other.ID))
+		}
 	})
 	t.Run("validating: saving answers and completing the review", func(t *testing.T) {
 		save := map[string]any{"data": map[string]any{"q_nurse": "fine"}, "validated": true, "revision": 0}
@@ -256,7 +283,11 @@ func TestAuditRowsWritten(t *testing.T) {
 			func() *apitest.Resp { return w.site2.Do("GET", epPath(w.a, w.ep, ""), nil) },        // another hospital's clinician
 			func() *apitest.Resp { return w.otherClin.Do("GET", epPath(w.a, w.ep, ""), nil) },    // another trust
 			func() *apitest.Resp { return w.beaC.Do("GET", orgPath(w.a.Org, "/episodes"), nil) }, // another trust's admin
-			func() *apitest.Resp { return w.anon.Do("GET", "/api/p/"+strings.Repeat("A", 43), nil) },
+			func() *apitest.Resp {
+				return w.anon.Do("POST", "/api/p/links/"+strings.Repeat("A", 43)+"/continue", nil)
+			}, // unknown link
+			func() *apitest.Resp { return w.anon.Do("GET", patientPath(w.ep, ""), nil) },               // no patient session
+			func() *apitest.Resp { return w.site2.Do("GET", epPath(w.a, w.ep, "/patient-form"), nil) }, // another hospital's clinician
 		} {
 			before := lastAuditID(t, w.clinic)
 			if resp := r(); resp.Code < 400 {
@@ -291,6 +322,7 @@ func TestAuditFailsClosed(t *testing.T) {
 	if err := w.db.QueryRow(t.Context(), `SELECT last_name FROM patients WHERE id = $1`, w.ep.PatientID).Scan(&last); err != nil {
 		t.Fatal(err)
 	}
+	patient := w.anon.AsPatient(t, w.ep.Link, w.ep.DateOfBirth) // signed in before the log fails
 	_, err := w.db.Exec(t.Context(), `
 		CREATE FUNCTION refuse_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'disk full'; END; $$;
 		CREATE TRIGGER refuse_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION refuse_audit();`)
@@ -300,7 +332,7 @@ func TestAuditFailsClosed(t *testing.T) {
 	for _, r := range []*apitest.Resp{
 		w.clinician.Do("GET", epPath(w.a, w.ep, ""), nil),
 		w.clinician.Do("GET", at(w.a, "/patients?q="+url.QueryEscape(last)), nil),
-		w.anon.Do("GET", patientPath(w.ep, ""), nil),
+		patient.Do("GET", patientPath(w.ep, ""), nil),
 	} {
 		refused(t, r, http.StatusInternalServerError)
 		if strings.Contains(string(r.Body), last) {
@@ -406,7 +438,7 @@ func TestListAudit(t *testing.T) {
 	w.clinician.Do("GET", at(w.a, "/episodes"), nil).Want(t, 200)
 	w.anon.Clock.Add(48 * time.Hour)
 	w.clinician.Do("GET", epPath(w.a, w.ep, ""), nil).Want(t, 200)
-	w.anon.Do("GET", patientPath(w.ep, ""), nil).Want(t, 200)
+	w.anon.AsPatient(t, w.ep.Link, w.ep.DateOfBirth).Do("GET", patientPath(w.ep, ""), nil).Want(t, 200)
 	now := w.anon.Clock.Now()
 	// Trust B's own row.
 	theirs := w.fx.Episode(t, w.fx.PublishedHQ(t, w.b, w.bea, "basic.json"), w.bea)
@@ -414,10 +446,10 @@ func TestListAudit(t *testing.T) {
 
 	t.Run("happy path: newest first, with names read now", func(t *testing.T) {
 		l := getAudit(t, w.adaC, w.a.Org, nil)
-		if got := l.actions(); !slices.Equal(got, []string{"link.view", "episode.view", "episode.list"}) {
+		if got := l.actions(); !slices.Equal(got, []string{"link.view", "link.dob", "link.open", "episode.view", "episode.list"}) {
 			t.Fatalf("actions = %v", got)
 		}
-		view := l.Rows[1]
+		view := l.Rows[3]
 		if view.UserName != w.cara.Name || view.UserID == nil || *view.UserID != w.cara.ID || view.Actor != "staff" ||
 			view.HospitalName != hospitalName || view.ActionLabel == "" || view.Status != 200 ||
 			view.Route != "GET /api/o/{oid}/h/{hid}/episodes/{eid}" {
@@ -446,7 +478,7 @@ func TestListAudit(t *testing.T) {
 			t.Errorf("Cara's = %v", got)
 		}
 		l = getAudit(t, w.adaC, w.a.Org, url.Values{"user": {"patient"}})
-		if got := l.actions(); !slices.Equal(got, []string{"link.view"}) {
+		if got := l.actions(); !slices.Equal(got, []string{"link.view", "link.dob", "link.open"}) {
 			t.Errorf("the patient's = %v", got)
 		}
 		if l := getAudit(t, w.adaC, w.a.Org, url.Values{"user": {w.bob.ID.String()}}); len(l.Rows) != 0 {
@@ -463,7 +495,7 @@ func TestListAudit(t *testing.T) {
 			t.Errorf("before an hour ago = %v", got)
 		}
 		q = url.Values{"from": {now.Format(time.RFC3339Nano)}, "to": {now.Add(time.Second).Format(time.RFC3339Nano)}, "user": {"patient"}}
-		if got := getAudit(t, w.adaC, w.a.Org, q).actions(); !slices.Equal(got, []string{"link.view"}) {
+		if got := getAudit(t, w.adaC, w.a.Org, q).actions(); !slices.Equal(got, []string{"link.view", "link.dob", "link.open"}) {
 			t.Errorf("exactly now = %v", got)
 		}
 		q = url.Values{"from": {now.Add(-72 * time.Hour).Format(time.RFC3339)}, "to": {now.Add(-24 * time.Hour).Format(time.RFC3339)}}

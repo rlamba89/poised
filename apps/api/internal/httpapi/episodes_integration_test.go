@@ -262,7 +262,7 @@ func TestCreateEpisode(t *testing.T) {
 	if n, m := episodes(t), events(t); n != beforeEpisodes || m != beforeEvents {
 		t.Fatalf("refusals wrote %d episodes and %d events, want %d and %d", n, m, beforeEpisodes, beforeEvents)
 	}
-	t.Run("happy path: waiting for the patient, with a link and a created event", func(t *testing.T) {
+	t.Run("happy path: waiting for the patient, with a created event (the invite: invites_integration_test.go)", func(t *testing.T) {
 		r := create(w.clinician, w.a, good)
 		r.Want(t, http.StatusCreated)
 		var got struct{ ID uuid.UUID }
@@ -271,16 +271,9 @@ func TestCreateEpisode(t *testing.T) {
 		if e.Status != "hq_not_complete" || e.Procedure != "Hip replacement" || e.Anaesthetic != "General" || e.Consultant != "Dr Grey" {
 			t.Errorf("episode = %+v", e)
 		}
-		var token string
-		if err := w.db.QueryRow(t.Context(), "SELECT patient_token FROM episodes WHERE id = $1", got.ID).Scan(&token); err != nil {
-			t.Fatal(err)
-		}
-		if len(token) != 43 {
-			t.Errorf("token %q: want 43 characters (32 random bytes)", token)
-		}
 		ev := readEvents(t, w, got.ID)
-		if len(ev) != 1 || ev[0].Kind != "event" || ev[0].Text != "Episode created" || ev[0].User == nil || *ev[0].User != w.cara.ID {
-			t.Errorf("events = %+v, want one 'Episode created' by Cara", ev)
+		if len(ev) != 2 || ev[0].Kind != "event" || ev[0].Text != "Episode created" || ev[0].User == nil || *ev[0].User != w.cara.ID {
+			t.Errorf("events = %+v, want 'Episode created' by Cara, then the invite's note", ev)
 		}
 	})
 }

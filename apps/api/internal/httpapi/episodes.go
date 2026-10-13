@@ -97,12 +97,6 @@ func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
-	token, err := episode.NewToken()
-	if err != nil {
-		serverError(w, "token", err)
-		return
-	}
-
 	ctx := r.Context()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -137,7 +131,7 @@ func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 		OrgID: orgID(r), HospitalID: hospitalID(r), PatientID: pid, VersionID: versionID,
 		Procedure: strings.TrimSpace(in.Procedure), Anaesthetic: strings.TrimSpace(in.Anaesthetic),
 		Consultant: strings.TrimSpace(in.Consultant), HospitalNumber: in.HospitalNumber,
-		PatientToken: token, CreatedBy: currentUser(r).ID,
+		CreatedBy: currentUser(r).ID,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusBadRequest, "Choose a published HQ.")
@@ -153,6 +147,7 @@ func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 	}
 	auditOf(r).touched(pid, id)
 	s.event(r, id, "Episode created", currentUser(r).ID)
+	s.inviteAfterCreate(r, id) // by SMS and email (PAT-03); a failure is noted, never refused
 	writeJSON(w, http.StatusCreated, map[string]uuid.UUID{"id": id})
 }
 
@@ -175,7 +170,7 @@ func (s *server) loadEpisode(w http.ResponseWriter, r *http.Request) (db.GetEpis
 	return row, true
 }
 
-// getEpisode returns the episode with its patient and its General notes.
+// getEpisode returns the episode with its patient, its General notes and its invite.
 func (s *server) getEpisode(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
@@ -186,7 +181,17 @@ func (s *server) getEpisode(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "list events", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"episode": e, "events": events})
+	// The patient's invite (S14): null until one is sent; lockedAt once five wrong dates of birth lock it.
+	var invite *db.GetEpisodeInviteRow
+	inv, err := s.q.GetEpisodeInvite(r.Context(), uuid.NullUUID{UUID: e.ID, Valid: true})
+	switch {
+	case err == nil:
+		invite = &inv
+	case !errors.Is(err, pgx.ErrNoRows):
+		serverError(w, "episode invite", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"episode": e, "events": events, "invite": invite})
 }
 
 // episodeChange is what updateEpisode changes. A field sent as null decodes to a nil pointer;

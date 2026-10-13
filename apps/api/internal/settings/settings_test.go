@@ -199,3 +199,37 @@ func TestDecodeAndApply(t *testing.T) {
 		t.Error("Apply changed what it was given")
 	}
 }
+
+func TestFill(t *testing.T) {
+	vars := map[string]string{"firstName": "Sam", "hospital": "St Mary's Hospital", "link": "https://app.example/i/tok"}
+	t.Run("the default invite text follows PAT-03's wording", func(t *testing.T) {
+		v := Effective(Platform(), nil, nil)
+		got, err := Fill(v, "templates.inviteSms", vars)
+		want := "St Mary's Hospital: please complete your pre-op health questionnaire: https://app.example/i/tok"
+		if err != nil || got != want {
+			t.Fatalf("got %q, %v; want %q", got, err, want)
+		}
+	})
+	t.Run("a hospital's own template, every placeholder filled once each", func(t *testing.T) {
+		v := Values{"templates.inviteEmail": raw(`"Hi {{firstName}} from {{hospital}}: {{link}} ({{link}})"`)}
+		got, err := Fill(v, "templates.inviteEmail", vars)
+		if err != nil || got != "Hi Sam from St Mary's Hospital: https://app.example/i/tok (https://app.example/i/tok)" {
+			t.Fatalf("got %q, %v", got, err)
+		}
+	})
+	t.Run("a value can't add a placeholder of its own", func(t *testing.T) {
+		v := Values{"templates.inviteSms": raw(`"{{firstName}}: {{link}}"`)}
+		got, _ := Fill(v, "templates.inviteSms", map[string]string{"firstName": "{{link}}", "link": "L"})
+		if got != "{{link}}: L" {
+			t.Fatalf("got %q", got)
+		}
+	})
+	t.Run("a missing or broken template is an error, not an empty message", func(t *testing.T) {
+		if _, err := Fill(Values{}, "templates.inviteSms", vars); err == nil {
+			t.Error("missing: no error")
+		}
+		if _, err := Fill(Values{"templates.inviteSms": raw(`42`)}, "templates.inviteSms", vars); err == nil {
+			t.Error("not a string: no error")
+		}
+	})
+}

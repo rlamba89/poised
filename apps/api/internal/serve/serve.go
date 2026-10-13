@@ -15,7 +15,9 @@ import (
 
 	"github.com/rlamba89/poised/apps/api/internal/cognito"
 	"github.com/rlamba89/poised/apps/api/internal/config"
+	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/httpapi"
+	"github.com/rlamba89/poised/apps/api/internal/messaging"
 )
 
 // Main runs the router built by router until the server fails. name is for the log.
@@ -30,12 +32,16 @@ func Main(name string, router func(httpapi.Deps) http.Handler) {
 	}
 	defer pool.Close()
 
-	srv := &http.Server{Addr: cfg.Addr, Handler: router(httpapi.Deps{Pool: pool, Config: cfg, Cognito: cognito.Local{}})}
+	// MESSAGING=capture is the only mode until S17 (config.Load refuses any other): texts and
+	// emails are stored in sent_messages, never sent.
+	capture := messaging.Capture{DB: db.New(pool)}
+	srv := &http.Server{Addr: cfg.Addr, Handler: router(httpapi.Deps{Pool: pool, Config: cfg, Cognito: cognito.Local{},
+		SMS: capture, Email: capture})}
 	devLogin := "off"
 	if cfg.DevLogin {
 		devLogin = "on"
 	}
-	log.Printf("%s listening on %s (dev login %s, locale %s, time zone %s)",
-		name, cfg.Addr, devLogin, cfg.Country.Locale, cfg.Country.TimeZone)
+	log.Printf("%s listening on %s (dev login %s, messaging %s, locale %s, time zone %s)",
+		name, cfg.Addr, devLogin, cfg.Messaging, cfg.Country.Locale, cfg.Country.TimeZone)
 	log.Fatal(srv.ListenAndServe())
 }

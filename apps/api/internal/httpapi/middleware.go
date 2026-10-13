@@ -20,6 +20,7 @@ type ctxKey int
 const (
 	userKey ctxKey = iota
 	placeKey
+	patientKey
 )
 
 // Memberships reads the caller's memberships, on every request so that removing one takes
@@ -172,6 +173,17 @@ func requireOrg(m Memberships, next http.HandlerFunc) http.HandlerFunc {
 func currentUser(r *http.Request) auth.User {
 	u, _ := r.Context().Value(userKey).(auth.User)
 	return u
+}
+
+// withPatient puts the patient's record id (their session's) in the context.
+func withPatient(ctx context.Context, patient uuid.UUID) context.Context {
+	return context.WithValue(ctx, patientKey, patient)
+}
+
+// patientOf is the signed-in patient's record id (requirePatient), or uuid.Nil on other routes.
+func patientOf(r *http.Request) uuid.UUID {
+	p, _ := r.Context().Value(patientKey).(uuid.UUID)
+	return p
 }
 
 // here is the request's place; requireHospital or requireOrg has put it there.

@@ -173,3 +173,19 @@ func ParseSearch(q, dob string, scheme nationalid.Scheme) (Search, string) {
 	}
 	return s, ""
 }
+
+// SMSAllowed reports whether a text may be sent to a stored (E.164) mobile: only to numbers with
+// the deployment's country calling code (PAT-11; country is PHONE_COUNTRY). That blocks
+// SMS-pumping fraud, where someone makes the service text expensive foreign numbers. Countries
+// that share a calling code (+44 with the Crown Dependencies, +1 across North America) pass
+// together: the code is what the SMS price depends on.
+func SMSAllowed(mobile, country string) bool {
+	if mobile == "" {
+		return false
+	}
+	n, err := phonenumbers.Parse(mobile, country)
+	if err != nil {
+		return false
+	}
+	return n.GetCountryCode() == int32(phonenumbers.GetCountryCodeForRegion(country))
+}

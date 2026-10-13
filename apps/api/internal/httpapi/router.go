@@ -12,14 +12,17 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/cognito"
 	"github.com/rlamba89/poised/apps/api/internal/config"
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/messaging"
 )
 
-// Deps is what the routers need. Later plans add SMS, email, S3 and evaluate; tests pass fakes.
+// Deps is what the routers need. Later plans add S3 and evaluate; tests pass fakes.
 type Deps struct {
 	Pool    *pgxpool.Pool
-	Config  config.Config  // the token secret, DEV_LOGIN and the per-country values
-	Cognito cognito.Client // staff accounts and their invitations (S09; the real one in S12)
-	Clock   clock.Clock    // nil: the system clock
+	Config  config.Config   // the token secret, DEV_LOGIN, MESSAGING and the per-country values
+	Cognito cognito.Client  // staff accounts and their invitations (S09; the real one in S12)
+	Clock   clock.Clock     // nil: the system clock
+	SMS     messaging.SMS   // patients' texts (S14): captured until S17
+	Email   messaging.Email // patients' emails (S14): captured until S17
 }
 
 type server struct {
@@ -29,17 +32,22 @@ type server struct {
 	cfg     config.Config
 	cognito cognito.Client
 	clock   clock.Clock
+	sms     messaging.SMS
+	email   messaging.Email
 }
 
 func newServer(d Deps) *server {
 	if d.Cognito == nil {
 		panic("httpapi: Deps.Cognito is not set") // a missing one would lose every invitation
 	}
+	if d.SMS == nil || d.Email == nil {
+		panic("httpapi: Deps.SMS or Deps.Email is not set") // a missing one would lose every invite
+	}
 	if d.Clock == nil {
 		d.Clock = clock.Real{}
 	}
 	return &server{pool: d.Pool, q: db.New(d.Pool), secret: []byte(d.Config.TokenSecret), cfg: d.Config,
-		cognito: d.Cognito, clock: d.Clock}
+		cognito: d.Cognito, clock: d.Clock, sms: d.SMS, email: d.Email}
 }
 
 // NewStaffRouter serves the staff API: /api/o/…, /api/me, /api/codes, /api/categories,
@@ -62,6 +70,9 @@ func mount(s *server, groups ...func(*server, *http.ServeMux)) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/config", s.publicConfig)
+	if s.cfg.Messaging == config.MessagingCapture { // the captured SMS and email (local and QA only)
+		mux.HandleFunc("GET /api/qa/messages", s.qaMessages)
+	}
 	for _, add := range groups {
 		add(s, mux)
 	}
@@ -142,14 +153,26 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/hq", hosp(s.audited("answers.view", s.episodeHQ)))
 	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/episodes/{eid}/answers/{cid}", hosp(s.audited("answers.save", s.saveClinicianAnswers)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/complete-review", hosp(s.audited("review.complete", s.completeReview)))
+	// The patient's invite (S14): a new link by SMS and email, replacing the old one.
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/resend-invite", hosp(s.audited("invite.resend", s.resendInvite)))
+	// Completing the HQ on the patient's behalf (PAT-09): their form, answers marked "entered by".
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/patient-form", hosp(s.audited("behalf.view", s.staffPatientForm)))
+	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/episodes/{eid}/patient-form/answers/{cid}", hosp(s.audited("behalf.save", s.staffSavePatientForm)))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/patient-form/submit", hosp(s.audited("behalf.submit", s.staffSubmitPatientForm)))
 }
 
-// patientRoutes is the patient's link: no sign-in, the token is the key (plan-workflow.md Step 3).
-// Each request is audited with the patient as the actor (S11).
+// patientRoutes are the patient's (S14, A-4): their link's Continue and date of birth, which
+// start a session, then their episodes' HQs with that session. There's no GET on a link: the link
+// alone returns nothing. Each request is audited with the patient as the actor (S11).
 func (s *server) patientRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/p/{token}", s.audited("link.view", s.patientHQ))
-	mux.HandleFunc("PUT /api/p/{token}/answers/{cid}", s.audited("link.save", s.savePatientAnswers))
-	mux.HandleFunc("POST /api/p/{token}/submit", s.audited("link.submit", s.submitPatientHQ))
+	mux.HandleFunc("POST /api/p/links/{token}/continue", noStore(s.audited("link.open", s.linkContinue)))
+	mux.HandleFunc("POST /api/p/links/{token}/dob", noStore(s.audited("link.dob", s.linkDob)))
+	mux.HandleFunc("POST /api/p/logout", noStore(s.patientLogout))
+	// A session held in the database (patient_sessions), checked on every request.
+	session := func(h http.HandlerFunc) http.HandlerFunc { return noStore(s.requirePatient(h)) }
+	mux.HandleFunc("GET /api/p/episodes/{eid}", session(s.audited("link.view", s.patientForm)))
+	mux.HandleFunc("PUT /api/p/episodes/{eid}/answers/{cid}", session(s.audited("link.save", s.savePatientForm)))
+	mux.HandleFunc("POST /api/p/episodes/{eid}/submit", session(s.audited("link.submit", s.submitPatientForm)))
 }
 
 // publicConfig is the deployment's public per-country values (A-20), read once by the web app.

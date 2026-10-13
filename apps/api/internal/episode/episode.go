@@ -1,11 +1,6 @@
-// Package episode holds the episode workflow's rules (docs/plan-workflow.md): statuses and
-// the patient's link token.
+// Package episode holds the episode workflow's rules (docs/plan-workflow.md): its statuses.
+// The patient's link is internal/auth's (NewLinkToken, S14).
 package episode
-
-import (
-	"crypto/rand"
-	"encoding/base64"
-)
 
 // Statuses are Lifebox's Full HQ states (statemodel.go) with readable keys, in workflow order.
 const (
@@ -40,13 +35,4 @@ func CanSetStatus(current, next string) bool {
 		return true
 	}
 	return manual[next] && (current == ReadyForPOA || manual[current])
-}
-
-// NewToken returns a random, URL-safe token for the patient's link (32 bytes).
-func NewToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
 }

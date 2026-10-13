@@ -30,6 +30,12 @@ type Querier interface {
 	CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (uuid.UUID, error)
 	// Nothing is returned when the trust already has a hospital of that name (any case).
 	CreateHospital(ctx context.Context, arg CreateHospitalParams) ([]uuid.UUID, error)
+	// Patient links (plan C2, S14): invites now, sign-in links with S15. Only a token's hash is
+	// stored (auth.HashLinkToken).
+	// A new invite link, stored before its messages go (so it works the moment they arrive). Once
+	// they've gone it replaces the older ones (RevokeOlderInviteLinks); if none went, it's revoked
+	// itself (RevokeLink) and the old link carries on.
+	CreateInviteLink(ctx context.Context, arg CreateInviteLinkParams) (CreateInviteLinkRow, error)
 	// A new draft copied from version `from_version_id` (LCY-06/07): same chapters, same content,
 	// so stable IDs and test cases carry over. Chapters get new row ids.
 	CreateNextVersion(ctx context.Context, arg CreateNextVersionParams) (uuid.UUID, error)
@@ -49,13 +55,26 @@ type Querier interface {
 	DeleteQuestionnaire(ctx context.Context, arg DeleteQuestionnaireParams) error
 	DeleteUserOrgMemberships(ctx context.Context, arg DeleteUserOrgMembershipsParams) error
 	DraftNameExists(ctx context.Context, arg DraftNameExistsParams) (bool, error)
+	EndPatientSession(ctx context.Context, arg EndPatientSessionParams) error
+	// Counts a wrong date of birth, locking the link at max_attempts. No row: it was already locked.
+	FailLinkDob(ctx context.Context, arg FailLinkDobParams) (int32, error)
 	GetChapter(ctx context.Context, arg GetChapterParams) (GetChapterRow, error)
 	GetChapterMeta(ctx context.Context, arg GetChapterMetaParams) (GetChapterMetaRow, error)
 	GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpisodeRow, error)
-	// The patient's link: no sign-in, the token is the key.
-	GetEpisodeByToken(ctx context.Context, patientToken string) (GetEpisodeByTokenRow, error)
+	// An episode's HQ as the patient fills it in: for the patient's session (the handler checks the
+	// episode is theirs) or staff completing it on their behalf (it checks the hospital).
+	GetEpisodeForm(ctx context.Context, id uuid.UUID) (GetEpisodeFormRow, error)
+	// The episode's working invite, for staff: when it was sent, and whether five wrong dates of
+	// birth locked it. No row: no invite has been sent.
+	GetEpisodeInvite(ctx context.Context, episodeID uuid.NullUUID) (GetEpisodeInviteRow, error)
 	// The trust's record of one of this hospital's patients; no row for anyone else.
 	GetHospitalPatient(ctx context.Context, arg GetHospitalPatientParams) (GetHospitalPatientRow, error)
+	// What an invite needs: who to send it to, the hospital's name and its trust's and own settings
+	// (for the message templates).
+	GetInviteDetails(ctx context.Context, id uuid.UUID) (GetInviteDetailsRow, error)
+	// A link that works: not replaced, not expired, its episode's patient the link's. Locked links
+	// are returned (locked_at), so the patient is told to ask for a new one.
+	GetLinkByHash(ctx context.Context, arg GetLinkByHashParams) (GetLinkByHashRow, error)
 	// Whose the list is: NULL for the trust's, else the hospital whose own it is.
 	GetOptionListOwner(ctx context.Context, arg GetOptionListOwnerParams) (uuid.NullUUID, error)
 	GetOrgForAdmin(ctx context.Context, id uuid.UUID) (GetOrgForAdminRow, error)
@@ -70,6 +89,8 @@ type Querier interface {
 	// The audit log (plan C1, session S11; STF-06). Rows are only ever inserted (00009_audit_log.sql).
 	// at is the server's clock (Deps.Clock), so tests can place rows in time.
 	InsertAudit(ctx context.Context, arg InsertAuditParams) error
+	// MESSAGING=capture: a message stored instead of sent.
+	InsertSentMessage(ctx context.Context, arg InsertSentMessageParams) error
 	// At sign-in: how many invites wait for the first sign-in, and how many of those are still open.
 	InviteState(ctx context.Context, arg InviteStateParams) (InviteStateRow, error)
 	IsPlatformAdmin(ctx context.Context, userID uuid.UUID) (bool, error)
@@ -116,6 +137,8 @@ type Querier interface {
 	// Questionnaires belong to a trust (org_id). hospital_id NULL means every hospital of the trust
 	// uses it; otherwise only that hospital sees it. Each lookup is scoped to the trust and hospital.
 	ListQuestionnaires(ctx context.Context, arg ListQuestionnairesParams) ([]ListQuestionnairesRow, error)
+	// The newest captured messages, to anyone whose address contains `recipient` ('' for everyone).
+	ListSentMessages(ctx context.Context, recipient string) ([]SentMessage, error)
 	// Everyone with access to the trust, one row per membership (a person may have several: the whole
 	// trust and/or some hospitals), each person's whole-trust one first, then by hospital name. invite_expires_at is set while the
 	// person's account is waiting for its first sign-in: the latest deadline of their open invites
@@ -126,6 +149,9 @@ type Querier interface {
 	ListTrustAdmins(ctx context.Context, orgID uuid.UUID) ([]ListTrustAdminsRow, error)
 	ListUsers(ctx context.Context) ([]ListUsersRow, error)
 	ListVersionChapters(ctx context.Context, versionID uuid.UUID) ([]ListVersionChaptersRow, error)
+	// Taken before an invite's links are replaced, so two resends at once are applied one after
+	// the other.
+	LockEpisode(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	// One hospital of the trust, locked until the transaction ends.
 	LockHospitalForAdmin(ctx context.Context, arg LockHospitalForAdminParams) (LockHospitalForAdminRow, error)
 	// A hospital of the trust and its stored settings, locked until the transaction ends.
@@ -144,6 +170,8 @@ type Querier interface {
 	MatchAuditPatients(ctx context.Context, arg MatchAuditPatientsParams) ([]uuid.UUID, error)
 	// The user's role in one membership: the whole trust (hospital_id NULL) or one hospital.
 	MembershipRole(ctx context.Context, arg MembershipRoleParams) (string, error)
+	// The right date of birth: the count starts again. No row: the link was locked meanwhile.
+	PassLinkDob(ctx context.Context, id uuid.UUID) (int64, error)
 	// The trust's record with this national ID, if any, for matching typed details.
 	PatientByNationalID(ctx context.Context, arg PatientByNationalIDParams) (PatientByNationalIDRow, error)
 	// The trust's records born on one day, for the duplicate check (patient.Decide), with whether each
@@ -155,6 +183,11 @@ type Querier interface {
 	PublishVersion(ctx context.Context, arg PublishVersionParams) (int64, error)
 	// The trust's questionnaires that have a published version: the choices for its default HQ.
 	PublishedQuestionnairesInOrg(ctx context.Context, orgID uuid.UUID) ([]PublishedQuestionnairesInOrgRow, error)
+	// An invite whose messages all failed: its link never reached anyone.
+	RevokeLink(ctx context.Context, id uuid.UUID) error
+	// An invite went: the episode's links older than it stop working (only the newest works, even
+	// when two resends cross: each revokes only what came before it).
+	RevokeOlderInviteLinks(ctx context.Context, arg RevokeOlderInviteLinksParams) error
 	// The caller's roles at a hospital of a trust: trust-wide, at that hospital, or both. None when
 	// they aren't a member, the hospital isn't in that trust, or either is suspended (ORG-03).
 	// Re-read on every request (STF-04).
@@ -171,6 +204,9 @@ type Querier interface {
 	//     started; ON CONFLICT … WHERE checks it again against the row as it is now, so of two saves
 	//     sent at once from the same revision, only the first is applied.
 	SaveClinicianAnswers(ctx context.Context, arg SaveClinicianAnswersParams) (int32, error)
+	// entered_by is the staff member completing the HQ on the patient's behalf (PAT-09), NULL for the
+	// patient. Once staff have entered a set's answers it stays marked with the last of them, even if
+	// the patient saves it again, so the answers never look all the patient's own.
 	// Returns the new revision, or no row if nothing was saved:
 	//   - once the patient has submitted, their answers are frozen;
 	//   - `revision` must be the row's current one, or 0 if there's no row yet (see SaveClinicianAnswers).
@@ -196,7 +232,14 @@ type Querier interface {
 	// none yet (a new trust). None usable means sign-in is refused (ORG-03), as /api/me would list
 	// nothing (ListMyHospitals).
 	SignInState(ctx context.Context, userID uuid.UUID) (SignInStateRow, error)
-	SubmitPatientHQ(ctx context.Context, id uuid.UUID) (int64, error)
+	// After the right date of birth: a session for the link's patient.
+	StartPatientSession(ctx context.Context, arg StartPatientSessionParams) (uuid.UUID, error)
+	// submitted_by: the staff member who sent it on the patient's behalf (PAT-09), NULL for the patient.
+	SubmitPatientHQ(ctx context.Context, arg SubmitPatientHQParams) (int64, error)
+	// Every patient request: the session's patient, if the session is live (not signed out, seen
+	// since idle_since) and its link still works (not replaced by a resend, not locked). It counts
+	// as activity. No row: the session has ended.
+	TouchPatientSession(ctx context.Context, arg TouchPatientSessionParams) (uuid.UUID, error)
 	TouchVersion(ctx context.Context, arg TouchVersionParams) error
 	UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) error
 	// Changes nothing if the status is no longer `loaded_status`, the one the caller read: the

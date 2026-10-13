@@ -57,7 +57,7 @@ func TestFixtures(t *testing.T) {
 	}
 
 	c.LoginAs(t, nurse).Do("GET", h.Path("/episodes/"+e.ID.String()), nil).Want(t, http.StatusOK)
-	c.Do("GET", "/api/p/"+e.Token, nil).Want(t, http.StatusOK)
+	c.AsPatient(t, e.Link, e.DateOfBirth).Do("GET", "/api/p/episodes/"+e.ID.String(), nil).Want(t, http.StatusOK)
 
 	// c itself was never signed in.
 	c.Do("GET", "/api/me", nil).Want(t, http.StatusUnauthorized)

@@ -53,6 +53,9 @@ func Verify(secret []byte, token string, now time.Time) (User, error) {
 	if err != nil {
 		return User{}, fmt.Errorf("verify token: %w", err)
 	}
+	if len(c.Audience) > 0 { // a patient's session (IssuePatient), never a staff sign-in
+		return User{}, errors.New("verify token: not a staff sign-in")
+	}
 	id, err := uuid.Parse(c.Subject)
 	if err != nil {
 		return User{}, errors.New("verify token: subject is not a user id")

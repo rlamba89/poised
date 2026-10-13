@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +37,9 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/clock"
 	"github.com/rlamba89/poised/apps/api/internal/cognito"
 	"github.com/rlamba89/poised/apps/api/internal/config"
+	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/httpapi"
+	"github.com/rlamba89/poised/apps/api/internal/messaging"
 )
 
 const (
@@ -164,8 +167,11 @@ type Client struct {
 	DB      *pgxpool.Pool     // the test's database, for asserting rows with plain SQL
 	Clock   *clock.Fake       // the server's clock: move it with Clock.Add
 	Cognito *cognito.Recorder // the server's Cognito: what it was asked to do
-	base    string
-	http    *http.Client
+	// Messages are the patients' texts and emails the server sent (nil with Options.Capture,
+	// where they go to sent_messages as in make dev).
+	Messages *messaging.Recorder
+	base     string
+	http     *http.Client
 }
 
 // New gives the test its own database, copied from the migrated template, and a real
@@ -183,6 +189,9 @@ type Options struct {
 	// Env is laid over the server's environment, which is DEV_LOGIN=true and the token secret,
 	// so the per-country values are the local defaults. "" unsets a variable.
 	Env map[string]string
+	// Capture stores texts and emails in sent_messages (MESSAGING=capture, as make dev does)
+	// instead of the recording fake, for the captured-messages route's tests.
+	Capture bool
 }
 
 // NewWith is New with another router or environment. The config goes through the real
@@ -221,7 +230,16 @@ func NewWith(t *testing.T, opts Options) (*Client, *Fixtures) {
 		t.Fatalf("apitest: connect to %s: %v", name, err)
 	}
 	clk, cog := &clock.Fake{}, &cognito.Recorder{}
-	srv := httptest.NewServer(router(httpapi.Deps{Pool: pool, Config: cfg, Cognito: cog, Clock: clk}))
+	deps := httpapi.Deps{Pool: pool, Config: cfg, Cognito: cog, Clock: clk}
+	var msgs *messaging.Recorder
+	if opts.Capture {
+		capture := messaging.Capture{DB: db.New(pool)}
+		deps.SMS, deps.Email = capture, capture
+	} else {
+		msgs = &messaging.Recorder{}
+		deps.SMS, deps.Email = msgs, msgs
+	}
+	srv := httptest.NewServer(router(deps))
 	t.Cleanup(func() {
 		srv.Close()
 		pool.Close()
@@ -229,7 +247,7 @@ func NewWith(t *testing.T, opts Options) (*Client, *Fixtures) {
 			t.Errorf("apitest: drop %s: %v", name, err)
 		}
 	})
-	return &Client{DB: pool, Clock: clk, Cognito: cog, base: srv.URL, http: srv.Client()}, &Fixtures{db: pool}
+	return &Client{DB: pool, Clock: clk, Cognito: cog, Messages: msgs, base: srv.URL, http: srv.Client()}, &Fixtures{db: pool}
 }
 
 // LoginAs signs in through the real POST /api/dev/login and returns a client that keeps
@@ -240,11 +258,67 @@ func (c *Client) LoginAs(t *testing.T, u User) *Client {
 	if err != nil {
 		t.Fatal(err)
 	}
-	signed := &Client{DB: c.DB, Clock: c.Clock, Cognito: c.Cognito, base: c.base, http: &http.Client{Transport: c.http.Transport, Jar: jar}}
+	signed := c.withJar(jar)
 	if r := signed.Do("POST", "/api/dev/login", map[string]any{"userId": u.ID}); r.Code != http.StatusNoContent {
 		t.Fatalf("apitest: sign in as %s: %s", u.Name, r)
 	}
 	return signed
+}
+
+// AsPatient opens a patient's link as they would (S14): Continue, then their date of birth
+// (YYYY-MM-DD), through the real routes. It returns a client holding their session cookie.
+func (c *Client) AsPatient(t *testing.T, link, dateOfBirth string) *Client {
+	t.Helper()
+	p := c.NewBrowser(t)
+	if r := p.Do("POST", "/api/p/links/"+link+"/continue", nil); r.Code != http.StatusOK {
+		t.Fatalf("apitest: continue: %s", r)
+	}
+	if r := p.Do("POST", "/api/p/links/"+link+"/dob", map[string]string{"dateOfBirth": dateOfBirth}); r.Code != http.StatusOK {
+		t.Fatalf("apitest: date of birth: %s", r)
+	}
+	return p
+}
+
+// NewBrowser is a client with an empty cookie jar of its own, as a fresh browser would be.
+func (c *Client) NewBrowser(t *testing.T) *Client {
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c.withJar(jar)
+}
+
+// Cookie is the value of the cookie called name that the client would send to path ("" if none).
+func (c *Client) Cookie(name, path string) string {
+	u, err := url.Parse(c.base + path)
+	if err != nil || c.http.Jar == nil {
+		return ""
+	}
+	for _, k := range c.http.Jar.Cookies(u) {
+		if k.Name == name {
+			return k.Value
+		}
+	}
+	return ""
+}
+
+// WithCookie is a fresh browser holding only a copy of a cookie: what someone who copied it
+// could do. path is the cookie's Path.
+func (c *Client) WithCookie(t *testing.T, name, value, path string) *Client {
+	t.Helper()
+	b := c.NewBrowser(t)
+	u, err := url.Parse(c.base + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.http.Jar.SetCookies(u, []*http.Cookie{{Name: name, Value: value, Path: path}})
+	return b
+}
+
+func (c *Client) withJar(jar http.CookieJar) *Client {
+	return &Client{DB: c.DB, Clock: c.Clock, Cognito: c.Cognito, Messages: c.Messages, base: c.base,
+		http: &http.Client{Transport: c.http.Transport, Jar: jar}}
 }
 
 // Do sends a request and returns the response. body is sent as JSON; a string is sent as

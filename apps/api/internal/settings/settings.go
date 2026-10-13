@@ -122,7 +122,7 @@ var Defs = []Def{
 		Default: j(6), Min: 1, Max: 36},
 
 	{Key: "templates.inviteSms", Label: "Invitation text message", Group: gTemplates, Level: Hospital, Kind: Template, Help: templateHelp,
-		Default: j("Hello {{firstName}}, {{hospital}} needs some health information before your operation. Please fill in your questionnaire: {{link}}"),
+		Default: j("{{hospital}}: please complete your pre-op health questionnaire: {{link}}"), // PAT-03's wording (S14)
 		Max:     600},
 	{Key: "templates.inviteEmail", Label: "Invitation email", Group: gTemplates, Level: Hospital, Kind: Template, Help: templateHelp,
 		Default: j("Hello {{firstName}},\n\n{{hospital}} needs some health information before your operation. Please fill in your health questionnaire:\n\n{{link}}"),
@@ -279,6 +279,19 @@ func Validate(key string, raw json.RawMessage) (json.RawMessage, string) {
 		}
 	}
 	return j(s), ""
+}
+
+// Fill is the message from the template setting key in v (the effective values), with each
+// {{placeholder}} replaced by vars[name]. Placeholders are replaced in one pass, so a value that
+// itself looks like a placeholder (a first name typed as "{{link}}") stays as typed.
+func Fill(v Values, key string, vars map[string]string) (string, error) {
+	var tmpl string
+	if !strict(v[key], &tmpl) || tmpl == "" {
+		return "", fmt.Errorf("settings: %s is not a message template", key)
+	}
+	return placeholder.ReplaceAllStringFunc(tmpl, func(m string) string {
+		return vars[placeholder.FindStringSubmatch(m)[1]]
+	}), nil
 }
 
 // strict decodes raw into v, refusing null and anything of another type.

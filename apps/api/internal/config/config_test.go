@@ -104,6 +104,7 @@ func TestLoadStrict(t *testing.T) {
 	t.Run("a complete country starts", func(t *testing.T) {
 		e := country()
 		e["CONFIG_STRICT"] = "true"
+		e["MESSAGING"] = "capture" // not a country value, but strict needs it too (S14 verification 1)
 		if _, err := config.Load(e.get); err != nil {
 			t.Fatal(err)
 		}
@@ -185,4 +186,33 @@ func TestPublic(t *testing.T) {
 	if got != want {
 		t.Errorf("public = %+v", got)
 	}
+}
+
+func TestLoadMessaging(t *testing.T) {
+	t.Run("capture is the local default: nothing is ever sent by accident", func(t *testing.T) {
+		c, err := config.Load(required().get)
+		if err != nil || c.Messaging != "capture" {
+			t.Fatalf("got %q, %v", c.Messaging, err)
+		}
+	})
+	t.Run("strict (AWS): MESSAGING must be set, so the unauthenticated captured-messages route is never on by default", func(t *testing.T) {
+		e := country()
+		e["CONFIG_STRICT"] = "true"
+		_, err := config.Load(e.get)
+		if err == nil || !strings.Contains(err.Error(), "MESSAGING") {
+			t.Fatalf("got %v", err)
+		}
+		e["MESSAGING"] = "capture" // QA opts in, as it does to DEV_LOGIN
+		if c, err := config.Load(e.get); err != nil || c.Messaging != "capture" {
+			t.Fatalf("got %q, %v", c.Messaging, err)
+		}
+	})
+	t.Run("only capture exists until S17", func(t *testing.T) {
+		e := required()
+		e["MESSAGING"] = "aws"
+		_, err := config.Load(e.get)
+		if err == nil || !strings.Contains(err.Error(), "MESSAGING") {
+			t.Fatalf("got %v", err)
+		}
+	})
 }

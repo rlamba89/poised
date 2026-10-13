@@ -23,14 +23,3 @@ func TestCanSetStatus(t *testing.T) {
 		}
 	}
 }
-
-func TestNewToken(t *testing.T) {
-	a, err := NewToken()
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, _ := NewToken()
-	if len(a) != 43 || a == b {
-		t.Errorf("tokens %q and %q: want two different 43-character tokens", a, b)
-	}
-}

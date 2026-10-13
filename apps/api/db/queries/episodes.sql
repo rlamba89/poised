@@ -14,9 +14,9 @@ ORDER BY q.name;
 -- Creates nothing (no row) unless the patient is the trust's and the version is published and
 -- one this hospital uses.
 INSERT INTO episodes (org_id, hospital_id, patient_id, version_id, procedure, anaesthetic, consultant, hospital_number,
-                      patient_token, created_by)
+                      created_by)
 SELECT sqlc.arg(org_id), sqlc.arg(hospital_id), p.id, v.id, sqlc.arg(procedure), sqlc.arg(anaesthetic),
-       sqlc.arg(consultant), sqlc.arg(hospital_number), sqlc.arg(patient_token), sqlc.arg(created_by)
+       sqlc.arg(consultant), sqlc.arg(hospital_number), sqlc.arg(created_by)
 FROM patients p, questionnaire_versions v
 JOIN questionnaires q ON q.id = v.questionnaire_id
 WHERE p.id = sqlc.arg(patient_id) AND p.org_id = sqlc.arg(org_id)
@@ -42,8 +42,8 @@ ORDER BY e.created_at DESC;
 
 -- name: GetEpisode :one
 SELECT e.id, e.status, e.procedure, e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
-       e.patient_token, e.patient_submitted_at, e.review_completed_at, e.created_at, e.version_id, e.hospital_number,
-       reviewer.name AS review_completed_by_name,
+       e.patient_submitted_at, e.review_completed_at, e.created_at, e.version_id, e.hospital_number,
+       reviewer.name AS review_completed_by_name, submitter.name AS patient_submitted_by_name,
        p.id AS patient_id, p.first_name, p.last_name, p.date_of_birth, p.sex, p.national_id, p.national_id_type,
        p.mobile, p.email,
        q.name AS questionnaire_name, v.version_no
@@ -52,6 +52,7 @@ JOIN patients p ON p.id = e.patient_id
 JOIN questionnaire_versions v ON v.id = e.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
 LEFT JOIN users reviewer ON reviewer.id = e.review_completed_by
+LEFT JOIN users submitter ON submitter.id = e.patient_submitted_by
 WHERE e.id = $1 AND e.hospital_id = $2;
 
 -- name: UpdateEpisode :execrows
@@ -72,12 +73,13 @@ LEFT JOIN users u ON u.id = ev.user_id
 WHERE ev.episode_id = $1
 ORDER BY ev.created_at, ev.id;
 
--- name: GetEpisodeByToken :one
--- The patient's link: no sign-in, the token is the key.
+-- name: GetEpisodeForm :one
+-- An episode's HQ as the patient fills it in: for the patient's session (the handler checks the
+-- episode is theirs) or staff completing it on their behalf (it checks the hospital).
 SELECT e.id, e.status, e.patient_submitted_at, e.version_id,
-       e.org_id, e.hospital_id, e.patient_id, -- for the audit log only, never sent to the patient
+       e.org_id, e.hospital_id, e.patient_id, -- for the checks and the audit log, never sent to the patient
        p.first_name, p.last_name, p.date_of_birth, p.sex,
-       q.name AS questionnaire_name,
+       q.name AS questionnaire_name, h.name AS hospital_name, h.timezone,
        (o.status = 'active' AND h.status = 'active')::boolean AS open -- false while suspended (ORG-03)
 FROM episodes e
 JOIN orgs o ON o.id = e.org_id
@@ -85,7 +87,7 @@ JOIN hospitals h ON h.id = e.hospital_id
 JOIN patients p ON p.id = e.patient_id
 JOIN questionnaire_versions v ON v.id = e.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE e.patient_token = $1;
+WHERE e.id = $1;
 
 -- name: ListVersionChapters :many
 SELECT id, name, description, icon, audience, content
@@ -102,22 +104,27 @@ LEFT JOIN users u ON u.id = a.updated_by
 WHERE a.episode_id = $1;
 
 -- name: SavePatientAnswers :one
+-- entered_by is the staff member completing the HQ on the patient's behalf (PAT-09), NULL for the
+-- patient. Once staff have entered a set's answers it stays marked with the last of them, even if
+-- the patient saves it again, so the answers never look all the patient's own.
 -- Returns the new revision, or no row if nothing was saved:
 --   - once the patient has submitted, their answers are frozen;
 --   - `revision` must be the row's current one, or 0 if there's no row yet (see SaveClinicianAnswers).
-INSERT INTO episode_answers (episode_id, chapter_id, actor, data, revision)
-SELECT e.id, sqlc.arg(chapter_id), 'patient', sqlc.arg(data), 1
+INSERT INTO episode_answers (episode_id, chapter_id, actor, data, updated_by, revision)
+SELECT e.id, sqlc.arg(chapter_id), 'patient', sqlc.arg(data), sqlc.arg(entered_by), 1
 FROM episodes e WHERE e.id = sqlc.arg(episode_id) AND e.patient_submitted_at IS NULL
   AND sqlc.arg(revision)::int = coalesce((SELECT a.revision FROM episode_answers a
       WHERE a.episode_id = e.id AND a.chapter_id = sqlc.arg(chapter_id) AND a.actor = 'patient'), 0)
 ON CONFLICT (episode_id, chapter_id, actor) DO UPDATE
-SET data = EXCLUDED.data, updated_at = now(), revision = episode_answers.revision + 1
+SET data = EXCLUDED.data, updated_at = now(), revision = episode_answers.revision + 1,
+    updated_by = coalesce(EXCLUDED.updated_by, episode_answers.updated_by)
 WHERE episode_answers.revision = sqlc.arg(revision)
 RETURNING revision;
 
 -- name: SubmitPatientHQ :execrows
-UPDATE episodes SET patient_submitted_at = now(), status = 'ready_for_review'
-WHERE id = $1 AND patient_submitted_at IS NULL;
+-- submitted_by: the staff member who sent it on the patient's behalf (PAT-09), NULL for the patient.
+UPDATE episodes SET patient_submitted_at = now(), status = 'ready_for_review', patient_submitted_by = sqlc.arg(submitted_by)
+WHERE id = sqlc.arg(id) AND patient_submitted_at IS NULL;
 
 -- name: SaveClinicianAnswers :one
 -- The clinician's copy of a Question Set's answers, which is final. `validated` stamps it

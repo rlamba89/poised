@@ -68,7 +68,6 @@ type Episode struct {
 	Consultant         string             `json:"consultant"`
 	NurseAsa           *int32             `json:"nurseAsa"`
 	AnaesthetistAsa    *int32             `json:"anaesthetistAsa"`
-	PatientToken       string             `json:"patientToken"`
 	PatientSubmittedAt pgtype.Timestamptz `json:"patientSubmittedAt"`
 	ReviewCompletedBy  uuid.NullUUID      `json:"reviewCompletedBy"`
 	ReviewCompletedAt  pgtype.Timestamptz `json:"reviewCompletedAt"`
@@ -76,6 +75,7 @@ type Episode struct {
 	CreatedAt          time.Time          `json:"createdAt"`
 	OrgID              uuid.UUID          `json:"orgId"`
 	HospitalNumber     string             `json:"hospitalNumber"`
+	PatientSubmittedBy uuid.NullUUID      `json:"patientSubmittedBy"`
 }
 
 type EpisodeAnswer struct {
@@ -106,6 +106,21 @@ type Hospital struct {
 	Settings json.RawMessage `json:"settings"`
 	Timezone *string         `json:"timezone"`
 	Address  string          `json:"address"`
+}
+
+type LoginLink struct {
+	ID                uuid.UUID          `json:"id"`
+	TokenHash         []byte             `json:"tokenHash"`
+	Kind              string             `json:"kind"`
+	PatientID         uuid.UUID          `json:"patientId"`
+	EpisodeID         uuid.NullUUID      `json:"episodeId"`
+	CreatedBy         uuid.NullUUID      `json:"createdBy"`
+	CreatedAt         time.Time          `json:"createdAt"`
+	ExpiresAt         pgtype.Timestamptz `json:"expiresAt"`
+	UsedAt            pgtype.Timestamptz `json:"usedAt"`
+	RevokedAt         pgtype.Timestamptz `json:"revokedAt"`
+	FailedDobAttempts int32              `json:"failedDobAttempts"`
+	LockedAt          pgtype.Timestamptz `json:"lockedAt"`
 }
 
 type Membership struct {
@@ -152,6 +167,15 @@ type Patient struct {
 	CreatedAt      time.Time     `json:"createdAt"`
 }
 
+type PatientSession struct {
+	ID         uuid.UUID          `json:"id"`
+	LinkID     uuid.UUID          `json:"linkId"`
+	PatientID  uuid.UUID          `json:"patientId"`
+	CreatedAt  time.Time          `json:"createdAt"`
+	LastSeenAt time.Time          `json:"lastSeenAt"`
+	EndedAt    pgtype.Timestamptz `json:"endedAt"`
+}
+
 type PlatformAdmin struct {
 	UserID    uuid.UUID `json:"userId"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -174,6 +198,15 @@ type QuestionnaireVersion struct {
 	Status          string    `json:"status"`
 	UpdatedBy       uuid.UUID `json:"updatedBy"`
 	UpdatedAt       time.Time `json:"updatedAt"`
+}
+
+type SentMessage struct {
+	ID        int64     `json:"id"`
+	Channel   string    `json:"channel"`
+	Recipient string    `json:"recipient"`
+	Subject   string    `json:"subject"`
+	Body      string    `json:"body"`
+	SentAt    time.Time `json:"sentAt"`
 }
 
 type StaffInvite struct {

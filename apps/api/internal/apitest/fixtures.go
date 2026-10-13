@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/rlamba89/poised/apps/api/internal/episode"
+	"github.com/rlamba89/poised/apps/api/internal/auth"
 )
 
 // Fixtures insert rows straight into the test's database, so a test sets up only what it
@@ -113,9 +113,10 @@ type HQ struct {
 
 // Episode is a patient's episode on a published HQ, still waiting for the patient.
 type Episode struct {
-	ID        uuid.UUID
-	PatientID uuid.UUID
-	Token     string // the patient's link: /api/p/{Token}
+	ID          uuid.UUID
+	PatientID   uuid.UUID
+	Link        string // the token of the patient's invite link (/i/{Link}); only its hash is stored
+	DateOfBirth string // the patient's, YYYY-MM-DD, for opening the link (Client.AsPatient)
 }
 
 // DraftHQ adds a questionnaire whose only version, 1, is a draft.
@@ -172,16 +173,10 @@ func (f *Fixtures) Episode(t *testing.T, hq HQ, by User) Episode {
 // EpisodeAt is Episode at another hospital of the HQ's trust.
 func (f *Fixtures) EpisodeAt(t *testing.T, hq HQ, h Hospital, by User) Episode {
 	t.Helper()
-	token, err := episode.NewToken()
-	if err != nil {
-		t.Fatal(err)
-	}
-	e := Episode{Token: token}
-	f.scan(t, &e.PatientID, `INSERT INTO patients (org_id, first_name, last_name, date_of_birth, sex)
+	var patient uuid.UUID
+	f.scan(t, &patient, `INSERT INTO patients (org_id, first_name, last_name, date_of_birth, sex)
 		VALUES ($1, 'Test', $2, '1970-01-01', 'unknown') RETURNING id`, h.Org, "Patient "+randomHex(3))
-	f.scan(t, &e.ID, `INSERT INTO episodes (org_id, hospital_id, patient_id, version_id, patient_token, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`, h.Org, h.ID, e.PatientID, hq.VersionID, token, by.ID)
-	return e
+	return f.EpisodeOf(t, hq, h, patient, by, "")
 }
 
 // PatientRecord is a made-up patient's details, for Patient. Dates are YYYY-MM-DD; a NationalID
@@ -209,14 +204,25 @@ func (f *Fixtures) Patient(t *testing.T, org uuid.UUID, p PatientRecord) uuid.UU
 // with a hospital number ("" for none).
 func (f *Fixtures) EpisodeOf(t *testing.T, hq HQ, h Hospital, patient uuid.UUID, by User, hospitalNumber string) Episode {
 	t.Helper()
-	token, err := episode.NewToken()
+	e := Episode{PatientID: patient}
+	f.scan(t, &e.ID, `INSERT INTO episodes (org_id, hospital_id, patient_id, version_id, created_by, hospital_number)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`, h.Org, h.ID, patient, hq.VersionID, by.ID, hospitalNumber)
+	f.scan(t, &e.DateOfBirth, `SELECT to_char(date_of_birth, 'YYYY-MM-DD') FROM patients WHERE id = $1`, patient)
+	e.Link = f.InviteLink(t, e)
+	return e
+}
+
+// InviteLink adds a new invite link to the episode, as sending an invite does (its hash only),
+// and returns its token. Earlier links still work: only the API's resend replaces them.
+func (f *Fixtures) InviteLink(t *testing.T, e Episode) string {
+	t.Helper()
+	token, err := auth.NewLinkToken()
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := Episode{Token: token, PatientID: patient}
-	f.scan(t, &e.ID, `INSERT INTO episodes (org_id, hospital_id, patient_id, version_id, patient_token, created_by, hospital_number)
-		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`, h.Org, h.ID, patient, hq.VersionID, token, by.ID, hospitalNumber)
-	return e
+	f.exec(t, `INSERT INTO login_links (token_hash, kind, patient_id, episode_id) VALUES ($1, 'invite', $2, $3)`,
+		auth.HashLinkToken(token), e.PatientID, e.ID)
+	return token
 }
 
 func (f *Fixtures) scan(t *testing.T, dest any, sql string, args ...any) {

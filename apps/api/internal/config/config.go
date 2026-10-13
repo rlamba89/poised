@@ -29,8 +29,15 @@ type Config struct {
 	TokenSecret string // TOKEN_SECRET: signs the session cookie
 	Addr        string // API_ADDR: where a local server listens (default :8080)
 	DevLogin    bool   // DEV_LOGIN=true: the stub sign-in routes. Never on in Training or Production.
-	Country     Country
+	// MESSAGING: how patient SMS and email go out. "capture" (the only mode until S17; the local
+	// default, and required explicitly with CONFIG_STRICT) stores them in sent_messages and sends
+	// nothing; GET /api/qa/messages, which has no sign-in, reads them.
+	Messaging string
+	Country   Country
 }
+
+// MessagingCapture stores patient messages instead of sending them (MESSAGING=capture).
+const MessagingCapture = "capture"
 
 // Country holds the values that differ between country deployments (A-20).
 type Country struct {
@@ -114,11 +121,20 @@ func Load(getenv func(string) string) (Config, error) {
 		return localDefaults[name]
 	}
 
+	// MESSAGING: locally "capture" by default. Under strict (AWS) it must be set: capture mode
+	// serves the unauthenticated GET /api/qa/messages, so a stack must opt in to it, as to DEV_LOGIN.
+	messaging := func() string {
+		if strict {
+			return need("MESSAGING")
+		}
+		return getenv("MESSAGING")
+	}
 	c := Config{
 		DatabaseURL: need("DATABASE_URL"),
 		TokenSecret: need("TOKEN_SECRET"),
 		Addr:        getenv("API_ADDR"),
 		DevLogin:    flag("DEV_LOGIN"),
+		Messaging:   messaging(),
 		Country: Country{
 			AppURL:         strings.TrimSuffix(country("APP_URL"), "/"),
 			TimeZone:       country("DEFAULT_TIME_ZONE"),
@@ -129,6 +145,15 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if c.Addr == "" {
 		c.Addr = ":8080"
+	}
+	switch c.Messaging {
+	case "":
+		if !strict { // strict: reported as missing above
+			c.Messaging = MessagingCapture
+		}
+	case MessagingCapture:
+	default:
+		errs = append(errs, fmt.Errorf("MESSAGING must be %q (real sending comes with S17), not %q", MessagingCapture, c.Messaging))
 	}
 	if len(missing) > 0 {
 		hint := " (copy .env.example to .env)"
