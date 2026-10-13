@@ -15,6 +15,9 @@ export async function loadConfig(): Promise<AppConfig> {
 /** The locale for dates, or undefined (the browser's own) if the config couldn't be loaded. */
 export const locale = () => current?.locale;
 
+/** The deployment's default time zone, or undefined if the config couldn't be loaded. */
+export const deploymentTimeZone = () => current?.timeZone;
+
 export function resetConfigForTests() {
   current = undefined;
 }

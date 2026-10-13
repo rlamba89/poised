@@ -6,6 +6,7 @@ import { Root } from "@/pages/Root";
 import { NotFound } from "@/pages/NotFound";
 import { RouteError } from "@/pages/RouteError";
 import { HospitalLayout } from "@/pages/hospital/HospitalLayout";
+import { AdminLayout } from "@/pages/admin/AdminLayout";
 
 const h = "/o/:orgId/h/:hospitalId";
 
@@ -62,9 +63,32 @@ export const routes: RouteObject[] = [
             lazy: async () => ({ Component: (await import("@/pages/hospital/Staff")).Staff }),
           },
           {
+            id: "settings",
+            path: `${h}/settings`,
+            lazy: async () => ({ Component: (await import("@/pages/hospital/Settings")).Settings }),
+          },
+          {
             id: "validate",
             path: `${h}/episodes/:eid/sets/:cid`,
             lazy: async () => ({ Component: (await import("@/pages/hospital/ValidateSetPage")).ValidateSetPage }),
+          },
+        ],
+      },
+      {
+        // The platform admin's console (S10): trusts and their hospitals. No patient data (OPS-06).
+        id: "admin",
+        element: <AdminLayout />,
+        children: [
+          { id: "admin-trusts", path: "/admin", lazy: async () => ({ Component: (await import("@/pages/admin/Trusts")).Trusts }) },
+          {
+            id: "admin-new-trust",
+            path: "/admin/trusts/new",
+            lazy: async () => ({ Component: (await import("@/pages/admin/NewTrust")).NewTrust }),
+          },
+          {
+            id: "admin-trust",
+            path: "/admin/trusts/:orgId",
+            lazy: async () => ({ Component: (await import("@/pages/admin/Trust")).Trust }),
           },
         ],
       },

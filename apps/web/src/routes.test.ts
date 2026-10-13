@@ -22,6 +22,10 @@ describe("routes", () => {
     ["/o/o1/h/h1/episodes/e1/poa", "poa", { orgId: "o1", hospitalId: "h1", eid: "e1" }],
     ["/o/o1/h/h1/episodes/e1/sets/c1", "validate", { orgId: "o1", hospitalId: "h1", eid: "e1", cid: "c1" }],
     ["/o/o1/h/h1/staff", "staff", { orgId: "o1", hospitalId: "h1" }],
+    ["/o/o1/h/h1/settings", "settings", { orgId: "o1", hospitalId: "h1" }],
+    ["/admin", "admin-trusts", {}],
+    ["/admin/trusts/new", "admin-new-trust", {}],
+    ["/admin/trusts/o1", "admin-trust", { orgId: "o1" }],
   ])("%s is the %s page", (path, id, params) => {
     const got = page(path);
     expect(got.id).toBe(id);
@@ -37,6 +41,7 @@ describe("routes", () => {
     "/o/o1/h/h1/episodes/e1/poa",
     "/o/o1/h/h1/episodes/e1/sets/c1",
     "/o/o1/h/h1/staff",
+    "/o/o1/h/h1/settings",
   ])("puts %s inside the hospital layout", (path) => {
     const matches = matchRoutes(routes, path) ?? [];
     const layout = matches.find((m) => m.route.id === "hospital");
@@ -55,7 +60,13 @@ describe("routes", () => {
     },
   );
 
-  it.each(["/nope", "/h/h1", "/o/o1/h/h1/nope", "/o/o1/h/h1/episodes/e1/nope", "/p", "/login/extra"])(
+  it.each(["/admin", "/admin/trusts/new", "/admin/trusts/o1"])("puts %s inside the admin layout (S10)", (path) => {
+    const matches = matchRoutes(routes, path) ?? [];
+    expect(matches.some((m) => m.route.id === "admin")).toBe(true);
+    expect(matches.some((m) => m.route.id === "hospital")).toBe(false);
+  });
+
+  it.each(["/nope", "/admin/nope", "/admin/trusts", "/h/h1", "/o/o1/h/h1/nope", "/o/o1/h/h1/episodes/e1/nope", "/p", "/login/extra"])(
     "%s is not found, as it was under Next.js",
     (path) => {
       expect(page(path).id).toBe("not-found");

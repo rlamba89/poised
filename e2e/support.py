@@ -29,11 +29,13 @@ def sign_in(context: BrowserContext, name: str, hospital: str = "Hospital A1") -
     return _sign_in(context.request, name, hospital)
 
 
-def _sign_in(request: APIRequestContext, name: str, hospital: str) -> str:
+def _sign_in(request: APIRequestContext, name: str, hospital: str | None) -> str:
     users = _ok(request.get("/api/dev/users"), "GET /api/dev/users").json()
     match = [u for u in users if u["name"] == name]
     assert match, f"No seeded user called {name!r}. Run `make seed`."
     _ok(request.post("/api/dev/login", data={"userId": match[0]["id"]}), "POST /api/dev/login")
+    if hospital is None:  # e.g. the platform admin, who works at no hospital
+        return ""
     me = _ok(request.get("/api/me"), "GET /api/me").json()
     places = [f"/o/{t['id']}/h/{h['id']}" for t in me["trusts"] for h in t["hospitals"] if h["name"] == hospital]
     assert places, f"{name} can't work at {hospital!r}. Run `make seed`."
@@ -60,9 +62,10 @@ def _ok(res, what: str):
 
 
 class Api:
-    """One seeded user's API session, at one of their hospitals (Hospital A1 unless named)."""
+    """One seeded user's API session, at one of their hospitals (Hospital A1 unless named; None for
+    the platform admin)."""
 
-    def __init__(self, playwright: Playwright, base_url: str, name: str, hospital: str = "Hospital A1"):
+    def __init__(self, playwright: Playwright, base_url: str, name: str, hospital: str | None = "Hospital A1"):
         self.request = playwright.request.new_context(base_url=base_url)
         self.base = _sign_in(self.request, name, hospital)
 
@@ -84,6 +87,19 @@ class Api:
     def invite(self, email: str, name: str, hospital_id: str | None, role: str) -> dict:
         """Invites someone to this trust: hospital_id None is the whole trust. Needs a whole-trust admin."""
         return self.call("POST", self.o("/staff/invites"), {"email": email, "name": name, "hospitalId": hospital_id, "role": role})
+
+    # The platform admin (S10)
+
+    def new_trust(self, name: str, code: str, admin_email: str, admin_name: str) -> dict:
+        """Creates a trust and invites its first admin. Needs the platform admin (Sam Superadmin)."""
+        return self.call("POST", "/admin/orgs", {
+            "name": name, "code": code, "contactName": "E2E Contact", "contactEmail": "contact@e2e.example",
+            "adminEmail": admin_email, "adminName": admin_name, "optIns": {},
+        })
+
+    def new_hospital(self, trust_id: str, name: str) -> dict:
+        """Adds a hospital to a trust and returns the trust. Needs the platform admin."""
+        return self.call("POST", f"/admin/orgs/{trust_id}/hospitals", {"name": name, "address": "1 E2E Road"})
 
     # Questionnaires
 

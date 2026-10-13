@@ -1,5 +1,6 @@
 // After sign-in: straight into the user's only hospital, or the hospital picker (STF-03) when
-// they have more than one, grouped by trust.
+// they have more than one, grouped by trust. A trust with no hospitals yet is listed with a note
+// (S10), and a platform admin gets a link to the admin console.
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { Alert, Badge, Button, Card, Center, Container, Group, Loader, Stack, Text, Title } from "@mantine/core";
@@ -39,15 +40,22 @@ export function Home() {
           <Button variant="default" size="xs" onClick={signOut}>Sign out</Button>
         </Group>
       </Group>
+      {me.platformAdmin && (
+        <Card withBorder mb="lg">
+          <Group justify="space-between">
+            <Text>You're one of Poised's platform admins.</Text>
+            <Button component={Link} to="/admin">Open the platform admin console</Button>
+          </Group>
+        </Card>
+      )}
       {me.trusts.length === 0 ? (
-        <Alert title="You don't have access to any hospital yet">
-          {me.platformAdmin
-            ? "You're a platform admin. The platform admin screens come in a later release."
-            : "Ask an admin of your trust to invite you."}
-        </Alert>
+        !me.platformAdmin && (
+          <Alert title="You don't have access to any hospital yet">Ask an admin of your trust to invite you.</Alert>
+        )
       ) : (
         <>
-          <Title order={3} mb="md">Choose a hospital</Title>
+          {/* Nothing to choose while their trusts have no hospitals yet (S10 test report 1). */}
+          <Title order={3} mb="md">{allHospitals(me).length > 0 ? "Choose a hospital" : "Your trusts"}</Title>
           <Stack>
             {me.trusts.map((t) => (
               <Card key={t.id} withBorder component="section" aria-label={t.name}>
@@ -56,6 +64,11 @@ export function Home() {
                   {t.role && <Badge variant="light">{roleLabel[t.role]}, whole trust</Badge>}
                 </Group>
                 <Stack gap="xs">
+                  {t.hospitals.length === 0 && (
+                    <Text size="sm" c="dimmed">
+                      {t.name} has no hospitals in Poised yet. Poised's platform admin adds them; you'll find them here once they have.
+                    </Text>
+                  )}
                   {t.hospitals.map((h) => (
                     <Button key={h.id} component={Link} to={homePath(t, h)} variant="default" justify="space-between" fullWidth
                       rightSection={<Text span size="sm" c="dimmed">{roleLabel[h.role]}</Text>}>

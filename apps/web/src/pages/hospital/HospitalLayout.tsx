@@ -1,7 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { Alert, Anchor, AppShell, Badge, Button, Group, Select, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
-import { AuthProvider, HospitalContext, canManageStaff, findHospital, hospitalBase, homePath, roleLabel, useMe, type Here } from "@/lib/auth";
+import { AuthProvider, HospitalContext, canManageSettings, canManageStaff, findHospital, hospitalBase, roleLabel, switchPath, useMe, type Here } from "@/lib/auth";
 
 function NoAccess() {
   return (
@@ -20,15 +20,11 @@ function Shell({ children }: { children: React.ReactNode }) {
   const here: Here | null = found && { ...found, role: found.hospital.role, base: hospitalBase(orgId, hospitalId) };
 
   // Every hospital the user can work in, grouped by trust (STF-03). Hospital ids are unique.
-  // Switching keeps you in the same section: Episodes stays Episodes (S08 test report 1).
+  // Switching keeps you in the same section (switchPath).
   const switchHospital = (id: string | null) => {
     for (const t of me.trusts) {
       const h = t.hospitals.find((x) => x.id === id);
-      if (!h || h.id === hospitalId) continue;
-      const section = pathname.includes("/episodes") ? "episodes" : /\/(questionnaires|chapters)/.test(pathname) ? "questionnaires" : null;
-      // Staff stays Staff within the trust, if they manage its staff (S09).
-      const staff = pathname.endsWith("/staff") && t.id === orgId && canManageStaff(t);
-      navigate(staff ? `${hospitalBase(t.id, h.id)}/staff` : section ? `${hospitalBase(t.id, h.id)}/${section}` : homePath(t, h));
+      if (h && h.id !== hospitalId) navigate(switchPath(pathname, t, h));
     }
   };
   const nav = (href: string, label: string) => (
@@ -71,6 +67,8 @@ function Shell({ children }: { children: React.ReactNode }) {
             {here && nav(`${here.base}/questionnaires`, "Questionnaires")}
             {here && nav(`${here.base}/episodes`, "Episodes")}
             {here && canManageStaff(here.trust) && nav(`${here.base}/staff`, "Staff")}
+            {here && canManageSettings(here.trust) && nav(`${here.base}/settings`, "Settings")}
+            {me.platformAdmin && nav("/admin", "Platform admin")}
           </Group>
           <Group wrap="nowrap" style={{ flexShrink: 0 }}>
             <Text size="sm" visibleFrom="md">{me.user.name}</Text>

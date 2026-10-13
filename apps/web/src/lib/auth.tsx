@@ -27,15 +27,34 @@ export function homePath(t: Trust, h: Hospital): string {
   return `${hospitalBase(t.id, h.id)}/${atLeast(h.role, "super_clinician") ? "questionnaires" : "episodes"}`;
 }
 
+/**
+ * Where switching to hospital `h` of trust `t` from the header goes, from the page at `pathname`.
+ * It keeps the section: Episodes stays Episodes, Questionnaires (and the editor or preview) stays
+ * Questionnaires (S08), and Staff or Settings stays so where the user manages that trust (S09, S10);
+ * anything else goes to the role's start page.
+ */
+export function switchPath(pathname: string, t: Trust, h: Hospital): string {
+  const base = hospitalBase(t.id, h.id);
+  if (pathname.endsWith("/staff") && canManageStaff(t)) return `${base}/staff`;
+  if (pathname.endsWith("/settings") && canManageSettings(t)) return `${base}/settings`;
+  if (pathname.includes("/episodes")) return `${base}/episodes`;
+  if (/\/(questionnaires|chapters)/.test(pathname)) return `${base}/questionnaires`;
+  return homePath(t, h);
+}
+
 /** Every hospital the user can work in, with its trust, in the order /api/me gives them. */
 export function allHospitals(me: Me): { trust: Trust; hospital: Hospital }[] {
   return me.trusts.flatMap((trust) => trust.hospitals.map((hospital) => ({ trust, hospital })));
 }
 
-/** Where to go after sign-in: straight in with one hospital, else the hospital picker (STF-03). */
+/**
+ * Where to go after sign-in: straight in with one hospital, else the hospital picker (STF-03). A
+ * platform admin with no hospital of their own goes to the admin console (S10).
+ */
 export function startPath(me: Me): string {
   const all = allHospitals(me);
-  return all.length === 1 ? homePath(all[0].trust, all[0].hospital) : "/";
+  if (all.length === 1) return homePath(all[0].trust, all[0].hospital);
+  return all.length === 0 && me.platformAdmin ? "/admin" : "/";
 }
 
 /** The trust and hospital of a URL's ids, if the user can work there. */
@@ -89,6 +108,9 @@ export function canChange(here: Here, ownerHospitalId: string | null | undefined
 
 /** Whether the user manages the trust's staff (S09): only admins of the whole trust can. The API checks the same. */
 export const canManageStaff = (trust: Trust) => atLeast(trust.role, "admin");
+
+/** Whether the user changes the trust's settings (S10): only admins of the whole trust, as for staff. The API checks the same. */
+export const canManageSettings = canManageStaff;
 
 export function useHospital(): Here {
   const here = useContext(HospitalContext);

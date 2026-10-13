@@ -49,7 +49,7 @@ def browser_context_args(browser_context_args):
 def as_user(playwright, base_url):
     sessions = []
 
-    def make(name: str, hospital: str = "Hospital A1") -> Api:
+    def make(name: str, hospital: str | None = "Hospital A1") -> Api:
         api = Api(playwright, base_url, name, hospital)
         sessions.append(api)
         return api

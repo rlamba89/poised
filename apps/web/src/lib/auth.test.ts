@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allHospitals, atLeast, canChange, canManageStaff, findHospital, homePath, startPath, type Here, type Hospital, type Me, type Trust } from "./auth";
+import { allHospitals, atLeast, canChange, canManageSettings, canManageStaff, findHospital, homePath, startPath, switchPath, type Here, type Hospital, type Me, type Trust } from "./auth";
 
 const hospital = (id: string, role: Hospital["role"]): Hospital => ({ id, name: `Hospital ${id}`, timeZone: "UTC", role });
 const trustA: Trust = { id: "ta", name: "Trust A", code: "TA", role: "super_clinician", hospitals: [hospital("a1", "super_clinician"), hospital("a2", "admin")] };
@@ -28,6 +28,15 @@ describe("where a user goes", () => {
     expect(startPath(me(trustA))).toBe("/");
     expect(startPath(me(trustA, trustB))).toBe("/");
     expect(startPath(me())).toBe("/");
+  });
+  it("sends a platform admin with no hospital to the admin console (S10)", () => {
+    expect(startPath({ ...me(), platformAdmin: true })).toBe("/admin");
+    expect(startPath({ ...me(trustB), platformAdmin: true })).toBe("/o/tb/h/b1/episodes");
+  });
+  it("leaves a trust with no hospitals yet out of the hospitals (S10)", () => {
+    const empty: Trust = { id: "te", name: "New Trust", code: "NT", role: "admin", hospitals: [] };
+    expect(allHospitals(me(empty, trustB)).map((x) => x.hospital.id)).toEqual(["b1"]);
+    expect(startPath(me(empty))).toBe("/");
   });
   it("lists every hospital with its trust", () => {
     expect(allHospitals(me(trustA, trustB)).map((x) => `${x.trust.id}/${x.hospital.id}`)).toEqual(["ta/a1", "ta/a2", "tb/b1"]);
@@ -61,5 +70,31 @@ describe("who manages staff (S09)", () => {
     expect(canManageStaff(trustA)).toBe(false); // a whole-trust super clinician
     // An admin of one hospital only (trust role null) can't, even with "admin" at that hospital.
     expect(canManageStaff({ ...trustB, role: null, hospitals: [hospital("b1", "admin")] })).toBe(false);
+  });
+});
+
+describe("who changes the trust's settings (S10)", () => {
+  it("is only the trust's whole-trust admins, as for staff", () => {
+    expect(canManageSettings({ ...trustA, role: "admin" })).toBe(true);
+    expect(canManageSettings(trustA)).toBe(false);
+    expect(canManageSettings({ ...trustB, role: null, hospitals: [hospital("b1", "admin")] })).toBe(false);
+  });
+});
+
+describe("switching hospital from the header", () => {
+  const adminA: Trust = { ...trustA, role: "admin" };
+  it("keeps the section: Episodes stays Episodes, the editor goes to Questionnaires", () => {
+    expect(switchPath("/o/ta/h/a1/episodes/e1", trustB, trustB.hospitals[0])).toBe("/o/tb/h/b1/episodes");
+    expect(switchPath("/o/ta/h/a1/questionnaires/q1", adminA, adminA.hospitals[1])).toBe("/o/ta/h/a2/questionnaires");
+  });
+  it("keeps Staff and Settings where the user manages the hospital's trust", () => {
+    expect(switchPath("/o/ta/h/a1/settings", adminA, adminA.hospitals[1])).toBe("/o/ta/h/a2/settings");
+    expect(switchPath("/o/ta/h/a1/staff", adminA, adminA.hospitals[1])).toBe("/o/ta/h/a2/staff");
+    // From a trust where they're refused to one they manage (S10 test report 1: Max landed on Questionnaires).
+    expect(switchPath("/o/tb/h/b1/settings", adminA, adminA.hospitals[0])).toBe("/o/ta/h/a1/settings");
+  });
+  it("goes to the start page where they don't manage the trust", () => {
+    expect(switchPath("/o/ta/h/a1/settings", trustB, trustB.hospitals[0])).toBe("/o/tb/h/b1/episodes");
+    expect(switchPath("/o/ta/h/a1/staff", trustA, trustA.hospitals[1])).toBe("/o/ta/h/a2/questionnaires");
   });
 });
