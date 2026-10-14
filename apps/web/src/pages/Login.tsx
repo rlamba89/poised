@@ -30,7 +30,7 @@ export function Login() {
   return (
     <Container size="xs" py="xl">
       <Title order={2} mb="xs">Poised</Title>
-      <Text c="dimmed" mb="lg">Development sign-in: choose a user.</Text>
+      <Text c="dimmed" mb="lg">Development sign-in (local and QA only, until Cognito): choose a user.</Text>
       {error && <Alert color="red" mb="md">{error}</Alert>}
       <Stack>
         {users.map((u) => (
