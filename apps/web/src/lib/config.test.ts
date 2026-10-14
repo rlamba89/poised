@@ -37,4 +37,24 @@ describe("loadConfig", () => {
     await loadConfig();
     expect(nationalIdLabel()).toBe("NHS number");
   });
+
+  it("gives up after 5 seconds, so a hung API (e.g. a Lambda cold start gone wrong) can't leave a blank page", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetch = vi.fn(
+        (_: string, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+          }),
+      );
+      vi.stubGlobal("fetch", fetch);
+      const loading = loadConfig();
+      const settled = expect(loading).rejects.toThrow();
+      await vi.advanceTimersByTimeAsync(5000);
+      await settled;
+      expect(locale()).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

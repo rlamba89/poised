@@ -1,16 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useRouteError } from "react-router";
 import { Anchor, Button, Center, Loader, Stack, Text, Title } from "@mantine/core";
-import { isChunkLoadError, reloadOnce } from "@/lib/chunkError";
+import { isChunkLoadError, reloadOnce, sessionStore } from "@/lib/chunkError";
 import { isPatientPage } from "@/features/patient/links";
-
-function sessionStore(): Storage | null {
-  try {
-    return window.sessionStorage;
-  } catch {
-    return null;
-  }
-}
 
 // Shown when a page fails to load or crashes. If the page's code couldn't be downloaded (usually
 // the app was updated while open), it reloads once, as Next.js did; otherwise it offers Reload.
@@ -21,7 +13,7 @@ export function RouteError() {
   const chunk = isChunkLoadError(error);
   const [reloading, setReloading] = useState(chunk);
   useEffect(() => {
-    if (chunk && !reloadOnce(sessionStore(), () => window.location.reload(), Date.now())) setReloading(false);
+    if (chunk && !reloadOnce(sessionStore(), () => window.location.reload())) setReloading(false);
   }, [chunk]);
 
   if (reloading) {

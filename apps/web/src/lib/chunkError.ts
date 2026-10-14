@@ -10,24 +10,40 @@ export function isChunkLoadError(error: unknown): boolean {
 }
 
 const KEY = "poised:chunk-reload";
-const WINDOW_MS = 10_000;
 
-type Store = Pick<Storage, "getItem" | "setItem">;
+type Store = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 /**
- * Reloads the page, unless it already did so in the last 10 seconds (so a file that's really
- * missing can't reload forever). Without storage it can't tell, so it doesn't reload.
- * Returns whether it reloaded.
+ * Reloads the page, unless it already did so and no page has rendered since (so a file that's
+ * really missing can't reload forever, however slow each try is). Without storage it can't
+ * tell, so it doesn't reload. Returns whether it reloaded.
  */
-export function reloadOnce(storage: Store | null, reload: () => void, now: number): boolean {
+export function reloadOnce(storage: Store | null, reload: () => void): boolean {
   if (!storage) return false;
   try {
-    const last = Number(storage.getItem(KEY) ?? 0);
-    if (now - last < WINDOW_MS) return false;
-    storage.setItem(KEY, String(now));
+    if (storage.getItem(KEY) !== null) return false;
+    storage.setItem(KEY, "1");
   } catch {
     return false;
   }
   reload();
   return true;
+}
+
+/** A page rendered, so the next missing file may reload again (Root calls it). */
+export function pageRendered(storage: Store | null): void {
+  try {
+    storage?.removeItem(KEY);
+  } catch {
+    // Nothing to clear without storage: reloadOnce doesn't reload then either.
+  }
+}
+
+/** The tab's sessionStorage, or null where the browser refuses it (e.g. some private modes). */
+export function sessionStore(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
 }

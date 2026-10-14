@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { isChunkLoadError, reloadOnce } from "./chunkError";
+import { isChunkLoadError, pageRendered, reloadOnce } from "./chunkError";
 
 describe("isChunkLoadError", () => {
   it.each([
@@ -21,29 +21,35 @@ describe("isChunkLoadError", () => {
 
 function memoryStorage() {
   const m = new Map<string, string>();
-  return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) };
+  return {
+    getItem: (k: string) => m.get(k) ?? null,
+    setItem: (k: string, v: string) => void m.set(k, v),
+    removeItem: (k: string) => void m.delete(k),
+  };
 }
 
 describe("reloadOnce", () => {
   it("reloads the first time", () => {
     const reload = vi.fn();
-    expect(reloadOnce(memoryStorage(), reload, 1_000_000)).toBe(true);
+    expect(reloadOnce(memoryStorage(), reload)).toBe(true);
     expect(reload).toHaveBeenCalledOnce();
   });
 
-  it("doesn't reload again within 10 seconds, so a chunk that's really gone can't loop", () => {
+  it("doesn't reload again until a page has rendered, however slow the reload was", () => {
+    // S04 verification 2: a 10-second window let a slow connection reload forever.
     const storage = memoryStorage();
     const reload = vi.fn();
-    reloadOnce(storage, reload, 1_000_000);
-    expect(reloadOnce(storage, reload, 1_009_999)).toBe(false);
+    reloadOnce(storage, reload);
+    expect(reloadOnce(storage, reload)).toBe(false);
     expect(reload).toHaveBeenCalledOnce();
   });
 
-  it("reloads again after 10 seconds (e.g. the next deploy)", () => {
+  it("reloads again once a page has rendered since (e.g. the next deploy)", () => {
     const storage = memoryStorage();
     const reload = vi.fn();
-    reloadOnce(storage, reload, 1_000_000);
-    expect(reloadOnce(storage, reload, 1_010_001)).toBe(true);
+    reloadOnce(storage, reload);
+    pageRendered(storage);
+    expect(reloadOnce(storage, reload)).toBe(true);
     expect(reload).toHaveBeenCalledTimes(2);
   });
 
@@ -55,10 +61,15 @@ describe("reloadOnce", () => {
       setItem: () => {
         throw new Error("SecurityError");
       },
+      removeItem: () => {
+        throw new Error("SecurityError");
+      },
     };
     const reload = vi.fn();
-    expect(reloadOnce(broken, reload, 1_000_000)).toBe(false);
-    expect(reloadOnce(null, reload, 1_000_000)).toBe(false);
+    expect(reloadOnce(broken, reload)).toBe(false);
+    expect(reloadOnce(null, reload)).toBe(false);
     expect(reload).not.toHaveBeenCalled();
+    expect(() => pageRendered(broken)).not.toThrow();
+    expect(() => pageRendered(null)).not.toThrow();
   });
 });

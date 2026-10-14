@@ -12,9 +12,19 @@ export type AppConfig = {
 
 let current: AppConfig | undefined;
 
+// The first page waits for the config, so a request that hangs (e.g. a Lambda cold start gone
+// wrong) is given up after this long; the pages then render with the browser's locale.
+const TIMEOUT_MS = 5000;
+
 export async function loadConfig(): Promise<AppConfig> {
-  current = await api<AppConfig>("/config");
-  return current;
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(new Error("GET /api/config took more than 5 seconds")), TIMEOUT_MS);
+  try {
+    current = await api<AppConfig>("/config", { signal: abort.signal });
+    return current;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** The locale for dates, or undefined (the browser's own) if the config couldn't be loaded. */
