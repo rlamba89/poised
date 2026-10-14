@@ -30,7 +30,7 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
-### 14 Oct 2026: S07, the pipeline (builder, automatic run; test plan ready)
+### 14 Oct 2026: S07, the pipeline (builder, automatic run; test report 1: 17 of 17 passed; tested 14 Oct)
 
 - **The pipeline follows `master`,** the GitHub repo's default branch and the local branch (`PIPELINE.branch` in `infra/countries.py`). **Reason:** plan F4 said `main`, but renaming would change the GitHub default and every clone for no gain. Amplify's branch `main` is unrelated (it's only where the web zips go).
 - **The pipeline's home (account, region, repo, branch) is `PIPELINE` in `infra/countries.py`,** so no stack names a region (A-20). The environments' stages live inside the pipeline stack, so hand deploys name `pipeline/<env>/*` (`make deploy-stacks` does); the stack names are unchanged.
@@ -41,6 +41,7 @@ Format: **decision**, then the reason, then where it's recorded in more detail.
 - **The seed has a run-twice integration test** (`cmd/seed`), since the pipeline seeds QA after every deploy.
 - **The "add a country" proof (14 Oct): a throwaway `us-qa` in us-east-1 took about 10 minutes** from the new entry to J1–J5 passing, then was destroyed; nothing is left in us-east-1. **The journeys' test data is the UK's** (a UK mobile, UK dates), so they need to read the country before a second country's pipeline stage (pending.md).
 - **Pushes are Rahul's (S07 answers item 5):** in the automatic run, Claude Code's permission system refused the builder's `git push`, so S07 was committed locally before verification and Rahul pushed each commit himself (S07's code, then the visible change, the failing test and its revert). He approved the connection only after S07's code was on GitHub, so the self-updating pipeline never ran from code without its own definition.
+- **Gotcha (S07 test report 1): a failed Synth log ends with `no matching base directory path found for infra/cdk.out`,** a side effect (the artifact upload after a failed build). The real failure is the `Command did not exit successfully …` line about 20 lines above it (`infra/README.md`). **The pipeline's CodeBuild projects are named `Pipeline…` by CDK, not `poised…`** (pending.md).
 - **The pipeline is proven (14 Oct):** pushes go green through QA e2e in 11 to 15 minutes (43 journeys); a failing unit test stops the run at Synth in under 3 minutes, before any deploy.
 
 ### 14 Oct 2026: S06, the Lambda adapter, the CDK app and QA on AWS (builder, automatic run; test report 1: 19 of 19 passed on QA; tested 14 Oct)

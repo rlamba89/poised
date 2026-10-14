@@ -75,7 +75,7 @@ The pipeline's **History** lists executions with their source commit (the short 
 
 1. Open https://main.d33kh0gi8vk83v.amplifyapp.com in a new tab (reload with Shift if it was open).
 
-**Expected:** the sign-in page says "Development sign-in (local and QA only, until Cognito): choose a user." (R2's change; before it said "Development sign-in: choose a user."). Sign in as **Alex Author**: the Questionnaires list opens. Reload a deep link (e.g. the Episodes page's address): it opens, not a 404.
+**Expected:** the sign-in page says "Development sign-in (local and QA only, until Cognito): choose a user." (R2's change; before it said "Development sign-in: choose a user."). Sign in as **Alex Author**: choose Hospital A1 if asked, and the Questionnaires list opens. Reload a deep link (e.g. the Episodes page's address): it opens, not a 404.
 
 ### T-07: the e2e results are kept as an artifact (R2 and R3/R4)
 

@@ -2,7 +2,7 @@
 
 Builder: automatic run (`/run-sessions`), 14 Oct 2026. Answers: [answers.md](answers.md) (Rahul, 14 Oct) and decisions.md §2 (14 Oct).
 
-**Status: test plan ready (14 Oct, [test-plan.md](test-plan.md)).** Committed locally before verification (answers item 5); Rahul pushes. Four real runs: R1 and R2 green, R3 stopped at Synth by a deliberately failing test, R4 (its revert) green.
+**Status: tested (14 Oct, [test report 1](test-report-1.md): 17 of 17 passed; the tester's Release change, execution `e789fefb`, went green).** Previously: test plan ready. Committed locally before verification (answers item 5); Rahul pushes. Five real runs: R1, R2, R4 and the tester's green; R3 stopped at Synth by a deliberately failing test.
 
 ## Steps
 
@@ -100,9 +100,21 @@ Nothing needed fixing: the first real run went green. **The brief's "Done when" 
 - `make e2e` against `make dev`: not run yet (no app code changed; to run before the test round).
 - **The pipeline's runs:** above (R1 to R4).
 
+## Manual testing
+
+- **Test report 1 (14 Oct): 17 passed, 0 failed, 0 blocked** (T-01 to T-13, R-1 to R-4). The tester did the AWS checks with the read-only AWS CLI. Its one action, T-13's Release change (`e789fefb`, commit `1d0d1a0`), went green in about 12 minutes, with E2E 43 passed (`uk-qa/4/junit.xml`).
+- **Hand check for Rahul** (the tester couldn't open the console): in **Developer Tools → Settings → Connections → `poised-github`**, check that the runbook's click-path labels (**Update pending connection**, **Install a new app**, **Connect**) match the console (don't click Update). In a pipeline action's **View details**, check that the CodeBuild link is called **Link to execution details** (`infra/README.md`, "Reading a failed run" step 1).
+- **Exploring notes, handled as doc-only changes after the report (no code or infra changed):**
+  - 1: the runbook's proof destroy time now says about 5 minutes (stacks about 1), matching F4 and these notes.
+  - 2: "Reading a failed run" now says that a failed Synth log ends with a side-effect `infra/cdk.out` artifact error, and that the real failure is the `Command did not exit successfully …` line about 20 lines above it.
+  - 3: the runbook no longer says the E2E step prints the QA address: the build has it as `E2E_BASE_URL`, and the log prints the S3 results path. `junit.xml` labelling every journey `[chromium]` is in pending.md.
+  - 4: the runbook has "Finding the pipeline's pieces in the console" (CodeBuild projects are named by CDK, `Pipeline…`; the Lambda log groups). Naming the projects `poised-…` is in pending.md.
+  - 5: test plan T-06 now says Alex Author may first choose Hospital A1 (older behaviour).
+  - 6 and 7 need nothing.
+
 ## Commits
 
-Made locally before verification (answers item 5); Rahul pushes. On `master` after `b58a952`: `d5bb4e9`, `afda4cb`, `1d8462c`, `0ad1243` (below, 1 to 4), then the checks `e9aecdb` (visible change), `358bffe` (failing test) and `1d0d1a0` (its revert), then the docs commit for the test plan and the runs.
+Made locally before verification (answers item 5); Rahul pushes. On `master` after `b58a952`: `d5bb4e9`, `afda4cb`, `1d8462c`, `0ad1243` (below, 1 to 4), then the checks `e9aecdb` (visible change), `358bffe` (failing test) and `1d0d1a0` (its revert), then the docs commits `8d09ca1` (the test plan and the runs) and the one after test report 1 (the runbook's doc fixes, pending.md, status).
 
 1. **The seed's run-twice test (F4 Step 2 / S07)**: `apps/api/cmd/seed/{main.go,seed_integration_test.go}`.
 2. **The pipeline (F4 Step 2 / S07)**: `infra/{pipeline_stack.py,app.py,countries.py,web_stack.py}`, `infra/scripts/{lib.sh,aws-setup.sh}`, `infra/tests/{test_pipeline.py,test_makefile.py}`, `Makefile`.

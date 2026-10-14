@@ -58,7 +58,7 @@ make aws-setup PROFILE=<profile> NEON_DATABASE_URL='<Neon direct URL>' ALERT_EMA
 make deploy-pipeline PROFILE=<profile>
 ```
 
-Then approve the GitHub connection (manual step 2 above) and push to `master`. The pipeline deploys QA and runs the journeys against it. Its web address is the `AppUrl` output of `poised-uk-qa-web` (also printed in the pipeline's E2E step); the dev login lists the seeded users.
+Then approve the GitHub connection (manual step 2 above) and push to `master`. The pipeline deploys QA and runs the journeys against it. Its web address is the `AppUrl` output of `poised-uk-qa-web` (the E2E step's build also has it, as the environment variable `E2E_BASE_URL`; its log prints only the S3 address of the results); the dev login lists the seeded users.
 
 1. **`make aws-setup`** (`scripts/aws-setup.sh`), once per account and region; each step is skipped if done. If a value it needs is missing, it says so and stops before changing anything:
    1. **Poised's own CDK bootstrap**, apart from any other project's in the account:
@@ -84,6 +84,11 @@ CodePipeline `poised` (V2: billed per minute while it runs, nothing when idle). 
 | **`uk-qa`** (one per entry in `countries.py`) | `poised-uk-qa-api` / `-web` Prepare + Deploy | CloudFormation change sets for ApiStack, then WebStack. |
 | | `Database-and-web` | `scripts/db.sh` (goose up, then the seed, which is safe to run again) against the environment's database, then `scripts/deploy-web.sh` uploads the web app that Synth built. |
 | | `E2E` | CodeBuild (Ubuntu: Playwright's WebKit needs it). `make e2e-setup e2e` against the environment's `AppUrl`: every journey, Chromium and WebKit. **Fails the run if a journey fails.** Afterwards, passed or failed, it copies `e2e/test-results` (the JUnit report, and a trace of each failed journey) to the **E2eResults** bucket. |
+
+**Finding the pipeline's pieces in the console** (the account is shared, and not everything is named `poised…`):
+- **CodeBuild projects are named by CDK:** `PipelineBuildSynthCdkBuildP-…` (Synth), `PipelineAssetsFileAsset…` (Assets), `PipelineukqaDatabaseandwebA-…` and `PipelineukqaE2E…` (one pair per environment), and `poised-selfupdate` (UpdatePipeline). Open them from the pipeline: an action's **View details**, then its link to CodeBuild. Or search **CodeBuild → Build projects** for `Pipeline`.
+- **The Lambdas' log groups** are `poised-<env>-api-staffapilogs…` and `…patientapilogs…` (not `/aws/lambda/…`).
+- The stacks, buckets, functions, Amplify app and connection are all named `poised…`.
 
 ## Deploying
 
@@ -113,7 +118,7 @@ By hand, without the pipeline (e.g. the pipeline itself is broken), from your ch
 1. **CodePipeline → `poised`**: the failed stage is red. Click the failed action's **View details**, then **Link to execution details** (CodeBuild actions) to open its log.
 2. **What each failure means:**
    - **Source** failed: the connection isn't **Available** (manual step 2), or the branch doesn't exist.
-   - **Synth** failed: a test failed, or a build. The log's end shows which command; scroll up to the first `FAIL` (Go), `FAIL`/`×` (Vitest) or `FAILED` (pytest). Run the same `make` target locally.
+   - **Synth** failed: a test failed, or a build. **The log's very last error is a side effect:** `no matching base directory path found for infra/cdk.out` (the artifact upload fails because `cdk synth` never ran), so ignore it. About 20 lines above it, `Command did not exit successfully <command>` names the command that failed; scroll up from there to the first `FAIL` (Go), `FAIL`/`×` (Vitest) or `FAILED` (pytest). Run the same `make` target locally.
    - **SelfMutate** or a **Deploy** failed: a CloudFormation error. Open **CloudFormation → the stack → Events** for the reason. A deploy that failed rolls the stack back to the last good version by itself.
    - **Database-and-web** failed: a migration (goose prints the file), the seed, or the Amplify upload. Nothing after it ran, so the journeys didn't run against half-deployed code.
    - **E2E** failed: a journey failed against the deployed environment. The log's end lists them (`FAILED journeys/…`) and prints the S3 address of the results.
@@ -136,7 +141,7 @@ A new country is **one entry in `countries.py` plus the steps below, never a cod
 
 **Removing a country:** delete its entry and push (the pipeline stops deploying it), then `make destroy-stacks ENV=xx-qa PROFILE=<profile>` from a checkout that still has the entry. In the region, delete the SSM parameters (`/sj/<stage>/database-url`, `/sj/alert-email`), the `poised-pipeline-support-<region>` stack if there is one, and, if nothing else of Poised is there, the `poised-cdk-toolkit` stack and its retained `cdk-poised-assets-<account>-<region>` bucket (empty every version first).
 
-**Proof, 14 Oct 2026 (S07):** a throwaway `us-qa` in `us-east-1` (America/New_York, en-US, US) took **about 10 minutes** from the new entry to J1–J5 passing: `make aws-setup` 1.5 minutes, `make deploy-qa` 5.5 minutes (stacks 72 s, migrations + seed 10 s, web upload), the journeys 2 minutes. It was then destroyed in about 3 minutes. Details in [S07's build notes](../docs/sessions/S07-pipeline/build-notes.md).
+**Proof, 14 Oct 2026 (S07):** a throwaway `us-qa` in `us-east-1` (America/New_York, en-US, US) took **about 10 minutes** from the new entry to J1–J5 passing: `make aws-setup` 1.5 minutes, `make deploy-qa` 5.5 minutes (stacks 72 s, migrations + seed 10 s, web upload), the journeys 2 minutes. It was then destroyed in about 5 minutes (the two stacks in about 1 minute; then the SSM parameters, the region's CDK bootstrap and its bucket, and the database). Details in [S07's build notes](../docs/sessions/S07-pipeline/build-notes.md).
 
 ## Moving to another AWS account (or re-creating everything)
 
