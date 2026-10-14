@@ -2,7 +2,7 @@
 
 Builder: automatic run (`/run-sessions`), 14 Oct 2026. Answers: [answers.md](answers.md) (Rahul, 14 Oct) and decisions.md §2 (14 Oct).
 
-**Status: built and deployed; committed locally before verification (answers item 5).** Rahul pushes `master` himself, then approves the GitHub connection `poised-github`; the first real run follows. No test plan yet: it comes after the first green run.
+**Status: test plan ready (14 Oct, [test-plan.md](test-plan.md)).** Committed locally before verification (answers item 5); Rahul pushes. Four real runs: R1 and R2 green, R3 stopped at Synth by a deliberately failing test, R4 (its revert) green.
 
 ## Steps
 
@@ -12,12 +12,12 @@ Builder: automatic run (`/run-sessions`), 14 Oct 2026. Answers: [answers.md](ans
 | 2 | `PipelineStack` (CDK Pipelines, tests first): source, synth step with the test gates, QA stage with post-deploy steps, results bucket | Done: 17 CDK tests |
 | 3 | `app.py` → the pipeline holds the stages; Makefile `deploy-pipeline`/`destroy-pipeline`, `DB_UP`, hand deploys renamed to `pipeline/<env>/*` | Done |
 | 4 | Deploy the pipeline (`make deploy-pipeline`) | Done 14 Oct: `poised-pipeline` (66 s); connection `poised-github` **Pending** |
-| 5 | Rahul pushes `master` (with S07's pre-verification commits), then approves the connection; the first green run through QA e2e | **Waiting on Rahul** (answers item 5) |
-| 6 | A deliberately failing unit test stops the run before deploy | Waiting (needs a push) |
+| 5 | Rahul pushes `master`, then approves the connection; the first green run through QA e2e | Done: R1 green (14.5 min) |
+| 6 | A trivial visible change goes green to QA; a deliberately failing unit test stops the run before deploy, then its revert | Done: R2 green, R3 stopped at Synth, R4 green |
 | 7 | The runbook in `infra/README.md`: add a country, deploy, roll back, read a failed run, the connection's click-path | Done |
 | 8 | The second-region proof (answers item 1: yes) | **Done 14 Oct: about 10 minutes; destroyed** |
 | 9 | The idle-cost check: scheduled for 21 Oct (Rahul reads Cost Explorer) | Noted in F4 Status and pending.md |
-| 10 | Test plan | After the answers |
+| 10 | Test plan | Done |
 
 ## What was built
 
@@ -75,6 +75,17 @@ Followed the runbook with a temporary `us-qa` entry in `countries.py` (account 0
 - **J3's failure is the per-country rules working:** the US entry refused the UK mobile ("Enter a valid mobile number, or leave it empty.") and showed dates as "May 17, 1980". The journeys' test data is the UK's (J3, J7, J8 and the patient-records journey use a UK mobile or a UK-format date), noted in the runbook and pending.md.
 - **Checked afterwards in us-east-1:** no stacks, no SSM parameters, no Amplify apps, no Lambda functions, no Poised log groups, no resources tagged `project=poised`, no `poised-us-qa` budget.
 
+## The pipeline's runs (14 Oct)
+
+| Run | Commit | Execution | Result |
+| --- | --- | --- | --- |
+| R1 | `0ad1243` (S07, pre-verification), started with "Release change" after Rahul pushed and approved the connection | `8526b81f` | **Green, 14:28:41–14:43:05 (14.5 min)**: Source 5 s; Synth 4 min (queue 1 min; lint + unit tests 77 s, Postgres 9 s, integration tests 25 s, web build 7 s, synth); SelfMutate 1 min; FileAssets 32 s; ApiStack 1 min 12 s; WebStack 1 min 11 s; Database-and-web 1.5 min (goose: no migrations; seed; Amplify job 2); **E2E 4.5 min: 43 passed** against QA; `junit.xml` in `s3://poised-pipeline-e2eresults…/uk-qa/1/`. No database address in any log. |
+| R2 | `e9aecdb` (the visible change: the dev sign-in page's text), pushed by Rahul; started by the push (webhook) | `71edac70` | **Green, 14:48:13–14:59:31 (11.3 min)**: Synth 3 min; SelfMutate 32 s; deploys 1.5 min; Database-and-web 1 min; **E2E 4.5 min: 43 passed** (`uk-qa/2/junit.xml`). QA's sign-in page bundle has the new text ("Development sign-in (local and QA only, until Cognito): choose a user."). |
+| R3 | `358bffe` (a deliberately failing Go unit test, `TestS07PipelineStopsOnAFailingTest`), pushed by Rahul | `604e8f99` | **Stopped at Build, 15:09:43–15:12:23 (2.7 min):** Synth (CodeBuild build 3) failed at `make lint test` with `--- FAIL: TestS07PipelineStopsOnAFailingTest` … `make: *** [Makefile:63: test] Error 1`. UpdatePipeline, Assets and `uk-qa` didn't run for it: their last execution stays R2's (`71edac70`), so QA kept R2's deploy. |
+| R4 | `1d0d1a0` (the revert of R3), pushed by Rahul | `fc74d689` | **Green, 15:25:17–15:38:09 (12.9 min)**: Synth 3.6 min; deploys 2.4 min; Database-and-web 1 min; **E2E 4.6 min: 43 passed** (`uk-qa/3/junit.xml`). |
+
+Nothing needed fixing: the first real run went green. **The brief's "Done when" is shown:** a push to the branch goes green all the way through QA e2e with no manual step (R2, R4), and a failing unit test stops the run before deploy (R3; plan F4's "or revert at once", not a branch pipeline).
+
 ## Tests
 
 - **Go integration:** `TestSeedTwice` (red first: `seed` undefined; then green).
@@ -87,11 +98,11 @@ Followed the runbook with a temporary `us-qa` entry in `countries.py` (account 0
 - `npm run build -w apps/web`, `make synth`: ok (the synth's only warning is CDK's "cross-stack reference strength", as in S06).
 - `make deploy-pipeline PROFILE=AdministratorAccess-026090536258`: created `poised-pipeline` (connection, pipeline, 5 CodeBuild projects, 2 buckets). The automatic first run failed at **Source** (connection Pending), as expected.
 - `make e2e` against `make dev`: not run yet (no app code changed; to run before the test round).
-- **Not yet shown (needs questions.md):** a green run through QA e2e; a failing test stopping the run.
+- **The pipeline's runs:** above (R1 to R4).
 
 ## Commits
 
-Made locally before verification (answers item 5), not pushed (Rahul pushes):
+Made locally before verification (answers item 5); Rahul pushes. On `master` after `b58a952`: `d5bb4e9`, `afda4cb`, `1d8462c`, `0ad1243` (below, 1 to 4), then the checks `e9aecdb` (visible change), `358bffe` (failing test) and `1d0d1a0` (its revert), then the docs commit for the test plan and the runs.
 
 1. **The seed's run-twice test (F4 Step 2 / S07)**: `apps/api/cmd/seed/{main.go,seed_integration_test.go}`.
 2. **The pipeline (F4 Step 2 / S07)**: `infra/{pipeline_stack.py,app.py,countries.py,web_stack.py}`, `infra/scripts/{lib.sh,aws-setup.sh}`, `infra/tests/{test_pipeline.py,test_makefile.py}`, `Makefile`.
