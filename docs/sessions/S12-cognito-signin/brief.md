@@ -1,8 +1,10 @@
 # S12: Real staff sign-in with Cognito and MFA
 
+*AWS phase (12 Oct): runs with Rahul there. Until then, the dev login stands in for Cognito.*
+
 **Plan:** C1 ([c1-trusts-staff.md](../../plans/c1-trusts-staff.md)), part 5 of 5. C1 is done after this session.
 **Requirements:** STF-05, A-12, ORG-03 (suspended trust refused), A-21.
-**Depends on:** S11 verified, and QA plus the pipeline (S06–S07).
+**Depends on:** S07 verified (QA and the pipeline).
 
 **Ask Rahul first:**
 1. **The Cognito feature plan** (Lite vs Essentials). Check the current AWS docs for which plan includes managed login and TOTP MFA, and what each costs. Give your recommendation.

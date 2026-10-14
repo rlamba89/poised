@@ -14,6 +14,7 @@ User journeys through the real app in real browsers, with Playwright and pytest 
 | J7c | `journeys/test_j7c_returning_patient.py` | **A returning patient (S15):** Sam has Trust A's questionnaire (their first visit made their account) and a new one from Trust B to the same email; they ask for a sign-in link by email at `/signin`, open it, Continue, date of birth, and their home lists both trusts' questionnaires, newest first; they open one and come back with **Your questionnaires**; another episode's address shows "Episode not found."; Sign out; the used link says it has expired. **Changing their email** (PAT-10): Change on the home sends a link to the new address; Confirm there changes the home and the hospital's record, and the old address is told. **Twins** (S15 answers 6): two accounts on one email with one date of birth; the sign-in link asks for the first name and surname, and the home shows only that twin's questionnaire, "For Lee". | Patient: **iPhone 13** (WebKit) |
 | J8 | `journeys/test_j8_reminders.py` | **Reminders and "not responding" (S16):** a new episode's invite; on the scheduled-jobs page (`/qa/jobs`, capture mode only) the jobs run as of now + 2 days send a reminder by text and email with a new link (also on the captured-messages page), and running them again sends nothing; the episode's General notes say so, written "Automatic"; the patient opens the **reminder's** link and starts answering, so now + 5 days sends nothing; now + 7 days marks the episode **Not responding** (no message), until the patient sends their answers. The jobs page runs every due job, so other episodes may get reminders too; only this patient's messages are checked. | Clinician: desktop Chromium. Patient: **iPhone 13** (WebKit) |
 | Patients | `journeys/test_patient_records.py` | **Patient records (S13):** on the New episode page, a clinician at Hospital A1 types the details of a patient known only at A2 (A1's search can't find them) and the episode links silently, showing nothing of A2; a wrong NHS number and a mismatched date of birth are refused without the stored details; a possible duplicate known elsewhere names nobody (Create anyway), and one at this hospital offers Use this record; the search by surname, NHS number, hospital number and short surname + date of birth, and a second open episode. | Desktop Chromium |
+| Cognito | `journeys/test_cognito_signin.py` | **Staff sign-in on QA (S12), QA only:** a clinician signs in with a password and an authenticator code and signs out (out of the managed login too); a wrong password and a wrong code are refused; a suspended trust's staff are refused at sign-in; there's no dev login and the testers' tools need a platform admin; the web app's security headers. | Desktop Chromium |
 | Trusts | `journeys/test_trusts.py` | **Trusts and hospitals (S08):** a member of two trusts picks a hospital and switches trust from the header, with their role in each; a trust admin's **All hospitals** list; a clinician at Hospital A1 can't open Hospital A2's episode by its URL; a super clinician of one hospital can view but not change the trust's questionnaires, in the editor or the Preview; the header fits a 390px window. | Desktop Chromium (one case at 390px) |
 
 ## Set up (once)
@@ -45,8 +46,18 @@ Then:
 | Watch slowly (300 ms per action) | `make e2e ARGS="--headed --slowmo 300"` |
 | Run one journey | `make e2e ARGS=journeys/test_j3_patient.py` |
 | Run against another address | `E2E_BASE_URL=https://qa.example make e2e` |
+| Run against QA (Cognito sign-in, S12) | `make e2e-users PROFILE=<profile>` once, then `make e2e E2E_BASE_URL=<QA's address>` |
 
 A run takes about 20 seconds. Each test prints a dot as it passes, and the last line says how many passed. If the app isn't running, the run stops at once with one line: "ERROR: The app isn't answering at …".
+
+## How the journeys sign in
+
+`support.py` asks the app how staff sign in (`GET /api/config`, S12):
+
+- **Locally** (`make dev`), with the dev stub, as before.
+- **On QA**, through Cognito's managed login in a browser: the seeded user's email and password, then a code from their authenticator secret (`pyotp`). The sign-ins come from `e2e/.qa-users.json` (gitignored; `make e2e-users`, or the pipeline's E2E step), or the file named by `E2E_TEST_USERS`. Each user signs in once per run and the session cookie is reused, because Cognito takes each authenticator code only once.
+- **The testers' tools** (`captured()`, `/qa/messages`, `/qa/jobs`) are used as Sam Superadmin (`qa_request()`, `qa_page(page)`), since on QA they need a platform admin.
+- **Marks:** `dev_login` journeys (`test_staff.py`, `test_j6_onboarding.py`: they sign in as people they've just invited, whose temporary password is in Cognito's email) are skipped on QA; `cognito_only` journeys (`test_cognito_signin.py`: password + code, wrong ones refused, a suspended trust refused, sign-out, no dev login, the tools need a platform admin, the security headers) run only there.
 
 ## When a journey fails
 

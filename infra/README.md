@@ -14,7 +14,14 @@ One environment, e.g. `uk-qa`, is:
 - **`WebStack`** (`poised-<env>-web`):
   - an **Amplify Hosting** app with no repository connected (the web app is uploaded as a zip), branch `main`;
   - two rewrite rules, in this order: `/api/<*>` → the HTTP API (a reverse proxy, so the browser sees one origin and the cookies just work), then the SPA rule (every page's address → `/index.html`, but files and anything under `/assets/` are served as themselves, so a file missing after a deploy is a real 404);
-  - the SSM parameter `<prefix>/app-url`: the web address, which the Lambdas read at cold start.
+  - the SSM parameter `<prefix>/app-url`: the web address, which the Lambdas read at cold start;
+  - **security headers on every page and file** (S12): `X-Frame-Options: DENY` and CSP `frame-ancestors 'none'` (no framing), HSTS, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`; **`Cache-Control: no-store` on pages** (Back after a sign-out on a shared computer shows nothing) and `immutable` on `/assets/`. A change to these headers shows only after the next web deployment (`make deploy-web`; the pipeline does it on every run).
+- **`AuthStack`** (`poised-<env>-auth`, S12), deployed after WebStack because its callback addresses are the web address:
+  - the **staff user pool** `poised-<env>-staff` (Cognito, **Essentials** plan: the cheapest with managed login; free to 10,000 monthly active users): the email is the username, **an authenticator app (TOTP) is required**, no self sign-up, password reset by email, Cognito's own email (`no-reply@verificationemail.com`, about 50 a day, no SES needed);
+  - its **managed login** (Cognito's sign-in pages) at `https://poised-<env>-<hash>.auth.<region>.amazoncognito.com`, and the web app's client (code flow with PKCE, no secret; callback `<web address>/auth/callback`, sign-out back to `/login`);
+  - the SSM parameters `<prefix>/cognito-user-pool-id`, `-client-id` and `-domain`, which the Lambdas read at cold start;
+  - staff-api's permission to invite (`AdminCreateUser` on this pool only).
+  - QA's pool is deleted with the stack; a real stage's is kept and has deletion protection.
 
 The pipeline is one more stack, **`PipelineStack`** (`poised-pipeline`, in the account and region named by `PIPELINE` in `countries.py`): the CodePipeline `poised`, its GitHub connection `poised-github`, and two S3 buckets (the pipeline's artifacts, and the journeys' results), all deleted with the stack.
 
@@ -22,10 +29,10 @@ Nothing in the stacks names a region, domain or country default: those live only
 
 | File | What it is |
 | --- | --- |
-| `countries.py` | Every environment: account, region, web address, time zone, locale, phone country, patient ID scheme, dev login, budget. Also `PIPELINE`: where the pipeline runs, and the repo and branch it follows. **The only place these are written.** |
+| `countries.py` | Every environment: account, region, web address, time zone, locale, phone country, patient ID scheme, budget. (No dev login: on AWS staff always sign in with Cognito, S12.) Also `PIPELINE`: where the pipeline runs, and the repo and branch it follows. **The only place these are written.** |
 | `app.py` | The CDK app: the pipeline stack, which holds one `PoisedStage` (ApiStack + WebStack) per entry. |
 | `pipeline_stack.py` | The pipeline and its steps. |
-| `stage.py`, `api_stack.py`, `web_stack.py`, `budget.py` | An environment's stacks. |
+| `stage.py`, `api_stack.py`, `web_stack.py`, `auth_stack.py`, `budget.py` | An environment's stacks. |
 | `tests/` | pytest + `aws_cdk.assertions`; no AWS account needed. `make test` runs them (so the pipeline does too). |
 | `scripts/` | What the `make` targets and the pipeline's steps run. Each checks first that the AWS credentials are for the entry's account. |
 
@@ -58,7 +65,7 @@ make aws-setup PROFILE=<profile> NEON_DATABASE_URL='<Neon direct URL>' ALERT_EMA
 make deploy-pipeline PROFILE=<profile>
 ```
 
-Then approve the GitHub connection (manual step 2 above) and push to `master`. The pipeline deploys QA and runs the journeys against it. Its web address is the `AppUrl` output of `poised-uk-qa-web` (the E2E step's build also has it, as the environment variable `E2E_BASE_URL`; its log prints only the S3 address of the results); the dev login lists the seeded users.
+Then approve the GitHub connection (manual step 2 above) and push to `master`. The pipeline deploys QA, gives the seeded staff their test sign-ins, and runs the journeys against it. Its web address is the `AppUrl` output of `poised-uk-qa-web` (the E2E step's build also has it, as the environment variable `E2E_BASE_URL`; its log prints only the S3 address of the results). Staff sign in there with Cognito: see **Signing in on QA** below.
 
 1. **`make aws-setup`** (`scripts/aws-setup.sh`), once per account and region; each step is skipped if done. If a value it needs is missing, it says so and stops before changing anything:
    1. **Poised's own CDK bootstrap**, apart from any other project's in the account:
@@ -82,13 +89,26 @@ CodePipeline `poised` (V2: billed per minute while it runs, nothing when idle). 
 | **UpdatePipeline** | `SelfMutate` | Deploys `poised-pipeline` if the pipeline itself changed, then restarts the run. |
 | **Assets** | `FileAssets` | Uploads the Lambdas' code to Poised's CDK bootstrap bucket. |
 | **`uk-qa`** (one per entry in `countries.py`) | `poised-uk-qa-api` / `-web` Prepare + Deploy | CloudFormation change sets for ApiStack, then WebStack. |
-| | `Database-and-web` | `scripts/db.sh` (goose up, then the seed, which is safe to run again) against the environment's database, then `scripts/deploy-web.sh` uploads the web app that Synth built. |
-| | `E2E` | CodeBuild (Ubuntu: Playwright's WebKit needs it). `make e2e-setup e2e` against the environment's `AppUrl`: every journey, Chromium and WebKit. **Fails the run if a journey fails.** Afterwards, passed or failed, it copies `e2e/test-results` (the JUnit report, and a trace of each failed journey) to the **E2eResults** bucket. |
+| | `Database-and-web` | `scripts/db.sh` (goose up, then the seed, which is safe to run again) against the environment's database; **on QA only**, `scripts/qa-users.sh setup` (the seeded staff's test sign-ins, S12); then `scripts/deploy-web.sh` uploads the web app that Synth built. |
+| | `E2E` | CodeBuild (Ubuntu: Playwright's WebKit needs it). `make e2e-setup e2e` against the environment's `AppUrl`: every journey, Chromium and WebKit (on QA, `scripts/e2e-users.sh` first fetches the test users' sign-ins into `e2e/.qa-users.json`; the journeys sign in through Cognito's managed login, and the few that need the dev login are skipped). **Fails the run if a journey fails.** Afterwards, passed or failed, it copies `e2e/test-results` (the JUnit report, and a trace of each failed journey) to the **E2eResults** bucket. |
 
 **Finding the pipeline's pieces in the console** (the account is shared, and not everything is named `poised…`):
 - **CodeBuild projects are named by CDK:** `PipelineBuildSynthCdkBuildP-…` (Synth), `PipelineAssetsFileAsset…` (Assets), `PipelineukqaDatabaseandwebA-…` and `PipelineukqaE2E…` (one pair per environment), and `poised-selfupdate` (UpdatePipeline). Open them from the pipeline: an action's **View details**, then its link to CodeBuild. Or search **CodeBuild → Build projects** for `Pipeline`.
 - **The Lambdas' log groups** are `poised-<env>-api-staffapilogs…` and `…patientapilogs…` (not `/aws/lambda/…`).
 - The stacks, buckets, functions, Amplify app and connection are all named `poised…`.
+
+## Signing in on QA (S12)
+
+Nothing on QA works without credentials: staff sign in through Cognito's managed login (a password, then an authenticator app's code), the dev login doesn't exist there, and the testers' tools (`/qa/messages`, `/qa/jobs`, the sign-in limits reset, `/api/qa/client`) need a signed-in platform admin.
+
+- **Test users** (`apps/api/cmd/qa-users`, QA only: it refuses any other stage). Every seeded staff account (Ada Admin, Alex Author, Bea Author, Cara Clinician, Max Multi, Sam Superadmin, Sue Super, Val Clinician) gets a sign-in with a known password and authenticator secret, kept only in the SSM SecureString `/sj/qa/test-users`. The pipeline runs it after each seed; by hand: `make qa-users PROFILE=<profile>`. Running it again keeps the passwords and secrets.
+- **To sign in as one by hand:** open QA, **Sign in**, type the email, then
+  - `make qa-password PROFILE=<profile> WHO='Cara Clinician'` copies the password to the clipboard (macOS; it's never printed), and
+  - `make qa-code PROFILE=<profile> WHO='Cara Clinician'` prints the authenticator's current 6-digit code.
+  Each code works once (wait for the next one if it's refused as used).
+- **The journeys against QA from your machine:** `make e2e-users PROFILE=<profile>` (into the gitignored `e2e/.qa-users.json`), then `make e2e E2E_BASE_URL=<QA's address>`.
+- **A superadmin with a real email:** `make aws-platform-admin PROFILE=<profile> EMAIL=you@example.org NAME="Your Name"`. A new account gets Cognito's invitation email (a temporary password, 7 days); the first sign-in asks for a new password and sets up the authenticator app.
+- **Invitations and password resets** are emailed by Cognito itself (about 50 a day across the pool), so they reach any address even while SES is in the sandbox. A trust's real volume needs SES (pending.md).
 
 ## Deploying
 
@@ -101,7 +121,8 @@ By hand, without the pipeline (e.g. the pipeline itself is broken), from your ch
 | Deploy a Go change | `make deploy-stacks PROFILE=<profile>` |
 | Deploy a web change | `make deploy-web PROFILE=<profile>` |
 | Run new migrations (and the seed) | `make aws-db PROFILE=<profile>` |
-| Everything | `make deploy-qa PROFILE=<profile>` |
+| The QA test users' sign-ins | `make qa-users PROFILE=<profile>` |
+| Everything | `make deploy-qa PROFILE=<profile>` (stacks, migrations + seed, test users, web app) |
 | Check the CDK without AWS | `make infra-test` or `make synth` |
 
 **Changing the database URL:** `aws ssm put-parameter --name /sj/qa/database-url --type SecureString --overwrite --value '<new URL>'`. The Lambdas read it at cold start, so then run `make deploy-stacks` (or wait for the functions to be recycled).
@@ -130,7 +151,7 @@ By hand, without the pipeline (e.g. the pipeline itself is broken), from your ch
 
 A new country is **one entry in `countries.py` plus the steps below, never a code change** (A-20). The full list of what a country needs is in [saas-requirements.md §13](../docs/saas-requirements.md).
 
-1. **Add the entry to `countries.py`**, e.g. `xx-qa`: the account, the country's AWS region, its IANA time zone, its `language-REGION` locale, its phone country (two letters), its patient identifier scheme (a scheme in `apps/api/internal/nationalid`; add one there first if the country has its own) and `dev_login=True` only for QA. Run `make infra-test`: the entry is checked as it's made.
+1. **Add the entry to `countries.py`**, e.g. `xx-qa`: the account, the country's AWS region, its IANA time zone, its `language-REGION` locale, its phone country (two letters), and its patient identifier scheme (a scheme in `apps/api/internal/nationalid`; add one there first if the country has its own). Run `make infra-test`: the entry is checked as it's made.
 2. **Neon:** a project in the country's region (manual step 1), with a database `sj`.
 3. **One-off set-up of the new region:** `make aws-setup ENV=xx-qa PROFILE=<profile> NEON_DATABASE_URL='<its URL>' ALERT_EMAIL='<email>'`. This bootstraps CDK in the region and stores its database URL. Run it again a day later for the cost tag.
 4. **Later, when the country needs them:** its domain and DNS (`app_url`), SES and SMS in its region (S17), and its superadmin (`make platform-admin`, against its database).
@@ -139,7 +160,7 @@ A new country is **one entry in `countries.py` plus the steps below, never a cod
    - **The journeys' test data is the UK's** (a UK mobile, dates shown as "17 May 1980"), so in another country the journeys that use them (J3, J7, J8 and the patient-records journey) fail at those lines until they're written to read the country from `GET /api/config` (pending.md). Until then, run the others there, or give `E2E_ARGS` a `-k` filter.
 6. Its web address is the new `poised-xx-qa-web` stack's `AppUrl`.
 
-**Removing a country:** delete its entry and push (the pipeline stops deploying it), then `make destroy-stacks ENV=xx-qa PROFILE=<profile>` from a checkout that still has the entry. In the region, delete the SSM parameters (`/sj/<stage>/database-url`, `/sj/alert-email`), the `poised-pipeline-support-<region>` stack if there is one, and, if nothing else of Poised is there, the `poised-cdk-toolkit` stack and its retained `cdk-poised-assets-<account>-<region>` bucket (empty every version first).
+**Removing a country:** delete its entry and push (the pipeline stops deploying it), then `make destroy-stacks ENV=xx-qa PROFILE=<profile>` from a checkout that still has the entry. In the region, delete the SSM parameters (`/sj/<stage>/database-url`, `/sj/<stage>/test-users` on QA, `/sj/alert-email`), the `poised-pipeline-support-<region>` stack if there is one, and, if nothing else of Poised is there, the `poised-cdk-toolkit` stack and its retained `cdk-poised-assets-<account>-<region>` bucket (empty every version first).
 
 **Proof, 14 Oct 2026 (S07):** a throwaway `us-qa` in `us-east-1` (America/New_York, en-US, US) took **about 10 minutes** from the new entry to J1–J5 passing: `make aws-setup` 1.5 minutes, `make deploy-qa` 5.5 minutes (stacks 72 s, migrations + seed 10 s, web upload), the journeys 2 minutes. It was then destroyed in about 5 minutes (the two stacks in about 1 minute; then the SSM parameters, the region's CDK bootstrap and its bucket, and the database). Details in [S07's build notes](../docs/sessions/S07-pipeline/build-notes.md).
 
@@ -147,7 +168,7 @@ A new country is **one entry in `countries.py` plus the steps below, never a cod
 
 Nothing but the steps above is needed, so everything can be deleted and re-created at any time.
 
-1. **In the old account** (while `countries.py` still names it): `make destroy-pipeline PROFILE=<old profile>` (the pipeline, its connection and its buckets), then `make destroy-stacks PROFILE=<old profile>` for each environment. This deletes the Lambdas, the HTTP API, the Amplify app, the token secret (everyone is signed out) and the budget. The Neon database isn't in AWS and is kept.
+1. **In the old account** (while `countries.py` still names it): `make destroy-pipeline PROFILE=<old profile>` (the pipeline, its connection and its buckets), then `make destroy-stacks PROFILE=<old profile>` for each environment. This deletes the Lambdas, the HTTP API, the Amplify app, the token secret (everyone is signed out), QA's staff user pool (the new account's pipeline makes new test users; a person's account in the database is tied to the new pool by their email at their next sign-in) and the budget. The Neon database isn't in AWS and is kept.
 2. Optionally tidy the old account: `aws ssm delete-parameter --name /sj/qa/database-url`, the same for `/sj/alert-email`, and delete the `poised-cdk-toolkit` stack (empty its `cdk-poised-assets-…` bucket first).
 3. In `countries.py`, change the entry's `account`, and `PIPELINE.account`.
 4. **In the new account:** `make aws-setup …` (with `NEON_DATABASE_URL` and `ALERT_EMAIL`), then `make deploy-pipeline …`, approve the GitHub connection (manual step 2), and push.

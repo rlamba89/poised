@@ -129,7 +129,7 @@ These need your AWS setup, GitHub pushes and real messages, so they don't run un
 | --- | --- | --- | --- | --- |
 | [S06](S06-aws-qa-stack/brief.md) | F3 + F4 | The Lambda adapter, the CDK app, `infra/countries.py`, the QA environment on AWS | **AWS Step 0 done** | **Verified** (14 Oct, [verify.md](S06-aws-qa-stack/verify.md), verification 1; test report 1: 19 of 19 passed; QA: https://main.d33kh0gi8vk83v.amplifyapp.com) |
 | [S07](S07-pipeline/brief.md) | F4 | CodePipeline with test gates, the "add a country" runbook | Push access for test pushes | **Verified** (14 Oct, [verify.md](S07-pipeline/verify.md), verification 1; test report 1: 17 of 17 passed; pipeline live, runs R1–R4 as planned, proof done) |
-| [S12](S12-cognito-signin/brief.md) | C1 | Real staff sign-in with Cognito + MFA, on QA | Cognito plan choice | Not started |
+| [S12](S12-cognito-signin/brief.md) | C1 | Real staff sign-in with Cognito + MFA, on QA | Answered 14 Oct (Essentials: checked in the docs) | **Verified** (14 Oct, [verify.md](S12-cognito-signin/verify.md), verification 1; test report 2 all passed; hand checks T-08, T-09, R-05, H-1–H-3; deployed to QA by hand, the pipeline takes over at the next push) |
 | [S17](S17-aws-messaging-jobs/brief.md) | C2 | Jobs Lambda + EventBridge schedule, SES and SMS on AWS, real sending switched on | **SES/SMS approvals** | Not started |
 
 **Why this order:** nothing needs AWS until someone outside your laptop has to use the app. Building locally first lets the automatic run go without AWS stops. The cost is that the AWS hosting setup and its near-£0 idle cost are proven later (decided 12 Oct; [decisions.md](../decisions.md)).
