@@ -92,8 +92,17 @@ func main() {
 		log.Fatalf("connect: %v", err)
 	}
 	defer conn.Close(ctx)
+	if err := seed(ctx, conn, dir); err != nil {
+		log.Fatalf("seed: %v", err)
+	}
+}
 
-	err = pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
+// seed loads everything in one transaction. It is safe to run again (the pipeline runs it after
+// every deploy to QA): each run leaves the same rows and puts the demo data back as seeded.
+func seed(ctx context.Context, db interface {
+	Begin(context.Context) (pgx.Tx, error)
+}, dir string) error {
+	return pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
 		if err := seedCategories(ctx, tx, dir); err != nil {
 			return err
 		}
@@ -102,9 +111,6 @@ func main() {
 		}
 		return seedDemo(ctx, tx)
 	})
-	if err != nil {
-		log.Fatalf("seed: %v", err)
-	}
 }
 
 func seedCategories(ctx context.Context, tx pgx.Tx, dir string) error {
