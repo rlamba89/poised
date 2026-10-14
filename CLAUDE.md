@@ -53,11 +53,13 @@ docker compose up -d db     # Postgres 17 on :5432 (user/password/db: sj)
 make migrate seed           # goose migrations, then Lifebox codes + demo hospitals/users (idempotent)
 make dev                    # Go API on :8080 + web (Vite) on :3000 (web proxies /api/* to the API); Ctrl-C stops both
 make patient-api            # one API function alone, as on AWS (ADDR=:8081 default); also make staff-api
-make test                   # go test ./... + Vitest in every workspace (no database needed)
+make test                   # go test ./... + Vitest in every workspace + the CDK tests (no database needed)
 make test-integration       # API → database tests (-tags integration): a fresh database per test
 make lint                   # go vet (with the integration tag) + tsc --noEmit
 make e2e-setup              # once: e2e/.venv (Python 3.12+), pinned Playwright + pytest, Chromium and WebKit
 make e2e                    # journeys J1–J5 in real browsers against make dev (ARGS=--headed to watch)
+make build-lambdas          # apps/api/dist/<fn>/bootstrap (arm64) for the Lambdas
+make deploy-qa PROFILE=<aws profile>   # AWS QA by hand: stacks, migrate + seed Neon, web upload (infra/README.md; once per account: make aws-setup)
 make platform-admin EMAIL=… # add a superadmin by hand (A-21); idempotent
 make sqlc                   # regenerate apps/api/internal/db after editing apps/api/db/queries/*.sql
 make migrate-down           # roll back the last migration

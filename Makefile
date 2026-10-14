@@ -5,7 +5,8 @@ export
 API := apps/api
 GOOSE := cd $(API) && go tool goose -dir db/migrations postgres "$(DATABASE_URL)"
 
-.PHONY: dev staff-api patient-api test test-integration e2e-setup e2e lint db-up migrate migrate-down seed sqlc platform-admin
+.PHONY: dev staff-api patient-api test test-integration e2e-setup e2e lint db-up migrate migrate-down seed sqlc platform-admin \
+	build-lambdas infra-test synth aws-setup deploy-stacks deploy-web aws-db deploy-qa destroy-stacks
 
 node_modules: package-lock.json
 	npm install
@@ -55,9 +56,10 @@ platform-admin: .env
 sqlc:
 	cd $(API) && go tool sqlc generate -f db/sqlc.yaml
 
-test: node_modules
+test: node_modules infra/.venv
 	cd $(API) && go test ./...
 	npm test --workspaces --if-present
+	cd infra && .venv/bin/pytest -q
 
 # API → database tests (-tags integration, apps/api/internal/apitest). Each test gets its own
 # database, copied from a template that every migration is run into first.
@@ -83,3 +85,63 @@ e2e:
 lint: node_modules
 	cd $(API) && go vet -tags integration ./...
 	npm run lint --workspaces --if-present
+
+# --- AWS (plans F3/F4, S06): see infra/README.md -------------------------------------------
+# ENV names an entry in infra/countries.py. PROFILE names the AWS CLI profile to use, e.g.
+#   make aws-setup PROFILE=AdministratorAccess-026090536258
+# and wins over AWS_PROFILE from .env or the shell. Every script prints the profile and account,
+# and refuses to run if they aren't the entry's account.
+ENV ?= uk-qa
+PROFILE ?=
+AWS_ENV = $(if $(PROFILE),AWS_PROFILE=$(PROFILE))
+AWS_CDK_VERSION := 2.1145.0
+AWS_CDK := cd infra && $(AWS_ENV) npx --yes aws-cdk@$(AWS_CDK_VERSION)
+
+# The Lambdas (provided.al2023, arm64): apps/api/dist/<fn>/bootstrap.
+build-lambdas:
+	@for fn in staff-api patient-api; do \
+		echo "build-lambdas: $$fn"; \
+		(cd $(API) && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags lambda.norpc -trimpath \
+			-ldflags='-s -w' -o dist/$$fn/bootstrap ./cmd/$$fn) || exit 1; \
+	done
+
+# The CDK app's Python (pinned in infra/requirements.txt), with PYTHON as for e2e-setup.
+infra/.venv: infra/requirements.txt
+	$(PYTHON) -m venv infra/.venv
+	infra/.venv/bin/pip install -q -r infra/requirements.txt
+	@touch infra/.venv
+
+# The CDK tests alone (make test runs them too): no AWS account needed.
+infra-test: infra/.venv
+	cd infra && .venv/bin/pytest -q
+
+synth: infra/.venv build-lambdas
+	$(AWS_CDK) synth --quiet
+
+# Once per account and region (and safe to repeat): CDK bootstrap, then the database URL and the
+# budget alarm's address into SSM, e.g.
+#   make aws-setup PROFILE=<profile> NEON_DATABASE_URL='postgres://…' ALERT_EMAIL=you@example.org
+aws-setup: infra/.venv
+	$(AWS_ENV) infra/scripts/aws-setup.sh $(ENV)
+
+# The environment's ApiStack and WebStack.
+deploy-stacks: infra/.venv build-lambdas
+	$(AWS_ENV) infra/scripts/check-account.sh $(ENV)
+	$(AWS_CDK) deploy '$(ENV)/*' --require-approval never
+
+# The migrations and the (idempotent) seed, against the environment's database.
+aws-db: infra/.venv
+	$(AWS_ENV) infra/scripts/db.sh $(ENV)
+
+# The web app: a production build, uploaded to Amplify.
+deploy-web: node_modules infra/.venv
+	npm run build -w apps/web
+	$(AWS_ENV) infra/scripts/deploy-web.sh $(ENV)
+
+# Everything, in order (after make aws-setup).
+deploy-qa: deploy-stacks aws-db deploy-web
+
+# Deletes the environment's stacks (the database, in Neon, and SSM's values are kept).
+destroy-stacks: infra/.venv
+	$(AWS_ENV) infra/scripts/check-account.sh $(ENV)
+	$(AWS_CDK) destroy '$(ENV)/*' --force
