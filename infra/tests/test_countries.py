@@ -25,7 +25,7 @@ GOOD = dict(
 def test_uk_qa_is_the_only_entry_for_now():
     assert [e.name for e in countries.ENVIRONMENTS] == ["uk-qa"]
     uk = countries.get("uk-qa")
-    assert uk.stage == "qa" and uk.dev_login
+    assert uk.stage == "qa"
     assert uk.param_prefix == "/sj/qa"
 
 
@@ -59,10 +59,12 @@ def test_bad_values_are_refused(field, bad):
         Environment(**{**GOOD, field: bad})
 
 
-def test_dev_login_only_in_qa():
-    with pytest.raises(ValueError, match="DEV_LOGIN"):
-        Environment(**{**GOOD, "name": "ca-production", "stage": "production", "dev_login": True})
-    assert not Environment(**{**GOOD, "stage": "production"}).dev_login
+def test_no_environment_can_have_the_dev_login():
+    """S12: staff sign in with Cognito on AWS; the dev login (anyone as anyone) is local only. An
+    entry can't even ask for it, and the Go API refuses DEV_LOGIN with CONFIG_STRICT too."""
+    assert "dev_login" not in {f.name for f in dataclasses.fields(Environment)}
+    with pytest.raises(TypeError):
+        Environment(**{**GOOD, "dev_login": True})
 
 
 def test_names_are_unique():

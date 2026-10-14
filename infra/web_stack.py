@@ -23,6 +23,34 @@ SPA_REWRITE_SOURCE = (
 )
 
 
+# Security headers on every page and file (S12; S06 test report 1): no framing (clickjacking),
+# https only, no MIME sniffing, and no Referer, so a patient's link never leaves in one (S14).
+# The CSP sets only frame-ancestors, so it can't break the app's own scripts and styles.
+# Pages are never stored (no-store), so Back after a sign-out on a shared workstation can't show
+# the previous person's screen from the browser's cache (S12 test report 1, finding 1). The
+# hashed files under /assets/ change name with their content, so they're kept for good instead.
+SECURITY_HEADERS = """customHeaders:
+  - pattern: '**'
+    headers:
+      - key: Cache-Control
+        value: no-store
+      - key: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+      - key: X-Frame-Options
+        value: DENY
+      - key: Content-Security-Policy
+        value: frame-ancestors 'none'
+      - key: X-Content-Type-Options
+        value: nosniff
+      - key: Referrer-Policy
+        value: no-referrer
+  - pattern: 'assets/**'
+    headers:
+      - key: Cache-Control
+        value: public, max-age=31536000, immutable
+"""
+
+
 class WebStack(cdk.Stack):
     def __init__(self, scope: Construct, id: str, *, env: Environment, api_url: str, **kwargs) -> None:
         super().__init__(scope, id, **kwargs)
@@ -31,6 +59,7 @@ class WebStack(cdk.Stack):
             "App",
             name=f"poised-{env.name}",
             platform="WEB",
+            custom_headers=SECURITY_HEADERS,
             # In this order: the API first (a reverse proxy, 200), then the SPA rule.
             custom_rules=[
                 amplify.CfnApp.CustomRuleProperty(source="/api/<*>", target=f"{api_url}/api/<*>", status="200"),
@@ -42,6 +71,7 @@ class WebStack(cdk.Stack):
         # Until there's a domain the address is Amplify's own, known only once the app exists, so
         # the functions read it from here at cold start rather than from their environment.
         app_url = env.app_url or f"https://{BRANCH}.{app.attr_default_domain}"
+        self.app_url = app_url  # AuthStack's callback and sign-out addresses
         ssm.StringParameter(
             self,
             "AppUrlParam",

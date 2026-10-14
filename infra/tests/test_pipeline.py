@@ -2,6 +2,7 @@
 each environment in countries.py, then migrates, seeds, deploys the web app and runs the journeys
 against it. No AWS account is needed."""
 
+import dataclasses
 import json
 import pathlib
 import re
@@ -153,7 +154,7 @@ def stage_actions(t: Template, env_name: str) -> dict[str, dict]:
 def test_each_environment_is_deployed_then_set_up_then_tested(template):
     acts = stage_actions(template, "ca-qa")
     deploys = [n for n in acts if n.endswith(".Deploy")]
-    assert len(deploys) == 2  # ApiStack and WebStack
+    assert len(deploys) == 3  # ApiStack, WebStack, AuthStack
     db_web = acts["Database-and-web"]
     e2e = acts["E2E"]
     assert all(acts[d]["RunOrder"] < db_web["RunOrder"] for d in deploys)
@@ -162,7 +163,20 @@ def test_each_environment_is_deployed_then_set_up_then_tested(template):
 
 def test_database_and_web_step(template):
     cmds = commands(project(template, "Databaseandweb"))
-    assert cmds == ["bash infra/scripts/db.sh ca-qa", "bash infra/scripts/deploy-web.sh ca-qa"]
+    assert cmds == [
+        "bash infra/scripts/db.sh ca-qa",
+        # QA only (S12): the seed's staff get test sign-ins for the tester and the journeys.
+        "bash infra/scripts/qa-users.sh ca-qa setup",
+        "bash infra/scripts/deploy-web.sh ca-qa",
+    ]
+
+
+def test_only_qa_gets_test_users(lambda_code):
+    app = cdk.App()
+    training = dataclasses.replace(CA_QA, name="ca-training", stage="training")
+    stack = PipelineStack(app, "pipeline", home=HOME, environments=[training], lambda_code=str(lambda_code))
+    everything = json.dumps(Template.from_stack(stack).to_json())
+    assert "qa-users" not in everything and "test-users" not in everything
 
 
 def test_database_and_web_step_can_only_do_its_job(template):
@@ -178,7 +192,13 @@ def test_database_and_web_step_can_only_do_its_job(template):
     assert "ca-central-1" in statements  # the environment's own region
     assert "amplify:CreateDeployment" in statements and "amplify:StartDeployment" in statements
     assert "poised-ca-qa-web" in statements  # its stack's outputs
-    assert "ssm:PutParameter" not in statements
+    # The test users (QA): the pool's IDs, and their sign-ins kept in one parameter.
+    puts = [s for p in policies for s in p if "ssm:PutParameter" in json.dumps(s["Action"])]
+    assert len(puts) == 1 and json.dumps(puts[0]["Resource"]).count("parameter/") == 1
+    assert "/sj/qa/test-users" in json.dumps(puts[0]["Resource"])
+    [idp] = [s for p in policies for s in p if "cognito-idp:" in json.dumps(s["Action"])]
+    # Only Poised's pool for this environment: the account has another project's pools.
+    assert idp["Condition"] == {"StringEquals": {"aws:ResourceTag/poised-env": "ca-qa"}}
 
 
 def test_e2e_runs_the_journeys_against_the_environments_web_address(template):
@@ -192,6 +212,16 @@ def test_e2e_runs_the_journeys_against_the_environments_web_address(template):
     variables = json.loads(action["Configuration"]["EnvironmentVariables"])
     [base_url] = [v for v in variables if v["name"] == "E2E_BASE_URL"]
     assert re.fullmatch(r"#\{pipelinecaqaweb\w+\.AppUrl\}", base_url["value"]), base_url
+    # The test users' sign-ins (S12), fetched into a file that's never printed.
+    assert "bash infra/scripts/e2e-users.sh ca-qa" in cmds
+    assert cmds.index("bash infra/scripts/e2e-users.sh ca-qa") < [i for i, c in enumerate(cmds) if c.startswith("make e2e ")][0]
+    role = p["ServiceRole"]
+    statements = json.dumps([
+        r["Properties"]["PolicyDocument"]["Statement"]
+        for r in template.find_resources("AWS::IAM::Policy").values()
+        if role["Fn::GetAtt"][0] in json.dumps(r["Properties"]["Roles"])
+    ])
+    assert "/sj/qa/test-users" in statements and "ssm:PutParameter" not in statements
     # Ubuntu: Playwright's WebKit (the patient's iPhone) needs Ubuntu's libraries.
     assert p["Environment"]["Image"].startswith("aws/codebuild/standard:")
 

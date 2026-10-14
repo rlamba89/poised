@@ -7,7 +7,7 @@ GOOSE := cd $(API) && go tool goose -dir db/migrations postgres "$(DATABASE_URL)
 
 .PHONY: dev staff-api patient-api test test-integration e2e-setup e2e lint db-up migrate migrate-down seed sqlc platform-admin \
 	build-lambdas infra-test synth aws-setup deploy-stacks deploy-web aws-db deploy-qa destroy-stacks \
-	deploy-pipeline destroy-pipeline
+	deploy-pipeline destroy-pipeline qa-users qa-code qa-password e2e-users aws-platform-admin
 
 node_modules: package-lock.json
 	npm install
@@ -141,8 +141,35 @@ deploy-web: node_modules infra/.venv
 	npm run build -w apps/web
 	$(AWS_ENV) infra/scripts/deploy-web.sh $(ENV)
 
+# QA's test users (S12, cmd/qa-users): the seed's staff get sign-ins with known passwords and
+# authenticator secrets, kept in SSM (the pipeline does this after each seed). Then, for a tester:
+#   make qa-code WHO='Cara Clinician'       the authenticator's current 6-digit code
+#   make qa-password WHO='Cara Clinician'   copies the password to the clipboard (never printed)
+qa-users: infra/.venv
+	$(AWS_ENV) infra/scripts/qa-users.sh $(ENV) setup
+
+qa-code: infra/.venv
+	@test -n "$(WHO)" || (echo "Usage: make qa-code WHO='Cara Clinician' (a name or an email)" && exit 2)
+	$(AWS_ENV) infra/scripts/qa-users.sh $(ENV) code "$(WHO)"
+
+qa-password: infra/.venv
+	@test -n "$(WHO)" || (echo "Usage: make qa-password WHO='Cara Clinician' (a name or an email)" && exit 2)
+	$(AWS_ENV) infra/scripts/qa-users.sh $(ENV) password "$(WHO)"
+
+# The test users' sign-ins into e2e/.qa-users.json (gitignored), to run the journeys against QA:
+#   make e2e-users PROFILE=… && make e2e E2E_BASE_URL=<QA's address>
+e2e-users: infra/.venv
+	$(AWS_ENV) infra/scripts/e2e-users.sh $(ENV)
+
+# A superadmin in an AWS environment (A-21): the account, the platform_admins row and the staff
+# pool's user, who gets Cognito's invitation email, e.g.
+#   make aws-platform-admin PROFILE=… EMAIL=you@example.org NAME="Your Name"
+aws-platform-admin: infra/.venv
+	@test -n "$(EMAIL)" || (echo 'Usage: make aws-platform-admin EMAIL=you@example.org [NAME="Your Name"]' && exit 2)
+	$(AWS_ENV) infra/scripts/platform-admin.sh $(ENV) "$(EMAIL)" "$(NAME)"
+
 # Everything, in order (after make aws-setup).
-deploy-qa: deploy-stacks aws-db deploy-web
+deploy-qa: deploy-stacks aws-db qa-users deploy-web
 
 # Deletes the environment's stacks (the database, in Neon, and SSM's values are kept).
 destroy-stacks: infra/.venv

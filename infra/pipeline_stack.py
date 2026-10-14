@@ -153,14 +153,50 @@ class PipelineStack(cdk.Stack):
         app that the synth step built (infra/scripts/deploy-web.sh): what `make aws-db` and
         `make deploy-web` do by hand."""
         arn = lambda service, resource: f"arn:aws:{service}:{env.region}:{env.account}:{resource}"  # noqa: E731
+        commands = [f"bash infra/scripts/db.sh {env.name}"]
+        test_users: list[iam.PolicyStatement] = []
+        if env.stage == "qa":
+            # QA only (S12): the seed's staff get sign-ins with known passwords and authenticator
+            # secrets (cmd/qa-users), kept in one SecureString, for the tester and the journeys.
+            commands.append(f"bash infra/scripts/qa-users.sh {env.name} setup")
+            test_users = [
+                iam.PolicyStatement(
+                    actions=["ssm:GetParameter"],
+                    resources=[
+                        arn("ssm", f"parameter{env.param_prefix}/{p}")
+                        for p in ("test-users", "cognito-user-pool-id", "cognito-client-id")
+                    ],
+                ),
+                iam.PolicyStatement(
+                    actions=["ssm:PutParameter"], resources=[arn("ssm", f"parameter{env.param_prefix}/test-users")]
+                ),
+                # The pool's ARN isn't known here (it's in the stage's AuthStack), so the actions
+                # are limited to the pool tagged as this environment's: the account has another
+                # project's pools.
+                iam.PolicyStatement(
+                    actions=[
+                        "cognito-idp:AdminGetUser",
+                        "cognito-idp:AdminCreateUser",
+                        "cognito-idp:AdminDeleteUser",
+                        "cognito-idp:AdminSetUserPassword",
+                        "cognito-idp:AdminInitiateAuth",
+                        "cognito-idp:AdminRespondToAuthChallenge",
+                        "cognito-idp:AdminSetUserMFAPreference",
+                    ],
+                    resources=[arn("cognito-idp", "userpool/*")],
+                    conditions={"StringEquals": {"aws:ResourceTag/poised-env": env.name}},
+                ),
+            ]
+        commands.append(f"bash infra/scripts/deploy-web.sh {env.name}")
         return pipelines.CodeBuildStep(
             "Database-and-web",
             input=source,
             additional_inputs={"apps/web/dist": web_dist},
-            commands=[f"bash infra/scripts/db.sh {env.name}", f"bash infra/scripts/deploy-web.sh {env.name}"],
+            commands=commands,
             build_environment=ARM,
             partial_build_spec=_spec({"golang": RUNTIMES["golang"], "python": RUNTIMES["python"]}),
             role_policy_statements=[
+                *test_users,
                 iam.PolicyStatement(
                     actions=["ssm:GetParameter"],
                     resources=[arn("ssm", f"parameter{env.param_prefix}/database-url")],
@@ -181,6 +217,8 @@ class PipelineStack(cdk.Stack):
         Playwright's WebKit (the patient's iPhone) supports only Ubuntu and Debian. The results go
         to the E2eResults bucket after the run, whether it passed or failed."""
         where = f"s3://$RESULTS_BUCKET/{env.name}/$CODEBUILD_BUILD_NUMBER/"
+        users = f"arn:aws:ssm:{env.region}:{env.account}:parameter{env.param_prefix}/test-users"
+        qa = env.stage == "qa"  # only QA has test users (S12); no other stage exists yet (pending.md)
         return pipelines.CodeBuildStep(
             "E2E",
             input=source,
@@ -189,6 +227,8 @@ class PipelineStack(cdk.Stack):
             commands=[
                 "make e2e-setup PYTHON=python3",
                 "e2e/.venv/bin/playwright install-deps chromium webkit",
+                # The test users' sign-ins (S12), into a file the journeys read; never printed.
+                *([f"bash infra/scripts/e2e-users.sh {env.name}"] if qa else []),
                 # E2E_ARGS: extra pytest options for one run, e.g. --tracing=on (README.md).
                 'make e2e ARGS="--junitxml=test-results/junit.xml $E2E_ARGS"',
             ],
@@ -205,5 +245,6 @@ class PipelineStack(cdk.Stack):
             ),
             role_policy_statements=[
                 iam.PolicyStatement(actions=["s3:PutObject"], resources=[self.results.arn_for_objects(f"{env.name}/*")]),
+                *([iam.PolicyStatement(actions=["ssm:GetParameter"], resources=[users])] if qa else []),
             ],
         )

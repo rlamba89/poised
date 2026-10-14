@@ -25,7 +25,6 @@ CA_QA = Environment(
     locale="en-CA",
     phone_country="CA",
     national_id_type="nhs",
-    dev_login=True,
 )
 
 UK_VALUES = ["eu-west-2", "Europe/London", "en-GB", "London", '"GB"']
@@ -43,7 +42,11 @@ def lambda_code(tmp_path):
 def synth(env: Environment, lambda_code) -> dict[str, Template]:
     app = cdk.App()
     stage = PoisedStage(app, env, lambda_code=str(lambda_code))
-    return {"api": Template.from_stack(stage.api), "web": Template.from_stack(stage.web)}
+    return {
+        "api": Template.from_stack(stage.api),
+        "web": Template.from_stack(stage.web),
+        "auth": Template.from_stack(stage.auth),
+    }
 
 
 def text(templates: dict[str, Template]) -> str:
@@ -65,7 +68,7 @@ def test_a_second_country_has_nothing_of_the_uk(lambda_code):
 def test_the_stacks_are_in_the_entrys_account_and_region(lambda_code):
     app = cdk.App()
     stage = PoisedStage(app, CA_QA, lambda_code=str(lambda_code))
-    for stack in (stage.api, stage.web):
+    for stack in (stage.api, stage.web, stage.auth):
         assert stack.region == "ca-central-1"
         assert stack.account == "111111111111"
         assert stack.stack_name.startswith("poised-ca-qa-")
@@ -97,7 +100,12 @@ def test_two_arm64_go_functions(lambda_code):
         assert env["DEFAULT_LOCALE"] == "en-CA"
         assert env["PHONE_COUNTRY"] == "CA"
         assert env["NATIONAL_ID_TYPE"] == "nhs"
-        assert env["DEV_LOGIN"] == "true"
+        assert "DEV_LOGIN" not in env  # S12: Cognito on AWS
+        # The staff user pool, written by AuthStack (after WebStack: its callback needs the web
+        # address), read at cold start.
+        assert env["STAFF_POOL_ID_PARAM"] == "/sj/qa/cognito-user-pool-id"
+        assert env["STAFF_POOL_CLIENT_ID_PARAM"] == "/sj/qa/cognito-client-id"
+        assert env["STAFF_POOL_DOMAIN_PARAM"] == "/sj/qa/cognito-domain"
         assert int(env["FORWARDED_HOPS"]) >= 1
         # Secrets are named, never written into the template.
         for secret in ("DATABASE_URL", "TOKEN_SECRET", "APP_URL"):
@@ -136,6 +144,8 @@ def test_functions_read_only_their_own_parameters(lambda_code):
         resources = json.dumps(s["Resource"])
         assert "*" not in resources  # no wildcards
         assert "/sj/qa/database-url" in resources and "/sj/qa/app-url" in resources
+        for name in ("user-pool-id", "client-id", "domain"):
+            assert f"/sj/qa/cognito-{name}" in resources
 
 
 def test_http_api_routes_the_patient_link_to_patient_api(lambda_code):
@@ -260,16 +270,11 @@ def test_every_resource_is_tagged_with_its_environment(lambda_code):
         assert {"Key": "poised-env", "Value": "ca-qa"} in r["Properties"]["Tags"], r
 
 
-def test_dev_login_is_refused_outside_qa():
-    with pytest.raises(ValueError, match="DEV_LOGIN"):
-        dataclasses.replace(CA_QA, name="ca-production", stage="production")
-
-
-def test_no_dev_login_when_the_entry_says_so(lambda_code):
-    env = dataclasses.replace(CA_QA, name="ca-training", stage="training", dev_login=False)
-    t = synth(env, lambda_code)
-    assert "DEV_LOGIN" not in text(t)
-    assert "/sj/training/database-url" in text(t)
+def test_no_stack_turns_the_dev_login_on(lambda_code):
+    """S12: QA too signs staff in with Cognito, so nothing on AWS works without credentials."""
+    for env in (CA_QA, dataclasses.replace(CA_QA, name="ca-training", stage="training")):
+        assert "DEV_LOGIN" not in text(synth(env, lambda_code))
+    assert "/sj/training/database-url" in text(synth(dataclasses.replace(CA_QA, name="ca-training", stage="training"), lambda_code))
 
 
 def test_the_real_entries_synthesise(lambda_code):
@@ -284,3 +289,144 @@ def test_stacks_use_poiseds_own_cdk_bootstrap(lambda_code):
     depends on or changes another project's CDKToolkit in a shared account."""
     for t in synth(CA_QA, lambda_code).values():
         assert t.to_json()["Parameters"]["BootstrapVersion"]["Default"] == "/cdk-bootstrap/poised/version"
+
+
+# --- The web app's security headers (S12) --------------------------------------------------------
+
+
+def test_amplify_sends_security_headers_on_every_page(lambda_code):
+    app = next(iter(synth(CA_QA, lambda_code)["web"].find_resources("AWS::Amplify::App").values()))
+    headers = app["Properties"]["CustomHeaders"]
+    assert "pattern: '**'" in headers
+    for want in [
+        "key: Strict-Transport-Security",
+        "value: max-age=31536000; includeSubDomains",
+        "key: X-Frame-Options",
+        "value: DENY",
+        "key: Content-Security-Policy",
+        "value: frame-ancestors 'none'",
+        "key: X-Content-Type-Options",
+        "value: nosniff",
+        "key: Referrer-Policy",
+        "value: no-referrer",
+    ]:
+        assert want in headers, want
+
+
+def test_pages_are_never_kept_for_back_after_sign_out(lambda_code):
+    """S12 test report 1, finding 1: on a shared workstation, Back after sign-out showed the
+    previous clinician's patient list from the browser's cache. Pages are never stored; the
+    hashed files under /assets/ (their names change with their content) are kept for good."""
+    headers = next(iter(synth(CA_QA, lambda_code)["web"].find_resources("AWS::Amplify::App").values()))[
+        "Properties"
+    ]["CustomHeaders"]
+    every, assets = headers.split("  - pattern: ")[1:]
+    assert every.startswith("'**'")
+    assert "- key: Cache-Control\n        value: no-store\n" in every
+    assert assets.startswith("'assets/**'")
+    assert "- key: Cache-Control\n        value: public, max-age=31536000, immutable\n" in assets
+
+
+# --- AuthStack: the staff user pool (S12) --------------------------------------------------------
+
+
+def pool(t: Template) -> dict:
+    pools = t.find_resources("AWS::Cognito::UserPool")
+    assert len(pools) == 1
+    return next(iter(pools.values()))
+
+
+def test_the_staff_pool(lambda_code):
+    p = pool(synth(CA_QA, lambda_code)["auth"])
+    props = p["Properties"]
+    assert props["UserPoolName"] == "poised-ca-qa-staff"
+    # The cheapest plan with managed login (Lite has only the classic hosted UI): free to 10,000 MAUs.
+    assert props["UserPoolTier"] == "ESSENTIALS"
+    assert props["UsernameAttributes"] == ["email"]  # email is the username
+    assert props["AdminCreateUserConfig"]["AllowAdminCreateUserOnly"] is True  # no self sign-up
+    assert props["MfaConfiguration"] == "ON"  # required
+    assert props["EnabledMfas"] == ["SOFTWARE_TOKEN_MFA"]  # an authenticator app only
+    assert props["AccountRecoverySetting"] == {"RecoveryMechanisms": [{"Name": "verified_email", "Priority": 1}]}
+    # Cognito's own email (no SES needed, so the SES sandbox doesn't matter): invitations and resets.
+    assert props["EmailConfiguration"]["EmailSendingAccount"] == "COGNITO_DEFAULT"
+    policy = props["Policies"]["PasswordPolicy"]
+    assert policy["TemporaryPasswordValidityDays"] == 7  # as the invite's deadline (S09)
+    assert policy["MinimumLength"] >= 12
+    # The invitation names the app's address and the temporary password.
+    invite = props["AdminCreateUserConfig"]["InviteMessageTemplate"]
+    body = json.dumps(invite["EmailMessage"])
+    assert "{username}" in body and "{####}" in body
+    assert "https://main." in body  # Amplify's address (no domain yet), from WebStack
+    # The email is the trusted identity: users can't change it.
+    email = [a for a in props["Schema"] if a["Name"] == "email"][0]
+    assert email["Mutable"] is False and email["Required"] is True
+    # QA's pool goes with its stack, so an account can be emptied and re-created (S06 answers).
+    assert p["DeletionPolicy"] == "Delete"
+    assert {"Key": "poised-env", "Value": "ca-qa"} in [
+        {"Key": k, "Value": v} for k, v in props["UserPoolTags"].items()
+    ]
+
+
+def test_a_real_stages_pool_is_kept(lambda_code):
+    t = synth(dataclasses.replace(CA_QA, name="ca-production", stage="production"), lambda_code)["auth"]
+    p = pool(t)
+    assert p["DeletionPolicy"] == "Retain"
+    assert p["Properties"]["DeletionProtection"] == "ACTIVE"
+
+
+def test_managed_login_on_a_cognito_domain(lambda_code):
+    t = synth(CA_QA, lambda_code)["auth"]
+    domain = next(iter(t.find_resources("AWS::Cognito::UserPoolDomain").values()))["Properties"]
+    assert domain["ManagedLoginVersion"] == 2  # managed login, not the classic hosted UI
+    assert re.fullmatch(r"poised-ca-qa-[0-9a-f]{8}", domain["Domain"])
+    t.resource_count_is("AWS::Cognito::ManagedLoginBranding", 1)
+
+
+def client(t: Template) -> dict:
+    clients = t.find_resources("AWS::Cognito::UserPoolClient")
+    assert len(clients) == 1
+    return next(iter(clients.values()))["Properties"]
+
+
+def test_the_web_app_client(lambda_code):
+    c = client(synth(CA_QA, lambda_code)["auth"])
+    assert c["GenerateSecret"] is False  # a public client: the code exchange is protected by PKCE
+    assert c["AllowedOAuthFlows"] == ["code"]
+    assert c["AllowedOAuthFlowsUserPoolClient"] is True
+    assert sorted(c["AllowedOAuthScopes"]) == ["email", "openid"]
+    assert c["SupportedIdentityProviders"] == ["COGNITO"]
+    assert c["PreventUserExistenceErrors"] == "ENABLED"
+    assert c["WriteAttributes"] == []  # nobody changes their email through it
+    callbacks, logouts = json.dumps(c["CallbackURLs"]), json.dumps(c["LogoutURLs"])
+    assert "/auth/callback" in callbacks and "/login" in logouts
+    # QA only: the test users' command signs in with a password to set up their authenticator.
+    assert "ALLOW_ADMIN_USER_PASSWORD_AUTH" in c["ExplicitAuthFlows"]
+
+
+def test_only_qa_lets_a_password_sign_in_skip_the_managed_login(lambda_code):
+    t = synth(dataclasses.replace(CA_QA, name="ca-training", stage="training"), lambda_code)["auth"]
+    assert "ALLOW_ADMIN_USER_PASSWORD_AUTH" not in client(t)["ExplicitAuthFlows"]
+
+
+def test_a_fixed_web_address_is_the_callback(lambda_code):
+    t = synth(dataclasses.replace(CA_QA, app_url="https://ca.example.test"), lambda_code)["auth"]
+    c = client(t)
+    assert c["CallbackURLs"] == ["https://ca.example.test/auth/callback"]
+    assert c["LogoutURLs"] == ["https://ca.example.test/login"]
+
+
+def test_the_pool_is_written_where_the_functions_read_it(lambda_code):
+    t = synth(CA_QA, lambda_code)["auth"]
+    names = {p["Properties"]["Name"] for p in t.find_resources("AWS::SSM::Parameter").values()}
+    assert names == {"/sj/qa/cognito-user-pool-id", "/sj/qa/cognito-client-id", "/sj/qa/cognito-domain"}
+
+
+def test_staff_api_can_invite_into_this_pool_only(lambda_code):
+    t = synth(CA_QA, lambda_code)["auth"]
+    statements = policy_statements(t)
+    assert len(statements) == 1
+    [s] = statements
+    assert s["Action"] == "cognito-idp:AdminCreateUser"
+    assert "StaffPool" in json.dumps(s["Resource"])  # the pool's own ARN, no wildcard
+    [policy] = t.find_resources("AWS::IAM::Policy").values()
+    assert "staffapi" in json.dumps(policy["Properties"]["Roles"]).lower().replace("-", "")

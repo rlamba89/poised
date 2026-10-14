@@ -1,7 +1,8 @@
 """Every deployment of Poised: one entry per country and environment (A-20).
 
 This is the only file that may name a region, an account, a web address or a country default
-(time zone, locale, phone country, patient identifier). The stacks take an entry and pass its
+(time zone, locale, phone country, patient identifier). There's no dev login on AWS: staff sign in
+with Cognito everywhere, QA included (S12), so an entry can't ask for it. The stacks take an entry and pass its
 values to the Lambdas as environment variables; the Go API reads them in internal/config.
 
 Adding a country is a new entry here plus the runbook in README.md, never a code change.
@@ -33,7 +34,6 @@ class Environment:
     # The web address. None until there's a domain: then it's Amplify's own address,
     # https://main.<app id>.amplifyapp.com, which is known only once the app exists.
     app_url: str | None = None
-    dev_login: bool = False  # the stub sign-in: QA only, until Cognito (S12)
     messaging: str = "capture"  # texts and emails are stored, not sent, until S17
     budget_usd: int = 6  # the monthly budget alarm, about £5 (AWS Budgets bills in USD)
 
@@ -65,8 +65,6 @@ class Environment:
             "None or an https address with no path or trailing slash",
         )
         check(self.budget_usd > 0, "budget_usd", "more than 0")
-        if self.dev_login and self.stage != "qa":
-            errors.append(f"DEV_LOGIN is for QA only, but {self.name} is {self.stage} (plan F4)")
         if errors:
             raise ValueError(f"countries.py, {self.name}: " + "; ".join(errors))
 
@@ -93,7 +91,6 @@ ENVIRONMENTS: list[Environment] = [
         phone_country="GB",
         national_id_type="nhs",
         app_url=None,  # no domain yet: Amplify's own address
-        dev_login=True,
     ),
 ]
 

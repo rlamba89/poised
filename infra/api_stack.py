@@ -21,6 +21,14 @@ from countries import Environment
 # The functions built by `make build-lambdas` (apps/api/dist/<fn>/bootstrap).
 FUNCTIONS = ("staff-api", "patient-api")
 
+# The staff user pool's values the functions read from SSM (config.Resolve): variable → the
+# parameter's last part, <prefix>/cognito-<part>. AuthStack writes them.
+COGNITO_PARAMS = {
+    "STAFF_POOL_ID": "user-pool-id",
+    "STAFF_POOL_CLIENT_ID": "client-id",
+    "STAFF_POOL_DOMAIN": "domain",
+}
+
 # Which address in X-Forwarded-For is the browser's, counting from the right (config
 # FORWARDED_HOPS), for the patient sign-in rate limit. Measured on QA (S06, 14 Oct) through
 # Amplify's rewrite: "<browser>, <CloudFront edge>, <Amplify's outbound address>", the last added
@@ -50,6 +58,9 @@ class ApiStack(cdk.Stack):
         # cold start (internal/config Resolve).
         db_param = f"{env.param_prefix}/database-url"
         app_url_param = f"{env.param_prefix}/app-url"
+        # The staff user pool (S12), written by AuthStack, which comes after WebStack (its
+        # callback addresses need the web address), so these are read at cold start too.
+        cognito_params = {name: f"{env.param_prefix}/cognito-{suffix}" for name, suffix in COGNITO_PARAMS.items()}
         variables = {
             "CONFIG_STRICT": "true",  # no local defaults: a missing value stops the function
             "DATABASE_URL_PARAM": db_param,
@@ -61,15 +72,15 @@ class ApiStack(cdk.Stack):
             "NATIONAL_ID_TYPE": env.national_id_type,
             "MESSAGING": env.messaging,
             "FORWARDED_HOPS": str(FORWARDED_HOPS),
+            # No DEV_LOGIN on AWS (S12): staff sign in with Cognito, and Go refuses it when strict.
+            **{f"{name}_PARAM": param for name, param in cognito_params.items()},
         }
-        if env.dev_login:  # countries.py refuses it outside QA
-            variables["DEV_LOGIN"] = "true"
 
         read_params = iam.PolicyStatement(
             actions=["ssm:GetParameter"],
             resources=[
                 self.format_arn(service="ssm", resource="parameter", resource_name=p.lstrip("/"))
-                for p in (db_param, app_url_param)
+                for p in (db_param, app_url_param, *cognito_params.values())
             ],
         )
 
