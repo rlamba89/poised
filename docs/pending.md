@@ -317,6 +317,9 @@ docker compose up -d --force-recreate db
     - **Docs:** CLAUDE.md's requirements line doesn't say `make test` now needs Python 3.12 (for the CDK tests); `infra/requirements.txt` mentions a `make infra-setup` target that doesn't exist.
     - **`make aws-setup` passes the Neon URL on the command line** (`aws ssm put-parameter --value`), briefly visible in the process list; `--cli-input-json` from a 0600 file would avoid it.
     - **Nits:** the token secret's name is CDK-generated (`TokenSecret…`, tagged `project=poised`); `serve.onLambda` and `config.Load` both test `AWS_LAMBDA_FUNCTION_NAME`.
+- **The pipeline (S07, 14 Oct):**
+  - **The idle-cost check is due 21 Oct 2026** (plan F4 Step 4): Rahul reads Cost Explorer for the week (tag `poised-env` = `uk-qa`, plus CodePipeline, CodeBuild and S3 for the pipeline) and records the monthly figure in F4's Status. Target: under £1/month for QA, excluding build minutes.
+  - **The journeys' test data is the UK's:** J3, J7, J8 and the patient-records journey type a UK mobile (`07700 900…`) or expect a UK date ("17 May 1980"), so in another country's QA they fail at those lines (seen in S07's us-east-1 proof, where J3 passed once given a US mobile and "May 17, 1980"). Before a second country's pipeline stage, make them read the phone country and locale from `GET /api/config` (e.g. a made-up number per country in `e2e/support.py`).
 - **Lifebox import:**
   - Conditions that cross Question Sets on pages and questions are still dropped with a warning.
   - Lifebox has no Question Set-level conditions to import.

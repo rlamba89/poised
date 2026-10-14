@@ -1,6 +1,8 @@
 # S07: The pipeline and the "add a country" runbook
 
 **Plan:** F4 ([f4-aws-pipeline.md](../../plans/f4-aws-pipeline.md)), Steps 2–4. This is the last part of F4.
+*AWS phase (12 Oct): runs with Rahul there.*
+
 **Depends on:** S06 verified.
 
 **Ask Rahul first:**

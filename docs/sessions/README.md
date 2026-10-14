@@ -128,7 +128,7 @@ These need your AWS setup, GitHub pushes and real messages, so they don't run un
 | ID | Plan | Builds | Needs from you first | Status |
 | --- | --- | --- | --- | --- |
 | [S06](S06-aws-qa-stack/brief.md) | F3 + F4 | The Lambda adapter, the CDK app, `infra/countries.py`, the QA environment on AWS | **AWS Step 0 done** | **Verified** (14 Oct, [verify.md](S06-aws-qa-stack/verify.md), verification 1; test report 1: 19 of 19 passed; QA: https://main.d33kh0gi8vk83v.amplifyapp.com) |
-| [S07](S07-pipeline/brief.md) | F4 | CodePipeline with test gates, the "add a country" runbook | Push access for test pushes | Not started |
+| [S07](S07-pipeline/brief.md) | F4 | CodePipeline with test gates, the "add a country" runbook | Push access for test pushes | Building (14 Oct: pipeline deployed, proof done; waiting on Rahul, [questions.md](S07-pipeline/questions.md)) |
 | [S12](S12-cognito-signin/brief.md) | C1 | Real staff sign-in with Cognito + MFA, on QA | Cognito plan choice | Not started |
 | [S17](S17-aws-messaging-jobs/brief.md) | C2 | Jobs Lambda + EventBridge schedule, SES and SMS on AWS, real sending switched on | **SES/SMS approvals** | Not started |
 
