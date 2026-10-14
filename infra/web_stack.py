@@ -51,4 +51,5 @@ class WebStack(cdk.Stack):
         )
 
         cdk.CfnOutput(self, "AppId", value=app.attr_app_id)
-        cdk.CfnOutput(self, "AppUrl", value=app_url)
+        # The pipeline's journeys run against this address (pipeline_stack.py).
+        self.app_url_output = cdk.CfnOutput(self, "AppUrl", value=app_url)

@@ -98,6 +98,29 @@ ENVIRONMENTS: list[Environment] = [
 ]
 
 
+@dataclasses.dataclass(frozen=True)
+class PipelineHome:
+    """Where the pipeline runs (one for every environment) and what it watches (plan F4 Step 2)."""
+
+    account: str
+    region: str
+    repo: str  # GitHub owner/name
+    branch: str  # a push to it runs the pipeline
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r"\d{12}", self.account):
+            raise ValueError(f"countries.py, PIPELINE: account must be a 12-digit AWS account ID, not {self.account!r}")
+        if not re.fullmatch(r"[a-z]{2}(-[a-z]+)+-\d", self.region):
+            raise ValueError(f"countries.py, PIPELINE: region must be an AWS region, not {self.region!r}")
+        if not re.fullmatch(r"[\w.-]+/[\w.-]+", self.repo):
+            raise ValueError(f"countries.py, PIPELINE: repo must be owner/name, not {self.repo!r}")
+
+
+# The pipeline lives with the first country's QA. It follows `master`, the GitHub repo's default
+# branch (S07, 14 Oct 2026: the plan said `main`; no branch was renamed).
+PIPELINE = PipelineHome(account="026090536258", region="eu-west-2", repo="rlamba89/poised", branch="master")
+
+
 def get(name: str) -> Environment:
     for env in ENVIRONMENTS:
         if env.name == name:
@@ -107,6 +130,6 @@ def get(name: str) -> Environment:
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        sys.exit("usage: python countries.py <environment> <field>, e.g. uk-qa region")
-    env, field = get(sys.argv[1]), sys.argv[2]
-    print(getattr(env, field))
+        sys.exit("usage: python countries.py <environment or pipeline> <field>, e.g. uk-qa region")
+    entry = PIPELINE if sys.argv[1] == "pipeline" else get(sys.argv[1])
+    print(getattr(entry, sys.argv[2]))

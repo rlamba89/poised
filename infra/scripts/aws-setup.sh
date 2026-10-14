@@ -5,6 +5,7 @@
 #   NEON_DATABASE_URL  the database's direct connection string (needed the first time only)
 #   ALERT_EMAIL        where the budget alarm emails go (needed the first time only)
 source "$(dirname "$0")/lib.sh"
+AWS_CDK_VERSION="${AWS_CDK_VERSION:?run this through make, which pins the CDK CLI version}"
 
 # Ask for every missing value at once, before changing anything.
 need=()

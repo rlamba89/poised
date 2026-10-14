@@ -18,6 +18,8 @@ TARGETS = {
     "deploy-web": ["infra/scripts/deploy-web.sh"],
     "deploy-qa": ["infra/scripts/check-account.sh", "aws-cdk@", "infra/scripts/db.sh", "infra/scripts/deploy-web.sh"],
     "destroy-stacks": ["infra/scripts/check-account.sh", "aws-cdk@"],
+    "deploy-pipeline": ["infra/scripts/check-account.sh", "aws-cdk@"],
+    "destroy-pipeline": ["infra/scripts/check-account.sh", "aws-cdk@"],
 }
 
 
@@ -43,3 +45,16 @@ def test_without_profile_nothing_is_forced():
     # Then the shell's (or .env's) AWS_PROFILE applies, as before.
     for line in dry_run("aws-setup"):
         assert "AWS_PROFILE=" not in line, line
+
+
+def test_hand_deploys_name_the_environments_stage_inside_the_pipeline():
+    # The stages live in the pipeline stack (app.py), so their stacks are pipeline/<env>/….
+    for target in ("deploy-stacks", "destroy-stacks"):
+        cdk = [line for line in dry_run(target, "ENV=xx-qa") if "aws-cdk@" in line]
+        assert cdk and all("'pipeline/xx-qa/*'" in line for line in cdk), cdk
+
+
+def test_the_pipeline_can_skip_docker_compose():
+    # It starts its own Postgres, then runs `make test-integration DB_UP=`.
+    assert not any("docker compose" in line for line in dry_run("db-up", "DB_UP="))
+    assert any("docker compose up" in line for line in dry_run("db-up"))

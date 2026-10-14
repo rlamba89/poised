@@ -6,7 +6,8 @@ API := apps/api
 GOOSE := cd $(API) && go tool goose -dir db/migrations postgres "$(DATABASE_URL)"
 
 .PHONY: dev staff-api patient-api test test-integration e2e-setup e2e lint db-up migrate migrate-down seed sqlc platform-admin \
-	build-lambdas infra-test synth aws-setup deploy-stacks deploy-web aws-db deploy-qa destroy-stacks
+	build-lambdas infra-test synth aws-setup deploy-stacks deploy-web aws-db deploy-qa destroy-stacks \
+	deploy-pipeline destroy-pipeline
 
 node_modules: package-lock.json
 	npm install
@@ -33,8 +34,10 @@ patient-api: .env
 staff-api: .env
 	cd $(API) && API_ADDR=$(ADDR) DEV_LOGIN=true go run ./cmd/staff-api
 
+# The pipeline starts its own Postgres and runs `make test-integration DB_UP=` (infra/pipeline_stack.py).
+DB_UP ?= docker compose up -d --wait db
 db-up:
-	docker compose up -d --wait db
+	$(DB_UP)
 
 # Waits up to 30s for the compose database, which starts slower than `up -d` returns.
 migrate: .env
@@ -124,10 +127,10 @@ synth: infra/.venv build-lambdas
 aws-setup: infra/.venv
 	$(AWS_ENV) infra/scripts/aws-setup.sh $(ENV)
 
-# The environment's ApiStack and WebStack.
+# The environment's ApiStack and WebStack, by hand (the pipeline does this on a push).
 deploy-stacks: infra/.venv build-lambdas
 	$(AWS_ENV) infra/scripts/check-account.sh $(ENV)
-	$(AWS_CDK) deploy '$(ENV)/*' --require-approval never
+	$(AWS_CDK) deploy 'pipeline/$(ENV)/*' --require-approval never
 
 # The migrations and the (idempotent) seed, against the environment's database.
 aws-db: infra/.venv
@@ -144,4 +147,15 @@ deploy-qa: deploy-stacks aws-db deploy-web
 # Deletes the environment's stacks (the database, in Neon, and SSM's values are kept).
 destroy-stacks: infra/.venv
 	$(AWS_ENV) infra/scripts/check-account.sh $(ENV)
-	$(AWS_CDK) destroy '$(ENV)/*' --force
+	$(AWS_CDK) destroy 'pipeline/$(ENV)/*' --force
+
+# The pipeline (plan F4 Step 2), once: after this it updates itself on every push. Its GitHub
+# connection starts Pending until it's approved in the console (infra/README.md).
+deploy-pipeline: infra/.venv build-lambdas
+	$(AWS_ENV) infra/scripts/check-account.sh pipeline
+	$(AWS_CDK) deploy pipeline --require-approval never
+
+# Deletes the pipeline, its connection and its buckets (not the environments it deployed).
+destroy-pipeline: infra/.venv
+	$(AWS_ENV) infra/scripts/check-account.sh pipeline
+	$(AWS_CDK) destroy pipeline --force

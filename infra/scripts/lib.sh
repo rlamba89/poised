@@ -6,13 +6,15 @@ set -euo pipefail
 
 INFRA="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO="$(cd "$INFRA/.." && pwd)"
+# countries.py needs only Python's standard library, so the pipeline's steps use the image's own.
 PY="$INFRA/.venv/bin/python"
+[ -x "$PY" ] || PY=python3
 
-ENV_NAME="${1:?usage: $0 <environment in infra/countries.py, e.g. uk-qa>}"
+ENV_NAME="${1:?usage: $0 <environment in infra/countries.py, e.g. uk-qa, or pipeline>}"
 field() { (cd "$INFRA" && "$PY" countries.py "$ENV_NAME" "$1"); }
 ACCOUNT="$(field account)"
 REGION="$(field region)"
-PREFIX="$(field param_prefix)"
+PREFIX="$([ "$ENV_NAME" = pipeline ] || field param_prefix)"
 export AWS_REGION="$REGION" AWS_DEFAULT_REGION="$REGION"
 
 profile="${AWS_PROFILE:-(none: the default credentials)}"
@@ -38,4 +40,3 @@ stack_output() {
 has_param() {
   aws ssm describe-parameters --parameter-filters "Key=Name,Values=$1" --query 'length(Parameters)' --output text | grep -qx 1
 }
-AWS_CDK_VERSION="${AWS_CDK_VERSION:?run this through make, which pins the CDK CLI version}"
