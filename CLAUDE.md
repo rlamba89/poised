@@ -60,6 +60,7 @@ make e2e-setup              # once: e2e/.venv (Python 3.12+), pinned Playwright 
 make e2e                    # journeys J1–J5 in real browsers against make dev (ARGS=--headed to watch)
 make build-lambdas          # apps/api/dist/<fn>/bootstrap (arm64) for the Lambdas
 make deploy-qa PROFILE=<aws profile>   # AWS QA by hand: stacks, migrate + seed Neon, web upload (infra/README.md; once per account: make aws-setup)
+make deploy-pipeline PROFILE=<aws profile>  # once per account: the pipeline; then a push to master tests, deploys QA and runs e2e on it
 make platform-admin EMAIL=… # add a superadmin by hand (A-21); idempotent
 make sqlc                   # regenerate apps/api/internal/db after editing apps/api/db/queries/*.sql
 make migrate-down           # roll back the last migration

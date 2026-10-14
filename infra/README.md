@@ -1,6 +1,10 @@
 # infra: Poised on AWS (CDK, Python)
 
-The AWS side of Poised (plans [F3](../docs/plans/f3-lambda-entrypoints.md) and [F4](../docs/plans/f4-aws-pipeline.md), session S06). One environment, e.g. `uk-qa`, is:
+The AWS side of Poised (plans [F3](../docs/plans/f3-lambda-entrypoints.md) and [F4](../docs/plans/f4-aws-pipeline.md), sessions S06 and S07).
+
+**A push to `master` on GitHub (`rlamba89/poised`) runs the pipeline:** every test, then a deploy of each environment in [`countries.py`](countries.py), then each one's database migrations and seed, its web app, and the end-to-end journeys against it. Nothing else is needed day to day.
+
+One environment, e.g. `uk-qa`, is:
 
 - **`ApiStack`** (`poised-<env>-api`):
   - the Go API as two Lambda functions, `poised-<env>-staff-api` and `poised-<env>-patient-api` (`provided.al2023`, arm64, 512 MB, logs kept 14 days);
@@ -12,41 +16,49 @@ The AWS side of Poised (plans [F3](../docs/plans/f3-lambda-entrypoints.md) and [
   - two rewrite rules, in this order: `/api/<*>` → the HTTP API (a reverse proxy, so the browser sees one origin and the cookies just work), then the SPA rule (every page's address → `/index.html`, but files and anything under `/assets/` are served as themselves, so a file missing after a deploy is a real 404);
   - the SSM parameter `<prefix>/app-url`: the web address, which the Lambdas read at cold start.
 
-Nothing in the stacks names a region, domain or country default: those live only in [`countries.py`](countries.py) (A-20), and `tests/` fails if a made-up second country's templates contain anything of the UK's.
+The pipeline is one more stack, **`PipelineStack`** (`poised-pipeline`, in the account and region named by `PIPELINE` in `countries.py`): the CodePipeline `poised`, its GitHub connection `poised-github`, and two S3 buckets (the pipeline's artifacts, and the journeys' results), all deleted with the stack.
+
+Nothing in the stacks names a region, domain or country default: those live only in `countries.py` (A-20), and `tests/` fails if a made-up second country's templates contain anything of the UK's.
 
 | File | What it is |
 | --- | --- |
-| `countries.py` | Every environment: account, region, web address, time zone, locale, phone country, patient ID scheme, dev login, budget. **The only place these are written.** |
-| `app.py`, `stage.py` | The CDK app: one `PoisedStage` (ApiStack + WebStack) per entry. |
-| `api_stack.py`, `web_stack.py`, `budget.py` | The stacks. |
-| `tests/` | pytest + `aws_cdk.assertions`; no AWS account needed. `make test` runs them. |
-| `scripts/` | What the `make` targets below run. Each checks first that the AWS credentials are for the entry's account. |
+| `countries.py` | Every environment: account, region, web address, time zone, locale, phone country, patient ID scheme, dev login, budget. Also `PIPELINE`: where the pipeline runs, and the repo and branch it follows. **The only place these are written.** |
+| `app.py` | The CDK app: the pipeline stack, which holds one `PoisedStage` (ApiStack + WebStack) per entry. |
+| `pipeline_stack.py` | The pipeline and its steps. |
+| `stage.py`, `api_stack.py`, `web_stack.py`, `budget.py` | An environment's stacks. |
+| `tests/` | pytest + `aws_cdk.assertions`; no AWS account needed. `make test` runs them (so the pipeline does too). |
+| `scripts/` | What the `make` targets and the pipeline's steps run. Each checks first that the AWS credentials are for the entry's account. |
 
 ## Before you start
 
-- AWS CLI v2, Node 22+, Python 3.12+ and Go (the repo's versions). The CDK CLI is pinned in the `Makefile` (`npx aws-cdk@…`), so don't install it globally.
+- AWS CLI v2, Node 22+, Python 3.12+ and Go (the repo's versions). The CDK CLI is pinned in the `Makefile` (`npx aws-cdk@…`) and in `pipeline_stack.py` (a test checks they match), so don't install it globally.
 - Sign in: `aws sso login --profile <profile>`.
 - **Name the profile with `PROFILE=<profile>`** on every AWS target, e.g. `make deploy-qa PROFILE=<profile>`. It wins over `AWS_PROFILE` in `.env` (the Makefile loads `.env`, which would otherwise beat your shell's). Every script first prints the profile and account it will use, and stops before doing anything if the account isn't the entry's.
 - `ENV` picks the entry in `countries.py`; it defaults to `uk-qa`.
 
 ## The manual steps (they can't be automated)
 
-1. **Neon** (the database until the first customer): a free account, a project in **AWS London (`aws-eu-west-2`)**, or the country's own region, with a database `sj`. Copy its **direct** connection string (not the pooled one: its host has no `-pooler`).
-2. **GitHub connection** (for the pipeline, S07): create an AWS CodeConnections connection to `rlamba89/poised` and approve it in the console.
+1. **Neon** (the database until the first customer): a free account, a project in **the country's own region** (for the UK, AWS London, `aws-eu-west-2`), with a database `sj`. Copy its **direct** connection string (not the pooled one: its host has no `-pooler`).
+2. **Approve the GitHub connection**, once per account, after `make deploy-pipeline` (CloudFormation can only create it as Pending):
+   1. Open the AWS console in the pipeline's region (`PIPELINE.region` in `countries.py`), signed in to the pipeline's account.
+   2. Go to **Developer Tools → Settings → Connections** (or search the console for "Connections").
+   3. Click **`poised-github`** (status **Pending**), then **Update pending connection**.
+   4. A GitHub window opens. Sign in to GitHub as the repo's owner (`rlamba89`) if asked.
+   5. Under **GitHub Apps**, click **Install a new app** (or pick the existing **AWS Connector for GitHub** installation if one is listed). On GitHub choose **Only select repositories → `rlamba89/poised`**, then **Install** (or **Save**).
+   6. Back in the AWS window, click **Connect**. The status becomes **Available**.
+   7. Start the first run: push to `master`, or in **CodePipeline → `poised`** click **Release change**.
 3. **SES and SMS production access** (S17).
 
 Everything else is below, and safe to run again.
 
-## First deploy of an environment
+## Setting up an account (or re-creating everything)
 
 ```sh
 make aws-setup PROFILE=<profile> NEON_DATABASE_URL='<Neon direct URL>' ALERT_EMAIL='<your email>'
-make deploy-qa PROFILE=<profile>
+make deploy-pipeline PROFILE=<profile>
 ```
 
-Then open the `AppUrl` that `make deploy-qa` prints (also `aws cloudformation describe-stacks --stack-name poised-uk-qa-web`). The dev login lists the seeded users.
-
-What those run, step by step:
+Then approve the GitHub connection (manual step 2 above) and push to `master`. The pipeline deploys QA and runs the journeys against it. Its web address is the `AppUrl` output of `poised-uk-qa-web` (also printed in the pipeline's E2E step); the dev login lists the seeded users.
 
 1. **`make aws-setup`** (`scripts/aws-setup.sh`), once per account and region; each step is skipped if done. If a value it needs is missing, it says so and stops before changing anything:
    1. **Poised's own CDK bootstrap**, apart from any other project's in the account:
@@ -57,15 +69,27 @@ What those run, step by step:
    4. **The `poised-env` cost tag**, so the budget can count by it:
       `aws ce update-cost-allocation-tags-status --cost-allocation-tags-status TagKey=poised-env,Status=Active`.
       Billing only learns a tag after a tagged resource has cost something, so on a new account this step says "not known yet": **run `make aws-setup` again a day after the first deploy.**
-2. **`make deploy-stacks`**: `make build-lambdas` (`apps/api/dist/<fn>/bootstrap`), then `cdk deploy 'uk-qa/*'` (ApiStack, then WebStack).
-3. **`make aws-db`** (`scripts/db.sh`): reads the database URL from SSM (never printed), then `goose up` and `go run ./cmd/seed` (idempotent).
-4. **`make deploy-web`**: `npm run build -w apps/web`, then `scripts/deploy-web.sh`:
-   1. zip `apps/web/dist`;
-   2. `aws amplify create-deployment --app-id <AppId> --branch-name main` → a job ID and an upload URL;
-   3. `curl -X PUT --upload-file web.zip <upload URL>`;
-   4. `aws amplify start-deployment --app-id <AppId> --branch-name main --job-id <job>`, then it waits for `SUCCEED`.
+2. **`make deploy-pipeline`**: `cdk deploy pipeline`. Only the first time: after that the pipeline updates itself on each push (its **UpdatePipeline** stage).
 
-## Day to day
+## The pipeline
+
+CodePipeline `poised` (V2: billed per minute while it runs, nothing when idle). Its stages, in order; a failed action stops the run there:
+
+| Stage | Action | What it does |
+| --- | --- | --- |
+| **Source** | `rlamba89_poised` | Fetches the pushed commit of `PIPELINE.branch` through the `poised-github` connection. |
+| **Build** | `Synth` | CodeBuild (arm64, Docker on). In order: `make lint test` (go vet, tsc, Go, Vitest, the CDK tests); starts Postgres in Docker and runs `make test-integration`; `npm run build -w apps/web`; `make synth` (builds the Lambdas, then `cdk synth`). **Any failing test stops the run here, before anything is deployed.** |
+| **UpdatePipeline** | `SelfMutate` | Deploys `poised-pipeline` if the pipeline itself changed, then restarts the run. |
+| **Assets** | `FileAssets` | Uploads the Lambdas' code to Poised's CDK bootstrap bucket. |
+| **`uk-qa`** (one per entry in `countries.py`) | `poised-uk-qa-api` / `-web` Prepare + Deploy | CloudFormation change sets for ApiStack, then WebStack. |
+| | `Database-and-web` | `scripts/db.sh` (goose up, then the seed, which is safe to run again) against the environment's database, then `scripts/deploy-web.sh` uploads the web app that Synth built. |
+| | `E2E` | CodeBuild (Ubuntu: Playwright's WebKit needs it). `make e2e-setup e2e` against the environment's `AppUrl`: every journey, Chromium and WebKit. **Fails the run if a journey fails.** Afterwards, passed or failed, it copies `e2e/test-results` (the JUnit report, and a trace of each failed journey) to the **E2eResults** bucket. |
+
+## Deploying
+
+**Push to `master`.** That's all: the pipeline tests, deploys QA, migrates and seeds, deploys the web app, and runs the journeys. Watch it in **CodePipeline → `poised`**.
+
+By hand, without the pipeline (e.g. the pipeline itself is broken), from your checkout:
 
 | To | Run |
 | --- | --- |
@@ -77,22 +101,58 @@ What those run, step by step:
 
 **Changing the database URL:** `aws ssm put-parameter --name /sj/qa/database-url --type SecureString --overwrite --value '<new URL>'`. The Lambdas read it at cold start, so then run `make deploy-stacks` (or wait for the functions to be recycled).
 
-**Logs:** CloudWatch log groups `poised-uk-qa-api-staffapilogs…` and `…patientapilogs…`, kept 14 days (`aws logs tail <group> --follow`).
+## Rolling back
 
-## Moving to another AWS account (or re-creating an environment)
+1. **The usual way: revert and push.** `git revert <bad commit>` then `git push`. The pipeline deploys the previous code, tested as usual.
+2. **Faster, by hand:** check out the last good commit and run `make deploy-qa PROFILE=<profile>` (the stacks, migrate + seed, the web app). Then revert on `master` too, or the next push brings the bad commit back.
+3. **Database migrations aren't rolled back by either.** goose only goes up in the pipeline. If a migration must be undone, do it by hand: `make aws-db` can't, so run `goose down` against the database (the URL is in SSM, see `scripts/db.sh`) from the commit that added it, before deploying the older code.
+4. **Only the web app:** in **Amplify → `poised-uk-qa` → `main` → Deployments**, every earlier deployment is listed; there's no "redeploy this one" for manual deployments, so use 1 or 2.
 
-Nothing but the steps above is needed, so an environment can be deleted and re-created at any time.
+## Reading a failed run
 
-1. **In the old account** (while `countries.py` still names it): `make destroy-stacks PROFILE=<old profile>`. This deletes the Lambdas, the HTTP API, the Amplify app, the token secret (everyone is signed out) and the budget. The Neon database isn't in AWS and is kept.
+1. **CodePipeline → `poised`**: the failed stage is red. Click the failed action's **View details**, then **Link to execution details** (CodeBuild actions) to open its log.
+2. **What each failure means:**
+   - **Source** failed: the connection isn't **Available** (manual step 2), or the branch doesn't exist.
+   - **Synth** failed: a test failed, or a build. The log's end shows which command; scroll up to the first `FAIL` (Go), `FAIL`/`×` (Vitest) or `FAILED` (pytest). Run the same `make` target locally.
+   - **SelfMutate** or a **Deploy** failed: a CloudFormation error. Open **CloudFormation → the stack → Events** for the reason. A deploy that failed rolls the stack back to the last good version by itself.
+   - **Database-and-web** failed: a migration (goose prints the file), the seed, or the Amplify upload. Nothing after it ran, so the journeys didn't run against half-deployed code.
+   - **E2E** failed: a journey failed against the deployed environment. The log's end lists them (`FAILED journeys/…`) and prints the S3 address of the results.
+3. **The journeys' traces:** in **S3 → the `poised-pipeline-e2eresults…` bucket → `<env>/<build number>/`**: `junit.xml` and, for each failed journey, a folder with its traces. Download a `trace-N.zip` and open it with `e2e/.venv/bin/playwright show-trace <file>` (or drop it on https://trace.playwright.dev). [e2e/README.md](../e2e/README.md) explains reading a trace. Results are kept 30 days.
+4. **To keep traces of a passing run** (e.g. to see what a journey did): in **CodeBuild → Build projects → the `…E2E…` project**, click **Start build with overrides**, add the environment variable `E2E_ARGS` = `--tracing=on`, set `E2E_BASE_URL` to the environment's address, and use the latest pipeline source. (It's a one-off build, outside the pipeline.)
+5. **Re-run a failed run** without a push: **Retry failed actions** on the failed stage (e.g. after a flaky journey).
+
+## Adding a country (the runbook)
+
+A new country is **one entry in `countries.py` plus the steps below, never a code change** (A-20). The full list of what a country needs is in [saas-requirements.md §13](../docs/saas-requirements.md).
+
+1. **Add the entry to `countries.py`**, e.g. `xx-qa`: the account, the country's AWS region, its IANA time zone, its `language-REGION` locale, its phone country (two letters), its patient identifier scheme (a scheme in `apps/api/internal/nationalid`; add one there first if the country has its own) and `dev_login=True` only for QA. Run `make infra-test`: the entry is checked as it's made.
+2. **Neon:** a project in the country's region (manual step 1), with a database `sj`.
+3. **One-off set-up of the new region:** `make aws-setup ENV=xx-qa PROFILE=<profile> NEON_DATABASE_URL='<its URL>' ALERT_EMAIL='<email>'`. This bootstraps CDK in the region and stores its database URL. Run it again a day later for the cost tag.
+4. **Later, when the country needs them:** its domain and DNS (`app_url`), SES and SMS in its region (S17), and its superadmin (`make platform-admin`, against its database).
+5. **Push** the `countries.py` change to `master`. The pipeline updates itself (a new stage, `xx-qa`, after the existing ones), then deploys the new country, migrates and seeds its database, deploys its web app and runs the journeys against it.
+   - A stage in a region other than the pipeline's also gets a small support stack, `poised-pipeline-support-<region>` (a bucket for copying artifacts there).
+   - **The journeys' test data is the UK's** (a UK mobile, dates shown as "17 May 1980"), so in another country the journeys that use them (J3, J7, J8 and the patient-records journey) fail at those lines until they're written to read the country from `GET /api/config` (pending.md). Until then, run the others there, or give `E2E_ARGS` a `-k` filter.
+6. Its web address is the new `poised-xx-qa-web` stack's `AppUrl`.
+
+**Removing a country:** delete its entry and push (the pipeline stops deploying it), then `make destroy-stacks ENV=xx-qa PROFILE=<profile>` from a checkout that still has the entry. In the region, delete the SSM parameters (`/sj/<stage>/database-url`, `/sj/alert-email`), the `poised-pipeline-support-<region>` stack if there is one, and, if nothing else of Poised is there, the `poised-cdk-toolkit` stack and its retained `cdk-poised-assets-<account>-<region>` bucket (empty every version first).
+
+**Proof, 14 Oct 2026 (S07):** a throwaway `us-qa` in `us-east-1` (America/New_York, en-US, US) took **about 10 minutes** from the new entry to J1–J5 passing: `make aws-setup` 1.5 minutes, `make deploy-qa` 5.5 minutes (stacks 72 s, migrations + seed 10 s, web upload), the journeys 2 minutes. It was then destroyed in about 3 minutes. Details in [S07's build notes](../docs/sessions/S07-pipeline/build-notes.md).
+
+## Moving to another AWS account (or re-creating everything)
+
+Nothing but the steps above is needed, so everything can be deleted and re-created at any time.
+
+1. **In the old account** (while `countries.py` still names it): `make destroy-pipeline PROFILE=<old profile>` (the pipeline, its connection and its buckets), then `make destroy-stacks PROFILE=<old profile>` for each environment. This deletes the Lambdas, the HTTP API, the Amplify app, the token secret (everyone is signed out) and the budget. The Neon database isn't in AWS and is kept.
 2. Optionally tidy the old account: `aws ssm delete-parameter --name /sj/qa/database-url`, the same for `/sj/alert-email`, and delete the `poised-cdk-toolkit` stack (empty its `cdk-poised-assets-…` bucket first).
-3. In `countries.py`, change the entry's `account`.
-4. **In the new account:** `make aws-setup …` (with `NEON_DATABASE_URL` and `ALERT_EMAIL`), then `make deploy-qa …`.
+3. In `countries.py`, change the entry's `account`, and `PIPELINE.account`.
+4. **In the new account:** `make aws-setup …` (with `NEON_DATABASE_URL` and `ALERT_EMAIL`), then `make deploy-pipeline …`, approve the GitHub connection (manual step 2), and push.
 5. The web address changes (a new Amplify app gets a new `…amplifyapp.com` address) until there's a domain: give testers the new `AppUrl`.
 
 ## Notes
 
+- **The branch:** the pipeline follows **`master`**, the GitHub repo's default branch (`PIPELINE.branch`). Plan F4 said `main`; nothing was renamed (S07). The Amplify app's own branch is also called `main`, which is unrelated: it's just where the zips are uploaded.
 - **The client's address:** the patient sign-in rate limit counts by the browser's address. Behind Amplify's rewrite and API Gateway, the Lambda's connection is a proxy's, so `FORWARDED_HOPS` in `api_stack.py` (3, measured) tells the Go API which address in `X-Forwarded-For` is the browser's. `GET <AppUrl>/api/qa/client` (QA only) shows the address the API counts and the header it got.
 - **Reserved concurrency** isn't set: a new account's Lambda concurrency limit can be as low as 10, which can't be split. Ask AWS to raise it before a real customer, then reserve some for patient-api.
 - **Throttling:** API Gateway's defaults.
-- **Cost when idle:** close to £0. Lambda, API Gateway and Amplify are pay-per-use; Secrets Manager is about $0.40 a month for the token secret; logs are small; Neon's free tier. The budget alarm emails at 80% of the month's budget, and when the forecast passes it.
-- **Adding a country:** an entry in `countries.py` and the steps above in the new region. S07 writes the full runbook and the pipeline that deploys every entry.
+- **Cost when idle:** close to £0. Lambda, API Gateway and Amplify are pay-per-use; Secrets Manager is about $0.40 a month for the token secret; logs are small; Neon's free tier; CodePipeline V2 and CodeBuild are billed only while a run runs. The budget alarm emails at 80% of the month's budget, and when the forecast passes it.
+- **Postgres in the pipeline** comes from ECR Public (`public.ecr.aws/docker/library/postgres`), not Docker Hub, whose anonymous pull limit shared build hosts can hit.
