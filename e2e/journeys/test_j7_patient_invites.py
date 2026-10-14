@@ -14,7 +14,7 @@ import secrets
 
 from playwright.sync_api import BrowserContext, Page, expect
 
-from support import choose, invite_path, pick, sign_in, unique
+from support import choose, invite_path, pick, qa_page, sign_in, unique
 
 DOB = re.compile(r"^Date of birth\W*$")  # the new patient's (Mantine adds " *"), not the search's
 
@@ -57,18 +57,19 @@ def test_j7_invite_by_text_and_email_then_date_of_birth_and_send(page: Page, pho
     expect(page.get_by_text("Invite sent by text message and email.", exact=True)).to_be_visible()
     expect(page.get_by_test_id("invite")).to_contain_text("Last sent")
 
-    # The captured-messages page shows both: stored, never sent.
-    page.goto("/qa/messages")
-    page.get_by_label("To").fill(mobile)
-    page.get_by_role("button", name="Show").click()
-    sms = page.get_by_test_id("captured-message")
+    # The captured-messages page shows both: stored, never sent (the platform admin's, on QA).
+    qa = qa_page(page)
+    qa.goto("/qa/messages")
+    qa.get_by_label("To").fill(mobile)
+    qa.get_by_role("button", name="Show").click()
+    sms = qa.get_by_test_id("captured-message")
     expect(sms).to_have_count(1)
     expect(sms).to_contain_text("Text message")
     expect(sms).to_contain_text("Hospital A1: please complete your pre-op health questionnaire:")
-    page.get_by_label("To").fill(email)
-    page.get_by_role("button", name="Show").click()
-    expect(page.get_by_test_id("captured-message")).to_contain_text("Hospital A1: your health questionnaire")
-    link = invite_path(page.context.request, mobile)
+    qa.get_by_label("To").fill(email)
+    qa.get_by_role("button", name="Show").click()
+    expect(qa.get_by_test_id("captured-message")).to_contain_text("Hospital A1: your health questionnaire")
+    link = invite_path(mobile)
 
     # The patient taps the text's link. The page says nothing about them until their date of birth.
     patient = phone.new_page()
@@ -132,7 +133,7 @@ def test_j7b_five_wrong_dates_of_birth_lock_the_link_until_the_invite_is_resent(
     hq = as_user("Alex Author").published_hq("workflow-hq.json", f"E2E J7b {unique()}")
     _, mobile = made_up_mobile()
     episode = as_user("Cara Clinician").episode(hq, f"J7b {unique()}", mobile=mobile)
-    old = invite_path(page.context.request, mobile)
+    old = invite_path(mobile)
 
     patient = phone.new_page()
     patient.goto(old)
@@ -156,7 +157,7 @@ def test_j7b_five_wrong_dates_of_birth_lock_the_link_until_the_invite_is_resent(
     invite.get_by_role("button", name="Resend invite").click()
     expect(invite.get_by_text("Invite sent again by text message and email.")).to_be_visible()
     expect(invite.get_by_text("The link is locked")).to_be_hidden()
-    new = invite_path(page.context.request, mobile)
+    new = invite_path(mobile)
     assert new != old
 
     # The old link no longer works; the new one does.
@@ -211,7 +212,7 @@ def test_a_change_refused_because_the_session_ended_is_named_not_lost(page: Page
     episode = cara.episode(hq, f"Ended {unique()}", mobile=mobile)
 
     patient = phone.new_page()
-    patient.goto(invite_path(page.context.request, mobile))
+    patient.goto(invite_path(mobile))
     patient.get_by_role("button", name="Continue").click()
     enter_dob(patient, "17", "5", "1980")
     patient.get_by_test_id("set-About you").get_by_role("button", name="Start").click()
@@ -228,7 +229,7 @@ def test_a_change_refused_because_the_session_ended_is_named_not_lost(page: Page
     expect(patient.get_by_text("open the link in your text message or email again")).to_be_visible()
 
     # Back in with the new link: the saved answer is the old one, as the message warned.
-    patient.goto(invite_path(page.context.request, mobile))
+    patient.goto(invite_path(mobile))
     patient.get_by_role("button", name="Continue").click()
     enter_dob(patient, "17", "5", "1980")
     patient.get_by_test_id("set-About you").get_by_role("button", name="Continue").click()
@@ -249,14 +250,14 @@ def test_sign_out_straight_after_typing_keeps_the_answer(page: Page, phone: Brow
     as_user("Cara Clinician").episode(hq, f"SignOut {unique()}", mobile=mobile)
 
     patient = phone.new_page()
-    open_hq(patient, invite_path(page.context.request, mobile))
+    open_hq(patient, invite_path(mobile))
     patient.get_by_test_id("set-Your medicines").get_by_role("button").click()  # nothing is required: Review
     patient.get_by_role("textbox", name="What medicines do you take?").fill("Warfarin 5mg")
     patient.get_by_role("button", name="Sign out").click()  # straight away: the text box still has the focus
     expect(patient.get_by_role("heading", name="You've been signed out")).to_be_visible()
     expect(patient.get_by_test_id("patient-lost-work")).to_have_count(0)
 
-    open_hq(patient, invite_path(page.context.request, mobile))
+    open_hq(patient, invite_path(mobile))
     patient.get_by_test_id("set-Your medicines").get_by_role("button").click()  # nothing is required: Review
     expect(patient.get_by_role("textbox", name="What medicines do you take?")).to_have_value("Warfarin 5mg")
 
@@ -264,7 +265,7 @@ def test_sign_out_straight_after_typing_keeps_the_answer(page: Page, phone: Brow
     choose(patient, "Do you take blood thinners?", "Yes")
     patient.get_by_role("button", name="Sign out").click()
     expect(patient.get_by_role("heading", name="You've been signed out")).to_be_visible()
-    open_hq(patient, invite_path(page.context.request, mobile))
+    open_hq(patient, invite_path(mobile))
     patient.get_by_test_id("set-Your medicines").get_by_role("button").click()  # nothing is required: Review
     expect(patient.get_by_role("radiogroup", name="Do you take blood thinners?").get_by_role("radio", name="Yes")).to_be_checked()
 

@@ -103,6 +103,8 @@ def test_an_admin_finds_a_clinicians_actions_filters_them_and_exports_the_csv(pa
     pick(page, "Who", "Cara Clinician (cara.clinician@hospital-a.example)")
     page.get_by_label("Patient").fill(surname)
     show(page, "patient=")
+    # The list has reloaded with Cara's rows (the patient's rows shown before can be as many: S12, on QA).
+    expect(page.get_by_text("Patient (their link)")).to_have_count(0)
     expect(log_rows(page)).to_have_count(shown)
     listed = [r.inner_text() for r in log_rows(page).all()]
     with page.expect_download() as download:

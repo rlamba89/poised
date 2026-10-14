@@ -15,7 +15,7 @@ import secrets
 
 from playwright.sync_api import BrowserContext, Page, expect
 
-from support import VERIFY, link_path, unique
+from support import VERIFY, captured, link_path, unique
 
 
 def made_up_birthday() -> tuple[str, tuple[str, str, str]]:
@@ -55,7 +55,7 @@ def test_j7c_returning_patient_signs_in_by_email_and_sees_both_trusts(page: Page
     no_sideways_scroll(patient)
 
     # The email's link: Continue (nothing about them), then their date of birth.
-    link = link_path(page.context.request, email)
+    link = link_path(email)
     patient.goto(link)
     expect(patient.get_by_role("heading", name="Sign in to Poised")).to_be_visible()
     patient.get_by_role("button", name="Continue").click()
@@ -110,7 +110,7 @@ def test_j7c_change_email_from_the_home(page: Page, phone: BrowserContext, as_us
 
     # Sam opens their invite and goes to their home.
     patient = phone.new_page()
-    patient.goto(link_path(page.context.request, email, re.compile(r"/i/[A-Za-z0-9_-]{43}")))
+    patient.goto(link_path(email, re.compile(r"/i/[A-Za-z0-9_-]{43}")))
     patient.get_by_role("button", name="Continue").click()
     enter_dob(patient, day, month, year)
     patient.get_by_role("link", name="Your questionnaires").click()
@@ -126,7 +126,7 @@ def test_j7c_change_email_from_the_home(page: Page, phone: BrowserContext, as_us
 
     # They open the link (in their email, on any device) and confirm.
     confirm = phone.new_page()
-    confirm.goto(link_path(page.context.request, new_email, VERIFY))
+    confirm.goto(link_path(new_email, VERIFY))
     confirm.get_by_role("button", name="Confirm").click()
     expect(confirm.get_by_role("heading", name="Your email address has been updated")).to_be_visible()
 
@@ -135,7 +135,7 @@ def test_j7c_change_email_from_the_home(page: Page, phone: BrowserContext, as_us
     expect(patient.get_by_test_id("contact-email")).to_contain_text("n•••@e2e.example")
     staff = as_user("Cara Clinician")
     assert staff.call("GET", staff.h(f"/episodes/{episode['id']}"))["episode"]["email"] == new_email
-    told = [m for m in page.context.request.get("/api/qa/messages", params={"to": email}).json() if "changed" in m["body"]]
+    told = [m for m in captured(email) if "changed" in m["body"]]
     assert told, "the old address wasn't told"
 
 
@@ -155,7 +155,7 @@ def test_j7c_twins_on_one_phone_are_asked_their_name(page: Page, phone: BrowserC
     patient.get_by_label("Mobile number or email address").fill(email)
     patient.get_by_role("button", name="Send me a link").click()
     expect(patient.get_by_role("heading", name="Check your email")).to_be_visible()
-    patient.goto(link_path(page.context.request, email))
+    patient.goto(link_path(email))
     patient.get_by_role("button", name="Continue").click()
     enter_dob(patient, day, month, year)
     expect(patient.get_by_test_id("dob-error")).to_contain_text("Please also enter your first name and surname")
@@ -180,7 +180,7 @@ def test_j7c_leaving_for_the_home_straight_after_typing_keeps_the_answer(page: P
     episode = cara.episode(hq, f"Leave {unique()}", email=email, dateOfBirth=dob)
 
     patient = phone.new_page()
-    patient.goto(link_path(page.context.request, email, re.compile(r"/i/[A-Za-z0-9_-]{43}")))
+    patient.goto(link_path(email, re.compile(r"/i/[A-Za-z0-9_-]{43}")))
     patient.get_by_role("button", name="Continue").click()
     enter_dob(patient, day, month, year)
     patient.get_by_test_id("set-Your medicines").get_by_role("button").click()  # nothing is required: Review

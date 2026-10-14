@@ -15,10 +15,11 @@ import secrets
 
 from playwright.sync_api import BrowserContext, Page, expect
 
-from support import INVITE, captured, sign_in, unique
+from support import INVITE, captured, qa_page, sign_in, unique
 
 
 def run_jobs(page: Page, preset: str) -> None:
+    """On the scheduled-jobs page, as the platform admin (`qa`: QA's tools need one, S12)."""
     page.goto("/qa/jobs")
     page.get_by_role("button", name=preset).click()
     page.get_by_role("button", name="Run jobs").click()
@@ -33,32 +34,33 @@ def test_j8_reminders_then_not_responding(page: Page, phone: BrowserContext, as_
     email = episode["email"]
 
     def messages() -> list[dict]:
-        return captured(page.context.request, email)
+        return captured(email)
 
     assert len(messages()) == 1  # the invite
     invite = INVITE.search(messages()[0]["body"]).group(0)
 
     # Day 2: a reminder, by text and email, with a new link.
     base = sign_in(page.context, "Cara Clinician")
-    run_jobs(page, "Now + 2 days")
+    qa = qa_page(page)
+    run_jobs(qa, "Now + 2 days")
     got = messages()
     assert len(got) == 2, got
     assert got[0]["subject"] == "Hospital A1: a reminder about your health questionnaire"
     assert "This is a reminder from Hospital A1" in got[0]["body"]
     reminder = INVITE.search(got[0]["body"]).group(0)
     assert reminder != invite
-    texts = captured(page.context.request, mobile)
+    texts = captured(mobile)
     assert len(texts) == 2 and texts[0]["body"].startswith("Hello Sam, a reminder from Hospital A1:"), texts
 
     # The captured-messages page shows it too.
-    page.goto("/qa/messages")
-    page.get_by_label("To").fill(email)
-    page.get_by_role("button", name="Show").click()
-    expect(page.get_by_test_id("captured-message")).to_have_count(2)
-    expect(page.get_by_test_id("captured-message").first).to_contain_text("a reminder about your health questionnaire")
+    qa.goto("/qa/messages")
+    qa.get_by_label("To").fill(email)
+    qa.get_by_role("button", name="Show").click()
+    expect(qa.get_by_test_id("captured-message")).to_have_count(2)
+    expect(qa.get_by_test_id("captured-message").first).to_contain_text("a reminder about your health questionnaire")
 
     # The same time again: nothing more.
-    run_jobs(page, "Now + 2 days")
+    run_jobs(qa, "Now + 2 days")
     assert len(messages()) == 2
 
     # The episode's General notes say what went, written automatically.
@@ -82,11 +84,11 @@ def test_j8_reminders_then_not_responding(page: Page, phone: BrowserContext, as_
     # They answer one question (started), so day 5's reminder doesn't go.
     p = patient_link(episode)
     p.answer("About you", {"q_smokes": "o_no"})
-    run_jobs(page, "Now + 5 days")
+    run_jobs(qa, "Now + 5 days")
     assert len(messages()) == 2
 
     # Day 7 without their answers: "Not responding" on the episode.
-    run_jobs(page, "Now + 7 days")
+    run_jobs(qa, "Now + 7 days")
     page.goto(f"{base}/episodes/{episode['id']}")
     expect(page.get_by_test_id("not-responding")).to_have_text("Not responding")
     expect(page.get_by_text("Not responding: the HQ hasn't been sent 7 days after the invite.", exact=True)).to_be_visible()

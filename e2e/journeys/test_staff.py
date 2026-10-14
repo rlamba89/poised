@@ -10,9 +10,15 @@ move the clock."""
 import re
 import secrets
 
+import pytest
 from playwright.sync_api import Browser, Page, expect
 
 from support import pick, sign_in, unique
+
+
+# Signs in as people it has just invited: the dev login only (local). On QA their temporary
+# password is in Cognito's email, and Cognito sends about 50 a day (S12; conftest.py).
+pytestmark = pytest.mark.dev_login
 
 
 def fresh_email(who: str) -> str:

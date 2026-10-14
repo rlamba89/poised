@@ -5,15 +5,16 @@ import re
 
 from playwright.sync_api import Page, expect
 
-from support import unique
+from support import sign_in, unique
 
 
 def test_author_builds_a_questionnaire_and_previews_it(page: Page):
     name = f"E2E J1 {unique()}"
 
-    # Sign in with the stub, as a trust-wide super clinician, who picks a hospital (S08).
+    # Signed in (the dev stub locally, Cognito on QA) as a trust-wide super clinician, who picks
+    # a hospital (S08).
+    sign_in(page.context, "Alex Author", None)
     page.goto("/")
-    page.get_by_role("button", name="Alex Author").click()
     page.get_by_role("region", name="Trust A").get_by_role("link", name="Hospital A1").click()
     expect(page.get_by_role("heading", name="Questionnaires")).to_be_visible()
     expect(page).to_have_url(re.compile(r"/o/[0-9a-f-]{36}/h/[0-9a-f-]{36}/questionnaires$"))

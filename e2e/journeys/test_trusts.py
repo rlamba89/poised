@@ -10,8 +10,8 @@ from support import choose, pick, sign_in, unique
 
 def test_a_member_of_two_trusts_picks_and_switches_hospitals(page: Page):
     # Max is a clinician at Hospital A2 (Trust A) and the admin of all of Trust B.
-    page.goto("/login")
-    page.get_by_role("button", name="Max Multi").click()
+    sign_in(page.context, "Max Multi", None)
+    page.goto("/")
     expect(page.get_by_role("heading", name="Choose a hospital")).to_be_visible()
     trust_a = page.get_by_role("region", name="Trust A")
     trust_b = page.get_by_role("region", name="Trust B")
@@ -126,3 +126,26 @@ def test_a_whole_trust_super_clinician_saves_a_test_case_on_a_note_only_output(p
     expect(cases.get_by_text("Smoker", exact=True)).to_be_visible()
     cases.get_by_role("button", name="Run all").click()
     expect(cases).to_contain_text("All 1 passed")
+
+
+def test_a_removed_membership_is_refused_on_the_next_request(page: Page, as_user):
+    """STF-04, on every deployment (S12 test report 1: T-08 couldn't be run by the tester): Val's
+    only access (Hospital A2) is removed while she's signed in; her next page load has no access.
+    The access is given back at the end (Val's account exists, so no invitation is sent)."""
+    ada = as_user("Ada Admin")
+    val = next(p for p in ada.call("GET", ada.o("/staff")) if p["name"] == "Val Clinician")
+    [a2] = [a for a in val["access"] if a["hospitalName"] == "Hospital A2"]
+    base = sign_in(page.context, "Val Clinician", "Hospital A2")
+    page.goto(f"{base}/episodes")
+    expect(page.get_by_role("heading", name="Episodes")).to_be_visible()
+
+    ada.call("DELETE", ada.o(f"/staff/{val['userId']}/access/{a2['hospitalId']}"))
+    try:
+        page.reload()
+        expect(page.get_by_text("You don't have access to this hospital")).to_be_visible()
+        assert page.request.get(f"/api{base}/episodes").status == 404
+    finally:
+        ada.call("POST", ada.o("/staff/invites"),
+                 {"email": val["email"], "name": "Val Clinician", "hospitalId": a2["hospitalId"], "role": "clinician"})
+    page.reload()
+    expect(page.get_by_role("heading", name="Episodes")).to_be_visible()

@@ -50,7 +50,7 @@ def test_patient_fills_in_and_sends_their_hq_on_a_phone(page: Page, phone: Brows
 
     # The patient taps the link in their text message (captured, not sent), on their phone.
     patient = phone.new_page()
-    patient.goto(invite_path(page.context.request, "+447700900123"))
+    patient.goto(invite_path("+447700900123"))
     patient.get_by_role("button", name="Continue").click()
     patient.get_by_label("Day").fill("17")
     patient.get_by_label("Month").fill("5")
