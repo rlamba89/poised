@@ -566,7 +566,7 @@ Inside a deployment, trusts and hospitals work exactly as section 3 describes. D
 5. **Every deployment runs the same migrations and seeds.** Platform content (codes, question library) is seeded into each, so a country could later have its own code set.
 6. **One pipeline, one place to watch.** A fix is one push: after QA, the pipeline deploys every country's Production in one wave. Every deployment's alarms go to the same email.
 
-**Product assumptions that differ by country (*Proposed*: confirm when C1 and C2 start):**
+**Product assumptions that differ by country (*Proposed*: confirm when C1 and C2 start).** *Agreed 12 Oct:* the patient identifier, the per-hospital time zone and the dates in the deployment's locale (decisions.md §2).
 - **Patient identifier:** store `national_id` + `national_id_type` rather than an `nhs_number` column, with one validator per type. Only the NHS number is built now; others come later (e.g. a Canadian provincial health card, Australia's IHI, New Zealand's NHI).
 - **Time zone per hospital,** defaulting to the deployment's. Canada, the US and Australia span several zones, and reminders and "day 2" rules depend on local time. Times are stored in UTC.
 - **Phone numbers in E.164** (the international format), with SMS only to the deployment's country (PAT-11).

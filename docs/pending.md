@@ -104,8 +104,8 @@ docker compose up -d --force-recreate db
   - **Leftovers from Next.js** (F-4, cosmetic): `PatientHQ`, `PoaSummary`, `ValidateSet` and `PreviewPage` keep default exports that only `next/dynamic` needed; the pages read params with `useParams() as {…}`, so a renamed `:param` would compile and pass `undefined`.
   - **No "loading" cue when a page is opened for the first time** (F-7). The old page stays until the new page's code arrives (0.34 MB gzipped for the SurveyJS pages). Add a thin progress bar (`useNavigation().state`) before patients use it on phones.
   - **Before the first deploy (S06), harden the reload-after-deploy screen** (S04 verification 2):
-    - `reloadOnce` (`apps/web/src/lib/chunkError.ts`) allows one reload per 10 seconds, so on a connection where each failed load takes longer than that, it reloads forever. Clear the flag only after a page renders, or widen the window.
-    - Keep `/assets/*` out of Amplify's SPA rewrite, so a missing file is a real 404. Otherwise Safari's "'text/html' is not a valid JavaScript MIME type" isn't recognised. Alternatively, add Vite's `vite:preloadError` listener as a backstop.
+    - ~~`reloadOnce` (`apps/web/src/lib/chunkError.ts`) allows one reload per 10 seconds, so on a connection where each failed load takes longer than that, it reloads forever. Clear the flag only after a page renders, or widen the window.~~ *Done in S06: no time window; `Root` clears the flag once a page renders.*
+    - ~~Keep `/assets/*` out of Amplify's SPA rewrite, so a missing file is a real 404. Otherwise Safari's "'text/html' is not a valid JavaScript MIME type" isn't recognised. Alternatively, add Vite's `vite:preloadError` listener as a backstop.~~ *Done in S06: the SPA rule (`infra/web_stack.py`) leaves files and `/assets/…` alone; `infra/tests` checks it.*
   - ~~**The error screen's "Go to the start page" sends a patient to the staff sign-in** (`RouteError.tsx`; `/` → `/login` when not signed in). Hide it on `/p/…` with S14/S15.~~ *Done in S15: on a patient's page it's "Go to your questionnaires" (`/home`).*
   - **Small:**
     - the staff `HospitalLayout` is in the first-load bundle, so the patient's link downloads it (make it lazy);
@@ -113,8 +113,8 @@ docker compose up -d --force-recreate db
     - in dev, StrictMode flashes "Something went wrong" just before the automatic reload.
 - **From S05's verification, 12 Oct** (minor; details in [S05 verify.md](sessions/S05-lambda-entrypoints/verify.md)):
   - **Answer dates in notes, outputs and the POA Summary are still day/month/year** (`packages/clinical/src/outputs.ts` `formatDate`, `yyyy-MM-dd` → `dd/MM/yyyy`). The guard test can't see it (no locale literal). Fine while only the UK runs; **Rahul to decide** before a second country whether `packages/clinical` takes the locale (recommended: pass it in, as `format.ts` does).
-  - **`DEFAULT_LOCALE` is checked only for shape,** and some well-shaped tags (`en-12`, `en-gb-gb`) make the browser's `Intl.DateTimeFormat` throw, so every date on a page would crash it. Tighten the region part to `[A-Z]{2}` or three digits, or check the tag in `infra/countries.py` (S06).
-  - **The first render waits for `GET /api/config` with no timeout** (`apps/web/src/main.tsx`). A hung request leaves a blank page. Add a timeout (e.g. `AbortSignal.timeout(5000)`) before S06 (Lambda cold starts).
+  - ~~**`DEFAULT_LOCALE` is checked only for shape,** and some well-shaped tags (`en-12`, `en-gb-gb`) make the browser's `Intl.DateTimeFormat` throw, so every date on a page would crash it. Tighten the region part to `[A-Z]{2}` or three digits, or check the tag in `infra/countries.py` (S06).~~ *Done in S06: `countries.py` accepts only `language-REGION` (e.g. `en-CA`); the Go check is unchanged.*
+  - ~~**The first render waits for `GET /api/config` with no timeout** (`apps/web/src/main.tsx`). A hung request leaves a blank page. Add a timeout (e.g. `AbortSignal.timeout(5000)`) before S06 (Lambda cold starts).~~ *Done in S06: `loadConfig` gives up after 5 seconds.*
   - **Small:** `APP_URL=/` trims to empty and passes strict mode (validate after trimming); the literal guard skips lines starting with `*` and reads only `.go`/`.ts`/`.tsx` files.
 - **From S08's manual tests, 12 Oct** (minor; details in [S08 test-report-2.md](sessions/S08-trusts-permissions/test-report-2.md)):
   - **Cosmetic, older than S08: the editor's Disclosures dialog shows "No disclosures yet." while it fades out** after **Done** (report 4). The same fix as the other dialogs (keep the last content while closing) applies in `apps/web/src/features/editor/DisclosureModal.tsx`.
@@ -190,7 +190,8 @@ docker compose up -d --force-recreate db
     - **The export sends the browser's time zone,** which Go's zone database might not know; that export answers 400 and the plain link saves the error as the file (see "plain download link" above). `parseAuditFilter` also repeats `validTimeZone` (`admin.go`).
   - **AUD-01's questionnaire change history** (who changed what in authoring, before and after) isn't part of this log, which covers patient data only.
 - **Patient accounts, sign-in links and the home (S15, [build notes](sessions/S15-patient-home/build-notes.md)):**
-  - **S06 must make the rate limit's client IP the real patient's** (`clientIP` in `accounts.go` reads `RemoteAddr`). Behind API Gateway and Amplify's rewrite that is a proxy's address unless the Lambda adapter sets it from the request context (or a trusted `X-Forwarded-For`): otherwise every patient shares one address, and 10 sign-ins an hour would be the whole country's.
+  - ~~**S06 must make the rate limit's client IP the real patient's** (`clientIP` in `accounts.go` reads `RemoteAddr`). Behind API Gateway and Amplify's rewrite that is a proxy's address unless the Lambda adapter sets it from the request context (or a trusted `X-Forwarded-For`): otherwise every patient shares one address, and 10 sign-ins an hour would be the whole country's.~~ *Built in S06: `internal/serve` sets `RemoteAddr` from `X-Forwarded-For` (`FORWARDED_HOPS`, set by `infra/api_stack.py`).*
+    - **Still open (S06):** someone calling the HTTP API's own `execute-api` address directly, not through Amplify, has one hop fewer, so the address they put in `X-Forwarded-For` is the one counted, and they can dodge the limit. Closing it needs the API reachable only through Amplify (e.g. a custom domain with the default endpoint switched off, or a header only the rewrite adds).
   - **S14's X-1 is partly better:** leaving the form by **← Your questionnaires** or the browser's Back to the home is an in-app route change, so a waiting autosave is sent; a reload or closing the tab within ~0.6 s still loses it.
   - **An account keeps the date of birth proved when it was made.** If a hospital later corrects a record's date of birth, sign-in with the corrected date fails for that account (invites still work). A staff correction could update the account later.
   - **A patient can change or add a mobile or email, not remove one.**
@@ -241,7 +242,7 @@ docker compose up -d --force-recreate db
   - **Emails must be plain ASCII** (S15 answers 7): `ü` addresses are refused, which may matter for other countries later (A-20).
   - **A surname change (marriage) keeps a separate account** (S15 answers 8, fails safe): the patient then signs in to each account separately until staff or PAT-08 offer a merge.
   - **View on a sent questionnaire shows only "Thank you, Sam"**, not the answers (S15 test report 1, exploring 7). A read-only view of what they sent would help.
-  - **The patient cookie has no `Secure` flag locally** (http); it's set when `APP_URL` is https. S06 should check it on QA.
+  - **The patient cookie has no `Secure` flag locally** (http); it's set when `APP_URL` is https. S06 should check it on QA. *S06: the staff cookie and both sign-outs are now Secure on https too (integration test); on QA the staff cookie arrives `HttpOnly; Secure; SameSite=Lax` (checked 14 Oct).*
   - **Rahul to hand-check R-6:** suspend Trust B as Sam Superadmin; a patient's home then lists only Trust A's questionnaires; re-activate it (the tester's permissions refused Suspend).
   - **`test_audit.py`'s tooltip journey failed once** in a full `make e2e` run (S15 round 1) and passed alone and in the next full run: a hover flake to watch.
   - **No General notes entry when a patient changes their contact:** staff see the new contact on the record, and the trust's audit log has "Patient changed their contact details".
@@ -291,6 +292,31 @@ docker compose up -d --force-recreate db
     - **`TooBroad` says "an " + the identifier's label** (`patient.go`): wrong for another country's label (A-20); reword.
     - **The patient search ORs three conditions** (`patients.sql`, `SearchPatients`), so it can't use its indexes; a UNION of three indexed branches before a large trust.
     - **The Audit filter compares `national_id` without its type** (`audit.sql`, `MatchAuditPatients`); harmless with one scheme per deployment.
+- **QA on AWS (S06, [test report 1](sessions/S06-aws-qa-stack/test-report-1.md)):**
+  - **QA is open to anyone who has its address until S12 (Rahul, 14 Oct: leave it; keep the URL private meanwhile).** Today, with no sign-in:
+    - `GET /api/dev/users` lists every account, and `POST /api/dev/login` signs in as any of them, the superadmin included;
+    - the captured messages (`/qa/messages`, `GET /api/qa/messages`) list every text and email, with live `/i/`, `/s/` and `/v/` links;
+    - **Reset sign-in limits** undoes the 5 tries;
+    - `/qa/jobs` runs the jobs or moves the clock;
+    - the web app has no security headers, so it can be framed by another site.
+
+    **S12 closes all of it:**
+    - Cognito replaces the dev login;
+    - the QA tool pages (captured messages, `/qa/jobs`, the rate-limit reset, `/api/qa/client`) are only for a signed-in platform admin;
+    - Amplify custom headers add CSP `frame-ancestors`/`X-Frame-Options`, HSTS and `X-Content-Type-Options` ([S12 answers](sessions/S12-cognito-signin/answers.md) item 3).
+
+    The data is made up.
+  - **An invited staff member who hasn't signed in yet is in the dev login's list**, and clicking them counts as their first sign-in (exploring 3; S09's design). It goes with the dev login in S12.
+  - **Signing in from a pasted deep link lands on Episodes**, not the page asked for (exploring 6; older than S06). The login page could take a `?next=` path, kept to the app's own addresses.
+  - **Reloading the patient's questionnaire part-way through a set goes back to the set list**, not the page they were on (exploring 7; older). The answers and the session are kept, and Continue reopens the set.
+  - **The API Gateway address bypasses the rate limit's hop count:** a direct call to `https://<api id>.execute-api.<region>.amazonaws.com` with a made-up `X-Forwarded-For` of two or more addresses picks the one the caller chose (see S15's "Still open (S06)" above). Fix with the API reachable only through Amplify, or a secret header only the rewrite adds (Amplify can't add one today).
+  - **The captured messages' "To" box has no label of its own** (its accessible name is the placeholder; exploring 9, cosmetic, older).
+  - **From S06's verification, 14 Oct** (minor; details in [S06 verify.md](sessions/S06-aws-qa-stack/verify.md)):
+    - **The `execute-api` bypass above must be closed before real patients** (C10 at the latest); add it to a brief (S07 or S12) when it fits.
+    - **`FORWARDED_HOPS` isn't required under `CONFIG_STRICT` on Lambda** (`config.go`): the CDK always sets it (and a CDK test checks it), but strict mode would catch a stack that didn't.
+    - **Docs:** CLAUDE.md's requirements line doesn't say `make test` now needs Python 3.12 (for the CDK tests); `infra/requirements.txt` mentions a `make infra-setup` target that doesn't exist.
+    - **`make aws-setup` passes the Neon URL on the command line** (`aws ssm put-parameter --value`), briefly visible in the process list; `--cli-input-json` from a 0600 file would avoid it.
+    - **Nits:** the token secret's name is CDK-generated (`TokenSecret…`, tagged `project=poised`); `serve.onLambda` and `config.Load` both test `AWS_LAMBDA_FUNCTION_NAME`.
 - **Lifebox import:**
   - Conditions that cross Question Sets on pages and questions are still dropped with a warning.
   - Lifebox has no Question Set-level conditions to import.

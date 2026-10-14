@@ -65,9 +65,11 @@ F3 adds **staff-api** and **patient-api**. The other two functions come with the
 
 ## Status
 
-**In progress (12 Oct): S05, the local half, verified** (report 1: 22 of 22 passed; [verify.md](../sessions/S05-lambda-entrypoints/verify.md)). The Lambda half is S06. Done:
+**Done (14 Oct 2026): S06, the Lambda half, verified 14 Oct** ([verify.md](../sessions/S06-aws-qa-stack/verify.md)). **12 Oct: S05, the local half, verified** (report 1: 22 of 22 passed; [verify.md](../sessions/S05-lambda-entrypoints/verify.md)). The Lambda half is S06. Done:
 - **Step 1:** `NewStaffRouter`, `NewPatientRouter` and `NewRouter`, with `Deps{Pool, Config}`. The dev login (`/api/dev/users` and `/api/dev/login`) exists only with `DEV_LOGIN=true`; `make dev` sets it.
 - **Step 2, local:** `cmd/staff-api` and `cmd/patient-api` as plain servers over `internal/serve`; `make staff-api` / `make patient-api` run one alone.
 - **Step 3, local:** `internal/config` reads env vars only, with UK defaults locally and `CONFIG_STRICT=true` refusing to start with a missing value. Plus `GET /api/config` (locale and time zone), and a guard test against per-country literals anywhere else.
+
+**S06 (14 Oct, building):** the Lambda half is built and unit-tested: `algnhsa` v1.1.0 (payload v2) in `internal/serve` (`serve.Lambda`), `config.Resolve` (SSM and Secrets Manager at cold start, with a fake in the tests), `CONFIG_STRICT` required on Lambda, the Lambda pool settings, `FORWARDED_HOPS` for the patient's address, and `make build-lambdas`. Running on QA since 14 Oct (journeys pass against it). **S06 tested 14 Oct** (test report 1: 19 of 19 passed); **S06 verified 14 Oct: F3 is done.**
 
 **Differences:** SSM, the Lambda adapter, the Lambda pool settings and `make build-lambdas` are S06 (A-22). The web app's dates use the config's locale (answered 12 Oct). Details: [S05 build notes](../sessions/S05-lambda-entrypoints/build-notes.md).
