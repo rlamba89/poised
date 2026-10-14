@@ -1,8 +1,9 @@
 // Package serve starts one of the API's servers: config, database pool, router, listen.
 // cmd/api (every route, for local dev), cmd/staff-api and cmd/patient-api all use it.
 //
-// The servers keep no state in memory and never touch local disk, so the same router can run
-// on AWS Lambda (D-4). S06 adds the Lambda adapter here, used when AWS_LAMBDA_FUNCTION_NAME is set.
+// The servers keep no state in memory and never touch local disk, so the same router runs on
+// AWS Lambda (D-4): when AWS_LAMBDA_FUNCTION_NAME is set, Main hands it to the Lambda adapter
+// (lambda.go) instead of listening, after fetching its secrets from AWS (config.Resolve).
 package serve
 
 import (
@@ -10,7 +11,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/rlamba89/poised/apps/api/internal/cognito"
@@ -25,11 +28,28 @@ import (
 // jobsTimer (cmd/api only) it also runs the scheduled jobs every minute, unless JOBS_TIMER=false
 // (S16): on AWS a schedule runs the jobs Lambda instead (S17).
 func Main(name string, router func(httpapi.Deps) http.Handler, jobsTimer bool) {
-	cfg, err := config.Load(os.Getenv)
+	ctx := context.Background()
+	getenv, err := config.Resolve(ctx, os.Getenv, &awsSecrets{}) // AWS only when a value is named there
 	if err != nil {
 		log.Fatalf("%s: %v", name, err)
 	}
-	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
+	cfg, err := config.Load(getenv)
+	if err != nil {
+		log.Fatalf("%s: %v", name, err)
+	}
+	isLambda := onLambda(os.Getenv)
+	poolCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("%s: db: the database URL is not valid", name) // never print it: it holds the password
+	}
+	if isLambda {
+		// One request at a time per Lambda instance (plan F3 Step 3). Idle connections are
+		// dropped soon, since a frozen instance can't keep them alive; pgxpool pings a
+		// connection that has been idle before reusing it.
+		poolCfg.MaxConns = 2
+		poolCfg.MaxConnIdleTime = time.Minute
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		log.Fatalf("%s: db: %v", name, err)
 	}
@@ -39,11 +59,18 @@ func Main(name string, router func(httpapi.Deps) http.Handler, jobsTimer bool) {
 	// emails are stored in sent_messages, never sent.
 	capture := messaging.Capture{DB: db.New(pool)}
 	deps := httpapi.Deps{Pool: pool, Config: cfg, Cognito: cognito.Local{}, SMS: capture, Email: capture}
-	srv := &http.Server{Addr: cfg.Addr, Handler: router(deps)}
+	handler := router(deps)
 	devLogin, timer := "off", "off"
 	if cfg.DevLogin {
 		devLogin = "on"
 	}
+	if isLambda {
+		log.Printf("%s on Lambda (dev login %s, messaging %s, locale %s, time zone %s, forwarded hops %d)",
+			name, devLogin, cfg.Messaging, cfg.Country.Locale, cfg.Country.TimeZone, cfg.ForwardedHops)
+		lambda.Start(Lambda(handler, cfg.ForwardedHops))
+		return
+	}
+	srv := &http.Server{Addr: cfg.Addr, Handler: clientAddr(handler, cfg.ForwardedHops)}
 	if jobsTimer && cfg.JobsTimer {
 		timer = "every " + jobs.TimerInterval.String()
 		// Testers' clock offset applies only where messages are captured (local and QA).

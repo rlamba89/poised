@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -86,15 +87,19 @@ func (s *server) devLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: auth.CookieName, Value: token, Path: "/",
-		HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: int(auth.TTL.Seconds()),
+		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: s.secureCookies(), MaxAge: int(auth.TTL.Seconds()),
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *server) logout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{Name: auth.CookieName, Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: auth.CookieName, Value: "", Path: "/", HttpOnly: true, Secure: s.secureCookies(), MaxAge: -1})
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// secureCookies: the session cookies are Secure when the app is served over https (AWS), so
+// they never travel over plain http. Locally (http://localhost) they can't be.
+func (s *server) secureCookies() bool { return strings.HasPrefix(s.cfg.Country.AppURL, "https://") }
 
 // meHospital is a hospital the user can work in, with their role there: the higher of their
 // trust-wide role and their role at that hospital.

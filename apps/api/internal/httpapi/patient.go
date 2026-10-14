@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -189,7 +188,7 @@ func (s *server) setPatientSession(w http.ResponseWriter, session uuid.UUID) boo
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: auth.PatientCookieName, Value: token, Path: "/api/p", HttpOnly: true, SameSite: http.SameSiteStrictMode,
-		Secure: strings.HasPrefix(s.cfg.Country.AppURL, "https://"), MaxAge: int(auth.PatientIdle.Seconds()),
+		Secure: s.secureCookies(), MaxAge: int(auth.PatientIdle.Seconds()),
 	})
 	return true
 }
@@ -244,7 +243,7 @@ func (s *server) patientLogout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	http.SetCookie(w, &http.Cookie{Name: auth.PatientCookieName, Value: "", Path: "/api/p", HttpOnly: true, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: auth.PatientCookieName, Value: "", Path: "/api/p", HttpOnly: true, Secure: s.secureCookies(), MaxAge: -1})
 	w.WriteHeader(http.StatusNoContent)
 }
 

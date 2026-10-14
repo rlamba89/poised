@@ -1,5 +1,5 @@
 // Command patient-api serves only the patient's link, /api/p/… (httpapi.NewPatientRouter).
-// On AWS it's the patient-api Lambda (D-4; the adapter comes in S06); locally it's a plain
+// On AWS it's the patient-api Lambda (D-4; internal/serve hands the router to the Lambda adapter); locally it's a plain
 // server, e.g. `make patient-api`.
 package main
 

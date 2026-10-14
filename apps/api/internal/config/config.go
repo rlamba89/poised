@@ -7,7 +7,8 @@
 // With CONFIG_STRICT=true (on AWS) there is no fallback: a missing value stops start-up, so a
 // deployment can never quietly run as the UK.
 //
-// Fetching the database URL and token secret from SSM comes in S06 (AWS phase).
+// On AWS (S06) the database URL and the web address come from SSM Parameter Store and the token
+// secret from Secrets Manager, fetched once at cold start by Resolve; the environment only names them.
 package config
 
 import (
@@ -36,8 +37,16 @@ type Config struct {
 	// JOBS_TIMER: the local all-in-one server (cmd/api, make dev) runs the scheduled jobs every
 	// minute (S16) unless it's false. On AWS a schedule runs the jobs Lambda instead (S17).
 	JobsTimer bool
-	Country   Country
+	// FORWARDED_HOPS: how many trusted proxies sit in front of the API, each adding the address
+	// it got the request from to X-Forwarded-For. 0 (locally): the connection's address is the
+	// client's. On AWS it's set by infra (internal/serve reads the client's address from the header).
+	ForwardedHops int
+	Country       Country
 }
+
+// maxForwardedHops is a sanity limit: on QA the browser's address is third from the right
+// (Amplify's rewrite adds two, API Gateway one; infra/api_stack.py).
+const maxForwardedHops = 4
 
 // MessagingCapture stores patient messages instead of sending them (MESSAGING=capture).
 const MessagingCapture = "capture"
@@ -108,6 +117,9 @@ func Load(getenv func(string) string) (Config, error) {
 		return b
 	}
 	strict := flag("CONFIG_STRICT")
+	if getenv("AWS_LAMBDA_FUNCTION_NAME") != "" && !strict {
+		errs = append(errs, errors.New("CONFIG_STRICT must be true on Lambda, so a deployment never falls back to the local defaults"))
+	}
 
 	var missing []string
 	need := func(name string) string {
@@ -150,6 +162,13 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if c.Addr == "" {
 		c.Addr = ":8080"
+	}
+	if v := getenv("FORWARDED_HOPS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 || n > maxForwardedHops {
+			errs = append(errs, fmt.Errorf("FORWARDED_HOPS must be a number from 0 to %d, not %q", maxForwardedHops, v))
+		}
+		c.ForwardedHops = n
 	}
 	switch c.Messaging {
 	case "":

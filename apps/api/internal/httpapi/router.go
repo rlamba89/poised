@@ -80,6 +80,7 @@ func mount(s *server, groups ...func(*server, *http.ServeMux)) http.Handler {
 	if s.cfg.Messaging == config.MessagingCapture { // the captured SMS and email (local and QA only)
 		mux.HandleFunc("GET /api/qa/messages", s.qaMessages)
 		mux.HandleFunc("DELETE /api/qa/rate-limits", s.qaResetRateLimits) // a tester's fresh start (S15)
+		mux.HandleFunc("GET /api/qa/client", noStore(s.qaClient))         // the address rate limits count (S06)
 		// The scheduled jobs (S16): run them as of a later time, or move the local timer's clock.
 		mux.HandleFunc("GET /api/qa/jobs", s.qaJobs)
 		mux.HandleFunc("POST /api/qa/jobs/run", s.qaRunJobs)

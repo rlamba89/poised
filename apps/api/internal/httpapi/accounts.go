@@ -644,9 +644,9 @@ func (s *server) hit(ctx context.Context, limits []rateLimit) (*rateLimit, error
 	return nil, tx.Commit(ctx)
 }
 
-// clientIP is the address the request came from. Behind a proxy (API Gateway, Amplify's
-// rewrite) that is the proxy's unless the serving code sets RemoteAddr from the real client: S06
-// must check it (pending.md).
+// clientIP is the address the request came from. Behind the proxies on AWS (Amplify's rewrite,
+// API Gateway), internal/serve sets RemoteAddr to the browser's address from X-Forwarded-For
+// (config FORWARDED_HOPS, S06); on Lambda it has no port.
 func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

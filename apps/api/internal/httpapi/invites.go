@@ -87,3 +87,13 @@ func (s *server) qaResetRateLimits(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// qaClient answers with the address the rate limits count this caller by (clientIP) and the
+// X-Forwarded-For the API received, so a tester can check on QA that behind Amplify's rewrite
+// and API Gateway it's the browser's own address (S06, config FORWARDED_HOPS). Capture mode only.
+func (s *server) qaClient(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"address":      clientIP(r),
+		"forwardedFor": r.Header.Get("X-Forwarded-For"),
+	})
+}

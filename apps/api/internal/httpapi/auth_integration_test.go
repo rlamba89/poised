@@ -5,6 +5,7 @@ package httpapi_test
 import (
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -170,4 +171,29 @@ func TestMe(t *testing.T) {
 		}
 		refused(t, c.Do("GET", "/api/me", nil), http.StatusUnauthorized)
 	})
+}
+
+// On https (AWS) the staff session cookie is Secure, as the patient's is (S06); locally (http)
+// it can't be, or the browser would drop it.
+func TestSessionCookieSecureOnHTTPS(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		appURL string
+		secure bool
+	}{{"https://main.d123.amplifyapp.example", true}, {"http://localhost:3000", false}} {
+		t.Run(c.appURL, func(t *testing.T) {
+			api, fx := apitest.NewWith(t, apitest.Options{Env: map[string]string{"APP_URL": c.appURL}})
+			u := fx.TrustUser(t, fx.Org(t), "super_clinician")
+			r := api.Do("POST", "/api/dev/login", map[string]any{"userId": u.ID})
+			r.Want(t, http.StatusNoContent)
+			set := r.Header("Set-Cookie")
+			if got := strings.Contains(set, "; Secure"); got != c.secure {
+				t.Errorf("sign-in Set-Cookie %q: Secure %v, want %v", set, got, c.secure)
+			}
+			out := api.Do("POST", "/api/logout", nil)
+			if got := strings.Contains(out.Header("Set-Cookie"), "; Secure"); got != c.secure {
+				t.Errorf("sign-out Set-Cookie %q: Secure %v, want %v", out.Header("Set-Cookie"), got, c.secure)
+			}
+		})
+	}
 }

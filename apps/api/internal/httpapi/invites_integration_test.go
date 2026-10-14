@@ -334,3 +334,21 @@ func TestCapturedMessages(t *testing.T) {
 		}
 	})
 }
+
+// GET /api/qa/client (capture mode, like the other QA routes; no sign-in): the address the rate
+// limits count this caller by, and the X-Forwarded-For the API got, so a tester can check on
+// QA that it's the browser's own address and not a proxy's (S06, FORWARDED_HOPS).
+func TestQAClientAddress(t *testing.T) {
+	t.Parallel()
+	c, _ := apitest.NewWith(t, apitest.Options{Capture: true})
+	r := c.Do("GET", "/api/qa/client", nil)
+	r.Want(t, http.StatusOK)
+	var got struct{ Address, ForwardedFor string }
+	r.Decode(t, &got)
+	if got.Address != "127.0.0.1" || got.ForwardedFor != "" {
+		t.Errorf("got %+v; want the test client's own address and no header", got)
+	}
+	if cc := r.Header("Cache-Control"); cc != "no-store" {
+		t.Errorf("Cache-Control %q", cc)
+	}
+}
