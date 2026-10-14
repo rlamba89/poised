@@ -3,16 +3,14 @@
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { Alert, Anchor, AppShell, Badge, Button, Group, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
+import { signOut as signOutStaff } from "@/lib/signin";
 import { AuthProvider, allHospitals, useMe } from "@/lib/auth";
 
 function Shell() {
   const me = useMe();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const signOut = async () => {
-    await api("/logout", { method: "POST" });
-    navigate("/login", { replace: true });
-  };
+  const signOut = () => signOutStaff(() => navigate("/login", { replace: true }), () => api("/logout", { method: "POST" }));
   return (
     <AppShell header={{ height: 56 }} padding="md">
       <AppShell.Header px="md">

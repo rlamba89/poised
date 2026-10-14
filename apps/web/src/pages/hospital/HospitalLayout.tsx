@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { Alert, Anchor, AppShell, Badge, Button, Group, Select, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
+import { signOut as signOutStaff } from "@/lib/signin";
 import { AuthProvider, HospitalContext, canManageSettings, canManageStaff, canSeeAudit, findHospital, hospitalBase, roleLabel, switchPath, useMe, type Here } from "@/lib/auth";
 
 function NoAccess() {
@@ -33,10 +34,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       {label}
     </Button>
   );
-  const signOut = async () => {
-    await api("/logout", { method: "POST" });
-    navigate("/login", { replace: true });
-  };
+  const signOut = () => signOutStaff(() => navigate("/login", { replace: true }), () => api("/logout", { method: "POST" }));
   const page = here ? <HospitalContext.Provider value={here}>{children}</HospitalContext.Provider> : <NoAccess />;
   // The questionnaire editor has its own header (Lifebox layout), so it gets the whole screen.
   if (/\/questionnaires\/[^/]+$/.test(pathname)) return page;

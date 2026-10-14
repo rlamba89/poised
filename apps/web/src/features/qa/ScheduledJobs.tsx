@@ -3,12 +3,14 @@
 //   - run the jobs now, as of a later time (POST /api/qa/jobs/run), e.g. two days on; and
 //   - move the local timer's clock ahead (PUT /api/qa/jobs/clock), so its own next run (every
 //     minute in make dev) acts as if that much time had passed.
-// No sign-in, like the captured messages: the API serves these only with MESSAGING=capture.
+// Like the captured messages: the API serves these only with MESSAGING=capture, and on QA only
+// to a signed-in platform admin (S12; locally, with the dev login, they are open).
 // Nothing here shows patient data: a run says only how many reminders and flags it made.
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { Alert, Anchor, Button, Card, Container, Group, Loader, NumberInput, Stack, Text, TextInput, Title } from "@mantine/core";
-import { ApiError, api } from "@/lib/api";
+import { api } from "@/lib/api";
+import { SIGN_IN_FIRST, qaError } from "./access";
 import { formatDateTime } from "@/lib/format";
 import { addDays, ceilMinute, fromLocalInput, offsetMinutes, toLocalInput } from "./jobsTime";
 
@@ -44,9 +46,7 @@ export function ScheduledJobs() {
           setClock(c);
           setClockError("");
         })
-        .catch((e: unknown) =>
-          setClockError(e instanceof ApiError && e.status === 404 ? "Jobs can be run from here only when the API runs with MESSAGING=capture." : (e as Error).message),
-        ),
+        .catch((e: unknown) => setClockError(qaError(e, "Jobs can be run from here only when the API runs with MESSAGING=capture."))),
     [],
   );
   useEffect(() => {
@@ -136,7 +136,11 @@ export function ScheduledJobs() {
 
         <Card withBorder>
           <Title order={4} mb={4}>The timer</Title>
-          {clockError && <Alert color="red">{clockError}</Alert>}
+          {clockError && (
+            <Alert color="red">
+              {clockError} {clockError === SIGN_IN_FIRST && <Anchor component={Link} to="/login">Sign in</Anchor>}
+            </Alert>
+          )}
           {!clock && !clockError && <Loader size="sm" />}
           {clock && (
             <Stack gap="xs">

@@ -13,6 +13,7 @@ describe("routes", () => {
   it.each([
     ["/", "home", {}],
     ["/login", "login", {}],
+    ["/auth/callback", "auth-callback", {}],
     ["/i/tok123", "invite", { token: "tok123" }],
     ["/home/episodes/e1", "patient-episode", { eid: "e1" }],
     ["/home", "patient-home", {}],

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { Alert, Badge, Button, Card, Center, Container, Group, Loader, Stack, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
+import { signOut as signOutStaff } from "@/lib/signin";
 import { allHospitals, homePath, roleLabel, type Me } from "@/lib/auth";
 
 export function Home() {
@@ -19,10 +20,7 @@ export function Home() {
       })
       .catch(() => navigate("/login", { replace: true }));
   }, [navigate]);
-  const signOut = async () => {
-    await api("/logout", { method: "POST" });
-    navigate("/login", { replace: true });
-  };
+  const signOut = () => signOutStaff(() => navigate("/login", { replace: true }), () => api("/logout", { method: "POST" }));
 
   if (!me) {
     return (

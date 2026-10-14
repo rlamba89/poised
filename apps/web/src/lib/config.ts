@@ -2,12 +2,15 @@
 // none of its own: the same bundle serves every country. main.tsx loads them once, before the
 // first page renders.
 import { api } from "./api";
+import type { Cognito } from "./signin";
 
 export type AppConfig = {
   locale: string;
   timeZone: string;
   /** The deployment's patient identifier, e.g. { type: "nhs", label: "NHS number" } (S13). */
   nationalId: { type: string; label: string };
+  /** How staff sign in (S12): the dev login (local only), Cognito's managed login, or both locally. */
+  staffSignIn?: { devLogin: boolean; cognito: Cognito | null };
 };
 
 let current: AppConfig | undefined;
@@ -35,6 +38,10 @@ export const deploymentTimeZone = () => current?.timeZone;
 
 /** What staff call the patient identifier ("NHS number"), or a neutral name if the config couldn't be loaded. */
 export const nationalIdLabel = () => current?.nationalId?.label ?? "National ID";
+
+/** How staff sign in. Without the config (it couldn't be loaded), the dev login is tried. */
+export const staffSignIn = (): { devLogin: boolean; cognito: Cognito | null } =>
+  current?.staffSignIn ?? { devLogin: true, cognito: null };
 
 export function resetConfigForTests() {
   current = undefined;

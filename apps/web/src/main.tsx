@@ -6,6 +6,11 @@ import { createBrowserRouter, RouterProvider } from "react-router";
 import { MantineProvider } from "@mantine/core";
 import { routes } from "./routes";
 import { loadConfig } from "./lib/config";
+import { reloadWhenRestored } from "./lib/restore";
+
+// Back to a page kept in the browser's back/forward cache reloads it, so a signed-out person's
+// screen is never shown again from memory (S12 test report 1, finding 1).
+reloadWhenRestored(window);
 
 // The router starts loading the first page's code now, while the config is fetched.
 const router = createBrowserRouter(routes);

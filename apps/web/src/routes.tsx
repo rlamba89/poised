@@ -21,6 +21,8 @@ export const routes: RouteObject[] = [
     children: [
       { id: "home", path: "/", lazy: async () => ({ Component: (await import("@/pages/Home")).Home }) },
       { id: "login", path: "/login", lazy: async () => ({ Component: (await import("@/pages/Login")).Login }) },
+      // Cognito's managed login comes back here with the sign-in's code (S12).
+      { id: "auth-callback", path: "/auth/callback", lazy: async () => ({ Component: (await import("@/pages/AuthCallback")).AuthCallback }) },
       // The patient's invite link (S14): Continue, then their date of birth, then their questionnaire.
       { id: "invite", path: "/i/:token", lazy: async () => ({ Component: (await import("@/pages/InviteLinkPage")).InviteLinkPage }) },
       {

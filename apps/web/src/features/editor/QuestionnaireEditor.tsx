@@ -10,6 +10,7 @@ import {
   findElement, findPage, logicProblems, movePage, movePageTo, pageTitle, pagesOf, type ChapterJson, type Kind, type Target,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
+import { signOut as signOutStaff } from "@/lib/signin";
 import { canChange, useHospital, useMe } from "@/lib/auth";
 import type { Chapter } from "@/features/chapters/types";
 import { PageCanvas, SetCanvas } from "./Canvas";
@@ -384,10 +385,7 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
               <Menu.Label>{me.user.name}</Menu.Label>
               <Menu.Item
                 leftSection={<IconLogout size={14} />}
-                onClick={async () => {
-                  await api("/logout", { method: "POST" });
-                  navigate("/login", { replace: true });
-                }}
+                onClick={() => signOutStaff(() => navigate("/login", { replace: true }), () => api("/logout", { method: "POST" }))}
               >
                 Sign out
               </Menu.Item>

@@ -1,12 +1,13 @@
 // The captured-messages page, /qa/messages (S14): with MESSAGING=capture (local and QA), the
 // patients' texts and emails are stored instead of sent, and this lists the newest 100
-// (GET /api/qa/messages?to=). Testers open the links in them as a patient would. No sign-in: it
-// exists only where nothing is really sent: the API serves it only with MESSAGING=capture, which
-// a strict (AWS) deployment must set explicitly (QA only; S17 refuses it elsewhere).
+// (GET /api/qa/messages?to=). Testers open the links in them as a patient would. It exists only
+// where nothing is really sent (MESSAGING=capture: local and QA). On QA it needs a signed-in
+// platform admin (S12); locally, with the dev login, it's open.
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { Alert, Anchor, Badge, Button, Card, Container, Group, Loader, Stack, Text, TextInput, Title } from "@mantine/core";
-import { ApiError, api } from "@/lib/api";
+import { api } from "@/lib/api";
+import { SIGN_IN_FIRST, qaError } from "./access";
 import { formatDateTime } from "@/lib/format";
 
 type Message = { id: number; channel: "sms" | "email"; recipient: string; subject: string; body: string; sentAt: string };
@@ -43,9 +44,7 @@ export function CapturedMessages() {
         setShown(m);
         setError("");
       })
-      .catch((e: unknown) =>
-        setError(e instanceof ApiError && e.status === 404 ? "Messages are captured only when the API runs with MESSAGING=capture." : (e as Error).message),
-      )
+      .catch((e: unknown) => setError(qaError(e, "Messages are captured only when the API runs with MESSAGING=capture.")))
       .finally(() => setLoading(false));
   }, []);
   useEffect(() => load(""), [load]);
@@ -75,7 +74,11 @@ export function CapturedMessages() {
           <Button variant="default" size="xs" onClick={resetLimits}>Reset sign-in limits</Button>
           {reset && <Text size="sm" c="dimmed" data-testid="limits-reset">{reset}</Text>}
         </Group>
-        {error && <Alert color="red">{error}</Alert>}
+        {error && (
+          <Alert color="red">
+            {error} {error === SIGN_IN_FIRST && <Anchor component={Link} to="/login">Sign in</Anchor>}
+          </Alert>
+        )}
         {!shown && !error && <Loader />}
         {shown && shown.length === 0 && <Text c="dimmed">No messages{to.trim() ? " to that address" : ""} yet.</Text>}
         {shown?.map((m) => (
