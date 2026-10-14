@@ -46,14 +46,21 @@ func lambdaEnv() env {
 	e["DATABASE_URL_PARAM"] = "/sj/qa/database-url"
 	e["APP_URL_PARAM"] = "/sj/qa/app-url"
 	e["TOKEN_SECRET_ARN"] = "arn:aws:secretsmanager:ca-central-1:111111111111:secret:poised-ca-qa-token-AbCdEf"
+	// Written by infra's AuthStack (S12), which comes after the web address exists.
+	e["STAFF_POOL_ID_PARAM"] = "/sj/qa/cognito-user-pool-id"
+	e["STAFF_POOL_CLIENT_ID_PARAM"] = "/sj/qa/cognito-client-id"
+	e["STAFF_POOL_DOMAIN_PARAM"] = "/sj/qa/cognito-domain"
 	return e
 }
 
 func awsWithEverything() *fakeAWS {
 	return &fakeAWS{
 		params: map[string]string{
-			"/sj/qa/database-url": "postgres://neon.example.test/sj",
-			"/sj/qa/app-url":      "https://main.d123.amplifyapp.com",
+			"/sj/qa/database-url":         "postgres://neon.example.test/sj",
+			"/sj/qa/app-url":              "https://main.d123.amplifyapp.com",
+			"/sj/qa/cognito-user-pool-id": "ca-central-1_AbCdEf123",
+			"/sj/qa/cognito-client-id":    "1example23456789client",
+			"/sj/qa/cognito-domain":       "https://poised-ca-qa.auth.ca-central-1.amazoncognito.com",
 		},
 		secrets: map[string]string{
 			"arn:aws:secretsmanager:ca-central-1:111111111111:secret:poised-ca-qa-token-AbCdEf": "generated-by-cdk",
@@ -75,7 +82,11 @@ func TestResolveFetchesNamedValuesFromAWS(t *testing.T) {
 		c.Country.AppURL != "https://main.d123.amplifyapp.com" {
 		t.Errorf("got database %q, secret %q, app URL %q", c.DatabaseURL, c.TokenSecret, c.Country.AppURL)
 	}
-	if len(aws.calls) != 3 {
+	if c.Cognito.UserPoolID != "ca-central-1_AbCdEf123" || c.Cognito.ClientID != "1example23456789client" ||
+		c.Cognito.RedirectURI != "https://main.d123.amplifyapp.com/auth/callback" {
+		t.Errorf("cognito = %+v", c.Cognito)
+	}
+	if len(aws.calls) != 6 {
 		t.Errorf("fetched %v; want each value fetched once, at start-up", aws.calls)
 	}
 	// Anything not named in AWS still comes from the environment.

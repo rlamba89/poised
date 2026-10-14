@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -27,13 +28,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
+	"github.com/rlamba89/poised/apps/api/internal/auth"
 	"github.com/rlamba89/poised/apps/api/internal/clock"
 	"github.com/rlamba89/poised/apps/api/internal/cognito"
 	"github.com/rlamba89/poised/apps/api/internal/config"
@@ -172,6 +177,7 @@ type Client struct {
 	Messages *messaging.Recorder
 	base     string
 	http     *http.Client
+	cfg      config.Config
 }
 
 // New gives the test its own database, copied from the migrated template, and a real
@@ -192,7 +198,26 @@ type Options struct {
 	// Capture stores texts and emails in sent_messages (MESSAGING=capture, as make dev does)
 	// instead of the recording fake, for the captured-messages route's tests.
 	Capture bool
+	// Cognito signs staff in as on AWS (S12): a made-up user pool, whose ID tokens the test
+	// makes with Client.IDToken, and no dev login. Sign in with Client.Cognito.Code and
+	// POST /api/auth/callback, or skip the sign-in with Client.SignedIn.
+	Cognito bool
 }
+
+// The made-up user pool's settings and signing key, for Options.Cognito.
+const (
+	CognitoPoolID   = "xx-test-1_ApiTest"
+	CognitoClientID = "apitestclient"
+	cognitoKid      = "apitest-key"
+)
+
+var cognitoKey = sync.OnceValue(func() *rsa.PrivateKey {
+	k, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		panic(err)
+	}
+	return k
+})
 
 // NewWith is New with another router or environment. The config goes through the real
 // config.Load, so a bad Env fails the test as it would stop a real server.
@@ -205,6 +230,12 @@ func NewWith(t *testing.T, opts Options) (*Client, *Fixtures) {
 		"DATABASE_URL": "postgres://apitest", // unused: the router gets the test's pool directly
 		"TOKEN_SECRET": string(secret),
 		"DEV_LOGIN":    "true",
+	}
+	if opts.Cognito {
+		env["DEV_LOGIN"] = ""
+		env["STAFF_POOL_ID"] = CognitoPoolID
+		env["STAFF_POOL_CLIENT_ID"] = CognitoClientID
+		env["STAFF_POOL_DOMAIN"] = "https://apitest.auth.example.test"
 	}
 	for k, v := range opts.Env {
 		env[k] = v
@@ -230,7 +261,8 @@ func NewWith(t *testing.T, opts Options) (*Client, *Fixtures) {
 		t.Fatalf("apitest: connect to %s: %v", name, err)
 	}
 	clk, cog := &clock.Fake{}, &cognito.Recorder{}
-	deps := httpapi.Deps{Pool: pool, Config: cfg, Cognito: cog, Clock: clk}
+	deps := httpapi.Deps{Pool: pool, Config: cfg, Cognito: cog, Clock: clk,
+		CognitoKeys: cognito.StaticKeys{cognitoKid: &cognitoKey().PublicKey}}
 	var msgs *messaging.Recorder
 	if opts.Capture {
 		capture := messaging.Capture{DB: db.New(pool)}
@@ -247,7 +279,40 @@ func NewWith(t *testing.T, opts Options) (*Client, *Fixtures) {
 			t.Errorf("apitest: drop %s: %v", name, err)
 		}
 	})
-	return &Client{DB: pool, Clock: clk, Cognito: cog, Messages: msgs, base: srv.URL, http: srv.Client()}, &Fixtures{db: pool}
+	return &Client{DB: pool, Clock: clk, Cognito: cog, Messages: msgs, base: srv.URL, http: srv.Client(), cfg: cfg}, &Fixtures{db: pool}
+}
+
+// IDToken is an ID token from the made-up user pool (Options.Cognito) for sub and email, valid
+// for an hour from the server's clock; change edits its claims first (e.g. to expire it).
+func (c *Client) IDToken(t *testing.T, sub, email string, change func(jwt.MapClaims)) string {
+	t.Helper()
+	now := c.Clock.Now()
+	claims := jwt.MapClaims{
+		"sub": sub, "email": email, "email_verified": true, "token_use": "id",
+		"iss": c.cfg.Cognito.Issuer(), "aud": CognitoClientID,
+		"iat": now.Unix(), "exp": now.Add(time.Hour).Unix(),
+	}
+	if change != nil {
+		change(claims)
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	tok.Header["kid"] = cognitoKid
+	s, err := tok.SignedString(cognitoKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// SignedIn is a fresh browser holding u's session cookie, as after a sign-in, without going
+// through one: for servers with no dev login (Options.Cognito).
+func (c *Client) SignedIn(t *testing.T, u User) *Client {
+	t.Helper()
+	token, err := auth.Issue(secret, auth.User{ID: u.ID, Name: u.Name}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c.WithCookie(t, auth.CookieName, token, "/")
 }
 
 // LoginAs signs in through the real POST /api/dev/login and returns a client that keeps
@@ -318,7 +383,7 @@ func (c *Client) WithCookie(t *testing.T, name, value, path string) *Client {
 
 func (c *Client) withJar(jar http.CookieJar) *Client {
 	return &Client{DB: c.DB, Clock: c.Clock, Cognito: c.Cognito, Messages: c.Messages, base: c.base,
-		http: &http.Client{Transport: c.http.Transport, Jar: jar}}
+		http: &http.Client{Transport: c.http.Transport, Jar: jar}, cfg: c.cfg}
 }
 
 // Do sends a request and returns the response. body is sent as JSON; a string is sent as

@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -25,6 +26,22 @@ func country() env {
 	e["DEFAULT_LOCALE"] = "en-CA"
 	e["PHONE_COUNTRY"] = "CA"
 	e["NATIONAL_ID_TYPE"] = "nhs" // the only scheme built so far (internal/nationalid)
+	return e
+}
+
+// cognito is a made-up staff user pool (S12), in the made-up country's region.
+func cognito(e env) env {
+	e["STAFF_POOL_ID"] = "ca-central-1_AbCdEf123"
+	e["STAFF_POOL_CLIENT_ID"] = "1example23456789client"
+	e["STAFF_POOL_DOMAIN"] = "https://poised-ca-qa.auth.ca-central-1.amazoncognito.com"
+	return e
+}
+
+// strict is a complete AWS deployment of the made-up country: strict, with Cognito.
+func strict() env {
+	e := cognito(country())
+	e["CONFIG_STRICT"] = "true"
+	e["MESSAGING"] = "capture"
 	return e
 }
 
@@ -118,11 +135,30 @@ func TestLoadNeedsTheDatabaseAndSecretEvenLocally(t *testing.T) {
 
 func TestLoadStrict(t *testing.T) {
 	t.Run("a complete country starts", func(t *testing.T) {
-		e := country()
-		e["CONFIG_STRICT"] = "true"
-		e["MESSAGING"] = "capture" // not a country value, but strict needs it too (S14 verification 1)
-		if _, err := config.Load(e.get); err != nil {
+		// MESSAGING isn't a country value, but strict needs it too (S14 verification 1), and
+		// Cognito, the staff sign-in on AWS (S12).
+		if _, err := config.Load(strict().get); err != nil {
 			t.Fatal(err)
+		}
+	})
+	t.Run("no dev login on AWS (S12): staff sign in with Cognito", func(t *testing.T) {
+		e := strict()
+		e["DEV_LOGIN"] = "true"
+		_, err := config.Load(e.get)
+		if err == nil || !strings.Contains(err.Error(), "DEV_LOGIN") {
+			t.Fatalf("err = %v, want one naming DEV_LOGIN", err)
+		}
+	})
+	t.Run("Cognito is needed", func(t *testing.T) {
+		e := strict()
+		delete(e, "STAFF_POOL_ID")
+		delete(e, "STAFF_POOL_CLIENT_ID")
+		delete(e, "STAFF_POOL_DOMAIN")
+		_, err := config.Load(e.get)
+		for _, name := range []string{"STAFF_POOL_ID", "STAFF_POOL_CLIENT_ID", "STAFF_POOL_DOMAIN"} {
+			if err == nil || !strings.Contains(err.Error(), name) {
+				t.Errorf("err = %v, want one naming %s", err, name)
+			}
 		}
 	})
 	t.Run("every missing value is named, with no UK fallback", func(t *testing.T) {
@@ -193,15 +229,89 @@ func TestLoadRefusesBadValues(t *testing.T) {
 }
 
 func TestPublic(t *testing.T) {
-	c, err := config.Load(country().get)
+	e := country()
+	e["DEV_LOGIN"] = "true"
+	c, err := config.Load(e.get)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := c.Public()
 	want := config.Public{Locale: "en-CA", TimeZone: "America/Toronto",
-		NationalID: config.PublicNationalID{Type: "nhs", Label: "NHS number"}}
-	if got != want {
+		NationalID:  config.PublicNationalID{Type: "nhs", Label: "NHS number"},
+		StaffSignIn: config.PublicSignIn{DevLogin: true}}
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("public = %+v", got)
+	}
+}
+
+// The browser needs Cognito's managed login addresses and the app client (S12): none of them
+// is a secret (a public client, with PKCE). The redirect and sign-out addresses are the app's.
+func TestPublicCognito(t *testing.T) {
+	c, err := config.Load(strict().get)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := c.Public().StaffSignIn
+	want := config.PublicSignIn{Cognito: &config.PublicCognito{
+		AuthorizeURL: "https://poised-ca-qa.auth.ca-central-1.amazoncognito.com/oauth2/authorize",
+		LogoutURL:    "https://poised-ca-qa.auth.ca-central-1.amazoncognito.com/logout",
+		ClientID:     "1example23456789client",
+		RedirectURI:  "https://ca.example.test/auth/callback",
+		SignedOutURI: "https://ca.example.test/login",
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("staff sign-in = %+v, want %+v", got, want)
+	}
+	if got.Cognito.RedirectURI != c.Cognito.RedirectURI {
+		t.Errorf("the browser's redirect address %q isn't the one the code is exchanged with, %q", got.Cognito.RedirectURI, c.Cognito.RedirectURI)
+	}
+}
+
+func TestLoadCognito(t *testing.T) {
+	t.Run("locally it's optional: the dev login stands in", func(t *testing.T) {
+		c, err := config.Load(required().get)
+		if err != nil || c.Cognito.Enabled() {
+			t.Fatalf("got %+v, %v", c.Cognito, err)
+		}
+	})
+	t.Run("all three values", func(t *testing.T) {
+		c, err := config.Load(cognito(country()).get)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := config.Cognito{UserPoolID: "ca-central-1_AbCdEf123", ClientID: "1example23456789client",
+			Domain: "https://poised-ca-qa.auth.ca-central-1.amazoncognito.com", RedirectURI: "https://ca.example.test/auth/callback"}
+		if c.Cognito != want || !c.Cognito.Enabled() {
+			t.Errorf("cognito = %+v, want %+v", c.Cognito, want)
+		}
+		if c.Cognito.Issuer() != "https://cognito-idp.ca-central-1.amazonaws.com/ca-central-1_AbCdEf123" {
+			t.Errorf("issuer = %q", c.Cognito.Issuer())
+		}
+		if c.Cognito.Region() != "ca-central-1" {
+			t.Errorf("region = %q", c.Cognito.Region())
+		}
+	})
+	t.Run("some but not all: the missing ones are named", func(t *testing.T) {
+		e := cognito(country())
+		delete(e, "STAFF_POOL_DOMAIN")
+		_, err := config.Load(e.get)
+		if err == nil || !strings.Contains(err.Error(), "STAFF_POOL_DOMAIN") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	for name, bad := range map[string]string{
+		"STAFF_POOL_ID": "not-a-pool",
+		"STAFF_POOL_DOMAIN":       "poised.auth.example.test",
+		"STAFF_POOL_CLIENT_ID":    "has spaces",
+	} {
+		t.Run(name+" refused: "+bad, func(t *testing.T) {
+			e := cognito(country())
+			e[name] = bad
+			_, err := config.Load(e.get)
+			if err == nil || !strings.Contains(err.Error(), name) {
+				t.Fatalf("err = %v, want one naming %s", err, name)
+			}
+		})
 	}
 }
 
@@ -213,13 +323,13 @@ func TestLoadMessaging(t *testing.T) {
 		}
 	})
 	t.Run("strict (AWS): MESSAGING must be set, so the unauthenticated captured-messages route is never on by default", func(t *testing.T) {
-		e := country()
-		e["CONFIG_STRICT"] = "true"
+		e := strict()
+		delete(e, "MESSAGING")
 		_, err := config.Load(e.get)
 		if err == nil || !strings.Contains(err.Error(), "MESSAGING") {
 			t.Fatalf("got %v", err)
 		}
-		e["MESSAGING"] = "capture" // QA opts in, as it does to DEV_LOGIN
+		e["MESSAGING"] = "capture" // QA opts in
 		if c, err := config.Load(e.get); err != nil || c.Messaging != "capture" {
 			t.Fatalf("got %q, %v", c.Messaging, err)
 		}

@@ -42,6 +42,34 @@ type Config struct {
 	// client's. On AWS it's set by infra (internal/serve reads the client's address from the header).
 	ForwardedHops int
 	Country       Country
+	// Cognito is the staff user pool (S12): staff sign in through its managed login. Required on
+	// AWS (CONFIG_STRICT); locally it's usually unset and the dev login stands in.
+	Cognito Cognito
+}
+
+// Cognito names the staff user pool and its app client (S12). None of it is secret: the app
+// client is public (no client secret), and the code exchange is protected by PKCE. The variables
+// are STAFF_POOL_*, not COGNITO_*: a developer's .env may hold another project's COGNITO_* values,
+// which make exports (found in S12).
+type Cognito struct {
+	UserPoolID string // STAFF_POOL_ID, e.g. <region>_AbCdEf123
+	ClientID   string // STAFF_POOL_CLIENT_ID: the app client the managed login signs in to
+	// STAFF_POOL_DOMAIN: the managed login's address, e.g. https://<prefix>.auth.<region>.amazoncognito.com
+	Domain string
+	// RedirectURI is where the managed login sends the browser back with the code: the app's
+	// /auth/callback page (APP_URL). The code is exchanged with the same address.
+	RedirectURI string
+}
+
+// Enabled reports whether staff sign in with Cognito here.
+func (c Cognito) Enabled() bool { return c.UserPoolID != "" }
+
+// Region is the pool's AWS region: the part of its ID before the underscore.
+func (c Cognito) Region() string { return strings.SplitN(c.UserPoolID, "_", 2)[0] }
+
+// Issuer is the iss claim of the pool's ID tokens; its keys are at Issuer + /.well-known/jwks.json.
+func (c Cognito) Issuer() string {
+	return "https://cognito-idp." + c.Region() + ".amazonaws.com/" + c.UserPoolID
 }
 
 // maxForwardedHops is a sanity limit: on QA the browser's address is third from the right
@@ -69,9 +97,27 @@ func (c Country) NationalID() nationalid.Scheme {
 
 // Public is what GET /api/config tells the browser. Nothing secret goes in here.
 type Public struct {
-	Locale     string           `json:"locale"`
-	TimeZone   string           `json:"timeZone"`
-	NationalID PublicNationalID `json:"nationalId"`
+	Locale      string           `json:"locale"`
+	TimeZone    string           `json:"timeZone"`
+	NationalID  PublicNationalID `json:"nationalId"`
+	StaffSignIn PublicSignIn     `json:"staffSignIn"`
+}
+
+// PublicSignIn is how staff sign in here (S12): the dev login (local only), Cognito's managed
+// login, or, locally, both.
+type PublicSignIn struct {
+	DevLogin bool           `json:"devLogin"`
+	Cognito  *PublicCognito `json:"cognito"` // null without Cognito
+}
+
+// PublicCognito is what the sign-in page needs to send the browser to the managed login (the
+// OAuth code flow with PKCE) and to sign out of it.
+type PublicCognito struct {
+	AuthorizeURL string `json:"authorizeUrl"`
+	LogoutURL    string `json:"logoutUrl"`
+	ClientID     string `json:"clientId"`
+	RedirectURI  string `json:"redirectUri"`  // the app's /auth/callback
+	SignedOutURI string `json:"signedOutUri"` // the app's /login, after signing out of the managed login
 }
 
 // PublicNationalID names the patient identifier, so staff screens can label it ("NHS number").
@@ -83,8 +129,19 @@ type PublicNationalID struct {
 // Public returns the values the web app may read.
 func (c Config) Public() Public {
 	id := c.Country.NationalID()
-	return Public{Locale: c.Country.Locale, TimeZone: c.Country.TimeZone,
-		NationalID: PublicNationalID{Type: id.Type, Label: id.Label}}
+	p := Public{Locale: c.Country.Locale, TimeZone: c.Country.TimeZone,
+		NationalID:  PublicNationalID{Type: id.Type, Label: id.Label},
+		StaffSignIn: PublicSignIn{DevLogin: c.DevLogin}}
+	if c.Cognito.Enabled() {
+		p.StaffSignIn.Cognito = &PublicCognito{
+			AuthorizeURL: c.Cognito.Domain + "/oauth2/authorize",
+			LogoutURL:    c.Cognito.Domain + "/logout",
+			ClientID:     c.Cognito.ClientID,
+			RedirectURI:  c.Cognito.RedirectURI,
+			SignedOutURI: c.Country.AppURL + "/login",
+		}
+	}
+	return p
 }
 
 // localDefaults are used only outside strict mode, for development on a laptop.
@@ -97,8 +154,10 @@ var localDefaults = map[string]string{
 }
 
 var (
-	localeRe  = regexp.MustCompile(`^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$`)
-	countryRe = regexp.MustCompile(`^[A-Z]{2}$`)
+	localeRe   = regexp.MustCompile(`^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$`)
+	countryRe  = regexp.MustCompile(`^[A-Z]{2}$`)
+	poolIDRe   = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-\d_[A-Za-z0-9]+$`)
+	clientIDRe = regexp.MustCompile(`^[A-Za-z0-9]+$`)
 )
 
 // Load reads the configuration through getenv (os.Getenv in a real server, a map in tests).
@@ -163,6 +222,7 @@ func Load(getenv func(string) string) (Config, error) {
 	if c.Addr == "" {
 		c.Addr = ":8080"
 	}
+	errs = append(errs, c.loadCognito(getenv, strict, need)...)
 	if v := getenv("FORWARDED_HOPS"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 0 || n > maxForwardedHops {
@@ -191,6 +251,44 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("config: %w", err)
 	}
 	return c, nil
+}
+
+// loadCognito reads the staff user pool (S12). On AWS (strict) it's required and the dev login
+// is refused: the stub would let anyone sign in as anyone. Locally it's optional, but it's all
+// three values or none.
+func (c *Config) loadCognito(getenv func(string) string, strict bool, need func(string) string) []error {
+	names := []string{"STAFF_POOL_ID", "STAFF_POOL_CLIENT_ID", "STAFF_POOL_DOMAIN"}
+	var errs []error
+	if strict && c.DevLogin {
+		errs = append(errs, errors.New("DEV_LOGIN must be off with CONFIG_STRICT (AWS): staff sign in with Cognito there (S12)"))
+	}
+	set := false
+	for _, n := range names {
+		set = set || getenv(n) != ""
+	}
+	if !strict && !set {
+		return errs
+	}
+	c.Cognito = Cognito{
+		UserPoolID: need("STAFF_POOL_ID"),
+		ClientID:   need("STAFF_POOL_CLIENT_ID"),
+		Domain:     strings.TrimSuffix(need("STAFF_POOL_DOMAIN"), "/"),
+	}
+	if c.Country.AppURL != "" {
+		c.Cognito.RedirectURI = c.Country.AppURL + "/auth/callback"
+	}
+	if v := c.Cognito.UserPoolID; v != "" && !poolIDRe.MatchString(v) {
+		errs = append(errs, fmt.Errorf("STAFF_POOL_ID must be a user pool ID (<region>_<id>), not %q", v))
+	}
+	if v := c.Cognito.ClientID; v != "" && !clientIDRe.MatchString(v) {
+		errs = append(errs, fmt.Errorf("STAFF_POOL_CLIENT_ID must be an app client ID (letters and digits), not %q", v))
+	}
+	if v := c.Cognito.Domain; v != "" {
+		if u, err := url.Parse(v); err != nil || u.Scheme != "https" || u.Host == "" || u.Path != "" {
+			errs = append(errs, fmt.Errorf("STAFF_POOL_DOMAIN must be the managed login's https address with no path, not %q", v))
+		}
+	}
+	return errs
 }
 
 // validate checks the values that are set; missing ones are reported by Load.

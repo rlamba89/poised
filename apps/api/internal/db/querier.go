@@ -138,6 +138,8 @@ type Querier interface {
 	// One person's rows of ListStaff.
 	GetStaffMember(ctx context.Context, arg GetStaffMemberParams) ([]GetStaffMemberRow, error)
 	GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error)
+	// The staff member a Cognito sign-in is for (S12), once their first sign-in stored the sub.
+	GetUserByCognitoSub(ctx context.Context, cognitoSub *string) (GetUserByCognitoSubRow, error)
 	GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error)
 	GetVersionChapter(ctx context.Context, arg GetVersionChapterParams) (GetVersionChapterRow, error)
 	HasNonDraftVersion(ctx context.Context, questionnaireID uuid.UUID) (bool, error)
@@ -312,6 +314,9 @@ type Querier interface {
 	SearchPatients(ctx context.Context, arg SearchPatientsParams) ([]SearchPatientsRow, error)
 	SetAccountContact(ctx context.Context, arg SetAccountContactParams) error
 	SetChapterPosition(ctx context.Context, arg SetChapterPositionParams) error
+	// Ties the account to its user in the staff pool at a sign-in found by the verified email (no
+	// account holds that sub yet: the sub is looked up first).
+	SetCognitoSub(ctx context.Context, arg SetCognitoSubParams) error
 	SetHospitalSettings(ctx context.Context, arg SetHospitalSettingsParams) error
 	SetHospitalStatus(ctx context.Context, arg SetHospitalStatusParams) error
 	SetOrgSettings(ctx context.Context, arg SetOrgSettingsParams) error

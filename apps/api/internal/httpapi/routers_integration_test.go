@@ -133,9 +133,17 @@ func TestConfig(t *testing.T) {
 		"NATIONAL_ID_TYPE": "nhs",     // the only scheme built so far
 		"MESSAGING":        "capture", // strict needs it set (S14 verification 1)
 	}
-	c, fx := apitest.NewWith(t, apitest.Options{Env: country})
+	// Strict (AWS) has Cognito and no dev login (S12).
+	c, fx := apitest.NewWith(t, apitest.Options{Env: country, Cognito: true})
 	want := map[string]any{"locale": "fr-CA", "timeZone": "America/Toronto",
-		"nationalId": map[string]any{"type": "nhs", "label": "NHS number"}}
+		"nationalId": map[string]any{"type": "nhs", "label": "NHS number"},
+		"staffSignIn": map[string]any{"devLogin": false, "cognito": map[string]any{
+			"authorizeUrl": "https://apitest.auth.example.test/oauth2/authorize",
+			"logoutUrl":    "https://apitest.auth.example.test/logout",
+			"clientId":     apitest.CognitoClientID,
+			"redirectUri":  "https://ca.example.test/auth/callback",
+			"signedOutUri": "https://ca.example.test/login",
+		}}}
 	check := func(t *testing.T, r *apitest.Resp) {
 		t.Helper()
 		r.Want(t, http.StatusOK)
@@ -150,7 +158,7 @@ func TestConfig(t *testing.T) {
 		check(t, c.Do("GET", "/api/config", nil))
 	})
 	t.Run("signed in: the same answer", func(t *testing.T) {
-		check(t, c.LoginAs(t, fx.User(t, fx.Hospital(t), "clinician")).Do("GET", "/api/config", nil))
+		check(t, c.SignedIn(t, fx.User(t, fx.Hospital(t), "clinician")).Do("GET", "/api/config", nil))
 	})
 	t.Run("invalid input", func(t *testing.T) {
 		c.Do("POST", "/api/config", map[string]any{"locale": "en-US"}).Want(t, http.StatusMethodNotAllowed)
@@ -163,10 +171,17 @@ func TestConfig(t *testing.T) {
 		var got struct {
 			Locale, TimeZone string
 			NationalID       struct{ Type string }
+			StaffSignIn      struct {
+				DevLogin bool
+				Cognito  any
+			}
 		}
 		r.Decode(t, &got)
 		if got.Locale != "en-GB" || got.TimeZone != "Europe/London" || got.NationalID.Type != "nhs" {
 			t.Errorf("config = %v, want the local UK defaults", got)
+		}
+		if !got.StaffSignIn.DevLogin || got.StaffSignIn.Cognito != nil {
+			t.Errorf("staff sign-in = %+v, want the dev login only", got.StaffSignIn)
 		}
 	})
 }

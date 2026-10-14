@@ -23,8 +23,9 @@ type Fixtures struct {
 
 // User is a signed-in person, for LoginAs and the created_by columns.
 type User struct {
-	ID   uuid.UUID
-	Name string
+	ID    uuid.UUID
+	Name  string
+	Email string
 }
 
 // Hospital is a hospital and its trust. Its routes are under Path.
@@ -65,8 +66,8 @@ func (f *Fixtures) HospitalIn(t *testing.T, org uuid.UUID) Hospital {
 func (f *Fixtures) User(t *testing.T, h Hospital, role string) User {
 	t.Helper()
 	suffix := randomHex(3)
-	u := User{Name: "User " + suffix}
-	f.scan(t, &u.ID, `INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id`, u.Name, suffix+"@test.example")
+	u := User{Name: "User " + suffix, Email: suffix + "@test.example"}
+	f.scan(t, &u.ID, `INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id`, u.Name, u.Email)
 	if role != "" {
 		f.Member(t, u, h, role)
 	}

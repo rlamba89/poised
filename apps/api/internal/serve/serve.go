@@ -58,11 +58,20 @@ func Main(name string, router func(httpapi.Deps) http.Handler, jobsTimer bool) {
 	// MESSAGING=capture is the only mode until S17 (config.Load refuses any other): texts and
 	// emails are stored in sent_messages, never sent.
 	capture := messaging.Capture{DB: db.New(pool)}
-	deps := httpapi.Deps{Pool: pool, Config: cfg, Cognito: cognito.Local{}, SMS: capture, Email: capture}
+	// The staff user pool (S12): on AWS, and locally only if COGNITO_* are set; otherwise the
+	// stand-in that only logs, and staff use the dev login.
+	var userPool cognito.Client = cognito.Local{}
+	if c := cfg.Cognito; c.Enabled() {
+		userPool = &cognito.AWS{PoolID: c.UserPoolID, ClientID: c.ClientID, Domain: c.Domain, RedirectURI: c.RedirectURI}
+	}
+	deps := httpapi.Deps{Pool: pool, Config: cfg, Cognito: userPool, SMS: capture, Email: capture}
 	handler := router(deps)
 	devLogin, timer := "off", "off"
 	if cfg.DevLogin {
 		devLogin = "on"
+	}
+	if cfg.Cognito.Enabled() {
+		devLogin += ", Cognito sign-in on"
 	}
 	if isLambda {
 		log.Printf("%s on Lambda (dev login %s, messaging %s, locale %s, time zone %s, forwarded hops %d)",

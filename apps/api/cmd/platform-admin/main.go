@@ -5,7 +5,9 @@
 //
 // It creates the staff account (in Cognito too, for a new email) and the platform_admins row.
 // Running it again changes nothing. Locally Cognito is the stand-in that only logs (cognito.Local);
-// S12 wires the real user pool here.
+// with STAFF_POOL_ID set it's the real staff pool, whose invitation email (a temporary
+// password) goes to the new admin: `make aws-platform-admin ENV=… EMAIL=…` runs it against an AWS
+// environment's database and pool (S12).
 package main
 
 import (
@@ -43,7 +45,11 @@ func main() {
 		log.Fatalf("connect: %v", err)
 	}
 	defer pool.Close()
-	created, err := add(ctx, pool, cognito.Local{}, os.Args[2], name)
+	var userPool cognito.Client = cognito.Local{}
+	if id := os.Getenv("STAFF_POOL_ID"); id != "" {
+		userPool = &cognito.AWS{PoolID: id}
+	}
+	created, err := add(ctx, pool, userPool, os.Args[2], name)
 	if err != nil {
 		log.Fatal(err)
 	}

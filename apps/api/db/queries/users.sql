@@ -45,3 +45,12 @@ WHERE m.user_id = $1 AND m.org_id = $2 AND (m.hospital_id IS NULL OR h.status = 
 -- name: AddPlatformAdmin :exec
 -- Makes the user a superadmin (A-21); nothing changes if they already are.
 INSERT INTO platform_admins (user_id) VALUES ($1) ON CONFLICT DO NOTHING;
+
+-- name: GetUserByCognitoSub :one
+-- The staff member a Cognito sign-in is for (S12), once their first sign-in stored the sub.
+SELECT id, name, email FROM users WHERE cognito_sub = $1;
+
+-- name: SetCognitoSub :exec
+-- Ties the account to its user in the staff pool at a sign-in found by the verified email (no
+-- account holds that sub yet: the sub is looked up first).
+UPDATE users SET cognito_sub = sqlc.arg(sub) WHERE id = sqlc.arg(id);

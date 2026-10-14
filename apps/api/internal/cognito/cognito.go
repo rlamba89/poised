@@ -1,7 +1,9 @@
 // Package cognito is the staff user pool (plan C1). Staff accounts are created here when an
 // admin invites someone (STF-01); Cognito emails them a temporary password, valid for 7 days.
+// Staff sign in through the pool's managed login (S12): the browser comes back to the app with a
+// code, which the API exchanges for an ID token (Exchange) and checks (Verifier).
 //
-// The real client (AdminCreateUser) comes with S12, on AWS. Until then:
+//   - AWS (aws.go) is the real pool, on AWS;
 //   - Local is used by the local servers: it only logs, and the invited person signs in with the
 //     dev login, where they appear at once;
 //   - Recorder is the fake for tests: it records each call.
@@ -9,18 +11,26 @@ package cognito
 
 import (
 	"context"
+	"errors"
 	"log"
 	"sync"
 )
 
-// Client creates staff accounts and sends their invitations.
+// Client creates staff accounts, sends their invitations and completes their sign-in.
 type Client interface {
 	// CreateUser creates the account for email and sends the invitation (AdminCreateUser).
 	CreateUser(ctx context.Context, email string) error
 	// ResendInvite sends a fresh invitation to an account that hasn't signed in yet
 	// (AdminCreateUser with MessageAction RESEND).
 	ResendInvite(ctx context.Context, email string) error
+	// Exchange trades the managed login's code (and the browser's PKCE verifier) for an ID
+	// token, which the caller must still verify. A refused code is ErrCode.
+	Exchange(ctx context.Context, code, verifier string) (idToken string, err error)
 }
+
+// ErrCode is a sign-in code the pool refused: wrong, already used, expired, or not matching the
+// verifier. The person signs in again.
+var ErrCode = errors.New("cognito: the sign-in code was refused")
 
 // Local stands in for Cognito on a developer's machine: no account, no email.
 type Local struct{}
@@ -35,17 +45,49 @@ func (Local) ResendInvite(_ context.Context, email string) error {
 	return nil
 }
 
+// Exchange: there's no managed login locally (the route isn't served without Cognito).
+func (Local) Exchange(context.Context, string, string) (string, error) { return "", ErrCode }
+
 // Call is one request to the Recorder.
 type Call struct {
-	Op    string // "CreateUser" or "ResendInvite"
-	Email string
+	Op    string // "CreateUser", "ResendInvite" or "Exchange"
+	Email string // Exchange: the code
 }
 
-// Recorder is the fake for tests: it records every call that succeeds.
+// Recorder is the fake for tests: it records every call that succeeds. Exchange answers the
+// codes a test gave it with Code, each once (a code works once, as Cognito's do).
 type Recorder struct {
 	mu    sync.Mutex
 	calls []Call
 	err   error
+	codes map[string]code
+}
+
+type code struct{ verifier, idToken string }
+
+// Code makes Exchange answer code (with the PKCE verifier) with idToken, once.
+func (r *Recorder) Code(c, verifier, idToken string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.codes == nil {
+		r.codes = map[string]code{}
+	}
+	r.codes[c] = code{verifier, idToken}
+}
+
+func (r *Recorder) Exchange(_ context.Context, c, verifier string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.err != nil {
+		return "", r.err
+	}
+	got, ok := r.codes[c]
+	if !ok || got.verifier != verifier {
+		return "", ErrCode
+	}
+	delete(r.codes, c)
+	r.calls = append(r.calls, Call{Op: "Exchange", Email: c})
+	return got.idToken, nil
 }
 
 // FailWith makes every later call fail with err (nil: succeed again).

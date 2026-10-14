@@ -20,11 +20,14 @@ import (
 // Deps is what the routers need. Later plans add S3 and evaluate; tests pass fakes.
 type Deps struct {
 	Pool    *pgxpool.Pool
-	Config  config.Config   // the token secret, DEV_LOGIN, MESSAGING and the per-country values
-	Cognito cognito.Client  // staff accounts and their invitations (S09; the real one in S12)
-	Clock   clock.Clock     // nil: the system clock
-	SMS     messaging.SMS   // patients' texts (S14): captured until S17
-	Email   messaging.Email // patients' emails (S14): captured until S17
+	Config  config.Config  // the token secret, DEV_LOGIN, MESSAGING and the per-country values
+	Cognito cognito.Client // staff accounts, their invitations and the sign-in's code exchange (S09, S12)
+	// CognitoKeys check the pool's ID tokens (S12). nil: the pool's own published keys (JWKS);
+	// tests pass a fixed set.
+	CognitoKeys cognito.Keys
+	Clock       clock.Clock     // nil: the system clock
+	SMS         messaging.SMS   // patients' texts (S14): captured until S17
+	Email       messaging.Email // patients' emails (S14): captured until S17
 }
 
 type server struct {
@@ -36,8 +39,9 @@ type server struct {
 	clock   clock.Clock
 	sms     messaging.SMS
 	email   messaging.Email
-	inviter invite.Sender // the patient's invites and Resend (S14); reminders use it too (S16)
-	jobs    jobs.Runner   // the scheduled jobs, for the QA "run jobs as of" route (S16)
+	inviter invite.Sender    // the patient's invites and Resend (S14); reminders use it too (S16)
+	jobs    jobs.Runner      // the scheduled jobs, for the QA "run jobs as of" route (S16)
+	idToken cognito.Verifier // checks the ID token at the Cognito sign-in (S12), when there's a pool
 }
 
 func newServer(d Deps) *server {
@@ -52,9 +56,17 @@ func newServer(d Deps) *server {
 	}
 	inviter := invite.Sender{Pool: d.Pool, SMS: d.SMS, Email: d.Email, Clock: d.Clock,
 		AppURL: d.Config.Country.AppURL, PhoneCountry: d.Config.Country.PhoneCountry}
-	return &server{pool: d.Pool, q: db.New(d.Pool), secret: []byte(d.Config.TokenSecret), cfg: d.Config,
+	s := &server{pool: d.Pool, q: db.New(d.Pool), secret: []byte(d.Config.TokenSecret), cfg: d.Config,
 		cognito: d.Cognito, clock: d.Clock, sms: d.SMS, email: d.Email, inviter: inviter,
 		jobs: jobs.Runner{Pool: d.Pool, Inviter: inviter, DefaultZone: d.Config.Country.TimeZone}}
+	if pool := d.Config.Cognito; pool.Enabled() {
+		keys := d.CognitoKeys
+		if keys == nil {
+			keys = &cognito.JWKS{URL: cognito.JWKSURL(pool.Issuer())}
+		}
+		s.idToken = cognito.Verifier{Issuer: pool.Issuer(), ClientID: pool.ClientID, Keys: keys}
+	}
+	return s
 }
 
 // NewStaffRouter serves the staff API: /api/o/…, /api/me, /api/codes, /api/categories,
@@ -78,13 +90,14 @@ func mount(s *server, groups ...func(*server, *http.ServeMux)) http.Handler {
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/config", s.publicConfig)
 	if s.cfg.Messaging == config.MessagingCapture { // the captured SMS and email (local and QA only)
-		mux.HandleFunc("GET /api/qa/messages", s.qaMessages)
-		mux.HandleFunc("DELETE /api/qa/rate-limits", s.qaResetRateLimits) // a tester's fresh start (S15)
-		mux.HandleFunc("GET /api/qa/client", noStore(s.qaClient))         // the address rate limits count (S06)
+		qa := s.qaTool
+		mux.HandleFunc("GET /api/qa/messages", qa(s.qaMessages))
+		mux.HandleFunc("DELETE /api/qa/rate-limits", qa(s.qaResetRateLimits)) // a tester's fresh start (S15)
+		mux.HandleFunc("GET /api/qa/client", qa(noStore(s.qaClient)))         // the address rate limits count (S06)
 		// The scheduled jobs (S16): run them as of a later time, or move the local timer's clock.
-		mux.HandleFunc("GET /api/qa/jobs", s.qaJobs)
-		mux.HandleFunc("POST /api/qa/jobs/run", s.qaRunJobs)
-		mux.HandleFunc("PUT /api/qa/jobs/clock", s.qaSetJobsClock)
+		mux.HandleFunc("GET /api/qa/jobs", qa(s.qaJobs))
+		mux.HandleFunc("POST /api/qa/jobs/run", qa(s.qaRunJobs))
+		mux.HandleFunc("PUT /api/qa/jobs/clock", qa(s.qaSetJobsClock))
 	}
 	for _, add := range groups {
 		add(s, mux)
@@ -98,9 +111,12 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	hosp := func(h http.HandlerFunc) http.HandlerFunc { return requireUser(s.secret, requireHospital(s.q, h)) }
 	org := func(h http.HandlerFunc) http.HandlerFunc { return requireUser(s.secret, requireOrg(s.q, h)) }
 
-	if s.cfg.DevLogin { // the stub sign-in: never in Training or Production (F4)
+	if s.cfg.DevLogin { // the stub sign-in: local only (config refuses it on AWS, S12)
 		mux.HandleFunc("GET /api/dev/users", s.devUsers)
 		mux.HandleFunc("POST /api/dev/login", s.devLogin)
+	}
+	if s.cfg.Cognito.Enabled() { // Cognito's managed login sends the browser back with a code (S12)
+		mux.HandleFunc("POST /api/auth/callback", noStore(s.cognitoCallback))
 	}
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("GET /api/me", user(s.me))
@@ -196,6 +212,16 @@ func (s *server) patientRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/p/home", session(s.audited("home.view", s.patientHome)))
 	mux.HandleFunc("POST /api/p/contact", session(s.requestContactChange))
 	mux.HandleFunc("POST /api/p/contact/{token}/confirm", noStore(s.audited("contact.update", s.confirmContact)))
+}
+
+// qaTool guards a tester's tool (S12). With the dev login on (local) anyone can sign in as
+// anyone, the platform admin included, so a check would add nothing and the tools stay open;
+// without it (QA) they need a signed-in platform admin, so nothing on QA works without credentials.
+func (s *server) qaTool(h http.HandlerFunc) http.HandlerFunc {
+	if s.cfg.DevLogin {
+		return h
+	}
+	return requireUser(s.secret, requirePlatformAdmin(s.q, h))
 }
 
 // publicConfig is the deployment's public per-country values (A-20), read once by the web app.

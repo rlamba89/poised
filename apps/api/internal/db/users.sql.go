@@ -38,6 +38,24 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error)
 	return i, err
 }
 
+const getUserByCognitoSub = `-- name: GetUserByCognitoSub :one
+SELECT id, name, email FROM users WHERE cognito_sub = $1
+`
+
+type GetUserByCognitoSubRow struct {
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	Email string    `json:"email"`
+}
+
+// The staff member a Cognito sign-in is for (S12), once their first sign-in stored the sub.
+func (q *Queries) GetUserByCognitoSub(ctx context.Context, cognitoSub *string) (GetUserByCognitoSubRow, error) {
+	row := q.db.QueryRow(ctx, getUserByCognitoSub, cognitoSub)
+	var i GetUserByCognitoSubRow
+	err := row.Scan(&i.ID, &i.Name, &i.Email)
+	return i, err
+}
+
 const isPlatformAdmin = `-- name: IsPlatformAdmin :one
 SELECT EXISTS (SELECT 1 FROM platform_admins WHERE user_id = $1)
 `
@@ -216,4 +234,20 @@ func (q *Queries) RolesAtHospital(ctx context.Context, arg RolesAtHospitalParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const setCognitoSub = `-- name: SetCognitoSub :exec
+UPDATE users SET cognito_sub = $1 WHERE id = $2
+`
+
+type SetCognitoSubParams struct {
+	Sub *string   `json:"sub"`
+	ID  uuid.UUID `json:"id"`
+}
+
+// Ties the account to its user in the staff pool at a sign-in found by the verified email (no
+// account holds that sub yet: the sub is looked up first).
+func (q *Queries) SetCognitoSub(ctx context.Context, arg SetCognitoSubParams) error {
+	_, err := q.db.Exec(ctx, setCognitoSub, arg.Sub, arg.ID)
+	return err
 }
