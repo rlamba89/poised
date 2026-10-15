@@ -33,7 +33,7 @@ UK_VALUES = ["eu-west-2", "Europe/London", "en-GB", "London", '"GB"']
 @pytest.fixture
 def lambda_code(tmp_path):
     """Stands in for `make build-lambdas`: apps/api/dist/<fn>/bootstrap."""
-    for fn in ("staff-api", "patient-api"):
+    for fn in ("staff-api", "patient-api", "jobs"):
         (tmp_path / fn).mkdir()
         (tmp_path / fn / "bootstrap").write_text("not a real binary")
     return tmp_path
@@ -114,7 +114,7 @@ def test_two_arm64_go_functions(lambda_code):
 
 def test_logs_are_kept_14_days(lambda_code):
     t = synth(CA_QA, lambda_code)
-    t["api"].resource_count_is("AWS::Logs::LogGroup", 2)
+    t["api"].resource_count_is("AWS::Logs::LogGroup", 3)  # staff-api, patient-api, jobs (S17)
     t["api"].all_resources_properties("AWS::Logs::LogGroup", {"RetentionInDays": 14})
 
 
@@ -265,16 +265,16 @@ def test_every_resource_is_tagged_with_its_environment(lambda_code):
         | t["api"].find_resources("AWS::SecretsManager::Secret")
         | t["web"].find_resources("AWS::Amplify::App")
     )
-    assert len(tagged) == 4
+    assert len(tagged) == 5  # 3 functions, the secret, the app
     for r in tagged.values():
         assert {"Key": "poised-env", "Value": "ca-qa"} in r["Properties"]["Tags"], r
 
 
 def test_no_stack_turns_the_dev_login_on(lambda_code):
     """S12: QA too signs staff in with Cognito, so nothing on AWS works without credentials."""
-    for env in (CA_QA, dataclasses.replace(CA_QA, name="ca-training", stage="training")):
+    for env in (CA_QA, dataclasses.replace(CA_QA, name="ca-training", stage="training", messaging="send")):
         assert "DEV_LOGIN" not in text(synth(env, lambda_code))
-    assert "/sj/training/database-url" in text(synth(dataclasses.replace(CA_QA, name="ca-training", stage="training"), lambda_code))
+    assert "/sj/training/database-url" in text(synth(dataclasses.replace(CA_QA, name="ca-training", stage="training", messaging="send"), lambda_code))
 
 
 def test_the_real_entries_synthesise(lambda_code):
@@ -368,7 +368,7 @@ def test_the_staff_pool(lambda_code):
 
 
 def test_a_real_stages_pool_is_kept(lambda_code):
-    t = synth(dataclasses.replace(CA_QA, name="ca-production", stage="production"), lambda_code)["auth"]
+    t = synth(dataclasses.replace(CA_QA, name="ca-production", stage="production", messaging="send"), lambda_code)["auth"]
     p = pool(t)
     assert p["DeletionPolicy"] == "Retain"
     assert p["Properties"]["DeletionProtection"] == "ACTIVE"
@@ -404,7 +404,7 @@ def test_the_web_app_client(lambda_code):
 
 
 def test_only_qa_lets_a_password_sign_in_skip_the_managed_login(lambda_code):
-    t = synth(dataclasses.replace(CA_QA, name="ca-training", stage="training"), lambda_code)["auth"]
+    t = synth(dataclasses.replace(CA_QA, name="ca-training", stage="training", messaging="send"), lambda_code)["auth"]
     assert "ALLOW_ADMIN_USER_PASSWORD_AUTH" not in client(t)["ExplicitAuthFlows"]
 
 

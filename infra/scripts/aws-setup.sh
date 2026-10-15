@@ -4,6 +4,8 @@
 #
 #   NEON_DATABASE_URL  the database's direct connection string (needed the first time only)
 #   ALERT_EMAIL        where the budget alarm emails go (needed the first time only)
+#   EMAIL_FROM         the address patients' emails come from, for an entry that sends (S17;
+#                      needed the first time only). SES emails it a link to click once.
 source "$(dirname "$0")/lib.sh"
 AWS_CDK_VERSION="${AWS_CDK_VERSION:?run this through make, which pins the CDK CLI version}"
 
@@ -11,6 +13,10 @@ AWS_CDK_VERSION="${AWS_CDK_VERSION:?run this through make, which pins the CDK CL
 need=()
 has_param "$PREFIX/database-url" || [ -n "${NEON_DATABASE_URL:-}" ] || need+=("NEON_DATABASE_URL='<Neon direct URL>'")
 has_param /sj/alert-email || [ -n "${ALERT_EMAIL:-}" ] || need+=("ALERT_EMAIL='<your email address>'")
+SENDS="$(field sends)"
+if [ "$SENDS" = True ]; then
+  has_param "$PREFIX/email-from" || [ -n "${EMAIL_FROM:-}" ] || need+=("EMAIL_FROM='<the address emails come from>'")
+fi
 if [ ${#need[@]} -gt 0 ]; then
   echo "Nothing changed. The first run needs: ${need[*]}" >&2
   echo "Run: make aws-setup ENV=$ENV_NAME PROFILE=${AWS_PROFILE:-<profile>} ${need[*]}" >&2
@@ -47,7 +53,18 @@ else
   exit 1
 fi
 
-echo "== 4. The poised-env cost tag, so the budget counts this environment's costs"
+echo "== 4. The sender's email address in SSM ($PREFIX/email-from), for an entry that sends (S17)"
+if [ "$SENDS" != True ]; then
+  echo "   $ENV_NAME only captures messages: skipped"
+elif has_param "$PREFIX/email-from"; then
+  echo "   already set: skipped"
+else
+  aws ssm put-parameter --name "$PREFIX/email-from" --type String --value "$EMAIL_FROM" \
+    --tags Key=project,Value=poised >/dev/null
+  echo "   stored (after the deploy, SES emails it a link: click it once)"
+fi
+
+echo "== 5. The poised-env cost tag, so the budget counts this environment's costs"
 # Billing learns a tag only after a tagged resource has cost something (up to a day after the
 # first deploy); until then this can't be done, and the next run does it.
 if aws ce update-cost-allocation-tags-status \

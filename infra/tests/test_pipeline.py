@@ -21,7 +21,7 @@ HOME = PipelineHome(account="111111111111", region="ca-central-1", repo="someone
 
 @pytest.fixture
 def lambda_code(tmp_path):
-    for fn in ("staff-api", "patient-api"):
+    for fn in ("staff-api", "patient-api", "jobs"):
         (tmp_path / fn).mkdir()
         (tmp_path / fn / "bootstrap").write_text("not a real binary")
     return tmp_path
@@ -173,7 +173,7 @@ def test_database_and_web_step(template):
 
 def test_only_qa_gets_test_users(lambda_code):
     app = cdk.App()
-    training = dataclasses.replace(CA_QA, name="ca-training", stage="training")
+    training = dataclasses.replace(CA_QA, name="ca-training", stage="training", messaging="send")
     stack = PipelineStack(app, "pipeline", home=HOME, environments=[training], lambda_code=str(lambda_code))
     everything = json.dumps(Template.from_stack(stack).to_json())
     assert "qa-users" not in everything and "test-users" not in everything

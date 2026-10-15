@@ -7,7 +7,8 @@ GOOSE := cd $(API) && go tool goose -dir db/migrations postgres "$(DATABASE_URL)
 
 .PHONY: dev staff-api patient-api test test-integration e2e-setup e2e lint db-up migrate migrate-down seed sqlc platform-admin \
 	build-lambdas infra-test synth aws-setup deploy-stacks deploy-web aws-db deploy-qa destroy-stacks \
-	deploy-pipeline destroy-pipeline qa-users qa-code qa-password e2e-users aws-platform-admin
+	deploy-pipeline destroy-pipeline qa-users qa-code qa-password e2e-users aws-platform-admin \
+	test-recipients test-recipients-verify test-recipients-status test-recipients-off
 
 node_modules: package-lock.json
 	npm install
@@ -102,7 +103,7 @@ AWS_CDK := cd infra && $(AWS_ENV) npx --yes aws-cdk@$(AWS_CDK_VERSION)
 
 # The Lambdas (provided.al2023, arm64): apps/api/dist/<fn>/bootstrap.
 build-lambdas:
-	@for fn in staff-api patient-api; do \
+	@for fn in staff-api patient-api jobs; do \
 		echo "build-lambdas: $$fn"; \
 		(cd $(API) && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags lambda.norpc -trimpath \
 			-ldflags='-s -w' -o dist/$$fn/bootstrap ./cmd/$$fn) || exit 1; \
@@ -167,6 +168,24 @@ e2e-users: infra/.venv
 aws-platform-admin: infra/.venv
 	@test -n "$(EMAIL)" || (echo 'Usage: make aws-platform-admin EMAIL=you@example.org [NAME="Your Name"]' && exit 2)
 	$(AWS_ENV) infra/scripts/platform-admin.sh $(ENV) "$(EMAIL)" "$(NAME)"
+
+# QA's test recipients (S17): the only people QA really texts and emails (it captures everything
+# too). Their contacts go only into SSM and AWS's sandbox verifications, never the repo:
+#   make test-recipients PROFILE=… TEST_RECIPIENTS='<+44… mobile>,<email>'   store, start verifying
+#   make test-recipients-verify PROFILE=… CODE=<the code the mobile got>
+#   make test-recipients-status PROFILE=…
+#   make test-recipients-off PROFILE=…      QA really sends to no one
+test-recipients: infra/.venv
+	@$(AWS_ENV) infra/scripts/test-recipients.sh $(ENV) set
+
+test-recipients-verify: infra/.venv
+	@$(AWS_ENV) infra/scripts/test-recipients.sh $(ENV) verify-sms
+
+test-recipients-status: infra/.venv
+	@$(AWS_ENV) infra/scripts/test-recipients.sh $(ENV) status
+
+test-recipients-off: infra/.venv
+	@$(AWS_ENV) infra/scripts/test-recipients.sh $(ENV) off
 
 # Everything, in order (after make aws-setup).
 deploy-qa: deploy-stacks aws-db qa-users deploy-web

@@ -34,8 +34,22 @@ class Environment:
     # The web address. None until there's a domain: then it's Amplify's own address,
     # https://main.<app id>.amplifyapp.com, which is known only once the app exists.
     app_url: str | None = None
-    messaging: str = "capture"  # texts and emails are stored, not sent, until S17
+    # MESSAGING (S17): "capture" stores texts and emails (QA only: the journeys and testers read
+    # them); "send" sends them with SES and End User Messaging SMS (Training and Production).
+    messaging: str = "capture"
+    # QA only: real sending on QA must be named here. Messages are still captured, and the ones to
+    # the test recipients in SSM (<prefix>/messaging-test-recipients, put there by hand; none: no
+    # one) are also really sent. In SES's and SMS's sandbox those must be verified (README.md).
+    qa_test_recipients: bool = False
+    # SMS_SENDER_ID: the texts' origination identity (a registered sender ID); None lets AWS choose.
+    sms_sender_id: str | None = None
+    jobs_every_minutes: int = 5  # the jobs Lambda's schedule (reminders, "not responding")
     budget_usd: int = 6  # the monthly budget alarm, about £5 (AWS Budgets bills in USD)
+
+    @property
+    def sends(self) -> bool:
+        """Whether any message is really sent here, so the stage needs a MessagingStack."""
+        return self.messaging == "send" or self.qa_test_recipients
 
     @property
     def param_prefix(self) -> str:
@@ -65,6 +79,20 @@ class Environment:
             "None or an https address with no path or trailing slash",
         )
         check(self.budget_usd > 0, "budget_usd", "more than 0")
+        check(self.messaging in ("capture", "send"), "messaging", '"capture" or "send"')
+        if self.messaging == "capture" and self.stage != "qa":
+            errors.append(f'messaging must be "send" on {self.stage}: only QA captures messages instead of sending them')
+        if self.messaging == "send" and self.stage == "qa":
+            errors.append('messaging "send" isn\'t allowed on QA: keep "capture" and set qa_test_recipients=True to send to the test recipients only')
+        if self.qa_test_recipients and (self.stage != "qa" or self.messaging != "capture"):
+            errors.append("qa_test_recipients is for QA in capture mode only")
+        check(
+            # CloudFormation's AWS::SMSVOICE::SenderId takes capitals only (found deploying S17).
+            self.sms_sender_id is None or bool(re.fullmatch(r"[A-Z0-9-]{1,11}", self.sms_sender_id)),
+            "sms_sender_id",
+            "None or 1 to 11 capital letters, digits or hyphens",
+        )
+        check(1 <= self.jobs_every_minutes <= 1440, "jobs_every_minutes", "from 1 to 1440")
         if errors:
             raise ValueError(f"countries.py, {self.name}: " + "; ".join(errors))
 
@@ -91,6 +119,14 @@ ENVIRONMENTS: list[Environment] = [
         phone_country="GB",
         national_id_type="nhs",
         app_url=None,  # no domain yet: Amplify's own address
+        # S17: still captured, and also really sent to the test recipients in SSM (Rahul's own, in
+        # SES's and SMS's sandbox). Remove the parameter to send to no one.
+        qa_test_recipients=True,
+        # Every 15 minutes, not 5 (Rahul, 14 Oct, S17 answers 7): each run wakes QA's Neon database,
+        # which sleeps after 5 idle minutes, and 5 would keep it awake past the free plan's hours.
+        jobs_every_minutes=15,
+        # S17 answers 9: try a UK alphanumeric sender ID (the account has no origination identity).
+        sms_sender_id="POISED",
     ),
 ]
 

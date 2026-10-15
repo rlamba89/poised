@@ -1,5 +1,5 @@
-"""One environment of Poised: ApiStack + WebStack + AuthStack (plan F4's QaStage; AuthStack S12), built from an entry in
-countries.py. S07's pipeline deploys these stages; `make deploy-stacks` deploys one by hand."""
+"""One environment of Poised: MessagingStack (where it sends, S17) + ApiStack + WebStack + AuthStack (plan F4's QaStage;
+AuthStack S12), built from an entry in countries.py. S07's pipeline deploys these stages; `make deploy-stacks` deploys one by hand."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from api_stack import ApiStack
 from auth_stack import AuthStack
 from budget import COST_TAG
 from countries import Environment
+from messaging_stack import MessagingStack
 from web_stack import WebStack
 
 # Poised's own CDK bootstrap (make aws-setup), apart from any other project's in the account.
@@ -21,8 +22,20 @@ class PoisedStage(cdk.Stage):
     def __init__(self, scope: Construct, env: Environment, *, lambda_code: str) -> None:
         super().__init__(scope, env.name, env=cdk.Environment(account=env.account, region=env.region))
         own = dict(synthesizer=cdk.DefaultStackSynthesizer(qualifier=QUALIFIER))
+        # Real texts and emails (S17), first: the jobs Lambda subscribes to its delivery topic.
+        self.messaging = (
+            MessagingStack(self, "messaging", env=env, stack_name=f"poised-{env.name}-messaging", **own)
+            if env.sends
+            else None
+        )
         self.api = ApiStack(
-            self, "api", env=env, lambda_code=lambda_code, stack_name=f"poised-{env.name}-api", **own
+            self,
+            "api",
+            env=env,
+            lambda_code=lambda_code,
+            deliveries=self.messaging.deliveries if self.messaging else None,
+            stack_name=f"poised-{env.name}-api",
+            **own,
         )
         self.web = WebStack(
             self, "web", env=env, api_url=self.api.http_api.api_endpoint, stack_name=f"poised-{env.name}-web", **own
