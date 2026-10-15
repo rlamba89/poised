@@ -122,3 +122,8 @@ All of these are in the deployment's one database. *(On 8 Oct the London control
   - Wrong dates of birth count **per episode** across its invite and reminder links (migration 00017); the fifth locks them all; only a Resend clears it; a locked episode gets no reminders.
   - A reminder sends a **new link beside the earlier ones** (they keep working). The invite itself is still sent in the Create request (not moved to a job; pending.md).
   - QA-only (capture mode) controls: `POST /api/qa/jobs/run {asOf}`, a timer clock offset (`/api/qa/jobs/clock`), and the `/qa/jobs` page.
+- **S17 (jobs and real messaging on AWS): built 14 Oct, deployed to QA by hand; tested 15 Oct (test report 1 on QA: blocked at Cognito's sign-in, its AWS checks passed; test report 2, run locally: all passed); verified 15 Oct ([verify.md](../sessions/S17-aws-messaging-jobs/verify.md), verification 1). Plan C2 is done (15 Oct 2026).** [Build notes](../sessions/S17-aws-messaging-jobs/build-notes.md). Differences from the plan:
+  - **QA captures every message and really sends only to the test recipients** in SSM (`qa_test_recipients`): Rahul's own email and mobile, and SES's mailbox simulator. Plain `send` is refused on QA.
+  - **The schedule follows the entry:** every 15 minutes on QA, so its Neon database can sleep (answers 7); every 5 on other stages.
+  - **Undelivered messages:** recorded in `episode_messages` (migration 00018) from SES's and SMS's failure events (SNS → the jobs Lambda). They show on the episode and in the General notes, with an alarm.
+  - **The UK sender ID `POISED`** is made by CDK. It's unregistered and costs nothing.
