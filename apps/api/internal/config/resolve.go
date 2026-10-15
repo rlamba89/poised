@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// ErrNotFound is what AWS's Parameter returns, wrapped, for a parameter that doesn't exist.
+var ErrNotFound = errors.New("not found")
+
 // AWS reads a deployment's secrets. internal/serve passes the real SSM and Secrets Manager
 // clients; tests pass a fake.
 type AWS interface {
@@ -21,6 +24,7 @@ type AWS interface {
 var fromAWS = []struct {
 	name, via string
 	secret    bool // Secrets Manager; otherwise SSM Parameter Store
+	optional  bool // a parameter that doesn't exist leaves the value unset
 }{
 	{name: "DATABASE_URL", via: "DATABASE_URL_PARAM"},             // a SecureString that make aws-setup stores
 	{name: "APP_URL", via: "APP_URL_PARAM"},                       // written by infra's WebStack (Amplify's address)
@@ -30,6 +34,11 @@ var fromAWS = []struct {
 	{name: "STAFF_POOL_ID", via: "STAFF_POOL_ID_PARAM"},
 	{name: "STAFF_POOL_CLIENT_ID", via: "STAFF_POOL_CLIENT_ID_PARAM"},
 	{name: "STAFF_POOL_DOMAIN", via: "STAFF_POOL_DOMAIN_PARAM"},
+	// Real sending (S17): the SES sender's address, which `make aws-setup` stores (so it isn't in
+	// the repo), and QA's test recipients, a SecureString (their contacts are personal).
+	{name: "EMAIL_FROM", via: "EMAIL_FROM_PARAM"},
+	// Deleting it (make test-recipients-off) switches QA's real sending off.
+	{name: "MESSAGING_TEST_RECIPIENTS", via: "MESSAGING_TEST_RECIPIENTS_PARAM", optional: true},
 }
 
 // Resolve fetches, once, every value whose environment variable names a place in AWS, and
@@ -61,6 +70,7 @@ func Resolve(ctx context.Context, getenv func(string) string, aws AWS) (func(str
 		}
 		val = strings.TrimSpace(val)
 		switch {
+		case err != nil && v.optional && errors.Is(err, ErrNotFound):
 		case err != nil:
 			errs = append(errs, fmt.Errorf("%s=%s: %w", v.via, where, err))
 		case val == "":

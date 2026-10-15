@@ -2,6 +2,7 @@ package serve
 
 import (
 	"net"
+	"os"
 	"net/http"
 	"strings"
 
@@ -9,8 +10,8 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-// onLambda reports whether this process is an AWS Lambda function (Lambda sets the variable).
-func onLambda(getenv func(string) string) bool { return getenv("AWS_LAMBDA_FUNCTION_NAME") != "" }
+// OnLambda reports whether this process is an AWS Lambda function (Lambda sets the variable).
+func OnLambda() bool { return os.Getenv("AWS_LAMBDA_FUNCTION_NAME") != "" }
 
 // Lambda turns the router into a Lambda handler for API Gateway's HTTP API (payload v2),
 // using algnhsa: the browser's cookies arrive as a Cookie header and every Set-Cookie goes back.

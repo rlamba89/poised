@@ -105,9 +105,9 @@ JOIN hospitals h ON h.id = e.hospital_id
 JOIN orgs o ON o.id = e.org_id
 WHERE e.id = $1;
 
--- name: InsertSentMessage :exec
+-- name: InsertSentMessage :one
 -- MESSAGING=capture: a message stored instead of sent.
-INSERT INTO sent_messages (channel, recipient, subject, body) VALUES ($1, $2, $3, $4);
+INSERT INTO sent_messages (channel, recipient, subject, body) VALUES ($1, $2, $3, $4) RETURNING id;
 
 -- name: ListSentMessages :many
 -- The newest captured messages, to anyone whose address contains `recipient` ('' for everyone).
@@ -138,3 +138,27 @@ RETURNING s.account_id;
 
 -- name: EndPatientSession :exec
 UPDATE patient_sessions SET ended_at = sqlc.arg(now) WHERE id = sqlc.arg(id) AND ended_at IS NULL;
+
+-- name: RecordEpisodeMessage :exec
+-- A text or email sent to the patient about the episode (S17): failed_at is set when it
+-- couldn't be sent at all.
+INSERT INTO episode_messages (episode_id, kind, channel, provider_id, created_at, failed_at, failure)
+VALUES (@episode_id, @kind, @channel, sqlc.narg(provider_id), @now, sqlc.narg(failed_at), @failure);
+
+-- name: FailEpisodeMessage :one
+-- AWS reported that a message wasn't delivered (S17). No row: it isn't an episode's message (a
+-- sign-in link), or it's already marked.
+UPDATE episode_messages SET failed_at = @now::timestamptz, failure = @failure
+WHERE provider_id = @provider_id::text AND failed_at IS NULL
+RETURNING episode_id, kind, channel;
+
+-- name: ListUndeliveredMessages :many
+-- The episode's messages that didn't reach the patient since its latest invite or Resend (S17):
+-- a later Resend starts afresh.
+SELECT kind, channel, created_at AS sent_at, failed_at, failure
+FROM episode_messages m
+WHERE m.episode_id = @episode_id AND m.failed_at IS NOT NULL
+  AND m.created_at >= coalesce(
+      (SELECT max(x.created_at) FROM episode_messages x WHERE x.episode_id = @episode_id AND x.kind = 'invite'),
+      '-infinity'::timestamptz)
+ORDER BY m.created_at, m.channel;

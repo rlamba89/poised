@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/rlamba89/poised/apps/api/internal/auth"
@@ -110,21 +111,26 @@ func (s Sender) Send(ctx context.Context, episodeID, by uuid.UUID, kind Kind) (R
 		return Result{}, err
 	}
 
+	now := s.now() // one time for the send's text and email: the episode's undelivered list groups by it
 	if useSMS {
-		if err := s.SMS.SendSMS(ctx, d.Mobile, msgs.sms); err != nil {
+		id, err := s.SMS.SendSMS(ctx, d.Mobile, msgs.sms)
+		if err != nil {
 			log.Printf("invite for episode %s: text message: %v", episodeID, err)
 			res.Problems = append(res.Problems, "The text message couldn't be sent.")
 		} else {
 			res.SentBy = append(res.SentBy, "text message")
 		}
+		s.record(ctx, q, d.ID, kind, "sms", id, err, now)
 	}
 	if d.Email != "" {
-		if err := s.Email.SendEmail(ctx, d.Email, msgs.subject, msgs.email); err != nil {
+		id, err := s.Email.SendEmail(ctx, d.Email, msgs.subject, msgs.email)
+		if err != nil {
 			log.Printf("invite for episode %s: email: %v", episodeID, err)
 			res.Problems = append(res.Problems, "The email couldn't be sent.")
 		} else {
 			res.SentBy = append(res.SentBy, "email")
 		}
+		s.record(ctx, q, d.ID, kind, "email", id, err, now)
 	}
 	res.Sent = len(res.SentBy) > 0
 	if err := s.settle(ctx, d.ID, link, res.Sent, kind); err != nil {
@@ -169,6 +175,25 @@ func (s Sender) settle(ctx context.Context, episodeID uuid.UUID, link db.CreateI
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// record notes one message on the episode (S17), with its ID, which AWS's delivery events name
+// (internal/delivery), or as not sent. The message is already sent, so a failure here is only
+// logged: it costs the message's place in the undelivered list, not the message.
+func (s Sender) record(ctx context.Context, q *db.Queries, episodeID uuid.UUID, kind Kind, channel, id string, sendErr error, now time.Time) {
+	row := db.RecordEpisodeMessageParams{EpisodeID: episodeID, Kind: "invite", Channel: channel, Now: now}
+	if kind == Reminder {
+		row.Kind = "reminder"
+	}
+	if sendErr != nil {
+		row.FailedAt = pgtype.Timestamptz{Time: now, Valid: true}
+		row.Failure = "it couldn't be sent"
+	} else {
+		row.ProviderID = &id
+	}
+	if err := q.RecordEpisodeMessage(ctx, row); err != nil {
+		log.Printf("invite for episode %s: record the %s: %v", episodeID, channel, err)
+	}
 }
 
 func (s Sender) now() time.Time {

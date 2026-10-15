@@ -155,10 +155,11 @@ func (s *server) requestSignin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if has {
+		// A send that fails gets the same answer as no account (S17: real sending can fail), so a
+		// failure can't tell anyone the contact has an account. It's logged, and a refused send
+		// also counts for the delivery-failure alarm; the person can ask again.
 		if err := s.sendContactLink(r.Context(), "signin", contact, email, uuid.Nil); err != nil {
 			log.Printf("sign-in link: %v", err)
-			writeError(w, http.StatusBadGateway, "We couldn't send your link just now. Please try again in a few minutes.")
-			return
 		}
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"channel": channelOf(email)})
@@ -192,9 +193,11 @@ func (s *server) sendContactLink(ctx context.Context, kind, contact string, emai
 	}
 	m := contactMessages(kind, s.cfg.Country.AppURL+path+token, email)
 	if email {
-		return s.email.SendEmail(ctx, contact, m.subject, m.body)
+		_, err = s.email.SendEmail(ctx, contact, m.subject, m.body)
+	} else {
+		_, err = s.sms.SendSMS(ctx, contact, m.body)
 	}
-	return s.sms.SendSMS(ctx, contact, m.body)
+	return err
 }
 
 type contactMessage struct{ subject, body string }
@@ -568,13 +571,13 @@ func (s *server) tellContacts(ctx context.Context, oldMobile, oldEmail string, e
 	}
 	what := contactName(email)
 	if oldEmail != "" {
-		if err := s.email.SendEmail(ctx, oldEmail, "Your Poised contact details were "+verb,
+		if _, err := s.email.SendEmail(ctx, oldEmail, "Your Poised contact details were "+verb,
 			"Hello,\n\nThe "+what+" you use for Poised was "+verb+".\n\nIf you didn't do this, please contact your hospital."); err != nil {
 			log.Printf("tell old email: %v", err)
 		}
 	}
 	if oldMobile != "" && patient.SMSAllowed(oldMobile, s.cfg.Country.PhoneCountry) {
-		if err := s.sms.SendSMS(ctx, oldMobile, "Poised: the "+what+" you use for Poised was "+verb+
+		if _, err := s.sms.SendSMS(ctx, oldMobile, "Poised: the "+what+" you use for Poised was "+verb+
 			". If you didn't do this, please contact your hospital."); err != nil {
 			log.Printf("tell old mobile: %v", err)
 		}

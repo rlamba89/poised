@@ -461,3 +461,6 @@ func randomHex(n int) string {
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
+
+// Config is the configuration the test's server was started with.
+func (c *Client) Config() config.Config { return c.cfg }

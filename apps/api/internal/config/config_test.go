@@ -334,7 +334,7 @@ func TestLoadMessaging(t *testing.T) {
 			t.Fatalf("got %q, %v", c.Messaging, err)
 		}
 	})
-	t.Run("only capture exists until S17", func(t *testing.T) {
+	t.Run("MESSAGING is capture or send", func(t *testing.T) {
 		e := required()
 		e["MESSAGING"] = "aws"
 		_, err := config.Load(e.get)
@@ -342,4 +342,103 @@ func TestLoadMessaging(t *testing.T) {
 			t.Fatalf("got %v", err)
 		}
 	})
+}
+
+// sending is the made-up country's real sending (S17): SES's sender and both configuration sets.
+func sending(e env) env {
+	e["EMAIL_FROM"] = "poised@ca.example.test"
+	e["SES_CONFIGURATION_SET"] = "poised-ca-production"
+	e["SMS_CONFIGURATION_SET"] = "poised-ca-production"
+	return e
+}
+
+func TestLoadSending(t *testing.T) {
+	t.Run("send: the sender and the configuration sets", func(t *testing.T) {
+		e := sending(strict())
+		e["MESSAGING"] = "send"
+		e["SMS_SENDER_ID"] = "Poised"
+		c, err := config.Load(e.get)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := config.Sending{EmailFrom: "poised@ca.example.test", SESConfigurationSet: "poised-ca-production",
+			SMSConfigurationSet: "poised-ca-production", SMSSenderID: "Poised"}
+		if c.Messaging != "send" || c.Sending != want || !c.Sending.Enabled() || len(c.TestRecipients) != 0 {
+			t.Errorf("got %q %+v %v", c.Messaging, c.Sending, c.TestRecipients)
+		}
+	})
+	t.Run("send without them is refused, naming each", func(t *testing.T) {
+		e := strict()
+		e["MESSAGING"] = "send"
+		_, err := config.Load(e.get)
+		for _, name := range []string{"EMAIL_FROM", "SES_CONFIGURATION_SET", "SMS_CONFIGURATION_SET"} {
+			if err == nil || !strings.Contains(err.Error(), name) {
+				t.Errorf("missing %s: got %v", name, err)
+			}
+		}
+	})
+	t.Run("capture with test recipients (QA): captured, and really sent to them", func(t *testing.T) {
+		e := sending(strict())
+		e["MESSAGING_TEST_RECIPIENTS"] = " +447700900001 , Rahul@Example.test "
+		c, err := config.Load(e.get)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.Messaging != "capture" || !c.Sending.Enabled() || !reflect.DeepEqual(c.TestRecipients, []string{"+447700900001", "rahul@example.test"}) {
+			t.Errorf("got %q %+v %q", c.Messaging, c.Sending, c.TestRecipients)
+		}
+	})
+	t.Run("test recipients need the senders", func(t *testing.T) {
+		e := strict()
+		e["MESSAGING_TEST_RECIPIENTS"] = "+447700900001"
+		if _, err := config.Load(e.get); err == nil || !strings.Contains(err.Error(), "EMAIL_FROM") {
+			t.Errorf("got %v", err)
+		}
+	})
+	t.Run("test recipients only with capture: with send, everyone gets messages anyway", func(t *testing.T) {
+		e := sending(strict())
+		e["MESSAGING"] = "send"
+		e["MESSAGING_TEST_RECIPIENTS"] = "+447700900001"
+		if _, err := config.Load(e.get); err == nil || !strings.Contains(err.Error(), "MESSAGING_TEST_RECIPIENTS") {
+			t.Errorf("got %v", err)
+		}
+	})
+	t.Run("capture alone sends nothing", func(t *testing.T) {
+		c, err := config.Load(strict().get)
+		if err != nil || c.Sending.Enabled() {
+			t.Errorf("got %+v, %v", c.Sending, err)
+		}
+	})
+	bad := map[string]string{
+		"EMAIL_FROM":                "Poised <poised@ca.example.test>",
+		"SMS_SENDER_ID":             "Poised Health Ltd",
+		"MESSAGING_TEST_RECIPIENTS": "07700900001",
+	}
+	for name, v := range bad {
+		t.Run("refuses a bad "+name, func(t *testing.T) {
+			e := sending(strict())
+			e["MESSAGING_TEST_RECIPIENTS"] = "+447700900001"
+			e[name] = v
+			if _, err := config.Load(e.get); err == nil || !strings.Contains(err.Error(), name) {
+				t.Errorf("%s=%q: got %v", name, v, err)
+			}
+		})
+	}
+}
+
+func TestLoadJobsSchedule(t *testing.T) {
+	e := required()
+	if c, err := config.Load(e.get); err != nil || c.JobsScheduleMinutes != 0 {
+		t.Fatalf("local: %d, %v", c.JobsScheduleMinutes, err)
+	}
+	e["JOBS_SCHEDULE_MINUTES"] = "15"
+	if c, err := config.Load(e.get); err != nil || c.JobsScheduleMinutes != 15 {
+		t.Fatalf("got %d, %v", c.JobsScheduleMinutes, err)
+	}
+	for _, bad := range []string{"0", "-5", "every 5", "1441"} {
+		e["JOBS_SCHEDULE_MINUTES"] = bad
+		if _, err := config.Load(e.get); err == nil || !strings.Contains(err.Error(), "JOBS_SCHEDULE_MINUTES") {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
 }

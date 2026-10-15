@@ -12,10 +12,10 @@ import { Alert, Anchor, Button, Card, Container, Group, Loader, NumberInput, Sta
 import { api } from "@/lib/api";
 import { SIGN_IN_FIRST, qaError } from "./access";
 import { formatDateTime } from "@/lib/format";
-import { addDays, ceilMinute, fromLocalInput, offsetMinutes, toLocalInput } from "./jobsTime";
+import { addDays, ceilMinute, fromLocalInput, offsetMinutes, toLocalInput, whoRuns } from "./jobsTime";
 
 type Summary = { asOf: string; jobs: number; reminders: number; notResponding: number; failed: number };
-type Clock = { timer: boolean; intervalSeconds: number; offsetMinutes: number; lastTickAt: string | null; lastTickAsOf: string | null };
+type Clock = { timer: boolean; runner: "timer" | "schedule"; intervalSeconds: number; offsetMinutes: number; lastTickAt: string | null; lastTickAsOf: string | null };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -146,7 +146,7 @@ export function ScheduledJobs() {
             <Stack gap="xs">
               <Text size="sm" data-testid="jobs-timer">
                 {clock.timer
-                  ? `On: the local server runs the jobs every ${clock.intervalSeconds} seconds, as of ${describeOffset(clock.offsetMinutes)}.`
+                  ? `On: ${whoRuns(clock.runner, clock.intervalSeconds)}, as of ${describeOffset(clock.offsetMinutes)}.`
                   : "Off: the API was started with JOBS_TIMER=false, so jobs run only from this page."}
               </Text>
               <Text size="sm" c="dimmed" data-testid="jobs-last-tick">
@@ -155,7 +155,7 @@ export function ScheduledJobs() {
                   : "It hasn't run yet."}
               </Text>
               <Text size="sm">
-                Move the timer&apos;s clock ahead to see a reminder arrive by itself within a minute or two. Set it back afterwards (
+                Move the timer&apos;s clock ahead to see a reminder arrive by itself at its next run. Set it back afterwards (
                 <code>make seed</code> does too), or new episodes get reminders straight away.
               </Text>
               <Group align="flex-end" wrap="wrap">

@@ -39,3 +39,13 @@ export function offsetMinutes(days: number, hours: number): number | null {
   const m = days * 24 * 60 + hours * 60;
   return m > 90 * 24 * 60 ? null : m;
 }
+
+/**
+ * Who runs the jobs by themselves (GET /api/qa/jobs `runner`): locally the API's timer (S16),
+ * on AWS the jobs Lambda's schedule (S17), every intervalSeconds.
+ */
+export function whoRuns(runner: "timer" | "schedule", intervalSeconds: number): string {
+  if (runner !== "schedule") return `the local server runs the jobs every ${intervalSeconds} seconds`;
+  const minutes = Math.round(intervalSeconds / 60);
+  return `a schedule on AWS runs the jobs every ${minutes === 1 ? "minute" : `${minutes} minutes`}`;
+}

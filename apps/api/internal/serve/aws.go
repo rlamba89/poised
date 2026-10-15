@@ -2,12 +2,17 @@ package serve
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
+
+	"github.com/rlamba89/poised/apps/api/internal/config"
 )
 
 // awsSecrets is config.AWS on real AWS: SSM Parameter Store and Secrets Manager, in the
@@ -37,6 +42,9 @@ func (a *awsSecrets) Parameter(ctx context.Context, name string) (string, error)
 		return "", err
 	}
 	out, err := a.ssm.GetParameter(ctx, &ssm.GetParameterInput{Name: aws.String(name), WithDecryption: aws.Bool(true)})
+	if _, ok := errors.AsType[*ssmtypes.ParameterNotFound](err); ok {
+		return "", fmt.Errorf("%w: %w", config.ErrNotFound, err)
+	}
 	if err != nil {
 		return "", err
 	}

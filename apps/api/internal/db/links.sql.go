@@ -64,6 +64,33 @@ func (q *Queries) EndPatientSession(ctx context.Context, arg EndPatientSessionPa
 	return err
 }
 
+const failEpisodeMessage = `-- name: FailEpisodeMessage :one
+UPDATE episode_messages SET failed_at = $1::timestamptz, failure = $2
+WHERE provider_id = $3::text AND failed_at IS NULL
+RETURNING episode_id, kind, channel
+`
+
+type FailEpisodeMessageParams struct {
+	Now        time.Time `json:"now"`
+	Failure    string    `json:"failure"`
+	ProviderID string    `json:"providerId"`
+}
+
+type FailEpisodeMessageRow struct {
+	EpisodeID uuid.UUID `json:"episodeId"`
+	Kind      string    `json:"kind"`
+	Channel   string    `json:"channel"`
+}
+
+// AWS reported that a message wasn't delivered (S17). No row: it isn't an episode's message (a
+// sign-in link), or it's already marked.
+func (q *Queries) FailEpisodeMessage(ctx context.Context, arg FailEpisodeMessageParams) (FailEpisodeMessageRow, error) {
+	row := q.db.QueryRow(ctx, failEpisodeMessage, arg.Now, arg.Failure, arg.ProviderID)
+	var i FailEpisodeMessageRow
+	err := row.Scan(&i.EpisodeID, &i.Kind, &i.Channel)
+	return i, err
+}
+
 const failInviteDob = `-- name: FailInviteDob :one
 WITH bumped AS (
     UPDATE episodes e SET dob_failed_attempts = e.dob_failed_attempts + 1
@@ -234,8 +261,8 @@ func (q *Queries) GetLinkByHash(ctx context.Context, arg GetLinkByHashParams) (G
 	return i, err
 }
 
-const insertSentMessage = `-- name: InsertSentMessage :exec
-INSERT INTO sent_messages (channel, recipient, subject, body) VALUES ($1, $2, $3, $4)
+const insertSentMessage = `-- name: InsertSentMessage :one
+INSERT INTO sent_messages (channel, recipient, subject, body) VALUES ($1, $2, $3, $4) RETURNING id
 `
 
 type InsertSentMessageParams struct {
@@ -246,14 +273,16 @@ type InsertSentMessageParams struct {
 }
 
 // MESSAGING=capture: a message stored instead of sent.
-func (q *Queries) InsertSentMessage(ctx context.Context, arg InsertSentMessageParams) error {
-	_, err := q.db.Exec(ctx, insertSentMessage,
+func (q *Queries) InsertSentMessage(ctx context.Context, arg InsertSentMessageParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertSentMessage,
 		arg.Channel,
 		arg.Recipient,
 		arg.Subject,
 		arg.Body,
 	)
-	return err
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const listSentMessages = `-- name: ListSentMessages :many
@@ -281,6 +310,52 @@ func (q *Queries) ListSentMessages(ctx context.Context, recipient string) ([]Sen
 			&i.Subject,
 			&i.Body,
 			&i.SentAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUndeliveredMessages = `-- name: ListUndeliveredMessages :many
+SELECT kind, channel, created_at AS sent_at, failed_at, failure
+FROM episode_messages m
+WHERE m.episode_id = $1 AND m.failed_at IS NOT NULL
+  AND m.created_at >= coalesce(
+      (SELECT max(x.created_at) FROM episode_messages x WHERE x.episode_id = $1 AND x.kind = 'invite'),
+      '-infinity'::timestamptz)
+ORDER BY m.created_at, m.channel
+`
+
+type ListUndeliveredMessagesRow struct {
+	Kind     string             `json:"kind"`
+	Channel  string             `json:"channel"`
+	SentAt   time.Time          `json:"sentAt"`
+	FailedAt pgtype.Timestamptz `json:"failedAt"`
+	Failure  string             `json:"failure"`
+}
+
+// The episode's messages that didn't reach the patient since its latest invite or Resend (S17):
+// a later Resend starts afresh.
+func (q *Queries) ListUndeliveredMessages(ctx context.Context, episodeID uuid.UUID) ([]ListUndeliveredMessagesRow, error) {
+	rows, err := q.db.Query(ctx, listUndeliveredMessages, episodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUndeliveredMessagesRow{}
+	for rows.Next() {
+		var i ListUndeliveredMessagesRow
+		if err := rows.Scan(
+			&i.Kind,
+			&i.Channel,
+			&i.SentAt,
+			&i.FailedAt,
+			&i.Failure,
 		); err != nil {
 			return nil, err
 		}
@@ -322,6 +397,36 @@ func (q *Queries) PassInviteDob(ctx context.Context, id uuid.UUID) (int64, error
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const recordEpisodeMessage = `-- name: RecordEpisodeMessage :exec
+INSERT INTO episode_messages (episode_id, kind, channel, provider_id, created_at, failed_at, failure)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+`
+
+type RecordEpisodeMessageParams struct {
+	EpisodeID  uuid.UUID          `json:"episodeId"`
+	Kind       string             `json:"kind"`
+	Channel    string             `json:"channel"`
+	ProviderID *string            `json:"providerId"`
+	Now        time.Time          `json:"now"`
+	FailedAt   pgtype.Timestamptz `json:"failedAt"`
+	Failure    string             `json:"failure"`
+}
+
+// A text or email sent to the patient about the episode (S17): failed_at is set when it
+// couldn't be sent at all.
+func (q *Queries) RecordEpisodeMessage(ctx context.Context, arg RecordEpisodeMessageParams) error {
+	_, err := q.db.Exec(ctx, recordEpisodeMessage,
+		arg.EpisodeID,
+		arg.Kind,
+		arg.Channel,
+		arg.ProviderID,
+		arg.Now,
+		arg.FailedAt,
+		arg.Failure,
+	)
+	return err
 }
 
 const resetEpisodeDob = `-- name: ResetEpisodeDob :exec

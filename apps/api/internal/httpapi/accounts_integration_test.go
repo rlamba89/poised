@@ -3,6 +3,7 @@
 package httpapi_test
 
 import (
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
@@ -568,6 +569,18 @@ func TestSignin(t *testing.T) {
 		}
 		if n := count(t, w.db, `SELECT count(*) FROM login_links WHERE contact IN ('nobody@example.org', '+447700900001')`); n != 0 {
 			t.Errorf("%d links", n)
+		}
+	})
+	t.Run("a send that fails gives the same answer as no account (S17: real sending can fail)", func(t *testing.T) {
+		fresh()
+		w.anon.Messages.FailWith(errors.New("refused"))
+		defer w.anon.Messages.FailWith(nil)
+		r := w.anon.Do("POST", "/api/p/signin", map[string]string{"contact": p.email})
+		r.Want(t, http.StatusAccepted)
+		var got struct{ Channel string }
+		r.Decode(t, &got)
+		if got.Channel != "email" {
+			t.Errorf("channel %q", got.Channel)
 		}
 	})
 	t.Run("a record known only to a hospital (never opened) can't be signed in to: invite links do that", func(t *testing.T) {

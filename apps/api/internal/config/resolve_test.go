@@ -3,6 +3,7 @@ package config_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -13,11 +14,15 @@ import (
 type fakeAWS struct {
 	params, secrets map[string]string
 	calls           []string
+	notFound        bool // a missing parameter is reported as config.ErrNotFound, as the real client does
 }
 
 func (f *fakeAWS) Parameter(_ context.Context, name string) (string, error) {
 	f.calls = append(f.calls, "ssm:"+name)
 	v, ok := f.params[name]
+	if !ok && f.notFound {
+		return "", fmt.Errorf("ssm %s: %w", name, config.ErrNotFound)
+	}
 	if !ok {
 		return "", errors.New("ParameterNotFound")
 	}
@@ -182,5 +187,53 @@ func TestLoadForwardedHops(t *testing.T) {
 		if _, err := config.Load(e.get); err == nil || !strings.Contains(err.Error(), "FORWARDED_HOPS") {
 			t.Errorf("%q: got %v", bad, err)
 		}
+	}
+}
+
+// QA's real sending to its test recipients (S17): the sender address and the recipients are kept
+// in SSM (the recipients as a SecureString), so no contact is in the repo or the stack.
+func TestResolveFetchesTheSenderAndTestRecipients(t *testing.T) {
+	aws := awsWithEverything()
+	aws.params["/sj/qa/email-from"] = "sender@ca.example.test"
+	aws.params["/sj/qa/messaging-test-recipients"] = "+15550100001,someone@ca.example.test"
+	e := lambdaEnv()
+	e["EMAIL_FROM_PARAM"] = "/sj/qa/email-from"
+	e["MESSAGING_TEST_RECIPIENTS_PARAM"] = "/sj/qa/messaging-test-recipients"
+	e["SES_CONFIGURATION_SET"] = "poised-ca-qa"
+	e["SMS_CONFIGURATION_SET"] = "poised-ca-qa"
+	getenv, err := config.Resolve(context.Background(), e.get, aws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := config.Load(getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Sending.EmailFrom != "sender@ca.example.test" || len(c.TestRecipients) != 2 || c.Messaging != "capture" {
+		t.Errorf("sending %+v, recipients %d", c.Sending, len(c.TestRecipients))
+	}
+}
+
+// Deleting QA's test-recipients parameter (make test-recipients-off) switches its real sending
+// off: the functions start with no test recipients, rather than failing.
+func TestResolveWithoutTheTestRecipientsParameter(t *testing.T) {
+	aws := awsWithEverything()
+	e := lambdaEnv()
+	e["EMAIL_FROM_PARAM"] = "/sj/qa/email-from"
+	aws.params["/sj/qa/email-from"] = "sender@ca.example.test"
+	e["MESSAGING_TEST_RECIPIENTS_PARAM"] = "/sj/qa/messaging-test-recipients"
+	aws.notFound = true
+	getenv, err := config.Resolve(context.Background(), e.get, aws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := config.Load(getenv)
+	if err != nil || len(c.TestRecipients) != 0 || c.Sending.Enabled() {
+		t.Errorf("recipients %d, sending %+v, err %v", len(c.TestRecipients), c.Sending, err)
+	}
+	// Any other parameter missing still stops the function.
+	delete(aws.params, "/sj/qa/app-url")
+	if _, err := config.Resolve(context.Background(), e.get, aws); err == nil {
+		t.Error("a missing app URL didn't stop it")
 	}
 }

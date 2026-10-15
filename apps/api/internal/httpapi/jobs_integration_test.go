@@ -567,3 +567,27 @@ func TestEpisodeDobLock(t *testing.T) {
 		}
 	})
 }
+
+// On AWS (S17) the jobs Lambda's schedule runs the jobs, not a timer in the API: the page says so,
+// with the schedule's interval (JOBS_SCHEDULE_MINUTES, set by infra from the country entry).
+func TestQAJobsOnASchedule(t *testing.T) {
+	t.Parallel()
+	c, _ := apitest.NewWith(t, apitest.Options{Env: map[string]string{"JOBS_SCHEDULE_MINUTES": "15", "JOBS_TIMER": "false"}})
+	r := c.Do("GET", "/api/qa/jobs", nil)
+	r.Want(t, http.StatusOK)
+	var got struct {
+		Timer           bool
+		Runner          string
+		IntervalSeconds int
+	}
+	r.Decode(t, &got)
+	if !got.Timer || got.Runner != "schedule" || got.IntervalSeconds != 900 {
+		t.Errorf("got %+v", got)
+	}
+	local, _ := apitest.New(t) // and locally it's the timer
+	r = local.Do("GET", "/api/qa/jobs", nil)
+	r.Decode(t, &got)
+	if got.Runner != "timer" || got.IntervalSeconds != 60 {
+		t.Errorf("local %+v", got)
+	}
+}

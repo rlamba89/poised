@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, ceilMinute, fromLocalInput, offsetMinutes, toLocalInput } from "./jobsTime";
+import { addDays, ceilMinute, fromLocalInput, offsetMinutes, toLocalInput, whoRuns } from "./jobsTime";
 
 describe("the jobs page's times", () => {
   it("writes a time for a date-and-time box, in the browser's zone, to the minute", () => {
@@ -29,5 +29,16 @@ describe("the jobs page's times", () => {
     expect(offsetMinutes(1.5, 0)).toBeNull();
     expect(offsetMinutes(90, 1)).toBeNull(); // more than 90 days
     expect(offsetMinutes(90, 0)).toBe(129600);
+  });
+});
+
+// Who runs the jobs by themselves (S17): the local server's timer, or on AWS the jobs Lambda's schedule.
+describe("whoRuns", () => {
+  it("says the local timer, in seconds", () => {
+    expect(whoRuns("timer", 60)).toBe("the local server runs the jobs every 60 seconds");
+  });
+  it("says AWS's schedule, in minutes", () => {
+    expect(whoRuns("schedule", 900)).toBe("a schedule on AWS runs the jobs every 15 minutes");
+    expect(whoRuns("schedule", 60)).toBe("a schedule on AWS runs the jobs every minute");
   });
 });

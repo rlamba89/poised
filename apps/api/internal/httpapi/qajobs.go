@@ -54,8 +54,14 @@ func (s *server) qaJobs(w http.ResponseWriter, r *http.Request) {
 	if c.LastTickAt.Valid {
 		last, lastAsOf = &c.LastTickAt.Time, &c.LastTickAsOf.Time
 	}
+	// Who runs the jobs by themselves: locally the timer in cmd/api (S16); on AWS the jobs
+	// Lambda's schedule (S17).
+	timer, runner, interval := s.cfg.JobsTimer, "timer", int(jobs.TimerInterval/time.Second)
+	if m := s.cfg.JobsScheduleMinutes; m > 0 {
+		timer, runner, interval = true, "schedule", m*60
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"timer": s.cfg.JobsTimer, "intervalSeconds": int(jobs.TimerInterval / time.Second),
+		"timer": timer, "runner": runner, "intervalSeconds": interval,
 		"offsetMinutes": c.OffsetMinutes, "lastTickAt": last, "lastTickAsOf": lastAsOf,
 	})
 }

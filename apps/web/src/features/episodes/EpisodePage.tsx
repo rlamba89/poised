@@ -17,8 +17,9 @@ import { GeneralNotes } from "./GeneralNotes";
 import { currentAnswers, useEpisodeHQ } from "./hq";
 import { StatusSelect } from "./StatusSelect";
 import { patientName, type Episode, type EpisodeEvent, type EpisodeInvite } from "./types";
+import { undeliveredText, type Undelivered } from "./undelivered";
 
-export type EpisodeDetail = { episode: Episode; events: EpisodeEvent[]; invite: EpisodeInvite };
+export type EpisodeDetail = { episode: Episode; events: EpisodeEvent[]; invite: EpisodeInvite; undelivered: Undelivered[] };
 
 /** Loads an episode and its events; `reload` refetches both. */
 export function useEpisode(base: string, episodeId: string) {
@@ -58,6 +59,10 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
             // EPI-02 (S16): the HQ wasn't sent by the hospital's "not responding" day. The worklist is C3's.
             <Badge color="red" variant="light" data-testid="not-responding">Not responding</Badge>
           )}
+          {data.undelivered.length > 0 && !e.patientSubmittedAt && (
+            // OPS-05 (S17): a text or email of the latest invite, or a later reminder, didn't reach the patient.
+            <Badge color="red" variant="light" data-testid="undelivered-badge">Invite not delivered</Badge>
+          )}
         </Group>
         <Button component={Link} to={`${path}/poa`} variant="default">POA Summary</Button>
       </Group>
@@ -77,7 +82,7 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
         </SimpleGrid>
       </Card>
 
-      {e.status === "hq_not_complete" && <Invite path={path} episode={e} invite={data.invite} onSent={reload} />}
+      {e.status === "hq_not_complete" && <Invite path={path} episode={e} invite={data.invite} undelivered={data.undelivered} onSent={reload} />}
 
       <QuestionSets base={base} episode={e} onReviewed={reload} />
 
@@ -98,7 +103,9 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
  * General notes say how), whether five wrong dates of birth locked it, Resend, and filling in the
  * HQ on the patient's behalf (PAT-09).
  */
-function Invite({ path, episode, invite, onSent }: { path: string; episode: Episode; invite: EpisodeInvite; onSent: () => void }) {
+function Invite({ path, episode, invite, undelivered, onSent }: {
+  path: string; episode: Episode; invite: EpisodeInvite; undelivered: Undelivered[]; onSent: () => void;
+}) {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const resend = async () => {
@@ -132,6 +139,17 @@ function Invite({ path, episode, invite, onSent }: { path: string; episode: Epis
         <Alert color="red" mb="xs" title="The link is locked">
           The date of birth was entered wrongly 5 times ({formatDateTime(invite.lockedAt)}), so every link sent to the patient for this
           episode is locked, and no reminders go. Resend the invite to send them a new link.
+        </Alert>
+      )}
+      {undelivered.length > 0 && (
+        // S17 (OPS-05): AWS reported these undelivered, or they couldn't be sent at all.
+        <Alert color="red" mb="xs" title="Not delivered" data-testid="undelivered">
+          {undelivered.map((u) => (
+            <Text size="sm" key={`${u.sentAt}-${u.kind}-${u.channel}`}>
+              {undeliveredText(u)} (Sent {formatDateTime(u.sentAt)}.)
+            </Text>
+          ))}
+          <Text size="sm" mt={4}>Check the patient&apos;s mobile number and email address, then resend the invite.</Text>
         </Alert>
       )}
       {result && <Alert color={result.ok ? "green" : "red"} mb="xs">{result.text}</Alert>}

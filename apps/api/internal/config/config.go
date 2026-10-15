@@ -14,6 +14,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -30,13 +31,23 @@ type Config struct {
 	TokenSecret string // TOKEN_SECRET: signs the session cookie
 	Addr        string // API_ADDR: where a local server listens (default :8080)
 	DevLogin    bool   // DEV_LOGIN=true: the stub sign-in routes. Never on in Training or Production.
-	// MESSAGING: how patient SMS and email go out. "capture" (the only mode until S17; the local
-	// default, and required explicitly with CONFIG_STRICT) stores them in sent_messages and sends
-	// nothing; GET /api/qa/messages, which has no sign-in, reads them.
+	// MESSAGING: how patient SMS and email go out (required explicitly with CONFIG_STRICT):
+	//   - "capture" (the local default; QA) stores them in sent_messages and sends nothing; the
+	//     testers' tools (GET /api/qa/messages…) read them;
+	//   - "send" (S17; Training and Production) sends them with SES and End User Messaging SMS.
 	Messaging string
+	// Sending is how real messages go (S17): with MESSAGING=send, or with test recipients.
+	Sending Sending
+	// MESSAGING_TEST_RECIPIENTS (capture only; QA): a comma-separated list of E.164 mobiles and
+	// email addresses that are also really sent their messages (messaging.TestRecipients), so a
+	// real text and email can be tried on QA without anyone else receiving one.
+	TestRecipients []string
 	// JOBS_TIMER: the local all-in-one server (cmd/api, make dev) runs the scheduled jobs every
 	// minute (S16) unless it's false. On AWS a schedule runs the jobs Lambda instead (S17).
 	JobsTimer bool
+	// JOBS_SCHEDULE_MINUTES (S17, set by infra on AWS): how often the jobs Lambda's schedule runs
+	// the jobs there, for the testers' jobs page. 0: no schedule (local: the timer runs them).
+	JobsScheduleMinutes int
 	// FORWARDED_HOPS: how many trusted proxies sit in front of the API, each adding the address
 	// it got the request from to X-Forwarded-For. 0 (locally): the connection's address is the
 	// client's. On AWS it's set by infra (internal/serve reads the client's address from the header).
@@ -78,6 +89,21 @@ const maxForwardedHops = 4
 
 // MessagingCapture stores patient messages instead of sending them (MESSAGING=capture).
 const MessagingCapture = "capture"
+
+// MessagingSend sends them with SES and End User Messaging SMS (MESSAGING=send, S17).
+const MessagingSend = "send"
+
+// Sending names the deployment's SES sender and the configuration sets its messages go through
+// (infra's MessagingStack makes them; their event destinations report undelivered messages).
+type Sending struct {
+	EmailFrom           string // EMAIL_FROM: the verified address emails come from
+	SESConfigurationSet string // SES_CONFIGURATION_SET
+	SMSConfigurationSet string // SMS_CONFIGURATION_SET: its protect configuration allows only PHONE_COUNTRY
+	SMSSenderID         string // SMS_SENDER_ID: optional; the texts' origination identity
+}
+
+// Enabled reports whether any message is really sent here.
+func (s Sending) Enabled() bool { return s.EmailFrom != "" }
 
 // Country holds the values that differ between country deployments (A-20).
 type Country struct {
@@ -157,6 +183,8 @@ var (
 	localeRe   = regexp.MustCompile(`^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$`)
 	countryRe  = regexp.MustCompile(`^[A-Z]{2}$`)
 	poolIDRe   = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-\d_[A-Za-z0-9]+$`)
+	e164Re     = regexp.MustCompile(`^\+[1-9]\d{6,14}$`)
+	senderIDRe = regexp.MustCompile(`^[A-Za-z0-9-]{1,11}$`)
 	clientIDRe = regexp.MustCompile(`^[A-Za-z0-9]+$`)
 )
 
@@ -223,6 +251,13 @@ func Load(getenv func(string) string) (Config, error) {
 		c.Addr = ":8080"
 	}
 	errs = append(errs, c.loadCognito(getenv, strict, need)...)
+	if v := getenv("JOBS_SCHEDULE_MINUTES"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 24*60 {
+			errs = append(errs, fmt.Errorf("JOBS_SCHEDULE_MINUTES must be a number of minutes from 1 to 1440, not %q", v))
+		}
+		c.JobsScheduleMinutes = n
+	}
 	if v := getenv("FORWARDED_HOPS"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 0 || n > maxForwardedHops {
@@ -235,10 +270,11 @@ func Load(getenv func(string) string) (Config, error) {
 		if !strict { // strict: reported as missing above
 			c.Messaging = MessagingCapture
 		}
-	case MessagingCapture:
+	case MessagingCapture, MessagingSend:
 	default:
-		errs = append(errs, fmt.Errorf("MESSAGING must be %q (real sending comes with S17), not %q", MessagingCapture, c.Messaging))
+		errs = append(errs, fmt.Errorf("MESSAGING must be %q or %q, not %q", MessagingCapture, MessagingSend, c.Messaging))
 	}
+	errs = append(errs, c.loadSending(getenv, need)...)
 	if len(missing) > 0 {
 		hint := " (copy .env.example to .env)"
 		if strict {
@@ -251,6 +287,47 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("config: %w", err)
 	}
 	return c, nil
+}
+
+// loadSending reads how real messages go (S17): needed for MESSAGING=send, and for capture with
+// test recipients (QA), which sends to them only.
+func (c *Config) loadSending(getenv func(string) string, need func(string) string) []error {
+	var errs []error
+	if v := getenv("MESSAGING_TEST_RECIPIENTS"); v != "" {
+		if c.Messaging != MessagingCapture {
+			errs = append(errs, errors.New("MESSAGING_TEST_RECIPIENTS goes only with MESSAGING=capture (QA): with send, everyone's messages go"))
+		}
+		for _, r := range strings.Split(v, ",") {
+			r = strings.ToLower(strings.TrimSpace(r))
+			if !e164Re.MatchString(r) && !isAddress(r) {
+				errs = append(errs, errors.New("MESSAGING_TEST_RECIPIENTS must be E.164 mobiles and email addresses, comma-separated (one isn't)")) // never print a contact
+				break
+			}
+			c.TestRecipients = append(c.TestRecipients, r)
+		}
+	}
+	if c.Messaging != MessagingSend && len(c.TestRecipients) == 0 {
+		return errs
+	}
+	c.Sending = Sending{
+		EmailFrom:           need("EMAIL_FROM"),
+		SESConfigurationSet: need("SES_CONFIGURATION_SET"),
+		SMSConfigurationSet: need("SMS_CONFIGURATION_SET"),
+		SMSSenderID:         getenv("SMS_SENDER_ID"),
+	}
+	if v := c.Sending.EmailFrom; v != "" && !isAddress(v) {
+		errs = append(errs, fmt.Errorf("EMAIL_FROM must be a plain email address, such as poised@example.org, not %q", v))
+	}
+	if v := c.Sending.SMSSenderID; v != "" && !senderIDRe.MatchString(v) {
+		errs = append(errs, fmt.Errorf("SMS_SENDER_ID must be 1 to 11 letters, digits or hyphens, not %q", v))
+	}
+	return errs
+}
+
+// isAddress reports whether v is a bare email address (no name, no angle brackets).
+func isAddress(v string) bool {
+	a, err := mail.ParseAddress(v)
+	return err == nil && a.Name == "" && a.Address == v
 }
 
 // loadCognito reads the staff user pool (S12). On AWS (strict) it's required and the dev login

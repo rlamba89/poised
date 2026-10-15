@@ -103,6 +103,17 @@ type EpisodeEvent struct {
 	Automatic bool          `json:"automatic"`
 }
 
+type EpisodeMessage struct {
+	ID         uuid.UUID          `json:"id"`
+	EpisodeID  uuid.UUID          `json:"episodeId"`
+	Kind       string             `json:"kind"`
+	Channel    string             `json:"channel"`
+	ProviderID *string            `json:"providerId"`
+	CreatedAt  time.Time          `json:"createdAt"`
+	FailedAt   pgtype.Timestamptz `json:"failedAt"`
+	Failure    string             `json:"failure"`
+}
+
 type Hospital struct {
 	ID       uuid.UUID       `json:"id"`
 	Name     string          `json:"name"`

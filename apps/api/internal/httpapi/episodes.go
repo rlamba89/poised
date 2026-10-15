@@ -191,7 +191,13 @@ func (s *server) getEpisode(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "episode invite", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"episode": e, "events": events, "invite": invite})
+	// The texts and emails that didn't reach the patient since the latest invite or Resend (S17, OPS-05).
+	undelivered, err := s.q.ListUndeliveredMessages(r.Context(), e.ID)
+	if err != nil {
+		serverError(w, "undelivered messages", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"episode": e, "events": events, "invite": invite, "undelivered": undelivered})
 }
 
 // episodeChange is what updateEpisode changes. A field sent as null decodes to a nil pointer;

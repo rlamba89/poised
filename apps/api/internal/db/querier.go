@@ -83,6 +83,9 @@ type Querier interface {
 	DraftNameExists(ctx context.Context, arg DraftNameExistsParams) (bool, error)
 	DropOldHits(ctx context.Context, arg DropOldHitsParams) error
 	EndPatientSession(ctx context.Context, arg EndPatientSessionParams) error
+	// AWS reported that a message wasn't delivered (S17). No row: it isn't an episode's message (a
+	// sign-in link), or it's already marked.
+	FailEpisodeMessage(ctx context.Context, arg FailEpisodeMessageParams) (FailEpisodeMessageRow, error)
 	// Counts a wrong date of birth on an invite link against its episode (S16 test report 1): all the
 	// episode's live invite links share max_attempts tries, and the last locks them all together.
 	// No row: the link was already locked (or replaced).
@@ -148,7 +151,7 @@ type Querier interface {
 	// at is the server's clock (Deps.Clock), so tests can place rows in time.
 	InsertAudit(ctx context.Context, arg InsertAuditParams) error
 	// MESSAGING=capture: a message stored instead of sent.
-	InsertSentMessage(ctx context.Context, arg InsertSentMessageParams) error
+	InsertSentMessage(ctx context.Context, arg InsertSentMessageParams) (int64, error)
 	// At sign-in: how many invites wait for the first sign-in, and how many of those are still open.
 	InviteState(ctx context.Context, arg InviteStateParams) (InviteStateRow, error)
 	IsPlatformAdmin(ctx context.Context, userID uuid.UUID) (bool, error)
@@ -214,6 +217,9 @@ type Querier interface {
 	// The trust's whole-trust admins, for the platform admin, with each account's latest open
 	// invite (set while it waits for its first sign-in).
 	ListTrustAdmins(ctx context.Context, orgID uuid.UUID) ([]ListTrustAdminsRow, error)
+	// The episode's messages that didn't reach the patient since its latest invite or Resend (S17):
+	// a later Resend starts afresh.
+	ListUndeliveredMessages(ctx context.Context, episodeID uuid.UUID) ([]ListUndeliveredMessagesRow, error)
 	ListUsers(ctx context.Context) ([]ListUsersRow, error)
 	ListVersionChapters(ctx context.Context, versionID uuid.UUID) ([]ListVersionChaptersRow, error)
 	LockAccount(ctx context.Context, id uuid.UUID) (LockAccountRow, error)
@@ -265,6 +271,9 @@ type Querier interface {
 	PublishVersion(ctx context.Context, arg PublishVersionParams) (int64, error)
 	// The trust's questionnaires that have a published version: the choices for its default HQ.
 	PublishedQuestionnairesInOrg(ctx context.Context, orgID uuid.UUID) ([]PublishedQuestionnairesInOrgRow, error)
+	// A text or email sent to the patient about the episode (S17): failed_at is set when it
+	// couldn't be sent at all.
+	RecordEpisodeMessage(ctx context.Context, arg RecordEpisodeMessageParams) error
 	// The job ran: look again at run_at.
 	RescheduleJob(ctx context.Context, arg RescheduleJobParams) error
 	// A Resend: the new link starts with the episode's five tries again.
