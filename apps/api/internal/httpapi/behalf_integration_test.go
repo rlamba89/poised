@@ -12,7 +12,7 @@ import (
 
 // Staff completing the HQ on the patient's behalf (PAT-09), e.g. on the phone: the patient's own
 // form at …/episodes/{eid}/patient-form. The answers are the patient's, marked as entered by the
-// staff member (episode_answers.updated_by on the patient's row; episodes.patient_submitted_by).
+// staff member (episode_answers.updated_by on the patient's row; episode_forms.submitted_by).
 
 func TestCompleteOnBehalf(t *testing.T) {
 	t.Parallel()
@@ -59,8 +59,8 @@ func TestCompleteOnBehalf(t *testing.T) {
 		}
 		savedRevision(t, w.clinician.Do("PUT", form("/answers/"+about.String()), answers))
 		var by *uuid.UUID
-		if err := w.db.QueryRow(t.Context(), `SELECT updated_by FROM episode_answers WHERE episode_id = $1 AND chapter_id = $2
-			AND actor = 'patient'`, w.ep.ID, about).Scan(&by); err != nil {
+		if err := w.db.QueryRow(t.Context(), `SELECT updated_by FROM episode_answers WHERE episode_form_id = $1 AND chapter_id = $2
+			AND actor = 'patient'`, w.ep.FormID, about).Scan(&by); err != nil {
 			t.Fatal(err)
 		}
 		if by == nil || *by != w.cara.ID {
@@ -71,12 +71,12 @@ func TestCompleteOnBehalf(t *testing.T) {
 		p := w.anon.AsPatient(t, w.ep.Link, w.ep.DateOfBirth)
 		savedRevision(t, p.Do("PUT", patientPath(w.ep, "/answers/"+about.String()), map[string]any{"data": map[string]any{"q_smokes": "o_yes"}, "revision": 1}))
 		savedRevision(t, p.Do("PUT", patientPath(w.ep, "/answers/"+health.String()), map[string]any{"data": map[string]any{"q_diabetes": "o_no"}, "revision": 0}))
-		if n := count(t, w.db, `SELECT count(*) FROM episode_answers WHERE episode_id = $1 AND chapter_id = $2 AND updated_by = $3`,
-			w.ep.ID, about, w.cara.ID); n != 1 {
+		if n := count(t, w.db, `SELECT count(*) FROM episode_answers WHERE episode_form_id = $1 AND chapter_id = $2 AND updated_by = $3`,
+			w.ep.FormID, about, w.cara.ID); n != 1 {
 			t.Error("the patient's save cleared the mark")
 		}
-		if n := count(t, w.db, `SELECT count(*) FROM episode_answers WHERE episode_id = $1 AND chapter_id = $2 AND updated_by IS NULL`,
-			w.ep.ID, health); n != 1 {
+		if n := count(t, w.db, `SELECT count(*) FROM episode_answers WHERE episode_form_id = $1 AND chapter_id = $2 AND updated_by IS NULL`,
+			w.ep.FormID, health); n != 1 {
 			t.Error("the patient's own set is marked")
 		}
 	})
@@ -106,7 +106,7 @@ func TestCompleteOnBehalf(t *testing.T) {
 		if e := readEpisode(t, w, w.ep.ID); e.Status != "ready_for_review" || e.Submitted == nil {
 			t.Errorf("episode %+v", e)
 		}
-		if n := count(t, w.db, `SELECT count(*) FROM episodes WHERE id = $1 AND patient_submitted_by = $2`, w.ep.ID, w.cara.ID); n != 1 {
+		if n := count(t, w.db, `SELECT count(*) FROM episode_forms WHERE id = $1 AND status = 'submitted' AND submitted_by = $2`, w.ep.FormID, w.cara.ID); n != 1 {
 			t.Error("not marked as sent by Cara")
 		}
 		ev := readEvents(t, w, w.ep.ID)

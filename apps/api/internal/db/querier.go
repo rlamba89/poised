@@ -51,8 +51,8 @@ type Querier interface {
 	// A sign-in link (kind signin) to a contact, or a verification link (kind verify) for an
 	// account's new contact. Both expire.
 	CreateContactLink(ctx context.Context, arg CreateContactLinkParams) (uuid.UUID, error)
-	// Creates nothing (no row) unless the patient is the trust's and the version is published and
-	// one this hospital uses.
+	// The episode and its HQ form on the version, in one statement (S18). Creates nothing (no row)
+	// unless the patient is the trust's and the version is published and one this hospital uses.
 	CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (uuid.UUID, error)
 	// Nothing is returned when the trust already has a hospital of that name (any case).
 	CreateHospital(ctx context.Context, arg CreateHospitalParams) ([]uuid.UUID, error)
@@ -113,16 +113,18 @@ type Querier interface {
 	// A sign-in or verification link, used or not, expired or not (the handler says which).
 	// A replaced (revoked) verification link is returned too, and refused as expired.
 	GetContactLinkByHash(ctx context.Context, arg GetContactLinkByHashParams) (GetContactLinkByHashRow, error)
+	// With its HQ form (S18): the version, the patient's submit and who sent it keep their names
+	// from before forms, so the episode's JSON is unchanged; hq_form_id holds the answers.
 	GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpisodeRow, error)
-	// An episode's HQ as the patient fills it in: for the patient's session (the handler checks the
-	// episode is theirs) or staff completing it on their behalf (it checks the hospital).
+	// An episode's HQ form as the patient fills it in: for the patient's session (the handler checks
+	// the episode is theirs) or staff completing it on their behalf (it checks the hospital).
 	GetEpisodeForm(ctx context.Context, id uuid.UUID) (GetEpisodeFormRow, error)
 	// The episode's working invite, for staff: when the newest link was sent, and whether five wrong
 	// dates of birth locked the episode (any of its live links locked: they lock together). No row:
 	// no invite has been sent.
 	GetEpisodeInvite(ctx context.Context, episodeID uuid.NullUUID) (GetEpisodeInviteRow, error)
 	// What the follow-up decides on: the episode's state, whether the patient has started (any
-	// answers of theirs, or entered for them), and the hospital's zone and settings.
+	// answers of theirs on the HQ form, or entered for them), and the hospital's zone and settings.
 	GetFollowup(ctx context.Context, id uuid.UUID) (GetFollowupRow, error)
 	// The trust's record of one of this hospital's patients; no row for anyone else.
 	GetHospitalPatient(ctx context.Context, arg GetHospitalPatientParams) (GetHospitalPatientRow, error)
@@ -169,7 +171,8 @@ type Querier interface {
 	ListCategories(ctx context.Context) ([]Category, error)
 	// Every chapter lookup joins up to the questionnaire, so it is scoped to the trust and hospital.
 	ListChapters(ctx context.Context, versionID uuid.UUID) ([]ListChaptersRow, error)
-	ListEpisodeAnswers(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeAnswersRow, error)
+	// One form's answers, both actors'.
+	ListEpisodeAnswers(ctx context.Context, episodeFormID uuid.UUID) ([]ListEpisodeAnswersRow, error)
 	// user_name is NULL for the patient's entries and the automatic ones.
 	ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeEventsRow, error)
 	// One trust's episodes: at every hospital when all_hospitals (a trust-wide member's "All
@@ -307,7 +310,7 @@ type Querier interface {
 	// patient. Once staff have entered a set's answers it stays marked with the last of them, even if
 	// the patient saves it again, so the answers never look all the patient's own.
 	// Returns the new revision, or no row if nothing was saved:
-	//   - once the patient has submitted, their answers are frozen;
+	//   - once the form has been submitted, the patient's answers are frozen;
 	//   - `revision` must be the row's current one, or 0 if there's no row yet (see SaveClinicianAnswers).
 	SavePatientAnswers(ctx context.Context, arg SavePatientAnswersParams) (int32, error)
 	// CLN-09: part of the code or description, within one code set, active only.
@@ -347,7 +350,9 @@ type Querier interface {
 	// After the right date of birth: a session for the person's account (all their records), tied
 	// to the link it was opened with.
 	StartPatientSession(ctx context.Context, arg StartPatientSessionParams) (uuid.UUID, error)
+	// Submits the HQ form, freezing the patient's answers, and moves its episode to Ready for review.
 	// submitted_by: the staff member who sent it on the patient's behalf (PAT-09), NULL for the patient.
+	// No row: the form was already submitted.
 	SubmitPatientHQ(ctx context.Context, arg SubmitPatientHQParams) (int64, error)
 	// Every patient request: the session's account, if the session is live (not signed out, seen
 	// since idle_since) and its link wasn't replaced by a resend or locked. It counts as activity.

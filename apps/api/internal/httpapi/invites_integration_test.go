@@ -282,7 +282,8 @@ func TestResendInvite(t *testing.T) {
 		}
 	})
 	t.Run("once the answers are sent: 409, nothing sent", func(t *testing.T) {
-		if _, err := w.db.Exec(t.Context(), `UPDATE episodes SET patient_submitted_at = now(), status = 'ready_for_review' WHERE id = $1`, id); err != nil {
+		if _, err := w.db.Exec(t.Context(), `WITH f AS (UPDATE episode_forms SET status = 'submitted', submitted_at = now() WHERE episode_id = $1 AND kind = 'hq')
+			UPDATE episodes SET status = 'ready_for_review' WHERE id = $1`, id); err != nil {
 			t.Fatal(err)
 		}
 		before := len(msgs.Sent())

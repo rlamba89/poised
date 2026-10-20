@@ -50,8 +50,9 @@ func (q *Queries) ClaimDueJob(ctx context.Context, arg ClaimDueJobParams) (Claim
 }
 
 const countReminder = `-- name: CountReminder :execrows
-UPDATE episodes SET reminders_sent = $1
-WHERE id = $2 AND reminders_sent < $1 AND patient_submitted_at IS NULL
+UPDATE episodes e SET reminders_sent = $1
+WHERE e.id = $2 AND e.reminders_sent < $1
+  AND EXISTS (SELECT 1 FROM episode_forms f WHERE f.episode_id = e.id AND f.kind = 'hq' AND f.status = 'open')
 `
 
 type CountReminderParams struct {
@@ -101,13 +102,14 @@ func (q *Queries) FinishJob(ctx context.Context, arg FinishJobParams) error {
 }
 
 const getFollowup = `-- name: GetFollowup :one
-SELECT e.id, e.invited_at, e.reminders_sent, e.not_responding_at, e.patient_submitted_at,
-       EXISTS (SELECT 1 FROM episode_answers a WHERE a.episode_id = e.id AND a.actor = 'patient')::boolean AS started,
+SELECT e.id, e.invited_at, e.reminders_sent, e.not_responding_at, f.submitted_at AS patient_submitted_at,
+       EXISTS (SELECT 1 FROM episode_answers a WHERE a.episode_form_id = f.id AND a.actor = 'patient')::boolean AS started,
        EXISTS (SELECT 1 FROM login_links l WHERE l.episode_id = e.id AND l.kind = 'invite'
                AND l.revoked_at IS NULL AND l.locked_at IS NOT NULL)::boolean AS locked,
        (o.status = 'active' AND h.status = 'active')::boolean AS open,
        h.timezone, h.settings AS hospital_settings, o.settings AS org_settings
 FROM episodes e
+JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
 JOIN hospitals h ON h.id = e.hospital_id
 JOIN orgs o ON o.id = e.org_id
 WHERE e.id = $1
@@ -128,7 +130,7 @@ type GetFollowupRow struct {
 }
 
 // What the follow-up decides on: the episode's state, whether the patient has started (any
-// answers of theirs, or entered for them), and the hospital's zone and settings.
+// answers of theirs on the HQ form, or entered for them), and the hospital's zone and settings.
 func (q *Queries) GetFollowup(ctx context.Context, id uuid.UUID) (GetFollowupRow, error) {
 	row := q.db.QueryRow(ctx, getFollowup, id)
 	var i GetFollowupRow
@@ -167,8 +169,9 @@ func (q *Queries) GetQAJobsClock(ctx context.Context) (GetQAJobsClockRow, error)
 }
 
 const markNotResponding = `-- name: MarkNotResponding :execrows
-UPDATE episodes SET not_responding_at = $1::timestamptz
-WHERE id = $2 AND not_responding_at IS NULL AND patient_submitted_at IS NULL
+UPDATE episodes e SET not_responding_at = $1::timestamptz
+WHERE e.id = $2 AND e.not_responding_at IS NULL
+  AND EXISTS (SELECT 1 FROM episode_forms f WHERE f.episode_id = e.id AND f.kind = 'hq' AND f.status = 'open')
 `
 
 type MarkNotRespondingParams struct {

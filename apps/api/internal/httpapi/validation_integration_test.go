@@ -34,7 +34,7 @@ func readClinicianAnswers(t *testing.T, w *clinic, e apitest.Episode, chapter uu
 	t.Helper()
 	var c clinicianRow
 	err := w.db.QueryRow(t.Context(), `SELECT data::text, updated_by, validated_at, revision FROM episode_answers
-		WHERE episode_id = $1 AND chapter_id = $2 AND actor = 'clinician'`, e.ID, chapter).Scan(&c.Data, &c.By, &c.Validated, &c.Revision)
+		WHERE episode_form_id = $1 AND chapter_id = $2 AND actor = 'clinician'`, e.FormID, chapter).Scan(&c.Data, &c.By, &c.Validated, &c.Revision)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatal(err)
 	}
@@ -241,8 +241,8 @@ func TestSaveClinicianAnswers(t *testing.T) {
 	})
 	t.Run("two first saves at once: one wins, the other gets a 409", func(t *testing.T) {
 		// The other tab's first save is in, but not committed, when this one arrives.
-		r := meanwhile(t, w.db, `INSERT INTO episode_answers (episode_id, chapter_id, actor, data, updated_by, revision)
-			VALUES ($1, $2, 'clinician', '{"q_diabetes": true}', $3, 1)`, []any{w.ep.ID, health, w.cara.ID},
+		r := meanwhile(t, w.db, `INSERT INTO episode_answers (episode_form_id, chapter_id, actor, data, updated_by, revision)
+			VALUES ($1, $2, 'clinician', '{"q_diabetes": true}', $3, 1)`, []any{w.ep.FormID, health, w.cara.ID},
 			func() *apitest.Resp {
 				return save(w.clinician, w.a, w.ep, health, map[string]any{"data": map[string]bool{"q_diabetes": false}, "revision": 0})
 			})

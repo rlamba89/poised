@@ -99,14 +99,15 @@ WHERE id = sqlc.arg(id) AND used_at IS NULL AND locked_at IS NULL AND revoked_at
 -- The person's home (PX-08): every episode of every record joined to their account, in every
 -- trust, newest first, with the hospital's name. Suspended trusts and hospitals are left out
 -- (ORG-03). org, hospital and patient ids are for the audit log, never sent.
-SELECT e.id, e.created_at, e.procedure, e.patient_submitted_at, e.org_id, e.hospital_id, e.patient_id,
+SELECT e.id, e.created_at, e.procedure, f.submitted_at AS patient_submitted_at, e.org_id, e.hospital_id, e.patient_id,
        p.first_name, p.last_name, h.name AS hospital_name, q.name AS questionnaire_name,
-       EXISTS (SELECT 1 FROM episode_answers a WHERE a.episode_id = e.id AND a.actor = 'patient')::boolean AS started
+       EXISTS (SELECT 1 FROM episode_answers a WHERE a.episode_form_id = f.id AND a.actor = 'patient')::boolean AS started
 FROM patients p
 JOIN episodes e ON e.patient_id = p.id
 JOIN hospitals h ON h.id = e.hospital_id
 JOIN orgs o ON o.id = e.org_id
-JOIN questionnaire_versions v ON v.id = e.version_id
+JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
+JOIN questionnaire_versions v ON v.id = f.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
 WHERE p.account_id = $1 AND o.status = 'active' AND h.status = 'active'
 ORDER BY e.created_at DESC, e.id;

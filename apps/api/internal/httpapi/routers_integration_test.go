@@ -96,7 +96,7 @@ func TestStaffRouter(t *testing.T) {
 			c.Do("GET", "/api/p/home", nil).Want(t, http.StatusNotFound)
 			c.Do("POST", "/api/p/contact", map[string]string{"contact": "a@b.example"}).Want(t, http.StatusNotFound)
 		}
-		if n := count(t, s.DB, `SELECT count(*) FROM episode_answers WHERE episode_id = $1`, ep.ID); n != 0 {
+		if n := count(t, s.DB, `SELECT count(*) FROM episode_answers WHERE episode_form_id = $1`, ep.FormID); n != 0 {
 			t.Errorf("%d answers rows written through the staff router", n)
 		}
 	})

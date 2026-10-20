@@ -40,7 +40,7 @@ func patientAnswers(t *testing.T, w *clinic, e apitest.Episode, chapter uuid.UUI
 	t.Helper()
 	var data string
 	err := w.db.QueryRow(t.Context(), `SELECT data::text FROM episode_answers
-		WHERE episode_id = $1 AND chapter_id = $2 AND actor = 'patient'`, e.ID, chapter).Scan(&data)
+		WHERE episode_form_id = $1 AND chapter_id = $2 AND actor = 'patient'`, e.FormID, chapter).Scan(&data)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestPatientHQ(t *testing.T) {
 	saveAnswers(t, w, w.ep, nurse, &w.cara, `{"q_secret_bp": "SECRET 120/80"}`)
 	other := w.fx.Episode(t, w.hq, w.cara)
 	saveAnswers(t, w, other, health, nil, `{"q_diabetes": true}`)
-	if _, err := w.db.Exec(t.Context(), `UPDATE episode_answers SET revision = 2 WHERE episode_id = $1`, w.ep.ID); err != nil {
+	if _, err := w.db.Exec(t.Context(), `UPDATE episode_answers SET revision = 2 WHERE episode_form_id = $1`, w.ep.FormID); err != nil {
 		t.Fatal(err)
 	}
 	// The patient's record holds identifiers they never type here (S14 answers 1).
@@ -401,7 +401,7 @@ func TestSavePatientAnswers(t *testing.T) {
 	revisionOf := func(chapter uuid.UUID) int {
 		t.Helper()
 		return count(t, w.db, `SELECT coalesce(max(revision), -1) FROM episode_answers
-			WHERE episode_id = $1 AND chapter_id = $2 AND actor = 'patient'`, w.ep.ID, chapter)
+			WHERE episode_form_id = $1 AND chapter_id = $2 AND actor = 'patient'`, w.ep.FormID, chapter)
 	}
 
 	t.Run("invalid input", func(t *testing.T) {
@@ -434,7 +434,7 @@ func TestSavePatientAnswers(t *testing.T) {
 		if got := patientAnswers(t, w, w.ep, about); got != `{"q_smokes": "o_yes"}` || revisionOf(about) != 2 {
 			t.Errorf("answers = %s at revision %d, want the second save at 2", got, revisionOf(about))
 		}
-		if n := count(t, w.db, `SELECT count(*) FROM episode_answers WHERE episode_id = $1 AND updated_by IS NOT NULL`, w.ep.ID); n != 0 {
+		if n := count(t, w.db, `SELECT count(*) FROM episode_answers WHERE episode_form_id = $1 AND updated_by IS NOT NULL`, w.ep.FormID); n != 0 {
 			t.Errorf("the patient's own answers are marked as entered by staff")
 		}
 	})
@@ -462,8 +462,8 @@ func TestSavePatientAnswers(t *testing.T) {
 		}
 	})
 	t.Run("two first saves at once: one wins, the other gets a 409", func(t *testing.T) {
-		r := meanwhile(t, w.db, `INSERT INTO episode_answers (episode_id, chapter_id, actor, data, revision)
-			VALUES ($1, $2, 'patient', '{"q_diabetes": true}', 1)`, []any{w.ep.ID, health},
+		r := meanwhile(t, w.db, `INSERT INTO episode_answers (episode_form_id, chapter_id, actor, data, revision)
+			VALUES ($1, $2, 'patient', '{"q_diabetes": true}', 1)`, []any{w.ep.FormID, health},
 			func() *apitest.Resp {
 				return save(w.ep, health, map[string]any{"data": map[string]bool{"q_diabetes": false}, "revision": 0})
 			})
@@ -526,8 +526,9 @@ func TestSubmitPatientHQ(t *testing.T) {
 		if len(ev) != 1 || ev[0].Kind != "event" || ev[0].Text != "HQ completed by the patient" || ev[0].User != nil {
 			t.Errorf("events = %+v, want 'HQ completed by the patient' with no user", ev)
 		}
-		if n := count(t, w.db, `SELECT count(*) FROM episodes WHERE id = $1 AND patient_submitted_by IS NULL`, w.ep.ID); n != 1 {
-			t.Error("the patient's submit is marked as staff's")
+		if n := count(t, w.db, `SELECT count(*) FROM episode_forms WHERE id = $1 AND status = 'submitted'
+			AND submitted_at IS NOT NULL AND submitted_by IS NULL`, w.ep.FormID); n != 1 {
+			t.Error("the HQ form isn't submitted by the patient")
 		}
 	})
 	t.Run("another episode isn't touched", func(t *testing.T) {

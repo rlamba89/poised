@@ -58,39 +58,36 @@ type Code struct {
 }
 
 type Episode struct {
-	ID                 uuid.UUID          `json:"id"`
-	HospitalID         uuid.UUID          `json:"hospitalId"`
-	PatientID          uuid.UUID          `json:"patientId"`
-	VersionID          uuid.UUID          `json:"versionId"`
-	Status             string             `json:"status"`
-	Procedure          string             `json:"procedure"`
-	Anaesthetic        string             `json:"anaesthetic"`
-	Consultant         string             `json:"consultant"`
-	NurseAsa           *int32             `json:"nurseAsa"`
-	AnaesthetistAsa    *int32             `json:"anaesthetistAsa"`
-	PatientSubmittedAt pgtype.Timestamptz `json:"patientSubmittedAt"`
-	ReviewCompletedBy  uuid.NullUUID      `json:"reviewCompletedBy"`
-	ReviewCompletedAt  pgtype.Timestamptz `json:"reviewCompletedAt"`
-	CreatedBy          uuid.UUID          `json:"createdBy"`
-	CreatedAt          time.Time          `json:"createdAt"`
-	OrgID              uuid.UUID          `json:"orgId"`
-	HospitalNumber     string             `json:"hospitalNumber"`
-	PatientSubmittedBy uuid.NullUUID      `json:"patientSubmittedBy"`
-	InvitedAt          pgtype.Timestamptz `json:"invitedAt"`
-	RemindersSent      int32              `json:"remindersSent"`
-	NotRespondingAt    pgtype.Timestamptz `json:"notRespondingAt"`
-	DobFailedAttempts  int32              `json:"dobFailedAttempts"`
+	ID                uuid.UUID          `json:"id"`
+	HospitalID        uuid.UUID          `json:"hospitalId"`
+	PatientID         uuid.UUID          `json:"patientId"`
+	Status            string             `json:"status"`
+	Procedure         string             `json:"procedure"`
+	Anaesthetic       string             `json:"anaesthetic"`
+	Consultant        string             `json:"consultant"`
+	NurseAsa          *int32             `json:"nurseAsa"`
+	AnaesthetistAsa   *int32             `json:"anaesthetistAsa"`
+	ReviewCompletedBy uuid.NullUUID      `json:"reviewCompletedBy"`
+	ReviewCompletedAt pgtype.Timestamptz `json:"reviewCompletedAt"`
+	CreatedBy         uuid.UUID          `json:"createdBy"`
+	CreatedAt         time.Time          `json:"createdAt"`
+	OrgID             uuid.UUID          `json:"orgId"`
+	HospitalNumber    string             `json:"hospitalNumber"`
+	InvitedAt         pgtype.Timestamptz `json:"invitedAt"`
+	RemindersSent     int32              `json:"remindersSent"`
+	NotRespondingAt   pgtype.Timestamptz `json:"notRespondingAt"`
+	DobFailedAttempts int32              `json:"dobFailedAttempts"`
 }
 
 type EpisodeAnswer struct {
-	EpisodeID   uuid.UUID          `json:"episodeId"`
-	ChapterID   uuid.UUID          `json:"chapterId"`
-	Actor       string             `json:"actor"`
-	Data        json.RawMessage    `json:"data"`
-	UpdatedBy   uuid.NullUUID      `json:"updatedBy"`
-	UpdatedAt   time.Time          `json:"updatedAt"`
-	ValidatedAt pgtype.Timestamptz `json:"validatedAt"`
-	Revision    int32              `json:"revision"`
+	EpisodeFormID uuid.UUID          `json:"episodeFormId"`
+	ChapterID     uuid.UUID          `json:"chapterId"`
+	Actor         string             `json:"actor"`
+	Data          json.RawMessage    `json:"data"`
+	UpdatedBy     uuid.NullUUID      `json:"updatedBy"`
+	UpdatedAt     time.Time          `json:"updatedAt"`
+	ValidatedAt   pgtype.Timestamptz `json:"validatedAt"`
+	Revision      int32              `json:"revision"`
 }
 
 type EpisodeEvent struct {
@@ -101,6 +98,19 @@ type EpisodeEvent struct {
 	UserID    uuid.NullUUID `json:"userId"`
 	CreatedAt time.Time     `json:"createdAt"`
 	Automatic bool          `json:"automatic"`
+}
+
+type EpisodeForm struct {
+	ID          uuid.UUID          `json:"id"`
+	EpisodeID   uuid.UUID          `json:"episodeId"`
+	VersionID   uuid.UUID          `json:"versionId"`
+	Kind        string             `json:"kind"`
+	Status      string             `json:"status"`
+	DueAt       pgtype.Timestamptz `json:"dueAt"`
+	ClosesAt    pgtype.Timestamptz `json:"closesAt"`
+	SubmittedAt pgtype.Timestamptz `json:"submittedAt"`
+	SubmittedBy uuid.NullUUID      `json:"submittedBy"`
+	CreatedAt   time.Time          `json:"createdAt"`
 }
 
 type EpisodeMessage struct {

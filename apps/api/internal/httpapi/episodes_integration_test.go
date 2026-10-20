@@ -57,8 +57,9 @@ type episodeRow struct {
 func readEpisode(t *testing.T, w *clinic, id uuid.UUID) episodeRow {
 	t.Helper()
 	var e episodeRow
-	err := w.db.QueryRow(t.Context(), `SELECT status, procedure, anaesthetic, consultant, nurse_asa, anaesthetist_asa,
-		patient_submitted_at, review_completed_at, review_completed_by FROM episodes WHERE id = $1`, id).Scan(
+	err := w.db.QueryRow(t.Context(), `SELECT e.status, e.procedure, e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
+		f.submitted_at, e.review_completed_at, e.review_completed_by
+		FROM episodes e JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq' WHERE e.id = $1`, id).Scan(
 		&e.Status, &e.Procedure, &e.Anaesthetic, &e.Consultant, &e.NurseAsa, &e.AnaesthetistAsa,
 		&e.Submitted, &e.ReviewCompleted, &e.ReviewCompletedBy)
 	if err != nil {
@@ -100,9 +101,15 @@ func readEvents(t *testing.T, w *clinic, episode uuid.UUID) []eventRow {
 func setStatus(t *testing.T, w *clinic, e apitest.Episode, status string) {
 	t.Helper()
 	_, err := w.db.Exec(t.Context(), `UPDATE episodes SET status = $2,
-		patient_submitted_at = CASE WHEN $2 = 'hq_not_complete' THEN NULL ELSE now() END,
 		review_completed_at = CASE WHEN $2 IN ('hq_not_complete', 'ready_for_review') THEN NULL ELSE now() END
 		WHERE id = $1`, e.ID, status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = w.db.Exec(t.Context(), `UPDATE episode_forms SET
+		status = CASE WHEN $2 = 'hq_not_complete' THEN 'open' ELSE 'submitted' END,
+		submitted_at = CASE WHEN $2 = 'hq_not_complete' THEN NULL ELSE now() END
+		WHERE id = $1`, e.FormID, status)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,8 +122,8 @@ func saveAnswers(t *testing.T, w *clinic, e apitest.Episode, chapter uuid.UUID, 
 	if by != nil {
 		actor, user = "clinician", &by.ID
 	}
-	_, err := w.db.Exec(t.Context(), `INSERT INTO episode_answers (episode_id, chapter_id, actor, data, updated_by)
-		VALUES ($1, $2, $3, $4, $5)`, e.ID, chapter, actor, data, user)
+	_, err := w.db.Exec(t.Context(), `INSERT INTO episode_answers (episode_form_id, chapter_id, actor, data, updated_by)
+		VALUES ($1, $2, $3, $4, $5)`, e.FormID, chapter, actor, data, user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,6 +282,19 @@ func TestCreateEpisode(t *testing.T) {
 		if len(ev) != 2 || ev[0].Kind != "event" || ev[0].Text != "Episode created" || ev[0].User == nil || *ev[0].User != w.cara.ID {
 			t.Errorf("events = %+v, want 'Episode created' by Cara, then the invite's note", ev)
 		}
+		// Its one form: the HQ on the chosen version, open, with no dates yet (S18).
+		if n := count(t, w.db, `SELECT count(*) FROM episode_forms WHERE episode_id = $1`, got.ID); n != 1 {
+			t.Errorf("forms = %d, want 1", n)
+		}
+		if n := count(t, w.db, `SELECT count(*) FROM episode_forms WHERE episode_id = $1 AND kind = 'hq' AND version_id = $2
+			AND status = 'open' AND submitted_at IS NULL AND due_at IS NULL AND closes_at IS NULL`, got.ID, w.hq.VersionID); n != 1 {
+			t.Error("the episode's form isn't its open HQ on the chosen version")
+		}
+	})
+	t.Run("every episode has its one HQ form, and the refusals made none", func(t *testing.T) {
+		if n, m := count(t, w.db, "SELECT count(*) FROM episode_forms"), episodes(t); n != m {
+			t.Errorf("%d forms for %d episodes, want one each", n, m)
+		}
 	})
 }
 
@@ -307,6 +327,26 @@ func TestGetEpisode(t *testing.T) {
 		}
 		if len(got.Events) != 1 || got.Events[0].Text != "Called the patient" || got.Events[0].UserName != w.cara.Name {
 			t.Errorf("events = %+v, want Cara's comment", got.Events)
+		}
+	})
+	t.Run("the HQ's version and submit time come from its form, under the names they had before forms (S18)", func(t *testing.T) {
+		type hq struct {
+			Episode struct {
+				VersionID          uuid.UUID
+				VersionNo          int
+				PatientSubmittedAt *time.Time
+			}
+		}
+		var before, after hq
+		get(w.clinician, w.a).Decode(t, &before)
+		setStatus(t, w, w.ep, "ready_for_review")
+		get(w.clinician, w.a).Decode(t, &after)
+		setStatus(t, w, w.ep, "hq_not_complete")
+		if before.Episode.VersionID != w.hq.VersionID || before.Episode.VersionNo != 1 || before.Episode.PatientSubmittedAt != nil {
+			t.Errorf("before the submit: %+v", before.Episode)
+		}
+		if after.Episode.VersionID != w.hq.VersionID || after.Episode.PatientSubmittedAt == nil {
+			t.Errorf("after the submit: %+v", after.Episode)
 		}
 	})
 	t.Run("no sign-in", func(t *testing.T) {
@@ -426,7 +466,8 @@ func TestUpdateEpisodeKeepsAStatusThatJustChanged(t *testing.T) {
 		{"the review is completed", "ready_for_review",
 			`UPDATE episodes SET status = 'ready_for_poa', review_completed_at = now() WHERE id = $1`, "ready_for_poa"},
 		{"the patient submits", "hq_not_complete",
-			`UPDATE episodes SET status = 'ready_for_review', patient_submitted_at = now() WHERE id = $1`, "ready_for_review"},
+			`WITH f AS (UPDATE episode_forms SET status = 'submitted', submitted_at = now() WHERE episode_id = $1 AND kind = 'hq')
+			 UPDATE episodes SET status = 'ready_for_review' WHERE id = $1`, "ready_for_review"},
 	} {
 		t.Run(race.name, func(t *testing.T) {
 			e := w.fx.Episode(t, w.hq, w.cara)

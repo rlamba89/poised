@@ -94,7 +94,8 @@ func (q *Queries) GetHospitalPatient(ctx context.Context, arg GetHospitalPatient
 const listPatientEpisodesHere = `-- name: ListPatientEpisodesHere :many
 SELECT e.id, e.status, e.procedure, e.hospital_number, e.created_at, q.name AS questionnaire_name, v.version_no
 FROM episodes e
-JOIN questionnaire_versions v ON v.id = e.version_id
+JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
+JOIN questionnaire_versions v ON v.id = f.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
 WHERE e.patient_id = $1 AND e.hospital_id = $2
 ORDER BY e.created_at DESC

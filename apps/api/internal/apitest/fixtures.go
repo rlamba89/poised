@@ -115,6 +115,7 @@ type HQ struct {
 // Episode is a patient's episode on a published HQ, still waiting for the patient.
 type Episode struct {
 	ID          uuid.UUID
+	FormID      uuid.UUID // its HQ form (episode_forms), which holds the answers (S18)
 	PatientID   uuid.UUID
 	Link        string // the token of the patient's invite link (/i/{Link}); only its hash is stored
 	DateOfBirth string // the patient's, YYYY-MM-DD, for opening the link (Client.AsPatient)
@@ -201,13 +202,15 @@ func (f *Fixtures) Patient(t *testing.T, org uuid.UUID, p PatientRecord) uuid.UU
 	return pid
 }
 
-// EpisodeOf adds an episode on the HQ for an existing patient at a hospital of the HQ's trust,
-// with a hospital number ("" for none).
+// EpisodeOf adds an episode, with its HQ form on the HQ, for an existing patient at a hospital
+// of the HQ's trust, with a hospital number ("" for none).
 func (f *Fixtures) EpisodeOf(t *testing.T, hq HQ, h Hospital, patient uuid.UUID, by User, hospitalNumber string) Episode {
 	t.Helper()
 	e := Episode{PatientID: patient}
-	f.scan(t, &e.ID, `INSERT INTO episodes (org_id, hospital_id, patient_id, version_id, created_by, hospital_number)
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`, h.Org, h.ID, patient, hq.VersionID, by.ID, hospitalNumber)
+	f.scan(t, &e.ID, `INSERT INTO episodes (org_id, hospital_id, patient_id, created_by, hospital_number)
+		VALUES ($1, $2, $3, $4, $5) RETURNING id`, h.Org, h.ID, patient, by.ID, hospitalNumber)
+	f.scan(t, &e.FormID, `INSERT INTO episode_forms (episode_id, version_id, kind) VALUES ($1, $2, 'hq') RETURNING id`,
+		e.ID, hq.VersionID)
 	f.scan(t, &e.DateOfBirth, `SELECT to_char(date_of_birth, 'YYYY-MM-DD') FROM patients WHERE id = $1`, patient)
 	e.Link = f.InviteLink(t, e)
 	return e

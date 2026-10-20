@@ -172,9 +172,10 @@ func (q *Queries) GetEpisodeInvite(ctx context.Context, episodeID uuid.NullUUID)
 }
 
 const getInviteDetails = `-- name: GetInviteDetails :one
-SELECT e.id, e.patient_id, e.patient_submitted_at, p.first_name, p.mobile, p.email,
+SELECT e.id, e.patient_id, f.submitted_at AS patient_submitted_at, p.first_name, p.mobile, p.email,
        h.name AS hospital_name, h.settings AS hospital_settings, o.settings AS org_settings
 FROM episodes e
+JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
 JOIN patients p ON p.id = e.patient_id
 JOIN hospitals h ON h.id = e.hospital_id
 JOIN orgs o ON o.id = e.org_id

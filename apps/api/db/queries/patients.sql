@@ -34,7 +34,8 @@ WHERE p.id = sqlc.arg(id) AND p.org_id = sqlc.arg(org_id)
 -- A patient's episodes at this hospital only, newest first: never another hospital's.
 SELECT e.id, e.status, e.procedure, e.hospital_number, e.created_at, q.name AS questionnaire_name, v.version_no
 FROM episodes e
-JOIN questionnaire_versions v ON v.id = e.version_id
+JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
+JOIN questionnaire_versions v ON v.id = f.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
 WHERE e.patient_id = sqlc.arg(patient_id) AND e.hospital_id = sqlc.arg(hospital_id)
 ORDER BY e.created_at DESC;

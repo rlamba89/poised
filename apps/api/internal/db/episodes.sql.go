@@ -69,16 +69,21 @@ func (q *Queries) CompleteReview(ctx context.Context, arg CompleteReviewParams) 
 }
 
 const createEpisode = `-- name: CreateEpisode :one
-INSERT INTO episodes (org_id, hospital_id, patient_id, version_id, procedure, anaesthetic, consultant, hospital_number,
-                      created_by)
-SELECT $1, $2, p.id, v.id, $3, $4,
-       $5, $6, $7
-FROM patients p, questionnaire_versions v
-JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE p.id = $8 AND p.org_id = $1
-  AND v.id = $9 AND v.status = 'published'
-  AND q.org_id = $1 AND (q.hospital_id IS NULL OR q.hospital_id = $2::uuid)
-RETURNING id
+WITH e AS (
+    INSERT INTO episodes (org_id, hospital_id, patient_id, procedure, anaesthetic, consultant, hospital_number, created_by)
+    SELECT $1, $2, p.id, $3, $4,
+           $5, $6, $7
+    FROM patients p, questionnaire_versions v
+    JOIN questionnaires q ON q.id = v.questionnaire_id
+    WHERE p.id = $8 AND p.org_id = $1
+      AND v.id = $9 AND v.status = 'published'
+      AND q.org_id = $1 AND (q.hospital_id IS NULL OR q.hospital_id = $2::uuid)
+    RETURNING id
+), hq AS (
+    INSERT INTO episode_forms (episode_id, version_id, kind)
+    SELECT e.id, $9, 'hq' FROM e
+)
+SELECT id FROM e
 `
 
 type CreateEpisodeParams struct {
@@ -93,8 +98,8 @@ type CreateEpisodeParams struct {
 	VersionID      uuid.UUID `json:"versionId"`
 }
 
-// Creates nothing (no row) unless the patient is the trust's and the version is published and
-// one this hospital uses.
+// The episode and its HQ form on the version, in one statement (S18). Creates nothing (no row)
+// unless the patient is the trust's and the version is published and one this hospital uses.
 func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, createEpisode,
 		arg.OrgID,
@@ -114,18 +119,19 @@ func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (u
 
 const getEpisode = `-- name: GetEpisode :one
 SELECT e.id, e.status, e.procedure, e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
-       e.patient_submitted_at, e.review_completed_at, e.created_at, e.version_id, e.hospital_number,
+       f.submitted_at AS patient_submitted_at, e.review_completed_at, e.created_at, f.version_id, e.hospital_number,
        e.invited_at, e.reminders_sent, e.not_responding_at, -- the follow-up (S16)
        reviewer.name AS review_completed_by_name, submitter.name AS patient_submitted_by_name,
        p.id AS patient_id, p.first_name, p.last_name, p.date_of_birth, p.sex, p.national_id, p.national_id_type,
        p.mobile, p.email,
-       q.name AS questionnaire_name, v.version_no
+       q.name AS questionnaire_name, v.version_no, f.id AS hq_form_id
 FROM episodes e
 JOIN patients p ON p.id = e.patient_id
-JOIN questionnaire_versions v ON v.id = e.version_id
+JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
+JOIN questionnaire_versions v ON v.id = f.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
 LEFT JOIN users reviewer ON reviewer.id = e.review_completed_by
-LEFT JOIN users submitter ON submitter.id = e.patient_submitted_by
+LEFT JOIN users submitter ON submitter.id = f.submitted_by
 WHERE e.id = $1 AND e.hospital_id = $2
 `
 
@@ -163,8 +169,11 @@ type GetEpisodeRow struct {
 	Email                  string             `json:"email"`
 	QuestionnaireName      string             `json:"questionnaireName"`
 	VersionNo              int32              `json:"versionNo"`
+	HqFormID               uuid.UUID          `json:"hqFormId"`
 }
 
+// With its HQ form (S18): the version, the patient's submit and who sent it keep their names
+// from before forms, so the episode's JSON is unchanged; hq_form_id holds the answers.
 func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpisodeRow, error) {
 	row := q.db.QueryRow(ctx, getEpisode, arg.ID, arg.HospitalID)
 	var i GetEpisodeRow
@@ -197,12 +206,13 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 		&i.Email,
 		&i.QuestionnaireName,
 		&i.VersionNo,
+		&i.HqFormID,
 	)
 	return i, err
 }
 
 const getEpisodeForm = `-- name: GetEpisodeForm :one
-SELECT e.id, e.status, e.patient_submitted_at, e.version_id,
+SELECT e.id, e.status, f.submitted_at AS patient_submitted_at, f.version_id, f.id AS form_id,
        e.org_id, e.hospital_id, e.patient_id, p.account_id, -- for the checks and the audit log, never sent to the patient
        p.first_name, p.last_name, p.date_of_birth, p.sex,
        q.name AS questionnaire_name, h.name AS hospital_name, h.timezone,
@@ -211,7 +221,8 @@ FROM episodes e
 JOIN orgs o ON o.id = e.org_id
 JOIN hospitals h ON h.id = e.hospital_id
 JOIN patients p ON p.id = e.patient_id
-JOIN questionnaire_versions v ON v.id = e.version_id
+JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
+JOIN questionnaire_versions v ON v.id = f.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
 WHERE e.id = $1
 `
@@ -221,6 +232,7 @@ type GetEpisodeFormRow struct {
 	Status             string             `json:"status"`
 	PatientSubmittedAt pgtype.Timestamptz `json:"patientSubmittedAt"`
 	VersionID          uuid.UUID          `json:"versionId"`
+	FormID             uuid.UUID          `json:"formId"`
 	OrgID              uuid.UUID          `json:"orgId"`
 	HospitalID         uuid.UUID          `json:"hospitalId"`
 	PatientID          uuid.UUID          `json:"patientId"`
@@ -235,8 +247,8 @@ type GetEpisodeFormRow struct {
 	Open               bool               `json:"open"`
 }
 
-// An episode's HQ as the patient fills it in: for the patient's session (the handler checks the
-// episode is theirs) or staff completing it on their behalf (it checks the hospital).
+// An episode's HQ form as the patient fills it in: for the patient's session (the handler checks
+// the episode is theirs) or staff completing it on their behalf (it checks the hospital).
 func (q *Queries) GetEpisodeForm(ctx context.Context, id uuid.UUID) (GetEpisodeFormRow, error) {
 	row := q.db.QueryRow(ctx, getEpisodeForm, id)
 	var i GetEpisodeFormRow
@@ -245,6 +257,7 @@ func (q *Queries) GetEpisodeForm(ctx context.Context, id uuid.UUID) (GetEpisodeF
 		&i.Status,
 		&i.PatientSubmittedAt,
 		&i.VersionID,
+		&i.FormID,
 		&i.OrgID,
 		&i.HospitalID,
 		&i.PatientID,
@@ -287,7 +300,7 @@ const listEpisodeAnswers = `-- name: ListEpisodeAnswers :many
 SELECT a.chapter_id, a.actor, a.data, a.updated_at, a.validated_at, a.revision, u.name AS updated_by_name
 FROM episode_answers a
 LEFT JOIN users u ON u.id = a.updated_by
-WHERE a.episode_id = $1
+WHERE a.episode_form_id = $1
 `
 
 type ListEpisodeAnswersRow struct {
@@ -300,8 +313,9 @@ type ListEpisodeAnswersRow struct {
 	UpdatedByName *string            `json:"updatedByName"`
 }
 
-func (q *Queries) ListEpisodeAnswers(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeAnswersRow, error) {
-	rows, err := q.db.Query(ctx, listEpisodeAnswers, episodeID)
+// One form's answers, both actors'.
+func (q *Queries) ListEpisodeAnswers(ctx context.Context, episodeFormID uuid.UUID) ([]ListEpisodeAnswersRow, error) {
+	rows, err := q.db.Query(ctx, listEpisodeAnswers, episodeFormID)
 	if err != nil {
 		return nil, err
 	}
@@ -380,7 +394,8 @@ SELECT e.id, e.hospital_id, h.name AS hospital_name, e.status, e.procedure, e.cr
 FROM episodes e
 JOIN hospitals h ON h.id = e.hospital_id
 JOIN patients p ON p.id = e.patient_id
-JOIN questionnaire_versions v ON v.id = e.version_id
+JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
+JOIN questionnaire_versions v ON v.id = f.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
 WHERE e.org_id = $1 AND h.status = 'active' -- a suspended hospital's are kept, not shown (ORG-03)
   AND ($2::boolean OR e.hospital_id = ANY ($3::uuid[]))
@@ -537,13 +552,14 @@ func (q *Queries) ListVersionChapters(ctx context.Context, versionID uuid.UUID) 
 }
 
 const saveClinicianAnswers = `-- name: SaveClinicianAnswers :one
-INSERT INTO episode_answers (episode_id, chapter_id, actor, data, updated_by, validated_at, revision)
-SELECT e.id, $1, 'clinician', $2, $3,
+INSERT INTO episode_answers (episode_form_id, chapter_id, actor, data, updated_by, validated_at, revision)
+SELECT f.id, $1, 'clinician', $2, $3,
        CASE WHEN $4::boolean THEN now() END, 1
-FROM episodes e WHERE e.id = $5 AND e.status = 'ready_for_review'
+FROM episode_forms f JOIN episodes e ON e.id = f.episode_id
+WHERE f.id = $5 AND e.status = 'ready_for_review'
   AND $6::int = coalesce((SELECT a.revision FROM episode_answers a
-      WHERE a.episode_id = e.id AND a.chapter_id = $1 AND a.actor = 'clinician'), 0)
-ON CONFLICT (episode_id, chapter_id, actor) DO UPDATE
+      WHERE a.episode_form_id = f.id AND a.chapter_id = $1 AND a.actor = 'clinician'), 0)
+ON CONFLICT (episode_form_id, chapter_id, actor) DO UPDATE
 SET data = EXCLUDED.data, updated_by = EXCLUDED.updated_by, updated_at = now(), validated_at = EXCLUDED.validated_at,
     revision = episode_answers.revision + 1
 WHERE episode_answers.revision = $6
@@ -555,7 +571,7 @@ type SaveClinicianAnswersParams struct {
 	Data      json.RawMessage `json:"data"`
 	UpdatedBy uuid.NullUUID   `json:"updatedBy"`
 	Validated bool            `json:"validated"`
-	EpisodeID uuid.UUID       `json:"episodeId"`
+	FormID    uuid.UUID       `json:"formId"`
 	Revision  int32           `json:"revision"`
 }
 
@@ -574,7 +590,7 @@ func (q *Queries) SaveClinicianAnswers(ctx context.Context, arg SaveClinicianAns
 		arg.Data,
 		arg.UpdatedBy,
 		arg.Validated,
-		arg.EpisodeID,
+		arg.FormID,
 		arg.Revision,
 	)
 	var revision int32
@@ -583,12 +599,12 @@ func (q *Queries) SaveClinicianAnswers(ctx context.Context, arg SaveClinicianAns
 }
 
 const savePatientAnswers = `-- name: SavePatientAnswers :one
-INSERT INTO episode_answers (episode_id, chapter_id, actor, data, updated_by, revision)
-SELECT e.id, $1, 'patient', $2, $3, 1
-FROM episodes e WHERE e.id = $4 AND e.patient_submitted_at IS NULL
+INSERT INTO episode_answers (episode_form_id, chapter_id, actor, data, updated_by, revision)
+SELECT f.id, $1, 'patient', $2, $3, 1
+FROM episode_forms f WHERE f.id = $4 AND f.status = 'open'
   AND $5::int = coalesce((SELECT a.revision FROM episode_answers a
-      WHERE a.episode_id = e.id AND a.chapter_id = $1 AND a.actor = 'patient'), 0)
-ON CONFLICT (episode_id, chapter_id, actor) DO UPDATE
+      WHERE a.episode_form_id = f.id AND a.chapter_id = $1 AND a.actor = 'patient'), 0)
+ON CONFLICT (episode_form_id, chapter_id, actor) DO UPDATE
 SET data = EXCLUDED.data, updated_at = now(), revision = episode_answers.revision + 1,
     updated_by = coalesce(EXCLUDED.updated_by, episode_answers.updated_by)
 WHERE episode_answers.revision = $5
@@ -599,7 +615,7 @@ type SavePatientAnswersParams struct {
 	ChapterID uuid.UUID       `json:"chapterId"`
 	Data      json.RawMessage `json:"data"`
 	EnteredBy uuid.NullUUID   `json:"enteredBy"`
-	EpisodeID uuid.UUID       `json:"episodeId"`
+	FormID    uuid.UUID       `json:"formId"`
 	Revision  int32           `json:"revision"`
 }
 
@@ -607,14 +623,14 @@ type SavePatientAnswersParams struct {
 // patient. Once staff have entered a set's answers it stays marked with the last of them, even if
 // the patient saves it again, so the answers never look all the patient's own.
 // Returns the new revision, or no row if nothing was saved:
-//   - once the patient has submitted, their answers are frozen;
+//   - once the form has been submitted, the patient's answers are frozen;
 //   - `revision` must be the row's current one, or 0 if there's no row yet (see SaveClinicianAnswers).
 func (q *Queries) SavePatientAnswers(ctx context.Context, arg SavePatientAnswersParams) (int32, error) {
 	row := q.db.QueryRow(ctx, savePatientAnswers,
 		arg.ChapterID,
 		arg.Data,
 		arg.EnteredBy,
-		arg.EpisodeID,
+		arg.FormID,
 		arg.Revision,
 	)
 	var revision int32
@@ -623,18 +639,24 @@ func (q *Queries) SavePatientAnswers(ctx context.Context, arg SavePatientAnswers
 }
 
 const submitPatientHQ = `-- name: SubmitPatientHQ :execrows
-UPDATE episodes SET patient_submitted_at = now(), status = 'ready_for_review', patient_submitted_by = $1
-WHERE id = $2 AND patient_submitted_at IS NULL
+WITH submitted AS (
+    UPDATE episode_forms hq SET status = 'submitted', submitted_at = now(), submitted_by = $1
+    WHERE hq.id = $2 AND hq.kind = 'hq' AND hq.status = 'open'
+    RETURNING hq.episode_id
+)
+UPDATE episodes e SET status = 'ready_for_review' FROM submitted WHERE e.id = submitted.episode_id
 `
 
 type SubmitPatientHQParams struct {
 	SubmittedBy uuid.NullUUID `json:"submittedBy"`
-	ID          uuid.UUID     `json:"id"`
+	FormID      uuid.UUID     `json:"formId"`
 }
 
+// Submits the HQ form, freezing the patient's answers, and moves its episode to Ready for review.
 // submitted_by: the staff member who sent it on the patient's behalf (PAT-09), NULL for the patient.
+// No row: the form was already submitted.
 func (q *Queries) SubmitPatientHQ(ctx context.Context, arg SubmitPatientHQParams) (int64, error) {
-	result, err := q.db.Exec(ctx, submitPatientHQ, arg.SubmittedBy, arg.ID)
+	result, err := q.db.Exec(ctx, submitPatientHQ, arg.SubmittedBy, arg.FormID)
 	if err != nil {
 		return 0, err
 	}

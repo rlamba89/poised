@@ -360,7 +360,7 @@ func (s *server) writeForm(w http.ResponseWriter, r *http.Request, f form) {
 		}
 		chapters = append(chapters, patientChapter{ID: c.ID, Name: c.Name, Description: c.Description, Icon: c.Icon, Content: content})
 	}
-	saved, err := s.q.ListEpisodeAnswers(ctx, f.ID)
+	saved, err := s.q.ListEpisodeAnswers(ctx, f.FormID)
 	if err != nil {
 		serverError(w, "list answers", err)
 		return
@@ -452,7 +452,7 @@ func (s *server) saveForm(w http.ResponseWriter, r *http.Request, f form) {
 		return
 	}
 	rev, err := s.q.SavePatientAnswers(r.Context(), db.SavePatientAnswersParams{
-		EpisodeID: f.ID, ChapterID: c.ID, Data: raw, Revision: *in.Revision,
+		FormID: f.FormID, ChapterID: c.ID, Data: raw, Revision: *in.Revision,
 		EnteredBy: uuid.NullUUID{UUID: f.enteredBy, Valid: f.enteredBy != uuid.Nil},
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -470,11 +470,12 @@ func (s *server) saveForm(w http.ResponseWriter, r *http.Request, f form) {
 	writeJSON(w, http.StatusOK, map[string]int32{"revision": rev})
 }
 
-// submitForm freezes the patient's answers and moves the episode to Ready for review (triage).
+// submitForm submits the HQ form, freezing the patient's answers, and moves the episode to Ready
+// for review (triage).
 // The browser has checked every required question (plan 2.1).
 func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
 	n, err := s.q.SubmitPatientHQ(r.Context(), db.SubmitPatientHQParams{
-		ID: f.ID, SubmittedBy: uuid.NullUUID{UUID: f.enteredBy, Valid: f.enteredBy != uuid.Nil},
+		FormID: f.FormID, SubmittedBy: uuid.NullUUID{UUID: f.enteredBy, Valid: f.enteredBy != uuid.Nil},
 	})
 	if err != nil {
 		serverError(w, "submit", err)

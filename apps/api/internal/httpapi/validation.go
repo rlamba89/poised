@@ -29,7 +29,7 @@ func (s *server) episodeHQ(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "list chapters", err)
 		return
 	}
-	answers, err := s.q.ListEpisodeAnswers(ctx, e.ID)
+	answers, err := s.q.ListEpisodeAnswers(ctx, e.HqFormID)
 	if err != nil {
 		serverError(w, "list answers", err)
 		return
@@ -93,7 +93,7 @@ func (s *server) saveClinicianAnswers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rev, err := s.q.SaveClinicianAnswers(r.Context(), db.SaveClinicianAnswersParams{
-		EpisodeID: e.ID, ChapterID: cid, Data: raw, Validated: in.Validated, Revision: *in.Revision,
+		FormID: e.HqFormID, ChapterID: cid, Data: raw, Validated: in.Validated, Revision: *in.Revision,
 		UpdatedBy: uuid.NullUUID{UUID: currentUser(r).ID, Valid: true},
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
