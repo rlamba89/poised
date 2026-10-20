@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { Alert, Anchor, AppShell, Badge, Button, Group, Select, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
+import { Logo } from "@/features/brand/Logo";
 import { signOut as signOutStaff } from "@/lib/signin";
 import { AuthProvider, HospitalContext, canManageSettings, canManageStaff, canSeeAudit, findHospital, hospitalBase, roleLabel, switchPath, useMe, type Here } from "@/lib/auth";
 
@@ -48,7 +49,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             out of reach (S08 test report 2). */}
         <Group h="100%" justify="space-between" wrap="nowrap" style={{ overflowX: "auto", overflowY: "hidden" }}>
           <Group wrap="nowrap" style={{ flexShrink: 0 }}>
-            <Title order={4}>Poised</Title>
+            <Title order={4}><Logo /></Title>
             {here && (
               <Text fw={500} size="sm" aria-label="Trust">
                 {here.trust.name}

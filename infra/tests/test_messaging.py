@@ -17,7 +17,7 @@ from test_stacks import CA_QA, lambda_env, policy_statements
 
 # QA with real sending to its test recipients only, and a training stage that really sends.
 CA_QA_TEST = dataclasses.replace(CA_QA, qa_test_recipients=True)
-CA_TRAINING = dataclasses.replace(CA_QA, name="ca-training", stage="training", messaging="send", sms_sender_id="POISED")
+CA_TRAINING = dataclasses.replace(CA_QA, name="ca-training", stage="training", messaging="send", sms_sender_id="PREOPSIS")
 
 # End User Messaging SMS's failure events: the Go API's delivery.SMSFailureEvents (a Go test
 # checks the two lists agree).
@@ -73,7 +73,7 @@ def test_test_recipients_only_on_qa():
 
 @pytest.mark.parametrize(
     "field,bad",
-    [("messaging", "aws"), ("sms_sender_id", "POISED HEALTH"), ("sms_sender_id", "Poised"), ("sms_sender_id", ""), ("jobs_every_minutes", 0)],
+    [("messaging", "aws"), ("sms_sender_id", "PREOPSIS HQ"), ("sms_sender_id", "Preopsis"), ("sms_sender_id", ""), ("jobs_every_minutes", 0)],
 )
 def test_bad_messaging_values_are_refused(field, bad):
     with pytest.raises(ValueError, match=field):
@@ -192,7 +192,7 @@ def test_the_services_may_publish_to_the_topic(lambda_code):
 
 def test_a_sender_id_is_made_when_the_entry_names_one(lambda_code):
     t = messaging(CA_TRAINING, lambda_code)
-    t.has_resource_properties("AWS::SMSVOICE::SenderId", {"SenderId": "POISED", "IsoCountryCode": "CA"})
+    t.has_resource_properties("AWS::SMSVOICE::SenderId", {"SenderId": "PREOPSIS", "IsoCountryCode": "CA"})
     assert len(messaging(CA_QA_TEST, lambda_code).find_resources("AWS::SMSVOICE::SenderId")) == 0
 
 
@@ -221,7 +221,7 @@ def test_qa_with_test_recipients(lambda_code):
 def test_training_really_sends(lambda_code):
     t = api(CA_TRAINING, lambda_code)
     env = lambda_env({"api": t}, "poised-ca-training-staff-api")["Environment"]["Variables"]
-    assert env["MESSAGING"] == "send" and env["SMS_SENDER_ID"] == "POISED"
+    assert env["MESSAGING"] == "send" and env["SMS_SENDER_ID"] == "PREOPSIS"
     assert "MESSAGING_TEST_RECIPIENTS_PARAM" not in env
 
 

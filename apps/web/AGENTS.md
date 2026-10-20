@@ -17,6 +17,7 @@ A plain React single-page app: **React 19 + Vite + React Router + Mantine**. The
 - **Navigation:** `useNavigate`, `useParams`, `useLocation` and `<Link to>` from `react-router`. With Mantine: `<Button component={Link} to={…}>`.
 - **API:** `src/lib/api.ts` calls `/api/…` on the same origin. `vite.config.ts` proxies `/api` to the Go API (`API_URL`, default `http://localhost:8080`), in `vite` (dev) and in `vite preview`. On AWS, Amplify does the same with a rewrite (plan F4).
 - **Types:** `tsconfig.json` is the browser code, with no Node types, so `process.env` in `src/` fails the type check. `tsconfig.node.json` covers `vite.config.ts`, which runs in Node.
+- **Brand (20 Oct):** `src/theme.ts` is Mantine's theme: the teal `brand` colour is the primary one. `src/features/brand/Logo.tsx` is the logo (`<Logo />` inside a `Title` or `Text`, which sizes it; `inverse` on a teal background). The files are in `docs/brand/`.
 - **Imports:** `@/…` is `src/…`. `@poised/clinical` is the workspace package's TypeScript source, which Vite compiles.
 - **Scripts:** `npm run dev` (port 3000), `build` (type-check, then `dist/`), `preview` (serves `dist/` on port 3000), `lint` (`tsc` on both tsconfigs), `test` (Vitest).
 - **Nothing country-specific in the code** (A-20): the region, domain, time zone, locale and phone country come from config.

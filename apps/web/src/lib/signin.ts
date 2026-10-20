@@ -109,8 +109,8 @@ export async function signOut(toLogin: () => void, post: () => Promise<unknown>)
 const REFUSED = "poised.signin.refused";
 
 /**
- * A sign-in Poised refused after the managed login let the person in (e.g. their trust is
- * suspended, or Poised has no account for them): end the managed login's session too, or the next
+ * A sign-in Preopsis refused after the managed login let the person in (e.g. their trust is
+ * suspended, or Preopsis has no account for them): end the managed login's session too, or the next
  * Sign in on this computer would go straight back in as them, with no way to sign in as someone
  * else (S12 test report 1, finding 2). The message waits in this tab for /login to show it
  * (takeRefusal). Without Cognito there's nothing to end, and the caller shows /login itself.

@@ -30,6 +30,26 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 20 Oct 2026: the product is renamed Preopsis, with a logo and a teal brand (Rahul)
+
+- **Name: Preopsis** (was Poised). **Reason:** Rahul didn't like "Poised". "Preopsis" is "pre-op" plus *-opsis* ("view", as in Synopsis, the incumbent UK pre-op product's name), so it reads as a pre-op product to clinicians and to a patient getting a text.
+  - **Dropped after checks:** Optima (Optima Health, a UK occupational health provider), Fitfor (several UK FITFOR companies; "Fit 4 Surgery" is a University of Birmingham prehab app in NHS trials), Circa (a US clinical-documentation AI), Paratus (Paratus Health, YC: AI patient intake), Fettle (SH:24's UK health service).
+  - **Checks for Preopsis (20 Oct):** no web use, no UK company, and `.com`, `.co.uk`, `.health` and `.io` looked unregistered (by DNS only). **Still to do (Rahul):** register the domains.
+  - **UKIPO search (20 Oct, trademarks.ipo.gov.uk; covers UK marks and international marks designating the UK):**
+    - **No PREOPSIS mark.** The "Similar" search found only unrelated words (PROPESS, SPIROSEP, PHORESIS; PROMESIS in 9/42 has expired).
+    - **The word OPSIS is registered**, and "Preopsis" contains it whole. None of those marks covers healthcare software:
+      - **Opsis AB / Opsis Holding AB** (Sweden): class 9 since 1988, and class 42 ("scientific and technological services… industrial analysis"). Air and emissions monitoring.
+      - **Halliburton**: class 9 (2022), oil-well pressure gauges.
+      - **Icare Finland**: class 10 (2022), eye-imaging devices for retinal disease and glaucoma, for medical use. This is the nearest to healthcare, but it covers hardware, not software or services.
+      - **OPSIS THERAPEUTICS**: classes 5 and 10 (medicines).
+    - **SYNOPSIS is registered only in classes 3, 5 and 10** (cosmetics, pharma, medical devices); there's no SYNOPSIS mark in 9 or 42, so the worry about VitalHub's name is smaller than thought.
+    - **Verdict:** clear enough to use, and to file PREOPSIS in classes 9, 42 and 44. **Before filing**, ask an attorney whether the OPSIS owners (Opsis AB and Icare above all) could oppose. They're in different fields, which makes confusion unlikely.
+- **Renamed: everything a person reads.** The web app (tab title, headers, patient pages, admin and settings text), the API's messages, the patients' sign-in and contact emails and texts, the email From name, Cognito's invitation and reset emails, and **the UK SMS sender ID: `PREOPSIS`** (`infra/countries.py`).
+  - **The sender ID changes on the next deploy.** CDK makes a new `AWS::SMSVOICE::SenderId` and deletes POISED. Like POISED, it's unregistered (pending.md).
+  - Texts are 2 characters longer ("Preopsis:" for "Poised:").
+- **Kept as `poised` on purpose** (as the 2 Oct rename kept `sj`): the GitHub repo `rlamba89/poised` and the local folder, the Go module path, the npm packages `@poised/*`, the patient cookie `poised_patient` (renaming it signs every patient out), the browser storage keys, and **every AWS name** (`poised-<env>-…` stacks, functions, topics and configuration sets, the Cognito pool and its domain prefix, the pipeline and `poised-github`, the CDK bootstrap qualifier `poised`, the cost tag `poised-env`). Renaming those would replace live QA resources, such as the staff pool with its users, and would need the GitHub connection approved again. The seed's `@poised.example` test emails stay too.
+- **Brand:** the logo is an eye with a tick (seen and checked before the operation), and the wordmark shows **op** in teal. The primary colour is **teal `#0f766e`** (Mantine's `brand`, shade 7, about 5.5:1 against white), deliberately not NHS blue. The patient bar is now teal. The files and rules are in [brand/README.md](brand/README.md). In the app the logo is `<Logo />` (`apps/web/src/features/brand/Logo.tsx`), and the favicon is `apps/web/public/icon.svg`.
+
 ### 15 Oct 2026: S17 tested; QA's staff-side manual tests run locally (Rahul, S17 answers 10)
 
 - **From now on, the staff-side cases of a QA session's manual test run locally** on `make dev` (the same code, the dev login, captured messages). **Reason:** the tester and verifier agents won't type a password into Cognito's hosted sign-in page on a non-local site, so S17's test report 1 on QA was blocked for every staff case.
@@ -520,7 +540,7 @@ All of these are detailed in [sessions/S01-integration-harness/build-notes.md](s
 
 All of these are in [saas-requirements.md](saas-requirements.md) §0 and [plans/](plans/README.md).
 
-- **Name: Poised** (was sj-demo).
+- **Name: Poised** (was sj-demo). *Superseded 20 Oct: renamed Preopsis (see 20 Oct).*
   - Go module `github.com/rlamba89/poised/apps/api`; npm packages `poised`, `@poised/web`, `@poised/clinical`.
   - **Kept on purpose:** the CSS prefix `sj-`, the local Postgres user and database `sj`, and the docker volume `sj-demo_dbdata`, pinned in `docker-compose.yml` so local data survives the folder rename.
 - **Repo:** private, at `github.com/rlamba89/poised`, branch `master`. On 2 Oct the history was rewritten with `git filter-repo` to remove the Lifebox organisation name, and the GitHub repo was deleted and recreated so no old commits remain.

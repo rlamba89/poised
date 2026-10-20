@@ -21,7 +21,7 @@ import (
 
 // suspended is the sign-in refusal for someone whose trusts and hospitals are all suspended.
 // Both sign-ins (the dev login and Cognito's) check it, in startStaffSession.
-const suspended = "Your trust or hospital is suspended in Poised at the moment, so you can't sign in. Please contact your trust."
+const suspended = "Your trust or hospital is suspended in Preopsis at the moment, so you can't sign in. Please contact your trust."
 
 // signInAllowed reports whether the user may sign in as far as suspension goes (ORG-03): a
 // platform admin always may; anyone else needs at least one usable membership, or none at all
@@ -104,7 +104,7 @@ func (s *server) startStaffSession(w http.ResponseWriter, r *http.Request, id uu
 
 const (
 	signInAgain = "That sign-in didn't work or has expired. Please sign in again."
-	noAccount   = "There's no Poised account for %s. Ask your trust's admin to invite you."
+	noAccount   = "There's no Preopsis account for %s. Ask your trust's admin to invite you."
 )
 
 // pkceVerifier is RFC 7636's code_verifier: 43 to 128 of these characters.
@@ -114,7 +114,7 @@ var pkceVerifier = regexp.MustCompile(`^[A-Za-z0-9._~-]{43,128}$`)
 // page posts the code the managed login sent the browser back with, and the PKCE verifier it kept.
 // Go exchanges the code with Cognito, checks the ID token, finds the staff member by Cognito's
 // sub (or, the first time, by the email Cognito verified, then stores the sub) and sets our own
-// session cookie, as the dev login does. Poised never creates an account here: accounts come
+// session cookie, as the dev login does. Preopsis never creates an account here: accounts come
 // only from invites (no self sign-up).
 func (s *server) cognitoCallback(w http.ResponseWriter, r *http.Request) {
 	var body struct{ Code, Verifier string }

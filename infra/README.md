@@ -1,6 +1,6 @@
-# infra: Poised on AWS (CDK, Python)
+# infra: Preopsis on AWS (CDK, Python)
 
-The AWS side of Poised (plans [F3](../docs/plans/f3-lambda-entrypoints.md) and [F4](../docs/plans/f4-aws-pipeline.md), sessions S06 and S07; S12's sign-in; S17's jobs and messaging).
+The AWS side of Preopsis (plans [F3](../docs/plans/f3-lambda-entrypoints.md) and [F4](../docs/plans/f4-aws-pipeline.md), sessions S06 and S07; S12's sign-in; S17's jobs and messaging).
 
 **A push to `master` on GitHub (`rlamba89/poised`) runs the pipeline:** every test, then a deploy of each environment in [`countries.py`](countries.py), then each one's database migrations and seed, its web app, and the end-to-end journeys against it. Nothing else is needed day to day.
 
@@ -102,7 +102,7 @@ CodePipeline `poised` (V2: billed per minute while it runs, nothing when idle). 
 | | `Database-and-web` | `scripts/db.sh` (goose up, then the seed, which is safe to run again) against the environment's database; **on QA only**, `scripts/qa-users.sh setup` (the seeded staff's test sign-ins, S12); then `scripts/deploy-web.sh` uploads the web app that Synth built. |
 | | `E2E` | CodeBuild (Ubuntu: Playwright's WebKit needs it). `make e2e-setup e2e` against the environment's `AppUrl`: every journey, Chromium and WebKit (on QA, `scripts/e2e-users.sh` first fetches the test users' sign-ins into `e2e/.qa-users.json`; the journeys sign in through Cognito's managed login, and the few that need the dev login are skipped). **Fails the run if a journey fails.** Afterwards, passed or failed, it copies `e2e/test-results` (the JUnit report, and a trace of each failed journey) to the **E2eResults** bucket. |
 
-**Finding the pipeline's pieces in the console** (the account is shared, and not everything is named `poised…`):
+**Finding the pipeline's pieces in the console** (the account is shared, and not everything is named `poised…`; the resources kept the old name when the product became Preopsis, 20 Oct):
 - **CodeBuild projects are named by CDK:** `PipelineBuildSynthCdkBuildP-…` (Synth), `PipelineAssetsFileAsset…` (Assets), `PipelineukqaDatabaseandwebA-…` and `PipelineukqaE2E…` (one pair per environment), and `poised-selfupdate` (UpdatePipeline). Open them from the pipeline: an action's **View details**, then its link to CodeBuild. Or search **CodeBuild → Build projects** for `Pipeline`.
 - **The Lambdas' log groups** are `poised-<env>-api-staffapilogs…`, `…patientapilogs…` and `…jobslogs…` (not `/aws/lambda/…`).
 - The stacks, buckets, functions, Amplify app and connection are all named `poised…`.

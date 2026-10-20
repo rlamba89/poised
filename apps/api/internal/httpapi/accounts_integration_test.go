@@ -504,6 +504,9 @@ func TestSignin(t *testing.T) {
 		if len(sent) != 1 || !strings.Contains(sent[0].Body, "15 minutes") || sent[0].Subject == "" {
 			t.Fatalf("sent %+v", sent)
 		}
+		if !strings.Contains(sent[0].Subject, "Preopsis") || !strings.Contains(sent[0].Body, "sign in to Preopsis") {
+			t.Errorf("the sign-in email doesn't name Preopsis: %+v", sent[0])
+		}
 		token := tokenIn(t, w.anon.Messages, signinLink, p.email)
 		if n := count(t, w.db, `SELECT count(*) FROM login_links WHERE kind = 'signin' AND contact = $1 AND patient_id IS NULL
 			AND expires_at = created_at + interval '15 minutes'`, p.email); n != 1 {

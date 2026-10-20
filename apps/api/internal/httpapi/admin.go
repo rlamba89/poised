@@ -33,7 +33,7 @@ import (
 const alreadyTrustMember = "%s already has access to the whole trust. The trust's admins can change their role on the Staff screen."
 
 const (
-	notPlatformAdmin = "Only Poised's platform admins can do this."
+	notPlatformAdmin = "Only Preopsis's platform admins can do this."
 	orgNotFound      = "Trust not found."
 )
 

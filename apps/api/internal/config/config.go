@@ -316,7 +316,7 @@ func (c *Config) loadSending(getenv func(string) string, need func(string) strin
 		SMSSenderID:         getenv("SMS_SENDER_ID"),
 	}
 	if v := c.Sending.EmailFrom; v != "" && !isAddress(v) {
-		errs = append(errs, fmt.Errorf("EMAIL_FROM must be a plain email address, such as poised@example.org, not %q", v))
+		errs = append(errs, fmt.Errorf("EMAIL_FROM must be a plain email address, such as preopsis@example.org, not %q", v))
 	}
 	if v := c.Sending.SMSSenderID; v != "" && !senderIDRe.MatchString(v) {
 		errs = append(errs, fmt.Errorf("SMS_SENDER_ID must be 1 to 11 letters, digits or hyphens, not %q", v))

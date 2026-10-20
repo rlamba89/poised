@@ -1,6 +1,8 @@
-# Poised
+<img src="docs/brand/preopsis-logo.svg" alt="Preopsis" height="48">
 
-Poised is a pre-operative assessment platform for hospitals and their patients. The plans and requirements are in [docs/plans/](docs/plans/README.md) and [docs/saas-requirements.md](docs/saas-requirements.md).
+# Preopsis
+
+Preopsis is a pre-operative assessment platform for hospitals and their patients. The plans and requirements are in [docs/plans/](docs/plans/README.md) and [docs/saas-requirements.md](docs/saas-requirements.md).
 
 **New here (person or Claude)?** Read [CLAUDE.md](CLAUDE.md), then [docs/decisions.md](docs/decisions.md). The decisions doc records every decision, preference and gotcha from the project's history.
 

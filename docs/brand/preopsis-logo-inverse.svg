@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 232 48" role="img" aria-label="Preopsis">
+  <rect width="48" height="48" rx="12" fill="#fff"/>
+  <path d="M6.75 24C12.75 15.3 18 12.75 24 12.75S35.25 15.3 41.25 24C35.25 32.7 30 35.25 24 35.25S12.75 32.7 6.75 24Z" fill="#0f766e"/>
+  <path d="M16.8 24.3l4.95 4.95 9.6-9.9" fill="none" stroke="#fff" stroke-width="3.9" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="62" y="35" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="34" font-weight="700" letter-spacing="-0.3" fill="#fff">Preopsis</text>
+</svg>

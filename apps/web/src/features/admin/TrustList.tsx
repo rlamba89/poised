@@ -23,7 +23,7 @@ export function TrustList() {
       <Group justify="space-between">
         <div>
           <Title order={3}>Trusts</Title>
-          <Text size="sm" c="dimmed">Every trust using Poised in this country.</Text>
+          <Text size="sm" c="dimmed">Every trust using Preopsis in this country.</Text>
         </div>
         <Button component={Link} to="/admin/trusts/new" leftSection={<IconPlus size={16} />}>New trust</Button>
       </Group>

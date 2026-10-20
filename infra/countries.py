@@ -125,8 +125,9 @@ ENVIRONMENTS: list[Environment] = [
         # Every 15 minutes, not 5 (Rahul, 14 Oct, S17 answers 7): each run wakes QA's Neon database,
         # which sleeps after 5 idle minutes, and 5 would keep it awake past the free plan's hours.
         jobs_every_minutes=15,
-        # S17 answers 9: try a UK alphanumeric sender ID (the account has no origination identity).
-        sms_sender_id="POISED",
+        # S17 answers 9: a UK alphanumeric sender ID (the account has no origination identity); the
+        # product's name since 20 Oct (was POISED).
+        sms_sender_id="PREOPSIS",
     ),
 ]
 

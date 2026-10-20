@@ -202,23 +202,23 @@ func (s *server) sendContactLink(ctx context.Context, kind, contact string, emai
 
 type contactMessage struct{ subject, body string }
 
-// contactMessages are the sign-in and verification messages. They name Poised, not a hospital:
+// contactMessages are the sign-in and verification messages. They name Preopsis, not a hospital:
 // an account spans every trust.
 func contactMessages(kind, link string, email bool) contactMessage {
 	switch {
 	case kind == "signin" && email:
-		return contactMessage{"Your Poised sign-in link",
-			"Hello,\n\nHere is your link to sign in to Poised and see your health questionnaires:\n\n" + link +
+		return contactMessage{"Your Preopsis sign-in link",
+			"Hello,\n\nHere is your link to sign in to Preopsis and see your health questionnaires:\n\n" + link +
 				"\n\nIt works once, within 15 minutes. If you didn't ask for it, you can ignore this email."}
 	case kind == "signin":
-		return contactMessage{"", "Poised: your sign-in link. It works once, within 15 minutes: " + link +
+		return contactMessage{"", "Preopsis: your sign-in link. It works once, within 15 minutes: " + link +
 			" If you didn't ask for it, ignore this message."}
 	case email:
-		return contactMessage{"Confirm your new email address for Poised",
-			"Hello,\n\nTo use this email address for Poised, open this link:\n\n" + link +
+		return contactMessage{"Confirm your new email address for Preopsis",
+			"Hello,\n\nTo use this email address for Preopsis, open this link:\n\n" + link +
 				"\n\nIt works for 24 hours. If you didn't ask for this, you can ignore this email."}
 	default:
-		return contactMessage{"", "Poised: to use this mobile number for Poised, open this link: " + link +
+		return contactMessage{"", "Preopsis: to use this mobile number for Preopsis, open this link: " + link +
 			" If you didn't ask for this, ignore this message."}
 	}
 }
@@ -571,13 +571,13 @@ func (s *server) tellContacts(ctx context.Context, oldMobile, oldEmail string, e
 	}
 	what := contactName(email)
 	if oldEmail != "" {
-		if _, err := s.email.SendEmail(ctx, oldEmail, "Your Poised contact details were "+verb,
-			"Hello,\n\nThe "+what+" you use for Poised was "+verb+".\n\nIf you didn't do this, please contact your hospital."); err != nil {
+		if _, err := s.email.SendEmail(ctx, oldEmail, "Your Preopsis contact details were "+verb,
+			"Hello,\n\nThe "+what+" you use for Preopsis was "+verb+".\n\nIf you didn't do this, please contact your hospital."); err != nil {
 			log.Printf("tell old email: %v", err)
 		}
 	}
 	if oldMobile != "" && patient.SMSAllowed(oldMobile, s.cfg.Country.PhoneCountry) {
-		if _, err := s.sms.SendSMS(ctx, oldMobile, "Poised: the "+what+" you use for Poised was "+verb+
+		if _, err := s.sms.SendSMS(ctx, oldMobile, "Preopsis: the "+what+" you use for Preopsis was "+verb+
 			". If you didn't do this, please contact your hospital."); err != nil {
 			log.Printf("tell old mobile: %v", err)
 		}

@@ -3,9 +3,9 @@
 Drafted 2 Oct 2026 with Rahul and revised the same day after his answers. Status: **brainstorm draft**. Items marked *Agreed* are settled. Items marked *Proposed* need Rahul's yes before a session builds them.
 
 **Read this first if you are a new session.**
-- Poised has proven the authoring tool and one thin pass of the episode workflow: publish → the patient fills in the HQ by link → a clinician validates → POA Summary.
+- Preopsis (called Poised until 20 Oct 2026) has proven the authoring tool and one thin pass of the episode workflow: publish → the patient fills in the HQ by link → a clinician validates → POA Summary.
 - [plan-workflow.md](plan-workflow.md) describes what exists. [requirements.md](requirements.md) holds the authoring requirements; IDs like PNL-07 and CAL-02 refer to it.
-- This document covers what's needed to turn Poised into a multi-trust SaaS product on AWS.
+- This document covers what's needed to turn Preopsis into a multi-trust SaaS product on AWS.
 - References to Lifebox, from the repos under `~/dev/lifebox/`, are **product evidence only**: what hospitals use and expect today. **Lifebox is never the template for our technical architecture** (rule 8).
 
 ---

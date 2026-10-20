@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { Alert, Button, Card, Container, Divider, Stack, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
+import { Logo } from "@/features/brand/Logo";
 import { startPath, type Me } from "@/lib/auth";
 import { staffSignIn } from "@/lib/config";
 import { clearRefusal, refusal, startSignIn } from "@/lib/signin";
@@ -38,7 +39,7 @@ export function Login() {
 
   return (
     <Container size="xs" py="xl">
-      <Title order={2} mb="xs">Poised</Title>
+      <Title order={2} mb="xs"><Logo /></Title>
       {error && <Alert color="red" mb="md">{error}</Alert>}
       {cognito && (
         <Stack mb="xl">
@@ -54,7 +55,7 @@ export function Login() {
             Sign in
           </Button>
           <Text size="sm" c="dimmed">
-            New to Poised? Use the temporary password in your invitation email. Forgotten your password? Choose Sign in,
+            New to Preopsis? Use the temporary password in your invitation email. Forgotten your password? Choose Sign in,
             then "Forgot your password?".
           </Text>
         </Stack>

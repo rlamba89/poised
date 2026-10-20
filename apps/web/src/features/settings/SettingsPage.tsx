@@ -1,7 +1,7 @@
 // The trust's settings (plan C1, S10; ORG-04), for its whole-trust admins only; the API
 // (/api/o/{trust}/settings) refuses everyone else. Pick "the whole trust" to set the defaults every
 // hospital follows, or a hospital to give it its own values where a hospital may override.
-// Trust-only settings and the opt-ins (set by Poised's platform admin, PRM-08) are shown, not edited.
+// Trust-only settings and the opt-ins (set by Preopsis's platform admin, PRM-08) are shown, not edited.
 //
 // Every setting's label, group, kind and limits come from the API (Go's settings.Defs), so this
 // page draws one field per kind and has no list of settings of its own.
@@ -19,7 +19,7 @@ type HospitalSettings = { id: string; name: string; status: "active" | "suspende
 type View = {
   defs: SettingDef[];
   trust: Values; // set for the trust
-  effective: Values; // the trust's, with Poised's defaults
+  effective: Values; // the trust's, with Preopsis's defaults
   hospitals: HospitalSettings[];
   questionnaires: { id: string; name: string }[];
 };
@@ -134,7 +134,7 @@ function SettingsForm({ view, hospital, path, notice, setNotice, onSaved }: {
   };
 
   const groups = [...new Set(view.defs.map((d) => d.group))];
-  const followLabel = hospital ? "Use the trust's setting" : "Use Poised's default";
+  const followLabel = hospital ? "Use the trust's setting" : "Use Preopsis's default";
   return (
     <Stack>
       {hospital && (
@@ -182,9 +182,9 @@ function SettingsForm({ view, hospital, path, notice, setNotice, onSaved }: {
   );
 }
 
-/** A setting shown but not editable here: an opt-in (Poised sets it), or a trust-only one at a hospital. */
+/** A setting shown but not editable here: an opt-in (Preopsis sets it), or a trust-only one at a hospital. */
 function ReadOnly({ def, value, hospital, questionnaires }: { def: SettingDef; value: unknown; hospital: boolean; questionnaires: View["questionnaires"] }) {
-  const why = def.optIn ? "Set by Poised's platform admin" : hospital ? "Set for the whole trust" : "";
+  const why = def.optIn ? "Set by Preopsis's platform admin" : hospital ? "Set for the whole trust" : "";
   return (
     <Group justify="space-between" wrap="nowrap" aria-label={def.label}>
       <div>

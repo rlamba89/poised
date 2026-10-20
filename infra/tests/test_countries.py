@@ -29,6 +29,11 @@ def test_uk_qa_is_the_only_entry_for_now():
     assert uk.param_prefix == "/sj/qa"
 
 
+def test_uk_texts_come_from_the_product_name():
+    # Patients see the sender ID on every text, so it's the product's name (Preopsis, 20 Oct).
+    assert countries.get("uk-qa").sms_sender_id == "PREOPSIS"
+
+
 def test_get_an_unknown_entry():
     with pytest.raises(KeyError, match="no-such"):
         countries.get("no-such")

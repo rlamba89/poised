@@ -43,7 +43,7 @@ class AuthStack(cdk.Stack):
             self_sign_up_enabled=False,
             sign_in_aliases=cognito.SignInAliases(email=True),  # the email is the username
             sign_in_case_sensitive=False,
-            # The email is who someone is in Poised (the API finds them by it at the first
+            # The email is who someone is in Preopsis (the API finds them by it at the first
             # sign-in), so it can't be changed by them; invites mark it verified.
             standard_attributes=cognito.StandardAttributes(
                 email=cognito.StandardAttribute(required=True, mutable=False)
@@ -63,9 +63,9 @@ class AuthStack(cdk.Stack):
             # so SES's sandbox doesn't stop invitations. A trust's volume needs SES later (pending.md).
             email=cognito.UserPoolEmail.with_cognito(),
             user_invitation=cognito.UserInvitationConfig(
-                email_subject="You're invited to Poised",
+                email_subject="You're invited to Preopsis",
                 email_body=(
-                    "You've been invited to Poised, for your hospital's pre-operative assessments.<br><br>"
+                    "You've been invited to Preopsis, for your hospital's pre-operative assessments.<br><br>"
                     f"Sign in at {app_url} with your email address, {{username}}, and this temporary "
                     "password: <b>{####}</b><br><br>"
                     "You'll choose your own password, then set up an authenticator app (such as Microsoft "
@@ -74,8 +74,8 @@ class AuthStack(cdk.Stack):
                 ),
             ),
             user_verification=cognito.UserVerificationConfig(
-                email_subject="Your Poised code",
-                email_body="Your Poised code is {####}. If you didn't ask to reset your password, ignore this email.",
+                email_subject="Your Preopsis code",
+                email_body="Your Preopsis code is {####}. If you didn't ask to reset your password, ignore this email.",
                 email_style=cognito.VerificationEmailStyle.CODE,
             ),
             # QA's pool goes with its stack, so an account can be emptied and re-created; a real

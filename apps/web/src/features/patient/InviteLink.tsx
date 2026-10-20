@@ -103,7 +103,7 @@ export function InviteLink({ token, kind = "invite" }: { token: string; kind?: L
               </>
             ) : (
               <>
-                <Title order={2}>Sign in to Poised</Title>
+                <Title order={2}>Sign in to Preopsis</Title>
                 <Text>Tap Continue to see your health questionnaires.</Text>
               </>
             )}
@@ -121,7 +121,7 @@ export function InviteLink({ token, kind = "invite" }: { token: string; kind?: L
         <form onSubmit={check} noValidate>
           <Stack>
             <Title order={2}>Confirm it&apos;s you</Title>
-            <Text>{step.hospital || "Poised"} needs your date of birth to make sure it&apos;s you.</Text>
+            <Text>{step.hospital || "Preopsis"} needs your date of birth to make sure it&apos;s you.</Text>
             <Text size="sm" c="dimmed" id="dob-hint">For example, 27 3 1985</Text>
             <Group gap="sm" wrap="nowrap" role="group" aria-label="Date of birth" aria-describedby="dob-hint">
               <TextInput label="Day" w={64} inputMode="numeric" autoComplete="bday-day" maxLength={2} value={day}

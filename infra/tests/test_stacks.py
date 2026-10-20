@@ -357,6 +357,9 @@ def test_the_staff_pool(lambda_code):
     body = json.dumps(invite["EmailMessage"])
     assert "{username}" in body and "{####}" in body
     assert "https://main." in body  # Amplify's address (no domain yet), from WebStack
+    # Staff read the product's name in the invitation and in a password-reset code.
+    assert "Preopsis" in invite["EmailSubject"] and "Preopsis" in body
+    assert "Preopsis" in props["VerificationMessageTemplate"]["EmailMessage"]
     # The email is the trusted identity: users can't change it.
     email = [a for a in props["Schema"] if a["Name"] == "email"][0]
     assert email["Mutable"] is False and email["Required"] is True

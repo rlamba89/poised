@@ -28,6 +28,7 @@ import {
   type ChapterJson, type SamplePatient,
 } from "@poised/clinical";
 import { ApiError, api } from "@/lib/api";
+import { Logo } from "@/features/brand/Logo";
 import { lostWork, type Lost } from "./signedOut";
 import { showUnits } from "@/features/preview/units";
 
@@ -317,15 +318,15 @@ export default function PatientHQ({ path, onBehalf }: Props) {
   return <PatientFrame hospital={hq.hospital} onSignOut={signOut}>{homeLink}{body}</PatientFrame>;
 }
 
-/** The patient's pages: Poised's bar with their hospital's name, on a phone-sized column. */
+/** The patient's pages: Preopsis's bar with their hospital's name, on a phone-sized column. */
 export function PatientFrame({ hospital, onSignOut, children }: { hospital?: string; onSignOut?: () => void; children: React.ReactNode }) {
   return (
     <Box bg="gray.0" mih="100vh">
-      <Group bg="dark.8" c="white" py="sm" px="md" justify="space-between" wrap="nowrap">
-        <Text fw={700}>Poised</Text>
+      <Group bg="brand.7" c="white" py="sm" px="md" justify="space-between" wrap="nowrap">
+        <Text><Logo inverse /></Text>
         <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
           {hospital && <Text size="sm" truncate>{hospital}</Text>}
-          {onSignOut && <Button size="compact-sm" variant="white" color="dark" onClick={onSignOut}>Sign out</Button>}
+          {onSignOut && <Button size="compact-sm" variant="white" onClick={onSignOut}>Sign out</Button>}
         </Group>
       </Group>
       <Container size="md" py="lg">{children}</Container>

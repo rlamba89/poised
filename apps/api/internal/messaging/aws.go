@@ -41,7 +41,7 @@ func (s SES) SendEmail(ctx context.Context, to, subject, body string) (string, e
 		return &sestypes.Content{Data: aws.String(v), Charset: aws.String("UTF-8")}
 	}
 	out, err := s.Client.SendEmail(ctx, &sesv2.SendEmailInput{
-		FromEmailAddress:     aws.String((&mail.Address{Name: "Poised", Address: s.From}).String()),
+		FromEmailAddress:     aws.String((&mail.Address{Name: "Preopsis", Address: s.From}).String()),
 		Destination:          &sestypes.Destination{ToAddresses: []string{to}},
 		Content:              &sestypes.EmailContent{Simple: &sestypes.Message{Subject: text(subject), Body: &sestypes.Body{Text: text(body)}}},
 		ConfigurationSetName: optional(s.ConfigurationSet),

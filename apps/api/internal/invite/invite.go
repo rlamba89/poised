@@ -205,7 +205,7 @@ func (s Sender) now() time.Time {
 
 type texts struct{ sms, subject, email string }
 
-// messages fills in the hospital's templates (its trust's, or Poised's defaults): the invitation
+// messages fills in the hospital's templates (its trust's, or Preopsis's defaults): the invitation
 // for an invite or Resend, the reminder for a reminder.
 func messages(d db.GetInviteDetailsRow, link string, kind Kind) (texts, error) {
 	org, err := settings.Decode(d.OrgSettings)

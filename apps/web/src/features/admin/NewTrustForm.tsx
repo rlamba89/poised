@@ -65,7 +65,7 @@ export function NewTrustForm() {
           </Paper>
           <Paper withBorder p="md">
             <Title order={5} mb="sm">Contact at the trust</Title>
-            <Text size="sm" c="dimmed" mb="sm">Who Poised deals with. Patients don't see it.</Text>
+            <Text size="sm" c="dimmed" mb="sm">Who Preopsis deals with. Patients don't see it.</Text>
             <SimpleGrid cols={{ base: 1, sm: 3 }}>
               <TextInput label="Contact name" required {...field("contactName")} />
               <TextInput label="Contact email" type="email" required {...field("contactEmail")} />

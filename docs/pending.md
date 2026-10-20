@@ -329,8 +329,8 @@ docker compose up -d --force-recreate db
     - **Administrator rights in a shared account:** Poised's CDK bootstrap gives CloudFormation `AdministratorAccess` (`aws-setup.sh`), so any commit on `master` can create anything in the account. The self-mutation role may also assume any CDK bootstrap deploy or publishing role in the account, other projects' included: CDK's default condition matches by tag, not by qualifier. Before go-live (C10), give Poised its own account(s), or a scoped `--cloudformation-execution-policies` plus a permissions boundary.
     - **The Database-and-web role may deploy to any Amplify app** in its account and region (`apps/*`). Scope it to the WebStack's app.
 - **Staff sign-in with Cognito (S12, 14 Oct):**
-  - **Cognito's own email sends about 50 a day per pool** (invitations, password resets), from `no-reply@verificationemail.com`. Enough for QA and a demo; **a trust's onboarding needs SES** (a verified domain, out of the sandbox) as the pool's email (`UserPoolEmail.with_ses`), with Poised's own From address. Do it with S17's SES or before the first customer (C10).
-  - **The managed login looks like Cognito's**, not Poised's (`CfnManagedLoginBranding` with Cognito's values). Add the logo and colours before a demo, in CDK (the branding's settings JSON).
+  - **Cognito's own email sends about 50 a day per pool** (invitations, password resets), from `no-reply@verificationemail.com`. Enough for QA and a demo; **a trust's onboarding needs SES** (a verified domain, out of the sandbox) as the pool's email (`UserPoolEmail.with_ses`), with Preopsis's own From address. Do it with S17's SES or before the first customer (C10).
+  - **The managed login looks like Cognito's**, not Preopsis's (`CfnManagedLoginBranding` with Cognito's values). Add the logo and colours before a demo, in CDK (the branding's settings JSON). The logo and colours exist since 20 Oct: [brand/](brand/README.md).
   - **No adaptive authentication or compromised-password checks:** those are the Plus plan's (about $0.02 per active user, no free tier). Essentials still locks an account for a while after repeated wrong passwords. Decide with C10's security review.
   - **The staff session cookie lasts 12 hours and Sign out only clears it in that browser** (older than S12: `auth.TTL`, a signed token with no server-side session). A copied cookie still works until it expires. Patients' sessions are held in the database (S14); staff could be too, before go-live.
   - **Training and Production stages have no test users**, so the pipeline's journeys couldn't sign in there (the E2E step fetches test users on QA only). Settle with S07 verification's "every environment gets the demo seed and the journeys" item, before adding those entries (C10).
@@ -353,7 +353,7 @@ docker compose up -d --force-recreate db
   - **Before a real trust, in the demo account:**
     - SES production access, and a domain to send from. Until then QA's emails come "from" Rahul's Gmail address through SES and may land in spam.
     - SMS production access.
-    - **Registration of the UK sender ID POISED**: the UK form in the End User Messaging console (company details), or a sender ID of the trust's.
+    - **Registration of the UK sender ID PREOPSIS** (POISED until 20 Oct): the UK form in the End User Messaging console (company details), or a sender ID of the trust's.
     - Raising the **$1 monthly SMS spend limit** (a support request; about 20 UK texts a month).
   - **A real undelivered text can't be tested in the UK sandbox.** AWS's SMS simulator numbers are American, which PAT-11 refuses, and QA sends to no unverified number. The path is covered by Go tests (`delivery`, the jobs Lambda's handler) and needs a check in production.
   - **The protect configuration's country list is AWS's on 14 Oct** (`infra/sms_countries.py`). A country AWS adds later is allowed until it's added there (CloudFormation drift shows it). Go's PAT-11 check still refuses it.

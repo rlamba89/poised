@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { Alert, Badge, Button, Card, Center, Container, Group, Loader, Stack, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
+import { Logo } from "@/features/brand/Logo";
 import { signOut as signOutStaff } from "@/lib/signin";
 import { allHospitals, homePath, roleLabel, type Me } from "@/lib/auth";
 
@@ -32,7 +33,7 @@ export function Home() {
   return (
     <Container size="sm" py="xl">
       <Group justify="space-between" mb="lg">
-        <Title order={2}>Poised</Title>
+        <Title order={2}><Logo /></Title>
         <Group>
           <Text size="sm">{me.user.name}</Text>
           <Button variant="default" size="xs" onClick={signOut}>Sign out</Button>
@@ -41,7 +42,7 @@ export function Home() {
       {me.platformAdmin && (
         <Card withBorder mb="lg">
           <Group justify="space-between">
-            <Text>You're one of Poised's platform admins.</Text>
+            <Text>You're one of Preopsis's platform admins.</Text>
             <Button component={Link} to="/admin">Open the platform admin console</Button>
           </Group>
         </Card>
@@ -64,7 +65,7 @@ export function Home() {
                 <Stack gap="xs">
                   {t.hospitals.length === 0 && (
                     <Text size="sm" c="dimmed">
-                      {t.name} has no hospitals in Poised yet. Poised's platform admin adds them; you'll find them here once they have.
+                      {t.name} has no hospitals in Preopsis yet. Preopsis's platform admin adds them; you'll find them here once they have.
                     </Text>
                   )}
                   {t.hospitals.map((h) => (

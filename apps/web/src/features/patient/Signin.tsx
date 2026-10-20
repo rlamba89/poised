@@ -35,11 +35,11 @@ export function Signin() {
           <Stack>
             <Title order={2}>{sent === "email" ? "Check your email" : "Check your text messages"}</Title>
             <Text>
-              If you use Poised with {sent === "email" ? "that email address" : "that mobile number"}, we&apos;ve sent you a link to sign in.
+              If you use Preopsis with {sent === "email" ? "that email address" : "that mobile number"}, we&apos;ve sent you a link to sign in.
               It works once, within 15 minutes.
             </Text>
             <Text size="sm" c="dimmed">
-              If you haven&apos;t used Poised before, please use the link in the text message or email your hospital sent you.
+              If you haven&apos;t used Preopsis before, please use the link in the text message or email your hospital sent you.
             </Text>
             <Button variant="default" onClick={() => setSent(null)}>Send another link</Button>
           </Stack>

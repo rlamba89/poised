@@ -106,7 +106,7 @@ describe("authorizeUrl", () => {
   });
 });
 
-describe("a sign-in Poised refuses (S12 test report 1, finding 2)", () => {
+describe("a sign-in Preopsis refuses (S12 test report 1, finding 2)", () => {
   it("ends the managed login's session too, and keeps the message for /login", () => {
     const go = vi.fn();
     refuseSignIn("Your trust is suspended.", cognito, go);

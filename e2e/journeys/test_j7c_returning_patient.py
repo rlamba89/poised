@@ -57,9 +57,9 @@ def test_j7c_returning_patient_signs_in_by_email_and_sees_both_trusts(page: Page
     # The email's link: Continue (nothing about them), then their date of birth.
     link = link_path(email)
     patient.goto(link)
-    expect(patient.get_by_role("heading", name="Sign in to Poised")).to_be_visible()
+    expect(patient.get_by_role("heading", name="Sign in to Preopsis")).to_be_visible()
     patient.get_by_role("button", name="Continue").click()
-    expect(patient.get_by_text("Poised needs your date of birth")).to_be_visible()
+    expect(patient.get_by_text("Preopsis needs your date of birth")).to_be_visible()
     enter_dob(patient, day, month, year)
 
     # Their home: both trusts' questionnaires, newest first, with each hospital's name.

@@ -1,5 +1,5 @@
 // Confirming a new mobile or email (S15, PAT-10): the link sent to the new contact, /v/:token.
-// Confirm (a POST, so a link scanner can't use it) makes it the patient's contact, for Poised and
+// Confirm (a POST, so a link scanner can't use it) makes it the patient's contact, for Preopsis and
 // for every hospital that holds their record. No sign-in is needed: the link proves the new
 // contact is theirs, and it may be opened on another device. It works once, within 24 hours.
 import { useState } from "react";
@@ -49,7 +49,7 @@ export function ConfirmContact({ token }: { token: string }) {
         ) : (
           <Stack>
             <Title order={2}>Confirm your new contact details</Title>
-            <Text>Tap Confirm to use this mobile number or email address for Poised.</Text>
+            <Text>Tap Confirm to use this mobile number or email address for Preopsis.</Text>
             {error && <Alert color="red">{error}</Alert>}
             <Button size="md" onClick={confirm} loading={busy}>Confirm</Button>
           </Stack>

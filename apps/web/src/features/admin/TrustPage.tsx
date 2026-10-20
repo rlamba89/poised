@@ -157,7 +157,7 @@ export function TrustPage({ orgId }: { orgId: string }) {
       </Group>
       {noticeAt("hospitals")}
       {trust.hospitals.length === 0 ? (
-        <Text c="dimmed">No hospitals yet. Its staff can't work in Poised until it has one.</Text>
+        <Text c="dimmed">No hospitals yet. Its staff can't work in Preopsis until it has one.</Text>
       ) : (
         <Table.ScrollContainer minWidth={900}>
           <Table verticalSpacing="sm">

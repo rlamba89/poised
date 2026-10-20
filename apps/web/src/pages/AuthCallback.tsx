@@ -1,7 +1,7 @@
 // /auth/callback (S12): Cognito's managed login sends the browser back here with a code. The page
 // checks it's the sign-in this tab started, posts the code and its PKCE verifier to the API (which
 // sets our session cookie), then goes where the user starts. A refusal (e.g. a suspended trust, or
-// no Poised account) signs out of the managed login too and shows the API's message on /login.
+// no Preopsis account) signs out of the managed login too and shows the API's message on /login.
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Center, Loader, Stack, Text } from "@mantine/core";

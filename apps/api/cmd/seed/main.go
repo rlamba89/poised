@@ -28,7 +28,7 @@ const (
 
 // The demo trusts (S08): Trust A with Hospitals A1 and A2, Trust B with Hospital B1.
 // Each run puts them back to active, with these contacts and addresses and no settings of their own
-// (Poised's defaults), so each test round starts the same (S10).
+// (Preopsis's defaults), so each test round starts the same (S10).
 var demoTrusts = []struct {
 	id, name, code string
 	contact        [3]string   // name, email, phone

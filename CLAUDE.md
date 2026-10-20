@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**Poised** is a pre-operative assessment SaaS for hospitals (NHS trusts) and their patients. It was called **sj-demo** until 2 Oct 2026, and older docs may still use that name.
+**Preopsis** is a pre-operative assessment SaaS for hospitals (NHS trusts) and their patients. It was called **Poised** until 20 Oct 2026 and **sj-demo** until 2 Oct, and older docs may still use those names. Code and AWS names still say `poised` on purpose (the repo, the Go module, `@poised/*`, `poised-<env>-…`; [decisions.md](docs/decisions.md), 20 Oct). The logo and colours are in [docs/brand/](docs/brand/README.md).
 
 Today it's a working local prototype:
 - a clinical questionnaire **authoring tool** built on SurveyJS;

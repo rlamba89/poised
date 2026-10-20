@@ -3,6 +3,7 @@
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { Alert, Anchor, AppShell, Badge, Button, Group, Text, Title } from "@mantine/core";
 import { api } from "@/lib/api";
+import { Logo } from "@/features/brand/Logo";
 import { signOut as signOutStaff } from "@/lib/signin";
 import { AuthProvider, allHospitals, useMe } from "@/lib/auth";
 
@@ -16,7 +17,7 @@ function Shell() {
       <AppShell.Header px="md">
         <Group h="100%" justify="space-between" wrap="nowrap">
           <Group wrap="nowrap">
-            <Title order={4}>Poised</Title>
+            <Title order={4}><Logo /></Title>
             <Badge variant="light" color="grape">Platform admin</Badge>
             {me.platformAdmin && (
               <Button component={Link} to="/admin" size="xs" variant={pathname.startsWith("/admin") ? "light" : "subtle"}>
@@ -37,7 +38,7 @@ function Shell() {
         {me.platformAdmin ? (
           <Outlet />
         ) : (
-          <Alert color="red" title="Only Poised's platform admins can open this page">
+          <Alert color="red" title="Only Preopsis's platform admins can open this page">
             <Anchor component={Link} to="/">Go to your hospitals</Anchor>
           </Alert>
         )}

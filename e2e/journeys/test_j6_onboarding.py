@@ -153,7 +153,7 @@ def test_only_platform_admins_reach_the_admin_console(page: Page):
     expect(page.get_by_role("heading", name="Episodes")).to_be_visible()
     expect(page.get_by_role("banner").get_by_role("link", name="Platform admin")).to_have_count(0)
     page.goto("/admin")
-    expect(page.get_by_text("Only Poised's platform admins can open this page")).to_be_visible()
+    expect(page.get_by_text("Only Preopsis's platform admins can open this page")).to_be_visible()
     expect(page.get_by_role("link", name="New trust")).to_have_count(0)
 
 
@@ -188,7 +188,7 @@ def test_a_trust_admin_gives_one_hospital_its_own_settings(page: Page, as_user):
     expect(page.get_by_role("heading", name="Settings")).to_be_visible()
 
     # The trust's phone, which both hospitals follow.
-    page.get_by_role("checkbox", name="Use Poised's default: Phone number for patients").uncheck()
+    page.get_by_role("checkbox", name="Use Preopsis's default: Phone number for patients").uncheck()
     page.get_by_role("textbox", name="Phone number for patients", exact=True).fill("0100 111 1111")
     page.get_by_role("button", name="Save the trust's settings").click()
     expect(page.get_by_role("status")).to_contain_text(f"{t['name']}'s settings were saved")
@@ -217,7 +217,7 @@ def test_a_trust_admin_gives_one_hospital_its_own_settings(page: Page, as_user):
     # The opt-ins and trust-only settings are shown, not edited, at a hospital (F1: the trust-only
     # ones were missing).
     expect(page.get_by_label("PROMs")).to_contain_text("Off")
-    expect(page.get_by_label("PROMs")).to_contain_text("Set by Poised's platform admin")
+    expect(page.get_by_label("PROMs")).to_contain_text("Set by Preopsis's platform admin")
     retention = page.get_by_label("Keep episode data for (years)")
     expect(retention).to_contain_text("Set for the whole trust")
     expect(retention).to_contain_text("8")

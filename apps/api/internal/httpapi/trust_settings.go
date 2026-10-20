@@ -25,7 +25,7 @@ import (
 
 const (
 	settingsRole  = "Only the trust's admins can change its settings."
-	optInsRefused = "Features and opt-ins are set by Poised's platform admin. Ask them to change it."
+	optInsRefused = "Features and opt-ins are set by Preopsis's platform admin. Ask them to change it."
 )
 
 type settingsHospitalView struct {

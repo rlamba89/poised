@@ -61,7 +61,7 @@ func TestSESSendsAPlainTextEmailThroughTheConfigurationSet(t *testing.T) {
 		t.Fatalf("id %q, err %v", id, err)
 	}
 	in := c.in
-	if got := aws.ToString(in.FromEmailAddress); got != `"Poised" <sender@example.test>` {
+	if got := aws.ToString(in.FromEmailAddress); got != `"Preopsis" <sender@example.test>` {
 		t.Errorf("from %q", got)
 	}
 	if len(in.Destination.ToAddresses) != 1 || in.Destination.ToAddresses[0] != "patient@example.test" {
