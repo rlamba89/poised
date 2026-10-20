@@ -1,6 +1,6 @@
 ---
 name: build-session
-description: Build one planned work session (S01, S02…) from docs/sessions/, prove it with automated tests, write a manual test plan for a separate tester session, then fix whatever the tester reports until everything passes. Use when Rahul types /build-session <id>, or asks to build, start or continue a session such as "S08". Also use when he says a test report is ready.
+description: Build one planned work session (S01, S02…) from docs/sessions/, prove it with automated tests, write a manual test plan for a separate tester session, then fix whatever the tester reports until everything passes. Use when Rahul types /build-session <id>, or asks to build, start or continue a session such as "S08". Also use when he says a test report is ready. The /run-sessions conductor runs it with the argument `auto`.
 ---
 
 # Build a session
@@ -22,6 +22,27 @@ Later, a **verifier** session reviews your work before Rahul commits it.
 - `test-report-<n>.md`: the tester's.
 - `verify.md`: the verifier's.
 
+## Automatic mode (arguments `<id> auto`)
+
+The `/run-sessions` conductor started you as an agent. Rahul isn't watching, and you can't ask him directly. Everything below applies, with these changes:
+
+- **Questions:** the brief's "Ask Rahul first" questions were asked up front, and the answers are in the session folder's **`answers.md`**.
+  - **Never call AskUserQuestion.**
+  - If a question is still open, or a new one needs Rahul (scope, product behaviour, anything costly or hard to undo), write it to **`questions.md`**: the question, 2–4 options with your recommendation first, and why. Then end with `STATUS: NEEDS_ANSWER`.
+  - For a small choice with an obvious default, take the default, and record it in `build-notes.md` under "Decided by the builder (automatic mode)".
+- **Skip start checks 2 and 3** (the previous session and `git status`). The conductor has done them.
+- **The app:** the conductor restarts `make dev` before each test round. Don't start or stop it, and don't ask Rahul to.
+- **Hand-offs:** don't give Rahul prompts to paste. End **every** reply with one status line, then at most 5 lines of summary:
+  - `STATUS: READY_FOR_TEST`: the test plan is written, or the fixes for the latest report or verification are done, and all automated tests pass. Also send this after the Finish steps.
+  - `STATUS: NEEDS_ANSWER`: as above.
+  - `STATUS: BLOCKED <reason>`: you can't go on, e.g. a test you can't make pass, or a broken environment.
+- **Messages from the conductor:**
+  - "Test report <n> is ready." → the fix loop (section 4).
+  - "Test report <n> is ready, all passed." → Finish (section 5).
+  - "Verification found problems: read `verify.md`…" → fix each finding test-first, like a failed test case.
+  - "Answers are in `answers.md`." → carry on.
+- **Cases a tester marked Blocked** because its tools can't do them (e.g. blocking a network request, or the real print dialog) aren't failures. Make sure an automated test covers them where possible, and list them in `build-notes.md` as hand checks for Rahul.
+
 ## 1. Start
 
 1. **Read:**
@@ -29,7 +50,7 @@ Later, a **verifier** session reviews your work before Rahul commits it.
    - the session's `brief.md`;
    - every plan section the brief points to;
    - [docs/decisions.md](../../../docs/decisions.md) §1, the newest entries in §2, and §5.
-2. **Check the previous session's row** in `docs/sessions/README.md`. If it isn't **Verified**, stop and tell Rahul.
+2. **Check the previous session in the run order** (the Local phase table, then the AWS phase table, in `docs/sessions/README.md`). If it isn't **Verified**, stop and tell Rahul.
 3. **Run `git status`.** If there are uncommitted changes that aren't from this session, ask Rahul whether to commit them first. Don't build on top of someone else's unreviewed work without saying so.
 4. **Ask the brief's questions.** If the brief has an "Ask Rahul first" list, ask everything in **one** AskUserQuestion call, with your recommended option first. Record the answers with `/update-wiki` before building anything.
 5. **Make a step list** from the brief with your todo tool, and keep it current.

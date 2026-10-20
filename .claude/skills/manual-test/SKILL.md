@@ -1,6 +1,6 @@
 ---
 name: manual-test
-description: Act as a manual tester for one work session (S01, S02…). Drive the real app in a visible browser through every case in docs/sessions/<id>-*/test-plan.md, explore a little beyond it, and write a test report for the builder session to fix. Use when Rahul types /manual-test <id> or /manual-test <id> retest.
+description: Act as a manual tester for one work session (S01, S02…). Drive the real app in a visible browser through every case in docs/sessions/<id>-*/test-plan.md, explore a little beyond it, and write a test report for the builder session to fix. Use when Rahul types /manual-test <id> or /manual-test <id> retest. The /run-sessions conductor adds the argument `auto`.
 ---
 
 # Manual test a session
@@ -15,6 +15,18 @@ You are a **manual tester, not a developer.** Use the app the way a careful hosp
 - **Don't start long-running servers yourself.** Rahul runs `make dev` in his own terminal, because servers started by Claude are stopped after a time limit.
 - **This is test data only.** Never enter real patient details.
 
+## Automatic mode (arguments ending in `auto`)
+
+The `/run-sessions` conductor started you as an agent, and it's running the app on the latest code. Rahul isn't watching. Everything below applies, with these changes:
+
+- **If the app isn't up,** don't ask Rahul. End with `STATUS: BLOCKED app not running`.
+- **Never trigger a browser alert or confirm dialog.** Mark a case that needs one as **Blocked: needs a browser dialog, hand check for Rahul**.
+- **A case your tools can't do** (e.g. blocking a network request, or the real print dialog) is **Blocked: hand check for Rahul**, not Failed. List these together in the report under "Hand checks for Rahul".
+- **Don't tell Rahul what to do next.** End with one status line, then the report's path:
+  - `STATUS: ALL_PASSED`: no failures. Blocked cases are listed as hand checks.
+  - `STATUS: FAILURES <n>`.
+  - `STATUS: BLOCKED <reason>`: the test round as a whole couldn't happen.
+
 ## 1. Get ready
 
 1. **Read the test plan:** the session's `test-plan.md`, with the `brief.md` for context only.
@@ -25,7 +37,7 @@ You are a **manual tester, not a developer.** Use the app the way a careful hosp
    - If it isn't up, ask Rahul to start it with the plan's setup commands, and wait.
 3. **Use the browser through Claude in Chrome.**
    - Load its tools in **one** ToolSearch call: `tabs_context_mcp`, `tabs_create_mcp`, `navigate`, `computer`, `read_page`, `find`, `form_input`, `resize_window`, `read_console_messages`, `read_network_requests` and `gif_creator`.
-   - Call `tabs_context_mcp` first, then work in a **new tab**.
+   - Call `tabs_context_mcp` first (with `createIfEmpty: true` if this session has no tab group yet), then work in a **new tab**.
    - **Phone-size cases:** resize the window to **390×844**. Resize back for desktop cases.
    - **Avoid browser alert and confirm dialogs.** They freeze the extension. If a case needs one (e.g. a delete confirmation), warn Rahul first and ask him to click it.
    - **If Claude in Chrome isn't connected,** tell Rahul and stop. Don't switch to another tool without his OK.

@@ -1,11 +1,25 @@
 ---
 name: verify-session
-description: Independently verify a work session (S01, S02…) that has passed manual testing. Review the diff against the brief and plan, run every automated test, spot-check the riskiest functions in the browser, give a Verified or Needs-fixes verdict, and offer the commits. Use when Rahul types /verify-session <id>, or asks to verify or check a finished session.
+description: Independently verify a work session (S01, S02…) that has passed manual testing. Review the diff against the brief and plan, run every automated test, spot-check the riskiest functions in the browser, give a Verified or Needs-fixes verdict, and offer the commits. Use when Rahul types /verify-session <id>, or asks to verify or check a finished session. The /run-sessions conductor adds the argument `auto`.
 ---
 
 # Verify a session
 
 You are the **reviewer.** Rahul relies on your verdict before he commits a session's work. The session ID (e.g. `S08`) is in the arguments. Be independent: check what was built, and don't take the build notes or the test reports on trust.
+
+## Automatic mode (arguments `<id> auto`)
+
+The `/run-sessions` conductor started you as an agent, and it's running `make dev`. Rahul isn't watching. Everything below applies, with these changes:
+
+- **Standing permission (Rahul, 12 Oct):** if the verdict is **Verified**, commit locally to `master` **without asking**, using your suggested commits: one per plan step with its tests, and docs separately. Leave `docs/sessions/run-state.md` out.
+  - **Never push.**
+- **Don't ask Rahul anything.** Something that needs his decision is a **Needs fixes** finding, with the question written in `verify.md`.
+- **Hand checks** (cases a tester marked Blocked because its tools couldn't do them) don't stop a Verified verdict. List them in `verify.md` under "Hand checks for Rahul".
+- **Keep earlier verdicts.** Add yours at the top of `verify.md` as "Verification <n>", above any earlier ones.
+- **End with one status line,** then at most 5 lines of summary:
+  - `STATUS: VERIFIED <commit hashes>`;
+  - `STATUS: NEEDS_FIXES`;
+  - `STATUS: BLOCKED <reason>`.
 
 ## 1. Read
 
@@ -52,7 +66,7 @@ Write `verify.md` in the session folder:
 
 **If Verified:**
 1. Set the session's row in `docs/sessions/README.md` to **Verified**. If it was the plan's last session, mark the plan **Done** in `docs/plans/README.md` with today's date.
-2. Ask Rahul whether to commit, using the suggested messages. **Commit only with his yes. Never push unless he asks.**
+2. Ask Rahul whether to commit, using the suggested messages. **Commit only with his yes. Never push unless he asks.** In automatic mode, commit without asking (see above).
 3. Tell him the next session's prompt: `/build-session <next id>`.
 
 **If Needs fixes:** give Rahul this line to paste into the builder session:
