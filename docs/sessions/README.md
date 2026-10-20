@@ -140,7 +140,7 @@ Split on 20 Oct. These run locally like the local phase above, with messages cap
 
 | ID | Plan | Builds | Needs from you first | Status |
 | --- | --- | --- | --- | --- |
-| [S18](S18-episode-forms/brief.md) | C3 | `episode_forms`: answers move from the episode to its HQ form. No visible change; a full regression | Answer the brief's questions | Not started |
+| [S18](S18-episode-forms/brief.md) | C3 | `episode_forms`: answers move from the episode to its HQ form. No visible change; a full regression | Answered 20 Oct ([answers.md](S18-episode-forms/answers.md)) | **Verified** (20 Oct, [verify.md](S18-episode-forms/verify.md)) |
 | [S19](S19-procedures/brief.md) | C3 | The trust's procedure list (PRC-01); procedure, planned date and POA date on the episode; the procedure picks the default HQ | Answer the brief's questions | Not started |
 | [S20](S20-statuses/brief.md) | C3 | The transition table, every status (admitted, discharged, cancelled), status events, cancel, re-open, the episode revision; J9b | Answer the brief's questions | Not started |
 | [S21](S21-tasks-worklists/brief.md) | C3 | Episode tasks (TSK-01), worklists on the clinician home (EPI-02), status messages to the patient (EPI-08) | Answer the brief's questions | Not started |

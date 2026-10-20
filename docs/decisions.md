@@ -30,6 +30,25 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 20 Oct 2026: S18, episode forms (builder, automatic run; tested 20 Oct, test report 1 all passed; verified 20 Oct)
+
+- **`episode_forms`** holds an episode's questionnaires: id, episode_id, version_id, kind (`hq|assessment|proms`), status, due_at, closes_at, submitted_at, plus submitted_by and created_at. Every episode gets its HQ form in the same statement that creates it, and a unique index allows one HQ per episode. ([build notes](sessions/S18-episode-forms/build-notes.md))
+- **A form's status is `open` or `submitted`** for now, and a CHECK keeps it in step with `submitted_at`. C7 and C9 add other values if they need them. *Builder's default.*
+- **`patient_submitted_by` (PAT-09) moved to the form as `submitted_by`**, beside `submitted_at`, though the brief named only the submit time. *Builder's default.*
+- **The answers are keyed by `(episode_form_id, chapter_id, actor)`**, with the S02a revisions as they were.
+- **The episode's JSON is unchanged:** `versionId`, `patientSubmittedAt` and `patientSubmittedByName` now come from the HQ form under their old names. One field is added: `hqFormId`.
+- **"Reshape and re-seed" (S18 answers 2) is migration 00019 itself.** It deletes every episode, with its answers, notes, messages, follow-up jobs, invite links and the sessions opened from them, and keeps patients, accounts, sign-in links and questionnaires. The seed has no episodes, so there's nothing to re-seed. **QA needs no hand reset:** the pipeline's migrate step does it on the next push (this replaces the §5 item). A migration test proves it on a database in the old shape. *Builder's default; simpler and safer than editing migration 00004, which would have needed every database dropped by hand.*
+
+### 20 Oct 2026: answers to the S18–S22 briefs (Rahul, asked by the `/run-sessions` conductor)
+
+The full answers are in each session's `answers.md`. Every answer not listed here took the brief's recommendation. Rahul chose differently on these:
+- **S18: `episode_forms` gets the plan's full column set now:** id, episode_id, version_id, kind (`hq|assessment|proms`), due_at, closes_at, status, submitted_at. The brief had recommended only the columns used today. ([S18 answers](sessions/S18-episode-forms/answers.md))
+- **S18: reshape the tables and re-seed, with no data migration.** The local database is disposable (§1). **QA on Neon needs the same reset when this is pushed**, and that's Rahul's step at push time. (§5)
+- **S18: today's URLs stay.** They resolve the episode's one HQ form on the server (recommended).
+- **S19: the INF-04 information content and PRM-01 PROMs plan columns are added to procedures now**, not in C5/C9. ([S19 answers](sessions/S19-procedures/answers.md))
+- **S20: any clinician may undo any manual status move, one step at a time and as often as needed, with a reason.** Each undo goes back to the status before the latest move. The brief had recommended a super clinician, limited to admitted→ready_for_admission and discharged→admitted. Cancel stays final. ([S20 answers](sessions/S20-statuses/answers.md))
+- **S22: archive and un-archive both need a super clinician** (un-archive with a reason). The brief had recommended that any clinician could archive. ([S22 answers](sessions/S22-archive/answers.md))
+
 ### 20 Oct 2026: plan C3 split into sessions S18–S22 (Rahul)
 
 - **Five sessions, in this order:**
@@ -44,7 +63,7 @@ Format: **decision**, then the reason, then where it's recorded in more detail.
 - **EPI-08 (status messages to the patient, a Should) is in C3**, in S21, though the plan allowed cutting it. ([S21 brief](sessions/S21-tasks-worklists/brief.md))
 - **EPI-09 (a patient closes their account, a Must missing from C3's plan text) goes in S22**, with archive. ([S22 brief](sessions/S22-archive/brief.md))
 - **C3's end-to-end journeys are J9 (the full lifecycle) and J9b (cancel)**, because `test_j8_reminders` already uses J8.
-- **Each brief's "Ask Rahul first" items are still open.** They're asked when the session starts, or up front by `/run-sessions`.
+- ~~**Each brief's "Ask Rahul first" items are still open.**~~ *Answered 20 Oct* (the entry above, and each session's `answers.md`).
 
 ### 20 Oct 2026: a sales brochure for Dutch hospitals (Rahul, 19–20 Oct)
 
@@ -810,6 +829,7 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
 - **The `dev` branch** (on `origin` too; commit `557be2c`, 7 Oct): *settled 12 Oct: ignored entirely* (§2). Delete it later if wanted.
 - **Build order: decided 12 Oct.** Local first (S04, S05, S08–S11, S13–S16), then the AWS phase (S06, S07, S12, S17), as in §2.
 - **No domain chosen yet.** `<domain>` in the docs is a placeholder.
+- ~~**QA's Neon database needs a reset and re-seed when S18 is pushed**~~ *Not needed (S18 builder, 20 Oct): migration 00019 removes the made-up episodes itself, so the pipeline's migrate step does the reset* (§2, "S18, episode forms"). Know that the push **deletes every episode on QA**. *Verifier, 20 Oct:* the pipeline deploys the Lambdas before it migrates, and 00019 isn't backward-compatible, so expect a few minutes of 500s on QA's episode routes between the two steps (pending.md, "From the S18 verification").
 - **The Dutch brochure (`sales/nl/`, 20 Oct):**
   - **Rahul to decide** A-10 versus the brochure's EHR integration offer, and the other unplanned features (§2, 20 Oct).
   - It needs a native Dutch speaker to proofread it.

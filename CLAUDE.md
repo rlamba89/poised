@@ -111,8 +111,8 @@ npm workspaces monorepo (`apps/web`, `packages/*`), plus a separate Go module in
   - **Tenancy (S08):** questionnaires and option lists belong to a trust (`org_id`; `hospital_id` NULL = every hospital of the trust). Patient records belong to the trust; an episode belongs to one hospital, and a hospital-scoped user sees only their hospital's episodes.
   - A questionnaire has versions (draft → published → retired), and a version has **chapters ("Question Sets")**. Each chapter is one SurveyJS JSON document (`chapters.content`), with a `revision` that is bumped on every save; a stale revision → 409.
   - **Published versions are read-only.** "New version" copies chapters, keeping stable IDs.
-  - **Episodes** are tied to one published version.
-  - **Answers are stored per actor** (`episode_answers`: the patient's answers, frozen at submit, plus the clinician's validated copy), so the POA Summary can show both.
+  - **Episodes** hold **forms** (`episode_forms`, S18): today only one, the HQ, on one published version, created with the episode. C7 adds assessments and C9 PROMs. The routes still name only the episode and resolve its HQ form on the server.
+  - **Answers are stored per form, per actor** (`episode_answers`: the patient's answers, frozen when the form is submitted, plus the clinician's validated copy), so the POA Summary can show both.
 - **Key rule (with one planned exception):** Go never evaluates SurveyJS expressions, because no non-JS evaluator exists. Outputs are computed in the browser from `packages/clinical`, and Go only stores and enforces.
   - **Exception (agreed 2 Oct, plan C6):** a small Node `evaluate` Lambda will run `packages/clinical` on the server when a patient submits, so auto-triage can be trusted.
   - Go may walk the JSON (for example, to strip clinician-only content), but it never evaluates.

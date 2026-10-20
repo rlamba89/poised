@@ -48,7 +48,7 @@
 
 ## Status
 
-**Split into sessions on 20 Oct 2026** (not started). The briefs are in [docs/sessions/](../sessions/README.md):
+**Split into sessions on 20 Oct 2026.** **S18 verified** (20 Oct; [build notes](../sessions/S18-episode-forms/build-notes.md), [verify.md](../sessions/S18-episode-forms/verify.md)). The briefs are in [docs/sessions/](../sessions/README.md):
 - **S18:** episode forms (the reshape, first, so C4–C6 build on it);
 - **S19:** procedures and episode dates;
 - **S20:** every status, cancel and re-open;
@@ -59,3 +59,8 @@ Differences from this plan, agreed by Rahul on 20 Oct:
 - **EPI-08 (status messages) is in**, in S21, rather than cut.
 - **EPI-09 (a patient closes their account) is added**, in S22.
 - **The end-to-end journeys are J9 and J9b**, because `test_j8_reminders` took J8.
+
+Differences in S18 (episode forms, 20 Oct; details in its [build notes](../sessions/S18-episode-forms/build-notes.md)):
+- **A form's status is `open` or `submitted`** for now; the database keeps it in step with `submitted_at`. C7 and C9 add any others they need.
+- **Who sent the HQ for the patient** (`patient_submitted_by`, PAT-09) moved to the form too, as `submitted_by`.
+- **The reshape is migration 00019,** which removes every made-up episode (with its answers, notes, messages, jobs and invite links) and keeps everything else. So QA needs no hand reset: the pipeline's migrate step does it.

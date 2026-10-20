@@ -374,6 +374,17 @@ docker compose up -d --force-recreate db
     8. **`POST /api/p/signin` answers 202 for any send failure**, including a database failure making the link, which gets no alarm. Consider the marker for non-AWS failures too.
     9. **Nits:** `serve/lambda.go`'s imports aren't gofmt-sorted; `undelivered.ts` repeats `delivery.Note`'s wording (the API could return the sentence); `serve.senders` loads the AWS config twice per cold start; `TestRecipients.allowed` re-normalises what config already did.
     10. **J3 flaked once** in a full `make e2e` (`test_j3_patient.py:74`, "In progress" after "All sections"); it passed 3 of 3 alone. Watch it.
+  - **From the S18 build (20 Oct, minor; [build notes](sessions/S18-episode-forms/build-notes.md)):**
+    1. **J7 (and J8, in the S18 verification) flake on a well-used local database:** it picks a random mobile among 1,000 (`07700 900000`–`999`) and expects exactly one captured text to it, but earlier runs have used most numbers (2,271 captured messages locally). It passed on a re-run. Give it a mobile unlikely to repeat, or count only messages sent after it starts.
+    2. **A reminder racing a submit:** `CountReminder` and `MarkNotResponding` now check "the HQ form is still open" in a subquery, not on the row they update, so a submit committing at the same instant could let one extra reminder go. Before S18 the check was exact. *(Verifier: the reminder is sent after the count commits anyway, so the window was already there; `FOR SHARE` on the form row in the subquery would make both exact.)*
+  - **From the S18 verification (20 Oct, minor; [verify.md](sessions/S18-episode-forms/verify.md)):**
+    1. **The pipeline deploys the Lambdas before it migrates** (`infra/pipeline_stack.py`, `post=[db_web, e2e]`). A migration that isn't backward-compatible, like 00019, gives 500s between the two steps, and for longer if the migrate step fails. That's fine on QA; before a customer, use expand-then-contract migrations, or migrate before the deploy.
+    2. **A patient save racing a submit can change the submitted answers:** `SavePatientAnswers` checks the form is open only in its `INSERT … SELECT`, and the `ON CONFLICT DO UPDATE` path doesn't re-check it. This was the same before S18. `FOR SHARE` on the form row fixes it.
+    3. **Nothing in the database enforces "every episode has its HQ form",** yet every read inner-joins it, so an episode without one would vanish quietly and get no reminders. Keep every create path in one statement (S19's procedure-based create, C7/C9), or add a deferred constraint trigger.
+    4. **Comment nits:**
+       - 00019's header and the migration test say "the seed puts back the demo data", but the seed has no episodes;
+       - `GetEpisode`'s comment says the JSON is unchanged, but it gains `hqFormId`.
+    5. **The HQ-form join is copied into about 9 queries.** Consider an `episode_hq` view when C7/C9 add form kinds.
 - **Lifebox import:**
   - Conditions that cross Question Sets on pages and questions are still dropped with a warning.
   - Lifebox has no Question Set-level conditions to import.
