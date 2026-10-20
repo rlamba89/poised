@@ -17,7 +17,7 @@ Agreed 2 Oct 2026. These plans turn [../saas-requirements.md](../saas-requiremen
 | F4 | [AWS and pipeline](f4-aws-pipeline.md) | CDK (Python), Neon, Amplify, API Gateway, Lambdas, CodePipeline with test gates, the QA environment, the per-country config and "add a country" runbook (A-20), and the idle cost measured | **Done** (14 Oct 2026): S06 and S07 verified; the pipeline is live and proven, and the second-region proof is done. Only Step 4's idle-cost figure is still to come (Rahul reads Cost Explorer on 21 Oct) |
 | C1 | [Trusts and staff](c1-trusts-staff.md) | Trusts, hospitals, opt-ins, Cognito staff sign-in with MFA, roles, invites, audit log, the hand-made superadmin, and nothing hardcoded for the UK (A-20) | **Done** (14 Oct 2026): S08–S11 verified 13 Oct; S12 (Cognito staff sign-in with MFA) verified 14 Oct. Rahul's hand checks: S12's H-1 to H-3 |
 | C2 | [Patients and sign-in](c2-patients-signin.md) | Patient records by NHS number, magic-link sign-in, invites by SMS/email, patient home, jobs and reminders | **Done** (15 Oct 2026): S13–S16 verified 13 Oct; S17 (jobs and real messaging on AWS) verified 15 Oct. Rahul's hand checks: S17's verify.md |
-| C3 | [Episode lifecycle](c3-episode-lifecycle.md) | Procedures, `episode_forms`, every status, worklists, tasks, cancel, archive | Not started |
+| C3 | [Episode lifecycle](c3-episode-lifecycle.md) | Procedures, `episode_forms`, every status, worklists, tasks, cancel, archive | **Split into sessions** (20 Oct 2026): S18–S22, not started. EPI-08 and EPI-09 included |
 | C4 | [Question keys and pre-fill](c4-question-keys-prefill.md) | Keys, question library, "Same as…", pre-fill and confirmation screens | Not started |
 | C5 | [Authoring additions](c5-authoring-additions.md) | Capture blocks, Summary element, Video and Information elements, content library | Not started |
 | C6 | [Scores, ASA and auto-triage](c6-scores-asa-triage.md) | Score bands, ASA contributions and rules, the `evaluate` Lambda, auto-triage | Not started |
@@ -26,7 +26,7 @@ Agreed 2 Oct 2026. These plans turn [../saas-requirements.md](../saas-requiremen
 | C9 | [Documents and PROMs](c9-documents-proms.md) | Document templates and PDF; PROMs plans, sends and results; licensed instruments as opt-ins | Not started |
 | C10 | [Go-live](c10-go-live.md) | Move to RDS, the Training and Production stages, compliance, pen test | Not started |
 
-**Work sessions:** F1–F4 and C1–C2 are split into sessions S01–S17, run as build → manual test → verify, by hand or automatically with `/run-sessions`. See [../sessions/README.md](../sessions/README.md).
+**Work sessions:** F1–F4 and C1–C2 are split into sessions S01–S17, run as build → manual test → verify, by hand or automatically with `/run-sessions`. See [../sessions/README.md](../sessions/README.md). C3 is split into S18–S22 (20 Oct).
 
 **Local first (12 Oct, A-22):** no AWS until the first demo or customer.
 - **Now:** F2, the local half of F3 (S05), C1 without Cognito (S08–S11), and C2 without AWS (S13–S16).

@@ -48,4 +48,14 @@
 
 ## Status
 
-Not started.
+**Split into sessions on 20 Oct 2026** (not started). The briefs are in [docs/sessions/](../sessions/README.md):
+- **S18:** episode forms (the reshape, first, so C4–C6 build on it);
+- **S19:** procedures and episode dates;
+- **S20:** every status, cancel and re-open;
+- **S21:** tasks, worklists and status messages;
+- **S22:** archive, auto-archive and closing a patient account.
+
+Differences from this plan, agreed by Rahul on 20 Oct:
+- **EPI-08 (status messages) is in**, in S21, rather than cut.
+- **EPI-09 (a patient closes their account) is added**, in S22.
+- **The end-to-end journeys are J9 and J9b**, because `test_j8_reminders` took J8.

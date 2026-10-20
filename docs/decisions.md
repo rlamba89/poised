@@ -30,6 +30,22 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 20 Oct 2026: plan C3 split into sessions S18–S22 (Rahul)
+
+- **Five sessions, in this order:**
+  1. S18, episode forms;
+  2. S19, procedures;
+  3. S20, statuses, cancel and re-open;
+  4. S21, tasks, worklists and status messages;
+  5. S22, archive, auto-archive and closing an account.
+
+  Each ends with something a tester can try. The forms reshape stays its own session, not mixed into a features diff. ([sessions/README.md](sessions/README.md))
+- **`episode_forms` now, in C3, not deferred to C7.** C4–C6 add more code that reads answers, so reshaping first means less to change later. ([S18 brief](sessions/S18-episode-forms/brief.md))
+- **EPI-08 (status messages to the patient, a Should) is in C3**, in S21, though the plan allowed cutting it. ([S21 brief](sessions/S21-tasks-worklists/brief.md))
+- **EPI-09 (a patient closes their account, a Must missing from C3's plan text) goes in S22**, with archive. ([S22 brief](sessions/S22-archive/brief.md))
+- **C3's end-to-end journeys are J9 (the full lifecycle) and J9b (cancel)**, because `test_j8_reminders` already uses J8.
+- **Each brief's "Ask Rahul first" items are still open.** They're asked when the session starts, or up front by `/run-sessions`.
+
 ### 20 Oct 2026: a sales brochure for Dutch hospitals (Rahul, 19–20 Oct)
 
 - ~~**The name is written PreOpsis** (capital O), and the wordmark shows **Op** in teal (Rahul, 20 Oct).~~ *Superseded 20 Oct (Rahul): it's **Preopsis**, one word with a capital P only, as in the app, `docs/brand/` and the rename entry below. **The brochures and the seller sheet still say PreOpsis and need changing back.***

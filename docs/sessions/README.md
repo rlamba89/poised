@@ -8,7 +8,9 @@ Plans F1–F4 and C1–C2 split into **17 sessions** (plus S02a, a bug fix). Tog
 - staff in several hospitals;
 - patients in several hospitals.
 
-Each session is small enough for one Claude session, and ends with something a tester can try in a browser. Plans C3–C10 get split the same way when we reach them.
+Each session is small enough for one Claude session, and ends with something a tester can try in a browser.
+
+Plan C3 is split into **S18–S22** (20 Oct). Plans C4–C10 get split the same way when we reach them.
 
 ## How a session runs
 
@@ -131,5 +133,17 @@ These need your AWS setup, GitHub pushes and real messages, so they don't run un
 | [S07](S07-pipeline/brief.md) | F4 | CodePipeline with test gates, the "add a country" runbook | Push access for test pushes | **Verified** (14 Oct, [verify.md](S07-pipeline/verify.md), verification 1; test report 1: 17 of 17 passed; pipeline live, runs R1–R4 as planned, proof done) |
 | [S12](S12-cognito-signin/brief.md) | C1 | Real staff sign-in with Cognito + MFA, on QA | Answered 14 Oct (Essentials: checked in the docs) | **Verified** (14 Oct, [verify.md](S12-cognito-signin/verify.md), verification 1; test report 2 all passed; hand checks T-08, T-09, R-05, H-1–H-3; deployed to QA by hand, the pipeline takes over at the next push) |
 | [S17](S17-aws-messaging-jobs/brief.md) | C2 | Jobs Lambda + EventBridge schedule, SES and SMS on AWS, real sending switched on | **SES/SMS approvals** | **Verified** (15 Oct, [verify.md](S17-aws-messaging-jobs/verify.md), verification 1; test report 2 all passed, run locally as Rahul chose; report 1 on QA blocked at Cognito's sign-in, its AWS checks passed; a real email and a real text from POISED reached Rahul; hand checks in verify.md; deployed to QA by hand, the pipeline takes over at the next push) |
+
+### Plan C3: episode lifecycle (local, run in this order)
+
+Split on 20 Oct. These run locally like the local phase above, with messages captured. A push afterwards deploys them to QA through the pipeline.
+
+| ID | Plan | Builds | Needs from you first | Status |
+| --- | --- | --- | --- | --- |
+| [S18](S18-episode-forms/brief.md) | C3 | `episode_forms`: answers move from the episode to its HQ form. No visible change; a full regression | Answer the brief's questions | Not started |
+| [S19](S19-procedures/brief.md) | C3 | The trust's procedure list (PRC-01); procedure, planned date and POA date on the episode; the procedure picks the default HQ | Answer the brief's questions | Not started |
+| [S20](S20-statuses/brief.md) | C3 | The transition table, every status (admitted, discharged, cancelled), status events, cancel, re-open, the episode revision; J9b | Answer the brief's questions | Not started |
+| [S21](S21-tasks-worklists/brief.md) | C3 | Episode tasks (TSK-01), worklists on the clinician home (EPI-02), status messages to the patient (EPI-08) | Answer the brief's questions | Not started |
+| [S22](S22-archive/brief.md) | C3 | Archive and un-archive, the daily auto-archive job (EPI-05), a patient closing their account (EPI-09); J9 | Answer the brief's questions | Not started |
 
 **Why this order:** nothing needs AWS until someone outside your laptop has to use the app. Building locally first lets the automatic run go without AWS stops. The cost is that the AWS hosting setup and its near-£0 idle cost are proven later (decided 12 Oct; [decisions.md](../decisions.md)).
