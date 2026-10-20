@@ -1,0 +1,501 @@
+<title>PreOpsis brochure</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650;12..96,750&family=Inter:wght@700&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: four A4 sheets on white. PreOpsis brand teal (docs/brand) for action and the mark,
+   brand ink for text and dark bands, amber reserved for clinical flags. One printed look, no dark theme. */
+:root {
+  --paper: #ffffff;
+  --desk: #e3ecea;
+  --ink: #12302e;
+  --muted: #4a605d;
+  --line: #d4e3e0;
+  --mist: #f2f8f7;
+  --sky: #e6f6f3;
+  --brand: #0f766e;
+  --brand-deep: #134e4a;
+  --teal: #0d9488;
+  --teal-tint: #ccfbf1;
+  --amber: #c97a06;
+  --amber-tint: #fdf0d9;
+  --f-logo: "Inter", "Segoe UI", Helvetica, sans-serif;
+  --f-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --f-body: "Figtree", "Helvetica Neue", Arial, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@page { size: A4; margin: 0; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--desk);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 9.6pt;
+  line-height: 1.45;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+h1, h2, h3 { font-family: var(--f-display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+p { margin: 0; }
+ul { margin: 0; padding: 0; list-style: none; }
+
+.page {
+  width: 210mm;
+  height: 297mm;
+  margin: 10mm auto;
+  padding: 14mm 16mm 12mm;
+  background: var(--paper);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 7mm;
+  box-shadow: 0 1px 3px rgba(18, 48, 46, .12), 0 8px 28px rgba(18, 48, 46, .08);
+}
+/* Sections never shrink: overflow must show up in the build check, not be clipped. */
+.page > * { flex-shrink: 0; }
+@media print {
+  body { background: var(--paper); }
+  .page { margin: 0; box-shadow: none; break-after: page; }
+}
+
+/* Shared bits */
+.label {
+  font-size: 7.4pt; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--brand);
+}
+.h2 { font-size: 21pt; font-weight: 650; line-height: 1.12; max-width: 150mm; }
+.runner {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 7.6pt; color: var(--muted); border-bottom: 0.3mm solid var(--line); padding-bottom: 3mm;
+}
+.brand { display: flex; align-items: center; gap: 2.4mm; }
+.brand svg { width: 7mm; height: 7mm; flex: none; }
+/* Wordmark per docs/brand: bold Inter, "op" in brand teal (white on dark surfaces). */
+.brand b { font-family: var(--f-logo); font-weight: 700; font-size: 13pt; color: var(--ink); letter-spacing: -0.01em; }
+.brand b span { color: var(--brand); }
+.hub .brand b span, .cta .brand b span { color: inherit; }
+.ticks li { position: relative; padding-left: 5mm; }
+.ticks li + li { margin-top: 1.6mm; }
+.ticks li::before {
+  content: ""; position: absolute; left: 0; top: 1.6mm; width: 2.6mm; height: 1.4mm;
+  border-left: .45mm solid var(--brand); border-bottom: .45mm solid var(--brand); transform: rotate(-45deg);
+}
+.mono { font-family: var(--f-mono); font-weight: 500; letter-spacing: -.01em; }
+
+/* ---------- Page 1: cover ---------- */
+.cover .top { display: flex; justify-content: space-between; align-items: center; }
+.cover .top .brand svg { width: 10mm; height: 10mm; }
+.cover .top .brand b { font-size: 20pt; }
+.cover .top .tag { font-size: 8pt; font-weight: 600; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+.hero { display: grid; grid-template-columns: 1fr 76mm; gap: 8mm; align-items: stretch; flex: 1; min-height: 0; }
+.hero-copy { display: flex; flex-direction: column; justify-content: center; gap: 5mm; min-width: 0; }
+.hero-copy h1 { font-size: 33pt; font-weight: 750; line-height: 1.02; letter-spacing: -0.025em; }
+.hero-copy h1 em { font-style: normal; color: var(--brand); }
+.hero-copy .lede { font-size: 11.6pt; line-height: 1.5; color: var(--muted); max-width: 88mm; }
+.stage {
+  position: relative; border-radius: 6mm; background-color: var(--sky);
+  background-image: radial-gradient(circle, rgba(15, 118, 110, .16) .35mm, transparent .4mm);
+  background-size: 5mm 5mm;
+  display: flex; align-items: center; justify-content: center;
+}
+.phone {
+  width: 54mm; height: 108mm; border-radius: 8mm; background: var(--ink); padding: 2mm;
+  box-shadow: 0 6mm 14mm rgba(18, 48, 46, .22);
+}
+.screen {
+  height: 100%; border-radius: 6.2mm; background: var(--paper); overflow: hidden;
+  display: flex; flex-direction: column; padding: 6mm 4mm 4mm; gap: 3mm; font-size: 7.6pt;
+}
+.screen .org { display: flex; align-items: center; gap: 1.6mm; font-weight: 700; font-size: 7pt; color: var(--muted); }
+.screen .org i { width: 3.2mm; height: 3.2mm; border-radius: 1mm; background: var(--brand); display: block; }
+.screen .bar { height: 1.2mm; border-radius: 1mm; background: var(--line); overflow: hidden; }
+.screen .bar span { display: block; width: 33%; height: 100%; background: var(--brand); }
+.screen .step { font-size: 6.6pt; color: var(--muted); font-weight: 600; }
+.screen .q { font-family: var(--f-display); font-weight: 650; font-size: 12pt; line-height: 1.15; }
+.screen .hint { font-size: 6.8pt; color: var(--muted); }
+.screen .opt {
+  border: .35mm solid var(--line); border-radius: 2mm; padding: 2.2mm 2.6mm; font-weight: 600;
+  display: flex; align-items: center; gap: 2mm;
+}
+.screen .opt::before { content: ""; width: 2.6mm; height: 2.6mm; border-radius: 50%; border: .35mm solid var(--line); flex: none; }
+.screen .opt.on { border-color: var(--brand); background: var(--sky); }
+.screen .opt.on::before { border: .9mm solid var(--brand); }
+.screen .btn { margin-top: auto; background: var(--brand); color: #fff; text-align: center; border-radius: 2mm; padding: 2.4mm; font-weight: 700; }
+.screen .saved { text-align: center; font-size: 6.2pt; color: var(--teal); font-weight: 600; }
+.float {
+  position: absolute; background: var(--paper); border-radius: 3mm; padding: 2.6mm 3.2mm;
+  box-shadow: 0 2mm 6mm rgba(18, 48, 46, .14); font-size: 7.2pt; line-height: 1.35;
+}
+.float.sms { top: 9mm; left: -6mm; width: 46mm; }
+.float.sms b { display: block; font-size: 6.6pt; color: var(--muted); margin-bottom: .6mm; }
+.float.status { bottom: 12mm; right: -5mm; display: flex; flex-direction: column; gap: .8mm; border-left: 1.2mm solid var(--teal); }
+.float.status span { font-size: 6.6pt; color: var(--muted); font-weight: 600; }
+.float.status b { font-size: 9pt; color: var(--teal); }
+.outcomes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6mm; padding-top: 5mm; border-top: .3mm solid var(--line); }
+.outcome { display: flex; flex-direction: column; gap: 1.8mm; min-width: 0; }
+.outcome svg { width: 9mm; height: 9mm; }
+.outcome h3 { font-size: 11.6pt; font-weight: 650; line-height: 1.15; }
+.outcome p { color: var(--muted); font-size: 9pt; }
+.band {
+  margin: 0 -16mm -12mm; padding: 6mm 16mm 7mm; background: var(--ink); color: #fff;
+  display: flex; flex-direction: column; gap: 3mm;
+}
+.band h2 { font-size: 12.4pt; font-weight: 650; }
+.band ol { display: flex; margin: 0; padding: 0; list-style: none; gap: 2mm; counter-reset: b; }
+.band li {
+  flex: 1; counter-increment: b; font-size: 8.4pt; font-weight: 600; padding: 2.4mm 3mm;
+  border-radius: 2mm; background: rgba(255, 255, 255, .08); display: flex; gap: 2mm; align-items: baseline;
+}
+.band li::before { content: counter(b); font-family: var(--f-mono); font-size: 7.4pt; color: #5eead4; }
+
+/* ---------- Page 2 ---------- */
+.page.tight { gap: 4mm; }
+.challenges p { font-size: 9.2pt; }
+.challenges { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm 8mm; }
+.challenge { display: grid; grid-template-columns: 7mm 1fr; gap: 3mm; align-items: start; }
+.challenge .n {
+  width: 7mm; height: 7mm; border-radius: 50%; background: var(--amber-tint); color: var(--amber);
+  display: grid; place-items: center; font-weight: 800; font-size: 9pt;
+}
+.challenge h3 { font-size: 10.6pt; font-weight: 650; margin-bottom: .8mm; }
+.challenge p { color: var(--muted); }
+.journey { display: flex; flex-direction: column; position: relative; }
+.journey::before { content: ""; position: absolute; left: 3.6mm; top: 4mm; bottom: 6mm; width: .5mm; background: var(--line); }
+.jstep { display: grid; grid-template-columns: 7.6mm 1fr; gap: 4mm; padding-bottom: 2.8mm; position: relative; }
+.jstep .dot {
+  width: 7.6mm; height: 7.6mm; border-radius: 50%; background: var(--brand); color: #fff; z-index: 1;
+  display: grid; place-items: center; font-family: var(--f-mono); font-size: 8.4pt;
+}
+.jstep.after .dot { background: var(--ink); }
+.jstep h3 { font-size: 11pt; font-weight: 650; margin: 1mm 0 .8mm; }
+.jstep p { color: var(--muted); }
+.asa { display: flex; align-items: stretch; gap: 3mm; margin-top: 2.4mm; flex-wrap: wrap; }
+.asa .scale { display: flex; border-radius: 2mm; overflow: hidden; font-size: 7.6pt; }
+.asa .cell { padding: 1.6mm 2.6mm; display: flex; flex-direction: column; gap: .3mm; }
+.asa .cell b { font-family: var(--f-mono); font-size: 8pt; }
+.asa .lo { background: var(--teal-tint); color: var(--teal); }
+.asa .hi { background: var(--amber-tint); color: var(--amber); }
+.asa .note { align-self: center; font-size: 7.4pt; color: var(--muted); font-style: italic; }
+.callout {
+  margin-top: auto; background: var(--sky); border-radius: 4mm; padding: 4mm 6mm;
+  display: grid; grid-template-columns: 11mm 1fr; gap: 4mm; align-items: center;
+}
+.callout svg { width: 11mm; height: 11mm; }
+.callout h3 { font-size: 12pt; font-weight: 650; margin-bottom: 1mm; }
+.callout p { color: var(--ink); }
+
+/* ---------- Page 3 ---------- */
+.window { border: .35mm solid var(--line); border-radius: 3.5mm; overflow: hidden; box-shadow: 0 2mm 8mm rgba(18, 48, 46, .08); }
+.window .wtop { display: flex; justify-content: space-between; align-items: center; padding: 3mm 4.5mm; background: var(--mist); border-bottom: .35mm solid var(--line); }
+.window .wtop b { font-family: var(--f-display); font-weight: 650; font-size: 10.4pt; }
+.window .wtop span { font-size: 7.6pt; color: var(--muted); }
+.wbody { display: grid; grid-template-columns: 1fr 38mm; }
+.wmain { padding: 3mm 4.5mm 3.5mm; min-width: 0; }
+.tabs { display: flex; gap: 4mm; font-size: 7.6pt; font-weight: 600; color: var(--muted); border-bottom: .35mm solid var(--line); margin-bottom: 1.4mm; }
+.tabs span { padding-bottom: 1.6mm; }
+.tabs .on { color: var(--brand); box-shadow: inset 0 -.6mm 0 var(--brand); }
+table.v { width: 100%; border-collapse: collapse; font-size: 7.8pt; }
+table.v th { text-align: left; font-size: 6.6pt; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; padding: 1.4mm 2mm 1.4mm 0; }
+table.v td { padding: 1.8mm 2mm 1.8mm 0; border-top: .3mm solid var(--line); vertical-align: top; }
+table.v td:first-child { font-weight: 600; width: 27%; }
+table.v td.p { color: var(--muted); width: 22%; }
+table.v td.val { width: 24%; }
+.chip { display: inline-block; font-family: var(--f-mono); font-size: 6.6pt; padding: .7mm 1.8mm; border-radius: 1.2mm; background: var(--mist); color: var(--ink); white-space: nowrap; }
+.chip.amber { background: var(--amber-tint); color: var(--amber); }
+.chip.blue { background: var(--sky); color: var(--brand-deep); }
+.wside { border-left: .35mm solid var(--line); padding: 4mm; display: flex; flex-direction: column; gap: 2mm; background: var(--paper); }
+.wside .l { font-size: 7pt; color: var(--muted); font-weight: 600; }
+.wside .asa-big { font-family: var(--f-display); font-weight: 750; font-size: 20pt; line-height: 1; color: var(--teal); }
+.wside .flags { font-size: 7pt; color: var(--amber); font-weight: 600; }
+.wside .btn { margin-top: auto; background: var(--brand); color: #fff; border-radius: 1.8mm; padding: 2mm; text-align: center; font-size: 7.6pt; font-weight: 700; }
+.grid4 { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm 9mm; }
+.grid4 .ticks { font-size: 9.2pt; }
+.grid4 .ticks li + li { margin-top: 1.2mm; }
+.block { display: flex; flex-direction: column; gap: 2.4mm; min-width: 0; }
+.block h3 { font-size: 12pt; font-weight: 650; padding-bottom: 1.8mm; border-bottom: .5mm solid var(--ink); }
+.block.after h3 { border-color: var(--teal); }
+.block.after .ticks li::before { border-color: var(--teal); }
+.spark { margin-top: 1mm; }
+.spark .cap { font-size: 6.8pt; color: var(--muted); font-weight: 600; }
+.spark svg { width: 100%; max-width: 66mm; height: auto; display: block; }
+
+/* ---------- Page 4 ---------- */
+.flow { display: grid; grid-template-columns: 40mm 1fr 52mm; align-items: center; gap: 3mm; padding: 5mm; background: var(--mist); border-radius: 4mm; }
+.ehr { display: flex; flex-direction: column; gap: 1.8mm; }
+.ehr .l { font-size: 7pt; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.ehr div.sys { background: var(--paper); border: .35mm solid var(--line); border-radius: 2mm; padding: 2mm 3mm; font-weight: 700; font-size: 9.4pt; }
+.wires { display: flex; flex-direction: column; gap: 3mm; align-items: stretch; font-size: 7.4pt; color: var(--muted); }
+.wire { display: flex; flex-direction: column; gap: .8mm; }
+.wire svg { width: 100%; height: 4mm; display: block; }
+.wire.back { text-align: right; }
+.std { align-self: center; font-family: var(--f-mono); font-size: 8pt; color: var(--brand-deep); background: var(--paper); border: .35mm solid var(--line); padding: 1mm 3mm; border-radius: 10mm; }
+.hub { background: var(--ink); color: #fff; border-radius: 3mm; padding: 4mm; display: flex; flex-direction: column; gap: 1.6mm; }
+.hub .brand b { color: #fff; font-size: 13pt; }
+.hub p { font-size: 7.8pt; color: #b4d3ce; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 9mm; }
+.cols h3 { font-size: 12pt; font-weight: 650; padding-bottom: 1.8mm; border-bottom: .5mm solid var(--ink); margin-bottom: 2.6mm; }
+.steps4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; }
+.steps4 h3 { grid-column: 1 / -1; font-size: 12pt; font-weight: 650; }
+.st { border-top: .9mm solid var(--brand); padding-top: 2.4mm; display: flex; flex-direction: column; gap: 1mm; min-width: 0; }
+.st b { font-size: 9.6pt; display: flex; gap: 1.6mm; align-items: baseline; }
+.st b i { font-style: normal; font-family: var(--f-mono); font-size: 7.6pt; color: var(--brand); }
+.st p { font-size: 8.4pt; color: var(--muted); }
+.cta {
+  margin: auto -16mm -12mm; padding: 8mm 16mm 6mm; background: var(--ink); color: #fff;
+  display: flex; flex-direction: column; gap: 2.4mm;
+}
+.cta h2 { font-size: 20pt; font-weight: 750; }
+.cta p { color: #c3dcd8; font-size: 10.4pt; max-width: 130mm; }
+.cta .foot { display: flex; justify-content: space-between; align-items: center; margin-top: 4mm; padding-top: 3mm; border-top: .3mm solid rgba(255, 255, 255, .16); font-size: 7.4pt; color: #9cbdb8; }
+.cta .foot .brand b { color: #fff; font-size: 10pt; }
+.cta .foot .brand svg { width: 5mm; height: 5mm; }
+
+/* Screen reading at phone width: sheets reflow instead of shrinking. */
+@media screen and (max-width: 820px) {
+  .page {
+    width: auto; height: auto; margin: 0 0 12px; gap: 22px; box-shadow: none;
+    padding-block: 24px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .hero, .outcomes, .challenges, .grid4, .cols, .flow, .wbody { grid-template-columns: 1fr; }
+  .steps4 { grid-template-columns: 1fr 1fr; }
+  .stage { padding: 40px 0; }
+  .float.sms { left: 8px; }
+  .float.status { right: 8px; }
+  .band, .cta { margin-left: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); margin-right: calc(-1 * max(16px, env(safe-area-inset-right, 0px))); margin-bottom: -24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .band ol { flex-direction: column; }
+  .wside { border-left: 0; border-top: .35mm solid var(--line); }
+  .window { overflow-x: auto; }
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="mark" viewBox="0 0 32 32">
+    <rect width="32" height="32" rx="8" fill="#0f766e"/>
+    <path d="M4.5 16C8.5 10.2 12 8.5 16 8.5S23.5 10.2 27.5 16C23.5 21.8 20 23.5 16 23.5S8.5 21.8 4.5 16Z" fill="#fff"/>
+    <path d="M11.2 16.2l3.3 3.3 6.4-6.6" fill="none" stroke="#0f766e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="mark-inv" viewBox="0 0 32 32">
+    <rect width="32" height="32" rx="8" fill="#fff"/>
+    <path d="M4.5 16C8.5 10.2 12 8.5 16 8.5S23.5 10.2 27.5 16C23.5 21.8 20 23.5 16 23.5S8.5 21.8 4.5 16Z" fill="#0f766e"/>
+    <path d="M11.2 16.2l3.3 3.3 6.4-6.6" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+</svg>
+
+<!-- ============ PAGE 1 · COVER ============ -->
+<section class="page cover" lang="nl">
+  <div class="top">
+    <div class="brand"><svg><use href="#mark"/></svg><b>Pre<span>Op</span>sis</b></div>
+    <span class="tag">Voor ziekenhuizen</span>
+  </div>
+
+  <div class="hero">
+    <div class="hero-copy">
+      <span class="label">Preoperatieve screening en herstel</span>
+      <h1>Preoperatieve screening die thuis begint.</h1>
+      <p class="lede">Patiënten vullen hun gezondheidsvragenlijst in op hun eigen telefoon. Uw POS-team ziet direct wie klaar is voor de operatie en wie extra aandacht nodig heeft. Na de operatie volgt u het herstel van dezelfde patiënt, in hetzelfde systeem.</p>
+    </div>
+    <div class="stage" aria-hidden="true">
+      <div class="phone">
+        <div class="screen">
+          <div class="org"><i></i>Uw ziekenhuis</div>
+          <div class="bar"><span></span></div>
+          <div class="step">Vraag 4 van 12 · Medicijnen</div>
+          <div class="q">Gebruikt u bloedverdunners?</div>
+          <div class="hint">Bijvoorbeeld acenocoumarol, apixaban of ascal.</div>
+          <div class="opt on">Ja</div>
+          <div class="opt">Nee</div>
+          <div class="opt">Weet ik niet</div>
+          <div class="btn">Volgende</div>
+          <div class="saved">✓ Automatisch opgeslagen</div>
+        </div>
+      </div>
+      <div class="float sms"><b>Sms · Uw ziekenhuis</b>Uw gezondheidsvragenlijst voor de operatie staat klaar. Tik op de link om te beginnen.</div>
+      <div class="float status"><span>ASA II · voorstel</span><b>Klaar voor opname</b></div>
+    </div>
+  </div>
+
+  <div class="outcomes">
+    <div class="outcome">
+      <svg viewBox="0 0 36 36" fill="none" stroke="#0f766e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17 18 7l12 10"/><path d="M9 15v14h18V15"/><path d="M15 29v-7h6v7"/></svg>
+      <h3>Minder bezoeken aan de POS-poli</h3>
+      <p>Patiënten met een laag risico worden digitaal gescreend. Een gesprek op de poli is er voor wie het nodig heeft.</p>
+    </div>
+    <div class="outcome">
+      <svg viewBox="0 0 36 36" fill="none" stroke="#0f766e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="8" width="24" height="22" rx="3"/><path d="M6 14h24M12 5v5M24 5v5"/><path d="m13 22 3.5 3.5L23 19"/></svg>
+      <h3>Op tijd compleet voor de OK</h3>
+      <p>Herinneringen per sms en e-mail en een werklijst van wie niet reageert. Zo valt geen operatie stil door een ontbrekende screening.</p>
+    </div>
+    <div class="outcome">
+      <svg viewBox="0 0 36 36" fill="none" stroke="#0f766e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="14" cy="11" r="5"/><path d="M5 30c0-5 4-9 9-9s9 4 9 9"/><path d="M26 12v8M22 16h8"/></svg>
+      <h3>Tijd voor de juiste patiënt</h3>
+      <p>Uw team valideert in plaats van overtypen en besteedt zijn tijd aan patiënten met een verhoogd risico.</p>
+    </div>
+  </div>
+
+  <div class="band">
+    <h2>Van verwijzing tot herstel in één systeem</h2>
+    <ol><li>Vragenlijst thuis</li><li>Automatische triage</li><li>Validatie door het POS-team</li><li>Herstel en PROMs</li></ol>
+  </div>
+</section>
+
+<!-- ============ PAGE 2 · CHALLENGE + HOW IT WORKS ============ -->
+<section class="page tight" lang="nl">
+  <div class="runner"><div class="brand"><svg><use href="#mark"/></svg><b>Pre<span>Op</span>sis</b></div><span>2</span></div>
+
+  <div style="display:flex;flex-direction:column;gap:3mm">
+    <span class="label">De uitdaging</span>
+    <h2 class="h2">Een onvolledige screening kost een plek op het OK-programma.</h2>
+  </div>
+  <div class="challenges">
+    <div class="challenge"><span class="n">!</span><div><h3>Krapte op de POS-poli</h3><p>Minder verpleegkundigen en anesthesiologen voor evenveel of meer operaties.</p></div></div>
+    <div class="challenge"><span class="n">!</span><div><h3>Wachtlijsten</h3><p>Elke OK-plek telt. Een screening die op het laatste moment niet compleet is, betekent een verschoven of lege plek.</p></div></div>
+    <div class="challenge"><span class="n">!</span><div><h3>Overtypen en nabellen</h3><p>Antwoorden worden overgenomen in het EPD en ontbrekende gegevens worden telefonisch opgevraagd.</p></div></div>
+    <div class="challenge"><span class="n">!</span><div><h3>Taal en leesbaarheid</h3><p>Niet iedere patiënt leest gemakkelijk Nederlands. Een vragenlijst moet voor iedereen te begrijpen zijn.</p></div></div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:3mm;padding-top:2mm">
+    <span class="label">Zo werkt het</span>
+    <h2 class="h2">Eén route, van aanvraag tot herstel</h2>
+  </div>
+  <div class="journey">
+    <div class="jstep"><span class="dot">1</span><div><h3>Uitnodiging vanuit het EPD</h3><p>Zodra de operatie is aangevraagd, krijgt de patiënt een sms en e-mail met een persoonlijke link.</p></div></div>
+    <div class="jstep"><span class="dot">2</span><div><h3>Vragenlijst thuis</h3><p>Op de eigen telefoon, zonder app of wachtwoord: link openen, geboortedatum invullen en beginnen. Antwoorden worden automatisch opgeslagen en herinneringen volgen vanzelf.</p></div></div>
+    <div class="jstep"><span class="dot">3</span><div><h3>Automatische triage</h3><p>PreOpsis stelt op basis van de antwoorden een ASA-klasse en risicoscores voor. Patiënten met een laag risico en zonder vlaggen gaan door naar ‘Klaar voor opname’. Anderen krijgen een telefonisch of fysiek consult. Elke uitkomst is zichtbaar en terug te draaien.</p>
+      <div class="asa">
+        <div class="scale">
+          <div class="cell lo"><b>ASA I–II</b>Digitaal afgerond</div>
+          <div class="cell hi"><b>ASA III–IV</b>Consult</div>
+        </div>
+        <span class="note">Regels in te stellen per ziekenhuis</span>
+      </div>
+    </div></div>
+    <div class="jstep"><span class="dot">4</span><div><h3>Validatie door het POS-team</h3><p>De verpleegkundige of anesthesioloog beoordeelt elk onderdeel, past aan waar nodig en ziet altijd wat de patiënt zelf heeft geantwoord.</p></div></div>
+    <div class="jstep"><span class="dot">5</span><div><h3>POS-verslag terug in het EPD</h3><p>Het verslag met gecodeerde bevindingen (SNOMED CT, ICD-10) staat klaar voor de anesthesioloog en het OK-team.</p></div></div>
+    <div class="jstep after"><span class="dot">6</span><div><h3>Herstel thuis</h3><p>Na ontslag vult de patiënt herstelvragen en PROMs in op dezelfde telefoon. Uw team ziet wie achterblijft.</p></div></div>
+  </div>
+
+  <div class="callout">
+    <svg viewBox="0 0 44 44" fill="none" stroke="#0f766e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="12" width="14" height="20" rx="3"/><rect x="26" y="12" width="14" height="20" rx="3"/><path d="M18 18h8M23 15l3 3-3 3"/><path d="M26 26h-8M21 23l-3 3 3 3"/></svg>
+    <div><h3>PreOpsis werkt naast uw EPD</h3><p>Het EPD blijft de bron. PreOpsis neemt de patiënt en de aanvraag over, verzorgt het contact met de patiënt en zet het resultaat terug.</p></div>
+  </div>
+</section>
+
+<!-- ============ PAGE 3 · WHAT YOU GET ============ -->
+<section class="page" lang="nl">
+  <div class="runner"><div class="brand"><svg><use href="#mark"/></svg><b>Pre<span>Op</span>sis</b></div><span>3</span></div>
+
+  <div style="display:flex;flex-direction:column;gap:3mm">
+    <span class="label">Wat u krijgt</span>
+    <h2 class="h2">Gebouwd voor het hele POS-proces</h2>
+  </div>
+
+  <div class="window" aria-hidden="true">
+    <div class="wtop"><b>POS-verslag · Validatie</b><span>J. Jansen (voorbeeld) · Totale knieprothese</span></div>
+    <div class="wbody">
+      <div class="wmain">
+        <div class="tabs"><span class="on">Gevalideerde samenvatting</span><span>Antwoorden patiënt</span></div>
+        <table class="v">
+          <tr><th>Vraag</th><th>Patiënt</th><th>Gevalideerd</th><th></th></tr>
+          <tr><td>Bloedverdunners</td><td class="p">Ja, acenocoumarol</td><td class="val">Ja, acenocoumarol 1 mg</td><td><span class="chip amber">Antistolling · ICD-10 Z92.1</span></td></tr>
+          <tr><td>Snurken en ademstops</td><td class="p">Ja</td><td class="val">Ja</td><td><span class="chip blue">STOP-Bang 3 · intermediair risico</span></td></tr>
+          <tr><td>Lengte en gewicht</td><td class="p">1,78 m · 92 kg</td><td class="val">1,78 m · 92 kg</td><td><span class="chip">BMI 29,0</span></td></tr>
+          <tr><td>Eerdere narcose</td><td class="p">Misselijk na de operatie</td><td class="val">PONV na algehele anesthesie</td><td><span class="chip blue">Apfel 2</span></td></tr>
+        </table>
+      </div>
+      <div class="wside">
+        <span class="l">ASA-voorstel</span>
+        <span class="asa-big">ASA&nbsp;II</span>
+        <span class="flags">1 oranje vlag · 4 bevindingen</span>
+        <span class="btn">Validatie afronden</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid4">
+    <div class="block"><h3>POS-team en anesthesioloog</h3><ul class="ticks"><li>Validatie per onderdeel, met de antwoorden van de patiënt ernaast</li><li>Voorgestelde ASA-klasse en risicoscores zoals STOP-Bang en Apfel</li><li>Bevindingen met codes, notities en oranje en rode vlaggen</li><li>Werklijsten: klaar voor beoordeling, reageert niet, consult nodig</li><li>POS-verslag op het scherm en als pdf</li></ul></div>
+    <div class="block"><h3>De patiënt</h3><ul class="ticks"><li>Werkt op elke telefoon, zonder app of wachtwoord</li><li>Eén vraag per scherm, automatisch opgeslagen, later verder gaan</li><li>Herinneringen per sms en e-mail op dag 2 en dag 5</li><li>In het Nederlands, Engels, Turks, Arabisch, Pools en andere talen</li><li>Bij een volgende operatie zijn eerdere antwoorden al ingevuld</li></ul></div>
+    <div class="block"><h3>Uw vragenlijsten, uw regels</h3><ul class="ticks"><li>Vragen, logica en scores zelf beheren, zonder te programmeren</li><li>Testcases controleren na elke wijziging of de uitkomsten nog kloppen</li><li>Gepubliceerde versies liggen vast; een nieuwe versie maakt u met één klik</li><li>Voor de hele organisatie of per locatie</li><li>Vertalingen naast elkaar, met ontbrekende teksten gemarkeerd</li></ul></div>
+    <div class="block after"><h3>Na de operatie</h3><ul class="ticks"><li>Herstelcheck thuis, bijvoorbeeld na 7 dagen en 6 weken</li><li>PROMs met nulmeting: EQ-5D-5L, Oxford Hip en Knee Score, HOOS-PS en KOOS-PS</li><li>Meetmomenten afgestemd op de LROI</li><li>Een taak voor het team als een score daalt</li><li>Rapportage per ingreep</li></ul>
+      <div class="spark">
+        <span class="cap">Voorbeeld · Oxford Knee Score (0–48)</span>
+        <svg viewBox="0 0 200 74" role="img" aria-label="Voorbeeld · Oxford Knee Score (0–48)">
+          <line x1="16" y1="58" x2="192" y2="58" stroke="#d4e3e0" stroke-width="1"/>
+          <line x1="16" y1="14.7" x2="192" y2="14.7" stroke="#d4e3e0" stroke-width="1" stroke-dasharray="3 3"/>
+          <text x="12" y="61" font-size="8" fill="#4a605d" text-anchor="end" font-family="IBM Plex Mono, monospace">0</text>
+          <text x="12" y="17.7" font-size="8" fill="#4a605d" text-anchor="end" font-family="IBM Plex Mono, monospace">48</text>
+          <polyline points="30,40 110,23.7 180,18.2" fill="none" stroke="#0d9488" stroke-width="2.4" stroke-linejoin="round"/>
+          <circle cx="30" cy="40" r="3.4" fill="#ffffff" stroke="#0d9488" stroke-width="2"/>
+          <circle cx="110" cy="23.7" r="3.4" fill="#0d9488"/>
+          <circle cx="180" cy="18.2" r="3.4" fill="#0d9488"/>
+          <text x="30" y="32" font-size="8.5" fill="#12302e" text-anchor="middle" font-family="IBM Plex Mono, monospace">18</text>
+          <text x="110" y="15.5" font-size="8.5" fill="#12302e" text-anchor="middle" font-family="IBM Plex Mono, monospace">34</text>
+          <text x="180" y="10" font-size="8.5" fill="#12302e" text-anchor="middle" font-family="IBM Plex Mono, monospace">40</text>
+          <text x="30" y="70" font-size="8" fill="#4a605d" text-anchor="middle" font-family="Figtree, sans-serif">Voor</text>
+          <text x="110" y="70" font-size="8" fill="#4a605d" text-anchor="middle" font-family="Figtree, sans-serif">6 mnd</text>
+          <text x="180" y="70" font-size="8" fill="#4a605d" text-anchor="middle" font-family="Figtree, sans-serif">12 mnd</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PAGE 4 · INTEGRATION, SECURITY, NEXT STEP ============ -->
+<section class="page" lang="nl">
+  <div class="runner"><div class="brand"><svg><use href="#mark"/></svg><b>Pre<span>Op</span>sis</b></div><span>4</span></div>
+
+  <div style="display:flex;flex-direction:column;gap:3mm">
+    <span class="label">Integratie en veiligheid</span>
+    <h2 class="h2">Past in uw ziekenhuis</h2>
+  </div>
+
+  <div class="flow" aria-hidden="true">
+    <div class="ehr">
+      <span class="l">Uw EPD</span>
+      <div class="sys">HiX</div>
+      <div class="sys">Epic</div>
+      <div class="sys">Nexus</div>
+    </div>
+    <div class="wires">
+      <div class="wire">
+        <span>Patiënt en operatie-aanvraag</span>
+        <svg viewBox="0 0 100 8" preserveAspectRatio="none"><line x1="0" y1="4" x2="96" y2="4" stroke="#0f766e" stroke-width="1.4" vector-effect="non-scaling-stroke"/><path d="M93 1 99 4 93 7Z" fill="#0f766e"/></svg>
+      </div>
+      <span class="std">FHIR · HL7</span>
+      <div class="wire back">
+        <svg viewBox="0 0 100 8" preserveAspectRatio="none"><line x1="4" y1="4" x2="100" y2="4" stroke="#0d9488" stroke-width="1.4" vector-effect="non-scaling-stroke"/><path d="M7 1 1 4 7 7Z" fill="#0d9488"/></svg>
+        <span>POS-verslag, ASA en uitkomsten</span>
+      </div>
+    </div>
+    <div class="hub">
+      <div class="brand"><svg><use href="#mark-inv"/></svg><b>Pre<span>Op</span>sis</b></div>
+      <p>Patiënt · POS-team · Herstel</p>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div><h3>Koppeling met uw EPD</h3><ul class="ticks"><li>Koppeling met HiX, Epic en Nexus via FHIR en HL7, ingericht per ziekenhuis</li><li>Patiënten herkend op BSN</li><li>Bevindingen gecodeerd in SNOMED CT en ICD-10, direct bruikbaar in het EPD</li><li>Eén omgeving voor al uw locaties, met rechten per locatie</li></ul></div>
+    <div><h3>Privacy en beveiliging</h3><ul class="ticks"><li>Gegevens van elk ziekenhuis strikt gescheiden</li><li>Elke inzage en wijziging vastgelegd in een auditlog, te exporteren</li><li>Tweestapsverificatie voor alle medewerkers</li><li>Versleuteld verkeer en versleutelde opslag</li><li>Gegevens opgeslagen binnen de EU</li><li>Verwerkersovereenkomst volgens de AVG</li></ul></div>
+  </div>
+
+  <div class="steps4">
+    <h3>Zo starten we</h3>
+    <div class="st"><b><i>1</i>Kennismaking</b><p>We brengen samen uw huidige POS-proces in kaart.</p></div>
+    <div class="st"><b><i>2</i>Inrichting</b><p>Uw vragenlijsten, talen, regels en de koppeling met uw EPD.</p></div>
+    <div class="st"><b><i>3</i>Start met één specialisme</b><p>Bijvoorbeeld orthopedie, met een vast aanspreekpunt.</p></div>
+    <div class="st"><b><i>4</i>Uitbreiden</b><p>Naar andere specialismen en locaties, in uw tempo.</p></div>
+  </div>
+
+  <div class="cta">
+    <h2>Plan een kennismaking</h2>
+    <p>Laat ons zien hoe uw POS-proces nu loopt. Wij laten zien hoe PreOpsis daarin past.</p>
+    <div class="foot">
+      <div class="brand"><svg><use href="#mark-inv"/></svg><b>Pre<span>Op</span>sis</b></div>
+      <span>Functionaliteit en planning in overleg.</span>
+    </div>
+  </div>
+</section>

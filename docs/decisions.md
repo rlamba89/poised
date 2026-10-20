@@ -30,6 +30,39 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 20 Oct 2026: a sales brochure for Dutch hospitals (Rahul, 19–20 Oct)
+
+- ~~**The name is written PreOpsis** (capital O), and the wordmark shows **Op** in teal (Rahul, 20 Oct).~~ *Superseded 20 Oct (Rahul): it's **Preopsis**, one word with a capital P only, as in the app, `docs/brand/` and the rename entry below. **The brochures and the seller sheet still say PreOpsis and need changing back.***
+
+- **The Netherlands is a target market.** Rahul asked for a brochure a salesperson can use to sense-check Preopsis with Dutch hospitals. It covers pre-operative screening and post-op recovery, and is written around the hospital's concerns.
+- **Where it is: `sales/nl/`.** It holds:
+  - the Dutch brochure (primary, 4 A4 pages) and an English copy;
+  - an internal 2-page seller sheet;
+  - To rebuild: `e2e/.venv/bin/python sales/nl/build.py`. It renders the PDFs with Playwright's Chromium, writes a PNG of every page to `sales/nl/preview/`, and fails if text overflows a page.
+  - The copy for both languages is in `sales/nl/src/copy_text.py`, and one template is `src/brochure.template.html`.
+  - The brochure uses the brand in [brand/README.md](brand/README.md).
+  - All illustrations are HTML/SVG. Rahul offered AI image generation, but the only image tool connected was a Figma account in someone else's name with paid credits, so none was used.
+- **How the brochure presents features (agreed 19 Oct):**
+  - **the full offer in the present tense, with no "roadmap" or status tags;**
+  - EHR integration worded as *set up per hospital* ("ingericht per ziekenhuis");
+  - one footer line: "Functionaliteit en planning in overleg" (functionality and timing by arrangement).
+  - **Reason:** Rahul wanted it to read as a complete product. **The limit agreed with it:** no claims of certification (NEN 7510, ISO 27001, CE/MDR), no customer names and no statistics presented as our own results. Making those claims would be false and a risk in a tender.
+  - **The true status of each feature is in the seller sheet** ("What exists today": Live / Planned / Not in plan), so the seller never promises a date or a certificate.
+- **⚠ The brochure offers more than the plans.** These features have no plan:
+  - HiX, Epic and Nexus integration via FHIR/HL7, which contradicts **A-10** (EHR integration out of scope, saas-requirements §0);
+  - BSN as the identifier;
+  - hosting in the EU;
+  - Dutch and other languages for patients;
+  - DigiD, if hospitals ask for it.
+  - **Rahul to decide** whether to change A-10 and add plans for these, or to word the brochure more cautiously. Until then, the seller sheet marks them "Not in plan".
+- **What desk research found about the Dutch market (20 Oct; sources in the seller sheet):**
+  - **EHR shares:** ChipSoft HiX has about 71% of hospitals, Epic 14% and Nexus 11% (M&I/Partners, 1 Jan 2024).
+  - **HiX already runs questionnaire-based POS triage** with a provisional ASA. At Diakonessenhuis, 55% of screenings are digital.
+  - **Dräger E-POS** is in use at WZA and Noordwest.
+  - **PROMs:** the LROI's set includes EQ-5D-5L and HOOS-PS/KOOS-PS.
+  - **Medical device risk:** under EU MDR Rule 11, suggested ASA and auto-triage are likely **Class IIa**, which needs a notified body. That matters for plan C6 in the Netherlands.
+  - **The pitch is "alongside your EHR"**, not a replacement for it.
+
 ### 20 Oct 2026: the product is renamed Preopsis, with a logo and a teal brand (Rahul)
 
 - **Name: Preopsis** (was Poised). **Reason:** Rahul didn't like "Poised". "Preopsis" is "pre-op" plus *-opsis* ("view", as in Synopsis, the incumbent UK pre-op product's name), so it reads as a pre-op product to clinicians and to a patient getting a text.
@@ -761,6 +794,12 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
 - **The `dev` branch** (on `origin` too; commit `557be2c`, 7 Oct): *settled 12 Oct: ignored entirely* (§2). Delete it later if wanted.
 - **Build order: decided 12 Oct.** Local first (S04, S05, S08–S11, S13–S16), then the AWS phase (S06, S07, S12, S17), as in §2.
 - **No domain chosen yet.** `<domain>` in the docs is a placeholder.
+- **The Dutch brochure (`sales/nl/`, 20 Oct):**
+  - **Rahul to decide** A-10 versus the brochure's EHR integration offer, and the other unplanned features (§2, 20 Oct).
+  - It needs a native Dutch speaker to proofread it.
+  - It has no contact details (Rahul removed the placeholder line, 20 Oct). The salesperson hands them over in person.
+  - The brochures and the seller sheet say "PreOpsis"; change them to "Preopsis" (Rahul, 20 Oct).
+  - Check the seller sheet's status table before each meeting.
 - **Research files:** `research_notes/` and `reports/` at the repo root are untracked. Either keep them (e.g. move them to `docs/research/` and fix the links in saas-requirements §0 and §13 and in this file) or delete them.
 - **What the patient link returns:** *settled 12 Oct* (§2, S14). S14 builds it.
 - **The proposed parts of A-20** (above, 7–8 Oct): the national ID, the per-hospital time zone and the locale were agreed 12 Oct. `uk.<domain>`, one AWS account per environment and the support tooling still need Rahul's yes (the AWS phase).

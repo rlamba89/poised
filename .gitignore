@@ -16,3 +16,6 @@ docs/sessions/run-state.md
 
 # QA test users' sign-ins (S12, make e2e-users): passwords and authenticator secrets
 .qa-users.json
+
+# Python bytecode
+__pycache__/
