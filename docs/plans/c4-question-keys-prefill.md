@@ -46,8 +46,17 @@
   - clinician-only and fresh questions are never pre-filled;
   - publishing is blocked when a keyed question's option values have changed;
   - prefill metadata is stored.
-- **End-to-end:** **J9**. A patient with an earlier episode opens a new HQ, sees the pre-filled answers, chooses "Everything is still correct", answers the rest and submits. The clinician sees the pre-filled markers.
+- **End-to-end:** **J16** (J9 is C3's lifecycle, and C5–C9's plans claim J10–J15). A patient with an earlier episode opens a new HQ, sees the pre-filled answers, chooses "Everything is still correct", answers the rest and submits. The clinician sees the pre-filled markers.
 
 ## Status
 
-Not started.
+**Split into sessions on 21 Oct 2026; not started.** The briefs are in [docs/sessions/](../sessions/README.md):
+- **S23:** question keys in the editor: unique across an HQ, option values locked at publish (enforced in Go), "Always ask fresh", the "Pre-fills from N other HQs" label;
+- **S24:** the question library (platform and trust) and "Same as…", with `keys.Compatible`; PNL-06 changed;
+- **S25:** pre-fill from the same trust, and the patient's opening card and markers (PRE-01–03, PRE-06); J16's patient half;
+- **S26:** the clinician's markers (PRE-04) and pre-fill from another trust with the patient's agreement; J16 completed, J16b.
+
+Proposed in the briefs, for Rahul to confirm when each session starts:
+- **The prefill map also stores the copied value** (`{key: {fromForm, answeredAt, value}}`), so "changed by patient" needs no second read. The plan says `fromForm`; [saas-requirements.md](../saas-requirements.md) §6 said `fromEpisode`, which predates `episode_forms` (S18).
+- **The keys are found by walking the trust's published chapters' JSON**, with no `question_keys` table, until that's slow.
+- **`keys.Compatible` is Go only**; the editor asks a Go route instead of keeping a TypeScript copy.

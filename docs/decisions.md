@@ -30,6 +30,20 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 21 Oct 2026: plan C4 split into sessions S23–S26 (Claude, for Rahul to confirm)
+
+- **Four sessions, in this order:**
+  1. S23, question keys in the editor;
+  2. S24, the question library and "Same as…";
+  3. S25, pre-fill from the same trust, with the patient's screens;
+  4. S26, the clinician's markers and pre-fill from another trust.
+
+  **Why:** keys must be trustworthy (unique in an HQ, option values locked) before anything copies answers by them. Pre-fill needs shared keys to show, which the library brings. Other trusts come last, because they're the only part that reads another trust's patient data. ([sessions/README.md](sessions/README.md))
+- **C4's journeys are J16 and J16b**, because J9 is C3's lifecycle and C5–C9's plans already name J10–J15.
+- **`store.ForOrg` isn't used:** it was dropped with A-19 on 8 Oct. S26's cross-trust read queries one trust at a time by `org_id`, only after both trusts' settings and the patient's agreement pass.
+- **`crossTrustPrefill` already exists** (S10, trust-only, default off), so S26 adds only the patient's agreement.
+- **Each brief's "Ask Rahul first" items are open.** They're asked when the session starts, or up front by `/run-sessions`. The ones that shape the design: the option lock allows adding but not removing values (S23); "Same as…" copies the chosen question's options (S24); pre-fill runs once per Question Set on first load and stores the copied value (S25); the patient agrees once per other trust, and staff filling in on the patient's behalf get same-trust answers only (S26).
+
 ### 21 Oct 2026: S22, archive, auto-archive and closing a patient account (builder, automatic run; test report 1: 21 of 23, both failures fixed; test report 2: the plan's T-18 corrected, a Settings decimal fixed; tested 21 Oct, test report 3 all passed; verified 21 Oct, [verify.md](sessions/S22-archive/verify.md); plan C3 done)
 
 - **Archive and un-archive are a super clinician's** (answers 1), from any status; un-archive needs a reason and goes back to **exactly** `archived_from`. Routes `POST …/archive` {reason?, revision} and `…/unarchive` {reason, revision}, audited, through S20's transition table and status history. ([build notes](sessions/S22-archive/build-notes.md))
