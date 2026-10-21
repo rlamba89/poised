@@ -72,6 +72,7 @@ def test_j7c_returning_patient_signs_in_by_email_and_sees_both_trusts(page: Page
     expect(cards.nth(1)).to_contain_text("Hospital A1")
     expect(cards.nth(1)).to_contain_text("To do")
     expect(cards.nth(1)).to_contain_text("For Sam J7c")  # whose questionnaire it is (S15 answers 6)
+    expect(cards.nth(1)).to_contain_text("Procedure: Knee arthroscopy")  # its name from the trust's list (S19)
     # Nothing they didn't type: no date of birth or full email.
     expect(patient.get_by_text(email)).to_have_count(0)
     expect(patient.get_by_text(year)).to_have_count(0)

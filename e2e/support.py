@@ -312,16 +312,20 @@ class Api:
 
     # Episodes
 
-    def episode(self, hq: dict, last_name: str, hospital_number: str = "E2E", **patient) -> dict:
+    def episode(self, hq: dict, last_name: str, hospital_number: str = "E2E", procedure: str = "Knee arthroscopy", **patient) -> dict:
         """An episode on the published HQ for a made-up patient, typed as on the New episode page
         (S13): Sam <last_name>, born 1980-05-17, with a new made-up email (so their invite can be
         found, S14), unless `patient` says otherwise (e.g. nationalId=…, mobile=…). The trust's
-        record is linked to silently if it matches one."""
+        record is linked to silently if it matches one. The procedure is the seeded one of that
+        name in the trust's list (S19), or none if the list doesn't offer it here."""
         email = f"e2e.{secrets.token_hex(5)}@e2e.example"
         details = {"firstName": "Sam", "lastName": last_name, "dateOfBirth": "1980-05-17", "sex": "female", "email": email, **patient}
+        hospital = self.base.split("/h/")[1]
+        offered = self.call("GET", self.o(f"/procedures?hospital={hospital}"))
+        procedure_id = next((p["id"] for p in offered if p["name"] == procedure), "")
         eid = self.call("POST", self.h("/episodes"), {
             "patient": details, "versionId": hq["versionId"], "hospitalNumber": hospital_number,
-            "procedure": "Knee replacement", "anaesthetic": "General", "consultant": "Dr Example",
+            "procedureId": procedure_id, "anaesthetic": "General", "consultant": "Dr Example",
         })["id"]
         e = self.call("GET", self.h(f"/episodes/{eid}"))["episode"]
         return {"id": eid, "name": f"{e['firstName']} {e['lastName']}", "hq": hq, "patientId": e["patientId"],

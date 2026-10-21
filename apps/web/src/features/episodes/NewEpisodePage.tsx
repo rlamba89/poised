@@ -7,19 +7,23 @@
 // (or the name, date of birth and a contact) agree, and shows nothing about it. It answers 409
 // for an NHS number whose date of birth or surname differ ("mismatch"), and for a possible
 // duplicate, which staff can override with "Create anyway". Made-up patients only (NFR-03).
-import { useEffect, useState } from "react";
+// The procedure comes from the trust's list (S19): picking one chooses its default HQ (or the
+// hospital's), which staff can still change before Create. The page opens with the hospital's.
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import {
   Alert, Anchor, Button, Card, Group, Select, SimpleGrid, Stack, Table, Text, TextInput, Title,
 } from "@mantine/core";
 import { IconArrowLeft, IconSearch } from "@tabler/icons-react";
 import { api } from "@/lib/api";
+import { useHospital } from "@/lib/auth";
+import { hqForProcedure, initialHQ, procedureLabel, type OfferedProcedure, type PublishedHQ } from "@/features/procedures/procedures";
 import { nationalIdLabel } from "@/lib/config";
 import { formatDate } from "@/lib/format";
+import { partlyTypedDate } from "./dates";
 import { conflictOf, hospitalNumberOnChoose, latestHospitalNumber, searchQuery, type Conflict } from "./newEpisode";
 import { patientName, SEXES, type FoundPatient, type PatientRecord } from "./types";
 
-type Published = { versionId: string; versionNo: number; name: string };
 type SearchResult = { patients: FoundPatient[]; more: boolean };
 
 const EMPTY_PATIENT = { firstName: "", lastName: "", dateOfBirth: "", sex: "", nationalId: "", mobile: "", email: "" };
@@ -30,15 +34,32 @@ export function NewEpisodePage({ base, patientId }: { base: string; patientId: s
   const [, setParams] = useSearchParams();
   const [chosen, setChosen] = useState<FoundPatient | null>(null);
   const [patient, setPatient] = useState(EMPTY_PATIENT);
-  const [hqs, setHqs] = useState<Published[]>([]);
-  const [episode, setEpisode] = useState({ hospitalNumber: "", versionId: "", procedure: "", anaesthetic: "", consultant: "" });
+  const { trust, hospital } = useHospital();
+  const [hqs, setHqs] = useState<PublishedHQ[]>([]);
+  const [procedures, setProcedures] = useState<OfferedProcedure[]>([]);
+  const [episode, setEpisode] = useState({
+    hospitalNumber: "", versionId: "", procedureId: "", plannedDate: "", poaDate: "", anaesthetic: "", consultant: "",
+  });
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [saving, setSaving] = useState(false);
+  const plannedRef = useRef<HTMLInputElement>(null);
+  const poaRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    api<Published[]>(`${base}/published-hqs`).then(setHqs).catch((e: Error) => setError(e.message));
-  }, [base]);
+    api<PublishedHQ[]>(`${base}/published-hqs`)
+      .then((list) => {
+        setHqs(list);
+        setEpisode((e) => (e.versionId ? e : { ...e, versionId: initialHQ(list) }));
+      })
+      .catch((e: Error) => setError(e.message));
+    // What a new episode here can be given: the trust's procedures and this hospital's own, not retired.
+    api<OfferedProcedure[]>(`/o/${trust.id}/procedures?hospital=${hospital.id}`).then(setProcedures).catch((e: Error) => setError(e.message));
+  }, [base, trust.id, hospital.id]);
+  const pickProcedure = (id: string | null) => {
+    const p = procedures.find((x) => x.id === id);
+    setEpisode({ ...episode, procedureId: id ?? "", versionId: hqForProcedure(episode.versionId, p, hqs) });
+  };
 
   // From a patient's page: that patient is already chosen.
   useEffect(() => {
@@ -53,9 +74,17 @@ export function NewEpisodePage({ base, patientId }: { base: string; patientId: s
   }, [base, patientId]);
 
   const create = async (createAnyway = false) => {
-    setSaving(true);
     setError("");
     setConflict(null);
+    const partly = partlyTypedDate([
+      { label: "planned procedure date", input: plannedRef.current },
+      { label: "POA appointment date", input: poaRef.current },
+    ]);
+    if (partly) {
+      setError(partly); // a half-typed date reads as none: never drop it silently (S19 F1)
+      return;
+    }
+    setSaving(true);
     const body = chosen ? { patientId: chosen.id, ...episode } : { patient, createAnyway, ...episode };
     try {
       const res = await api<{ id: string }>(`${base}/episodes`, { method: "POST", body: JSON.stringify(body) });
@@ -154,6 +183,16 @@ export function NewEpisodePage({ base, patientId }: { base: string; patientId: s
             onChange={(e) => setEpisode({ ...episode, hospitalNumber: e.currentTarget.value })}
           />
           <Select
+            label="Procedure"
+            description="From the trust's list. Picking one chooses its default HQ."
+            data={procedures.map((p) => ({ value: p.id, label: procedureLabel(p) }))}
+            value={episode.procedureId || null}
+            onChange={pickProcedure}
+            searchable
+            clearable
+            nothingFoundMessage="No procedure of that name"
+          />
+          <Select
             label="Health questionnaire"
             description="Only published versions can be given to patients."
             required
@@ -162,7 +201,10 @@ export function NewEpisodePage({ base, patientId }: { base: string; patientId: s
             onChange={(v) => setEpisode({ ...episode, versionId: v ?? "" })}
             nothingFoundMessage="Nothing published yet"
           />
-          <TextInput label="Procedure" value={episode.procedure} onChange={(e) => setEpisode({ ...episode, procedure: e.currentTarget.value })} />
+          <TextInput label="Planned procedure date" type="date" ref={plannedRef} value={episode.plannedDate}
+            onChange={(e) => setEpisode({ ...episode, plannedDate: e.currentTarget.value })} />
+          <TextInput label="POA appointment date" type="date" ref={poaRef} value={episode.poaDate}
+            onChange={(e) => setEpisode({ ...episode, poaDate: e.currentTarget.value })} />
           <Select
             label="Anaesthetic"
             data={ANAESTHETICS}

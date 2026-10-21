@@ -32,8 +32,10 @@ WHERE p.id = sqlc.arg(id) AND p.org_id = sqlc.arg(org_id)
 
 -- name: ListPatientEpisodesHere :many
 -- A patient's episodes at this hospital only, newest first: never another hospital's.
-SELECT e.id, e.status, e.procedure, e.hospital_number, e.created_at, q.name AS questionnaire_name, v.version_no
+SELECT e.id, e.status, coalesce(pr.name, '')::text AS procedure, e.planned_date, e.hospital_number, e.created_at,
+       q.name AS questionnaire_name, v.version_no
 FROM episodes e
+LEFT JOIN procedures pr ON pr.id = e.procedure_id
 JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
 JOIN questionnaire_versions v ON v.id = f.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id

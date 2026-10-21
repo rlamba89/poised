@@ -38,6 +38,7 @@ export function switchPath(pathname: string, t: Trust, h: Hospital): string {
   if (pathname.endsWith("/staff") && canManageStaff(t)) return `${base}/staff`;
   if (pathname.endsWith("/settings") && canManageSettings(t)) return `${base}/settings`;
   if (pathname.endsWith("/audit") && canSeeAudit(t)) return `${base}/audit`;
+  if (pathname.endsWith("/procedures") && canManageProcedures(t)) return `${base}/procedures`;
   if (/\/(episodes|patients)/.test(pathname)) return `${base}/episodes`; // a patient's page is under Episodes
   if (/\/(questionnaires|chapters)/.test(pathname)) return `${base}/questionnaires`;
   return homePath(t, h);
@@ -115,6 +116,12 @@ export const canManageSettings = canManageStaff;
 
 /** Whether the user reads the trust's audit log (S11): only admins of the whole trust. The API checks the same. */
 export const canSeeAudit = canManageStaff;
+
+/**
+ * Whether the user manages the trust's procedure list (S19): super clinicians and admins of the
+ * whole trust (S19 answers 1), as for the trust's questionnaires. The API checks the same.
+ */
+export const canManageProcedures = (trust: Trust) => atLeast(trust.role, "super_clinician");
 
 export function useHospital(): Here {
   const here = useContext(HospitalContext);

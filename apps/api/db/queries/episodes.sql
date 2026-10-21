@@ -3,7 +3,7 @@
 
 -- name: ListPublishedVersions :many
 -- The HQs an episode can be given: each questionnaire's published version.
-SELECT v.id AS version_id, v.version_no, q.name
+SELECT v.id AS version_id, v.version_no, q.name, q.id AS questionnaire_id
 FROM questionnaire_versions v
 JOIN questionnaires q ON q.id = v.questionnaire_id
 WHERE q.org_id = sqlc.arg(org_id) AND (q.hospital_id IS NULL OR q.hospital_id = sqlc.arg(hospital_id)::uuid)
@@ -14,9 +14,10 @@ ORDER BY q.name;
 -- The episode and its HQ form on the version, in one statement (S18). Creates nothing (no row)
 -- unless the patient is the trust's and the version is published and one this hospital uses.
 WITH e AS (
-    INSERT INTO episodes (org_id, hospital_id, patient_id, procedure, anaesthetic, consultant, hospital_number, created_by)
-    SELECT sqlc.arg(org_id), sqlc.arg(hospital_id), p.id, sqlc.arg(procedure), sqlc.arg(anaesthetic),
-           sqlc.arg(consultant), sqlc.arg(hospital_number), sqlc.arg(created_by)
+    INSERT INTO episodes (org_id, hospital_id, patient_id, procedure_id, planned_date, poa_date, anaesthetic, consultant,
+                          hospital_number, created_by)
+    SELECT sqlc.arg(org_id), sqlc.arg(hospital_id), p.id, sqlc.arg(procedure_id), sqlc.arg(planned_date), sqlc.arg(poa_date),
+           sqlc.arg(anaesthetic), sqlc.arg(consultant), sqlc.arg(hospital_number), sqlc.arg(created_by)
     FROM patients p, questionnaire_versions v
     JOIN questionnaires q ON q.id = v.questionnaire_id
     WHERE p.id = sqlc.arg(patient_id) AND p.org_id = sqlc.arg(org_id)
@@ -32,12 +33,14 @@ SELECT id FROM e;
 -- name: ListEpisodes :many
 -- One trust's episodes: at every hospital when all_hospitals (a trust-wide member's "All
 -- hospitals", STF-03), else only at the hospitals listed.
-SELECT e.id, e.hospital_id, h.name AS hospital_name, e.status, e.procedure, e.created_at,
+SELECT e.id, e.hospital_id, h.name AS hospital_name, e.status, coalesce(pr.name, '')::text AS procedure,
+       e.planned_date, e.poa_date, e.created_at,
        e.patient_id, p.first_name, p.last_name, e.hospital_number,
        q.name AS questionnaire_name, v.version_no
 FROM episodes e
 JOIN hospitals h ON h.id = e.hospital_id
 JOIN patients p ON p.id = e.patient_id
+LEFT JOIN procedures pr ON pr.id = e.procedure_id
 JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
 JOIN questionnaire_versions v ON v.id = f.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
@@ -49,7 +52,8 @@ ORDER BY e.created_at DESC;
 -- name: GetEpisode :one
 -- With its HQ form (S18): the version, the patient's submit and who sent it keep their names
 -- from before forms, so the episode's JSON is unchanged; hq_form_id holds the answers.
-SELECT e.id, e.status, e.procedure, e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
+SELECT e.id, e.status, e.procedure_id, coalesce(pr.name, '')::text AS procedure, e.planned_date, e.poa_date,
+       e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
        f.submitted_at AS patient_submitted_at, e.review_completed_at, e.created_at, f.version_id, e.hospital_number,
        e.invited_at, e.reminders_sent, e.not_responding_at, -- the follow-up (S16)
        reviewer.name AS review_completed_by_name, submitter.name AS patient_submitted_by_name,
@@ -61,6 +65,7 @@ JOIN patients p ON p.id = e.patient_id
 JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
 JOIN questionnaire_versions v ON v.id = f.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
+LEFT JOIN procedures pr ON pr.id = e.procedure_id
 LEFT JOIN users reviewer ON reviewer.id = e.review_completed_by
 LEFT JOIN users submitter ON submitter.id = f.submitted_by
 WHERE e.id = $1 AND e.hospital_id = $2;
@@ -69,7 +74,8 @@ WHERE e.id = $1 AND e.hospital_id = $2;
 -- Changes nothing if the status is no longer `loaded_status`, the one the caller read: the
 -- workflow (the patient's submit, completing the review) may have moved it on since.
 UPDATE episodes
-SET status = sqlc.arg(status), procedure = sqlc.arg(procedure), anaesthetic = sqlc.arg(anaesthetic),
+SET status = sqlc.arg(status), procedure_id = sqlc.arg(procedure_id), planned_date = sqlc.arg(planned_date),
+    poa_date = sqlc.arg(poa_date), anaesthetic = sqlc.arg(anaesthetic),
     consultant = sqlc.arg(consultant), nurse_asa = sqlc.arg(nurse_asa), anaesthetist_asa = sqlc.arg(anaesthetist_asa)
 WHERE id = sqlc.arg(id) AND status = sqlc.arg(loaded_status);
 

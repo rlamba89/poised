@@ -5,7 +5,11 @@ export type EpisodeStatus =
 export type EpisodeRow = {
   id: string;
   status: EpisodeStatus;
+  /** The procedure's name from the trust's list (S19), or "" for none. */
   procedure: string;
+  /** The planned procedure date and the POA appointment date (EPI-01): YYYY-MM-DD, or null. */
+  plannedDate: string | null;
+  poaDate: string | null;
   createdAt: string;
   firstName: string;
   lastName: string;
@@ -15,6 +19,8 @@ export type EpisodeRow = {
 };
 
 export type Episode = EpisodeRow & {
+  /** The procedure in the trust's list, or null; it may since have been retired. */
+  procedureId: string | null;
   anaesthetic: string;
   consultant: string;
   nurseAsa: number | null;

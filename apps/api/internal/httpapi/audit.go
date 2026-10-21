@@ -58,6 +58,8 @@ var auditActions = map[string]string{
 	"home.view":          "Patient opened their home", // S15: a row per hospital it listed
 	"account.join":       "Patient's record joined their sign-in account",
 	"contact.update":     "Patient changed their contact details",
+	"procedure.create":   "Added a procedure", // S19: the trust's procedure list
+	"procedure.update":   "Changed a procedure",
 	"audit.view":         "Viewed the audit log",
 	"audit.export":       "Exported the audit log",
 }

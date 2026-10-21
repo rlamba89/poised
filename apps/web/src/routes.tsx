@@ -103,6 +103,12 @@ export const routes: RouteObject[] = [
             lazy: async () => ({ Component: (await import("@/pages/hospital/Audit")).Audit }),
           },
           {
+            // The trust's procedure list (S19): whole-trust super clinicians and admins.
+            id: "procedures",
+            path: `${h}/procedures`,
+            lazy: async () => ({ Component: (await import("@/pages/hospital/Procedures")).Procedures }),
+          },
+          {
             // Staff filling in the patient's HQ for them (PAT-09, S14).
             id: "patient-form",
             path: `${h}/episodes/:eid/patient-form`,

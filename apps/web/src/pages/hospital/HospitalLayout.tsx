@@ -3,7 +3,7 @@ import { Alert, Anchor, AppShell, Badge, Button, Group, Select, Text, Title } fr
 import { api } from "@/lib/api";
 import { Logo } from "@/features/brand/Logo";
 import { signOut as signOutStaff } from "@/lib/signin";
-import { AuthProvider, HospitalContext, canManageSettings, canManageStaff, canSeeAudit, findHospital, hospitalBase, roleLabel, switchPath, useMe, type Here } from "@/lib/auth";
+import { AuthProvider, HospitalContext, canManageProcedures, canManageSettings, canManageStaff, canSeeAudit, findHospital, hospitalBase, roleLabel, switchPath, useMe, type Here } from "@/lib/auth";
 
 function NoAccess() {
   return (
@@ -66,6 +66,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             />
             {here && nav(`${here.base}/questionnaires`, "Questionnaires")}
             {here && nav(`${here.base}/episodes`, "Episodes", [`${here.base}/patients`])}
+            {here && canManageProcedures(here.trust) && nav(`${here.base}/procedures`, "Procedures")}
             {here && canManageStaff(here.trust) && nav(`${here.base}/staff`, "Staff")}
             {here && canManageSettings(here.trust) && nav(`${here.base}/settings`, "Settings")}
             {here && canSeeAudit(here.trust) && nav(`${here.base}/audit`, "Audit")}

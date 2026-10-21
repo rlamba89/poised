@@ -5,6 +5,7 @@ package httpapi_test
 import (
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +31,9 @@ type clinic struct {
 	otherClin *apitest.Client // Bob, a clinician in B
 	hq        apitest.HQ      // trust A's published Workflow HQ: 2 patient Question Sets, then 1 clinician set
 	ep        apitest.Episode // on hq at A, waiting for the patient
+	// Trust A's procedure list (S19): hip and knee for every hospital, cataract for A only,
+	// appendix retired; B's own.
+	hip, knee, cataract, appendix, theirProc uuid.UUID
 }
 
 func newClinic(t *testing.T) *clinic {
@@ -43,12 +47,24 @@ func newClinic(t *testing.T) *clinic {
 	w.otherClin = w.anon.LoginAs(t, w.bob)
 	w.hq = w.fx.PublishedHQ(t, w.a, w.alex, "workflow.json")
 	w.ep = w.fx.Episode(t, w.hq, w.cara)
+	proc := func(org uuid.UUID, name string, hospital *uuid.UUID, retired bool) uuid.UUID {
+		var id uuid.UUID
+		if err := w.db.QueryRow(t.Context(), `INSERT INTO procedures (org_id, hospital_id, name, retired) VALUES ($1, $2, $3, $4) RETURNING id`,
+			org, hospital, name, retired).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	w.hip, w.knee = proc(w.a.Org, "Hip replacement", nil, false), proc(w.a.Org, "Knee scope", nil, false)
+	w.cataract, w.appendix = proc(w.a.Org, "Cataract", &w.a.ID, false), proc(w.a.Org, "Appendix", nil, true)
+	w.theirProc = proc(w.b.Org, "Theirs", nil, false)
 	return w
 }
 
 // episodeRow is the part of an episodes row the tests check.
 type episodeRow struct {
-	Status, Procedure, Anaesthetic, Consultant string
+	Status, Procedure, Anaesthetic, Consultant string // Procedure: its name in the trust's list, or ""
+	Planned, Poa                               string // YYYY-MM-DD, or ""
 	NurseAsa, AnaesthetistAsa                  *int
 	Submitted, ReviewCompleted                 *time.Time
 	ReviewCompletedBy                          *uuid.UUID
@@ -57,10 +73,11 @@ type episodeRow struct {
 func readEpisode(t *testing.T, w *clinic, id uuid.UUID) episodeRow {
 	t.Helper()
 	var e episodeRow
-	err := w.db.QueryRow(t.Context(), `SELECT e.status, e.procedure, e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
-		f.submitted_at, e.review_completed_at, e.review_completed_by
-		FROM episodes e JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq' WHERE e.id = $1`, id).Scan(
-		&e.Status, &e.Procedure, &e.Anaesthetic, &e.Consultant, &e.NurseAsa, &e.AnaesthetistAsa,
+	err := w.db.QueryRow(t.Context(), `SELECT e.status, coalesce(p.name, ''), coalesce(e.planned_date::text, ''), coalesce(e.poa_date::text, ''),
+		e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa, f.submitted_at, e.review_completed_at, e.review_completed_by
+		FROM episodes e JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq' LEFT JOIN procedures p ON p.id = e.procedure_id
+		WHERE e.id = $1`, id).Scan(
+		&e.Status, &e.Procedure, &e.Planned, &e.Poa, &e.Anaesthetic, &e.Consultant, &e.NurseAsa, &e.AnaesthetistAsa,
 		&e.Submitted, &e.ReviewCompleted, &e.ReviewCompletedBy)
 	if err != nil {
 		t.Fatalf("episode %s: %v", id, err)
@@ -150,10 +167,44 @@ func TestListPublishedHQs(t *testing.T) {
 		return out
 	}
 
-	t.Run("happy path: published versions only, not drafts", func(t *testing.T) {
+	t.Run("happy path: published versions only, not drafts", func(t *testing.T) { // before the next case adds one
 		got := versions(t, w.clinician.Do("GET", at(w.a, "/published-hqs"), nil))
 		if len(got) != 1 || got[0] != w.hq.VersionID {
 			t.Errorf("versions = %v, want only %s (not the draft %s)", got, w.hq.VersionID, draft.VersionID)
+		}
+	})
+	t.Run("happy path: the hospital's default HQ is marked, its own value over the trust's (S19)", func(t *testing.T) {
+		defaults := func(t *testing.T) []uuid.UUID {
+			r := w.clinician.Do("GET", at(w.a, "/published-hqs"), nil)
+			r.Want(t, http.StatusOK)
+			var got []struct {
+				VersionID, QuestionnaireID uuid.UUID
+				IsDefault                  bool
+			}
+			r.Decode(t, &got)
+			var out []uuid.UUID
+			for _, v := range got {
+				if v.IsDefault {
+					out = append(out, v.QuestionnaireID)
+				}
+			}
+			return out
+		}
+		if got := defaults(t); len(got) != 0 {
+			t.Errorf("defaults = %v, want none", got)
+		}
+		other := w.fx.PublishedHQ(t, w.a, w.alex, "basic.json")
+		if _, err := w.db.Exec(t.Context(), `UPDATE orgs SET settings = jsonb_build_object('defaultHq', $2::text) WHERE id = $1`, w.a.Org, w.hq.ID.String()); err != nil {
+			t.Fatal(err)
+		}
+		if got := defaults(t); len(got) != 1 || got[0] != w.hq.ID {
+			t.Errorf("defaults = %v, want the trust's %s", got, w.hq.ID)
+		}
+		if _, err := w.db.Exec(t.Context(), `UPDATE hospitals SET settings = jsonb_build_object('defaultHq', $2::text) WHERE id = $1`, w.a.ID, other.ID.String()); err != nil {
+			t.Fatal(err)
+		}
+		if got := defaults(t); len(got) != 1 || got[0] != other.ID {
+			t.Errorf("defaults = %v, want the hospital's own %s", got, other.ID)
 		}
 	})
 	t.Run("no sign-in", func(t *testing.T) {
@@ -198,6 +249,24 @@ func TestListEpisodes(t *testing.T) {
 			t.Errorf("episodes = %v, want [%s %s]", got, submitted.ID, w.ep.ID)
 		}
 	})
+	t.Run("happy path: each with its procedure's name and dates (S19)", func(t *testing.T) {
+		if _, err := w.db.Exec(t.Context(), `UPDATE episodes SET procedure_id = $2, planned_date = '2026-11-03', poa_date = '2026-10-28'
+			WHERE id = $1`, submitted.ID, w.appendix); err != nil {
+			t.Fatal(err)
+		}
+		r := w.clinician.Do("GET", at(w.a, "/episodes"), nil)
+		r.Want(t, http.StatusOK)
+		var got []struct {
+			ID                   uuid.UUID
+			Procedure            string
+			PlannedDate, PoaDate *string
+		}
+		r.Decode(t, &got)
+		if len(got) != 2 || got[0].Procedure != "Appendix" || got[0].PlannedDate == nil || *got[0].PlannedDate != "2026-11-03" ||
+			got[0].PoaDate == nil || *got[0].PoaDate != "2026-10-28" || got[1].Procedure != "" || got[1].PlannedDate != nil {
+			t.Errorf("episodes = %+v, want the retired procedure's name and the dates on the first, none on the second", got)
+		}
+	})
 	t.Run("happy path: filtered by status", func(t *testing.T) {
 		if got := list(t, w.clinician, at(w.a, "/episodes?status=ready_for_review")); len(got) != 1 || got[0] != submitted.ID {
 			t.Errorf("episodes = %v, want only %s", got, submitted.ID)
@@ -229,8 +298,8 @@ func TestCreateEpisode(t *testing.T) {
 		return c.Do("POST", at(h, "/episodes"), body)
 	}
 	body := func(patient, version uuid.UUID) map[string]any {
-		return map[string]any{"patientId": patient, "versionId": version,
-			"procedure": " Hip replacement ", "anaesthetic": " General ", "consultant": " Dr Grey "}
+		return map[string]any{"patientId": patient, "versionId": version, "procedureId": w.hip,
+			"plannedDate": "2026-11-03", "poaDate": " 2026-10-28 ", "anaesthetic": " General ", "consultant": " Dr Grey "}
 	}
 	good := body(w.ep.PatientID, w.hq.VersionID)
 	episodes := func(t *testing.T) int { return count(t, w.db, "SELECT count(*) FROM episodes") }
@@ -260,7 +329,34 @@ func TestCreateEpisode(t *testing.T) {
 		refused(t, create(w.clinician, w.a, body(w.ep.PatientID, draft.VersionID)), http.StatusBadRequest)
 		refused(t, create(w.clinician, w.a, body(w.ep.PatientID, retired.VersionID)), http.StatusBadRequest)
 	})
+	t.Run("a procedure the list doesn't offer here is refused (S19)", func(t *testing.T) {
+		for name, id := range map[string]any{
+			"retired": w.appendix, "another hospital's own": w.cataract, "another trust's": w.theirProc,
+			"unknown": uuid.New(), "not an id": "hip",
+		} {
+			b := body(w.ep.PatientID, w.hq.VersionID)
+			b["procedureId"] = id
+			h, c := w.a, w.clinician
+			if name == "another hospital's own" {
+				h, c = w.a2, w.site2
+				b["patientId"] = nil
+				b["patient"] = map[string]any{"firstName": "Al", "lastName": "Other", "dateOfBirth": "1980-01-01", "sex": "male", "mobile": "07700 900111"}
+			}
+			r := create(c, h, b)
+			refused(t, r, http.StatusBadRequest)
+			if !strings.Contains(r.Message(), "procedure") {
+				t.Errorf("%s: message = %q", name, r.Message())
+			}
+		}
+	})
 	t.Run("invalid input", func(t *testing.T) {
+		for _, dates := range []map[string]string{{"plannedDate": "03/11/2026"}, {"poaDate": "2026-13-01"}} {
+			b := body(w.ep.PatientID, w.hq.VersionID)
+			for k, v := range dates {
+				b[k] = v
+			}
+			refused(t, create(w.clinician, w.a, b), http.StatusBadRequest)
+		}
 		refused(t, create(w.clinician, w.a, body(uuid.New(), w.hq.VersionID)), http.StatusBadRequest)
 		refused(t, create(w.clinician, w.a, map[string]any{"versionId": w.hq.VersionID}), http.StatusBadRequest)
 		refused(t, create(w.clinician, w.a, `{"patientId": "abc"}`), http.StatusBadRequest)
@@ -275,7 +371,8 @@ func TestCreateEpisode(t *testing.T) {
 		var got struct{ ID uuid.UUID }
 		r.Decode(t, &got)
 		e := readEpisode(t, w, got.ID)
-		if e.Status != "hq_not_complete" || e.Procedure != "Hip replacement" || e.Anaesthetic != "General" || e.Consultant != "Dr Grey" {
+		if e.Status != "hq_not_complete" || e.Procedure != "Hip replacement" || e.Planned != "2026-11-03" || e.Poa != "2026-10-28" ||
+			e.Anaesthetic != "General" || e.Consultant != "Dr Grey" {
 			t.Errorf("episode = %+v", e)
 		}
 		ev := readEvents(t, w, got.ID)
@@ -289,6 +386,25 @@ func TestCreateEpisode(t *testing.T) {
 		if n := count(t, w.db, `SELECT count(*) FROM episode_forms WHERE episode_id = $1 AND kind = 'hq' AND version_id = $2
 			AND status = 'open' AND submitted_at IS NULL AND due_at IS NULL AND closes_at IS NULL`, got.ID, w.hq.VersionID); n != 1 {
 			t.Error("the episode's form isn't its open HQ on the chosen version")
+		}
+	})
+	t.Run("happy path: no procedure or dates; one of this hospital's own", func(t *testing.T) {
+		b := body(w.ep.PatientID, w.hq.VersionID)
+		delete(b, "procedureId")
+		b["plannedDate"], b["poaDate"] = "", nil
+		r := create(w.clinician, w.a, b)
+		r.Want(t, http.StatusCreated)
+		var got struct{ ID uuid.UUID }
+		r.Decode(t, &got)
+		if e := readEpisode(t, w, got.ID); e.Procedure != "" || e.Planned != "" || e.Poa != "" {
+			t.Errorf("episode = %+v, want no procedure or dates", e)
+		}
+		b["procedureId"] = w.cataract
+		r = create(w.clinician, w.a, b)
+		r.Want(t, http.StatusCreated)
+		r.Decode(t, &got)
+		if e := readEpisode(t, w, got.ID); e.Procedure != "Cataract" {
+			t.Errorf("episode = %+v, want A's own Cataract", e)
 		}
 	})
 	t.Run("every episode has its one HQ form, and the refusals made none", func(t *testing.T) {
@@ -327,6 +443,23 @@ func TestGetEpisode(t *testing.T) {
 		}
 		if len(got.Events) != 1 || got.Events[0].Text != "Called the patient" || got.Events[0].UserName != w.cara.Name {
 			t.Errorf("events = %+v, want Cara's comment", got.Events)
+		}
+	})
+	t.Run("happy path: the procedure, its id and the dates (S19)", func(t *testing.T) {
+		if _, err := w.db.Exec(t.Context(), `UPDATE episodes SET procedure_id = $2, poa_date = '2026-10-28' WHERE id = $1`, w.ep.ID, w.hip); err != nil {
+			t.Fatal(err)
+		}
+		var got struct {
+			Episode struct {
+				ProcedureID          *uuid.UUID
+				Procedure            string
+				PlannedDate, PoaDate *string
+			}
+		}
+		get(w.clinician, w.a).Decode(t, &got)
+		e := got.Episode
+		if e.ProcedureID == nil || *e.ProcedureID != w.hip || e.Procedure != "Hip replacement" || e.PlannedDate != nil || e.PoaDate == nil || *e.PoaDate != "2026-10-28" {
+			t.Errorf("episode = %+v", e)
 		}
 	})
 	t.Run("the HQ's version and submit time come from its form, under the names they had before forms (S18)", func(t *testing.T) {
@@ -390,11 +523,13 @@ func TestUpdateEpisode(t *testing.T) {
 		for _, bad := range []any{
 			// A null text field crashed the handler (S01 code review): now a 400.
 			`{"status": null}`,
-			`{"procedure": null}`,
 			`{"anaesthetic": null}`,
 			`{"consultant": null}`,
 			map[string]int{"nurseAsa": 7},
 			map[string]int{"anaesthetistAsa": -1},
+			map[string]string{"procedureId": "hip"},
+			map[string]string{"plannedDate": "tomorrow"},
+			map[string]string{"poaDate": "2026-02-30"},
 			`{"status":`,
 		} {
 			refused(t, patch(w.clinician, w.a, reviewed, bad), http.StatusBadRequest)
@@ -416,10 +551,10 @@ func TestUpdateEpisode(t *testing.T) {
 	}
 
 	t.Run("happy path: status, details and ASA grades, each change with an event", func(t *testing.T) {
-		patch(w.clinician, w.a, reviewed, map[string]any{"status": "poa_complete", "procedure": " Knee scope ",
+		patch(w.clinician, w.a, reviewed, map[string]any{"status": "poa_complete",
 			"consultant": " Dr Who ", "nurseAsa": 2, "anaesthetistAsa": 3}).Want(t, http.StatusNoContent)
 		e := readEpisode(t, w, reviewed.ID)
-		if e.Status != "poa_complete" || e.Procedure != "Knee scope" || e.Consultant != "Dr Who" || e.Anaesthetic != before.Anaesthetic ||
+		if e.Status != "poa_complete" || e.Consultant != "Dr Who" || e.Anaesthetic != before.Anaesthetic ||
 			e.NurseAsa == nil || *e.NurseAsa != 2 || e.AnaesthetistAsa == nil || *e.AnaesthetistAsa != 3 {
 			t.Errorf("episode = %+v", e)
 		}
@@ -434,14 +569,61 @@ func TestUpdateEpisode(t *testing.T) {
 			}
 		}
 	})
-	t.Run("happy path: details only, before the review", func(t *testing.T) {
-		patch(w.clinician, w.a, w.ep, map[string]string{"procedure": "Hip"}).Want(t, http.StatusNoContent)
-		if e := readEpisode(t, w, w.ep.ID); e.Status != "hq_not_complete" || e.Procedure != "Hip" {
-			t.Errorf("episode = %+v, want the procedure changed and the status kept", e)
+	t.Run("happy path: the procedure and its dates, before the review, each change with an event (S19)", func(t *testing.T) {
+		patch(w.clinician, w.a, w.ep, map[string]string{"procedureId": w.hip.String(), "plannedDate": "2026-11-03",
+			"poaDate": "2026-10-28"}).Want(t, http.StatusNoContent)
+		if e := readEpisode(t, w, w.ep.ID); e.Status != "hq_not_complete" || e.Procedure != "Hip replacement" ||
+			e.Planned != "2026-11-03" || e.Poa != "2026-10-28" {
+			t.Errorf("episode = %+v, want the procedure and dates set and the status kept", e)
 		}
-		if ev := readEvents(t, w, w.ep.ID); len(ev) != 0 {
-			t.Errorf("events = %+v, want none", ev)
+		setStatus(t, w, w.ep, "ready_for_review") // the patient has sent it: still before the review is complete
+		patch(w.clinician, w.a, w.ep, map[string]any{"procedureId": w.knee, "plannedDate": nil, "poaDate": "2026-10-29"}).Want(t, http.StatusNoContent)
+		if e := readEpisode(t, w, w.ep.ID); e.Procedure != "Knee scope" || e.Planned != "" || e.Poa != "2026-10-29" {
+			t.Errorf("episode = %+v", e)
 		}
+		patch(w.clinician, w.a, w.ep, map[string]any{"procedureId": ""}).Want(t, http.StatusNoContent)
+		want := []string{"Procedure set to Hip replacement", "Planned procedure date set to 2026-11-03", "POA appointment date set to 2026-10-28",
+			"Procedure set to Knee scope", "Planned procedure date cleared", "POA appointment date set to 2026-10-29", "Procedure cleared"}
+		var got []string
+		for _, ev := range readEvents(t, w, w.ep.ID) {
+			got = append(got, ev.Text)
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("events = %q, want %q", got, want)
+		}
+		setStatus(t, w, w.ep, "hq_not_complete")
+	})
+	t.Run("a retired procedure stays on the episode, but can't be newly chosen; nor another hospital's", func(t *testing.T) {
+		e := w.fx.Episode(t, w.hq, w.cara)
+		if _, err := w.db.Exec(t.Context(), `UPDATE episodes SET procedure_id = $2 WHERE id = $1`, e.ID, w.appendix); err != nil {
+			t.Fatal(err)
+		}
+		patch(w.clinician, w.a, e, map[string]any{"consultant": "Dr Grey", "procedureId": w.appendix, "poaDate": "2026-10-30"}).Want(t, http.StatusNoContent)
+		if got := readEpisode(t, w, e.ID); got.Procedure != "Appendix" || got.Poa != "2026-10-30" {
+			t.Errorf("episode = %+v, want the retired procedure kept", got)
+		}
+		other := w.fx.Episode(t, w.hq, w.cara)
+		refused(t, patch(w.clinician, w.a, other, map[string]any{"procedureId": w.appendix}), http.StatusBadRequest)
+		refused(t, patch(w.clinician, w.a, other, map[string]any{"procedureId": w.theirProc}), http.StatusBadRequest)
+		atA2 := w.fx.EpisodeAt(t, w.hq, w.a2, w.cara)
+		refused(t, patch(w.site2, w.a2, atA2, map[string]any{"procedureId": w.cataract}), http.StatusBadRequest)
+		if got := readEpisode(t, w, other.ID); got.Procedure != "" {
+			t.Errorf("episode = %+v, want no procedure", got)
+		}
+	})
+	t.Run("once the review is complete, the procedure and its dates can't change (409); the rest can", func(t *testing.T) {
+		for _, change := range []map[string]any{{"procedureId": w.hip}, {"plannedDate": "2026-12-01"}, {"poaDate": "2026-12-01"}} {
+			r := patch(w.clinician, w.a, reviewed, change)
+			refused(t, r, http.StatusConflict)
+			if !strings.Contains(r.Message(), "review is complete") {
+				t.Errorf("message = %q", r.Message())
+			}
+		}
+		if e := readEpisode(t, w, reviewed.ID); e.Procedure != "" || e.Planned != "" || e.Poa != "" {
+			t.Errorf("episode = %+v, want no procedure or dates", e)
+		}
+		// Sending them unchanged is no change.
+		patch(w.clinician, w.a, reviewed, map[string]any{"procedureId": "", "plannedDate": "", "anaesthetic": "Spinal"}).Want(t, http.StatusNoContent)
 	})
 	t.Run("happy path: no change, no event; 0 clears a grade", func(t *testing.T) {
 		patch(w.clinician, w.a, reviewed, map[string]any{"status": "poa_complete", "nurseAsa": 0, "anaesthetistAsa": 3}).Want(t, http.StatusNoContent)
@@ -473,7 +655,7 @@ func TestUpdateEpisodeKeepsAStatusThatJustChanged(t *testing.T) {
 			e := w.fx.Episode(t, w.hq, w.cara)
 			setStatus(t, w, e, race.from)
 			r := meanwhile(t, w.db, race.sql, []any{e.ID}, func() *apitest.Resp {
-				return w.clinician.Do("PATCH", epPath(w.a, e, ""), map[string]any{"procedure": "Knee scope", "nurseAsa": 2})
+				return w.clinician.Do("PATCH", epPath(w.a, e, ""), map[string]any{"procedureId": w.knee, "nurseAsa": 2})
 			})
 			refused(t, r, http.StatusConflict)
 			if !strings.Contains(r.Message(), "changed since you opened it") {

@@ -62,7 +62,6 @@ type Episode struct {
 	HospitalID        uuid.UUID          `json:"hospitalId"`
 	PatientID         uuid.UUID          `json:"patientId"`
 	Status            string             `json:"status"`
-	Procedure         string             `json:"procedure"`
 	Anaesthetic       string             `json:"anaesthetic"`
 	Consultant        string             `json:"consultant"`
 	NurseAsa          *int32             `json:"nurseAsa"`
@@ -77,6 +76,9 @@ type Episode struct {
 	RemindersSent     int32              `json:"remindersSent"`
 	NotRespondingAt   pgtype.Timestamptz `json:"notRespondingAt"`
 	DobFailedAttempts int32              `json:"dobFailedAttempts"`
+	ProcedureID       uuid.NullUUID      `json:"procedureId"`
+	PlannedDate       pgtype.Date        `json:"plannedDate"`
+	PoaDate           pgtype.Date        `json:"poaDate"`
 }
 
 type EpisodeAnswer struct {
@@ -229,6 +231,22 @@ type PatientSession struct {
 type PlatformAdmin struct {
 	UserID    uuid.UUID `json:"userId"`
 	CreatedAt time.Time `json:"createdAt"`
+}
+
+type Procedure struct {
+	ID                     uuid.UUID       `json:"id"`
+	OrgID                  uuid.UUID       `json:"orgId"`
+	HospitalID             uuid.NullUUID   `json:"hospitalId"`
+	Name                   string          `json:"name"`
+	Code                   string          `json:"code"`
+	Specialty              string          `json:"specialty"`
+	DefaultQuestionnaireID uuid.NullUUID   `json:"defaultQuestionnaireId"`
+	InfoContent            json.RawMessage `json:"infoContent"`
+	PromsPlan              json.RawMessage `json:"promsPlan"`
+	Retired                bool            `json:"retired"`
+	UpdatedBy              uuid.NullUUID   `json:"updatedBy"`
+	CreatedAt              time.Time       `json:"createdAt"`
+	UpdatedAt              time.Time       `json:"updatedAt"`
 }
 
 type QaJobsClock struct {

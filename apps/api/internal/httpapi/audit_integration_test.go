@@ -169,16 +169,16 @@ func TestAuditRowsWritten(t *testing.T) {
 		row.touched(t, ids(pat, atA2.PatientID), ids(ep, atA2.ID))
 	})
 	t.Run("creating an episode records it and its patient", func(t *testing.T) {
-		body := map[string]any{"patientId": pat, "versionId": w.hq.VersionID, "procedure": "Knee"}
+		body := map[string]any{"patientId": pat, "versionId": w.hq.VersionID, "procedureId": w.knee}
 		row := oneAudit(t, w.clinic, "episode.create", func() *apitest.Resp { return w.clinician.Do("POST", at(w.a, "/episodes"), body) }, 201)
 		var id uuid.UUID
-		if err := w.db.QueryRow(t.Context(), `SELECT id FROM episodes WHERE procedure = 'Knee'`).Scan(&id); err != nil {
+		if err := w.db.QueryRow(t.Context(), `SELECT id FROM episodes WHERE procedure_id = $1`, w.knee).Scan(&id); err != nil {
 			t.Fatal(err)
 		}
 		row.touched(t, ids(pat), ids(id))
 	})
 	t.Run("creating an episode for a new patient records the new record", func(t *testing.T) {
-		body := map[string]any{"versionId": w.hq.VersionID, "procedure": "New", "patient": map[string]string{
+		body := map[string]any{"versionId": w.hq.VersionID, "patient": map[string]string{
 			"firstName": "Audit", "lastName": "Added", "dateOfBirth": "1980-02-03", "sex": "female"}}
 		row := oneAudit(t, w.clinic, "episode.create", func() *apitest.Resp { return w.clinician.Do("POST", at(w.a, "/episodes"), body) }, 201)
 		var id, eid uuid.UUID
@@ -206,7 +206,7 @@ func TestAuditRowsWritten(t *testing.T) {
 	}{
 		{"episode.view", "GET", "", nil, 200},
 		{"answers.view", "GET", "/hq", nil, 200},
-		{"episode.update", "PATCH", "", map[string]any{"procedure": "Hip"}, 204},
+		{"episode.update", "PATCH", "", map[string]any{"procedureId": w.hip}, 204},
 		{"episode.note", "POST", "/notes", map[string]string{"text": "Rang the patient"}, 201},
 	} {
 		t.Run("one episode: "+c.action, func(t *testing.T) {

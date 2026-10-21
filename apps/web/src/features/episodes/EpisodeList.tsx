@@ -7,7 +7,7 @@ import { Alert, Badge, Button, Group, SegmentedControl, Select, Stack, Table, Te
 import { IconPlus } from "@tabler/icons-react";
 import { api } from "@/lib/api";
 import { hospitalBase, useHospital } from "@/lib/auth";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatOptionalDate } from "@/lib/format";
 import { patientName, STATUS_COLORS, STATUS_LABELS, type EpisodeRow, type EpisodeStatus } from "./types";
 
 type ListRow = EpisodeRow & { hospitalId: string; hospitalName: string };
@@ -70,6 +70,8 @@ export function EpisodeList({ base }: { base: string }) {
               <Table.Th>Patient</Table.Th>
               {all && <Table.Th>Hospital</Table.Th>}
               <Table.Th>Procedure</Table.Th>
+              <Table.Th>Planned date</Table.Th>
+              <Table.Th>POA date</Table.Th>
               <Table.Th>HQ</Table.Th>
               <Table.Th>Status</Table.Th>
               <Table.Th>Created</Table.Th>
@@ -84,6 +86,8 @@ export function EpisodeList({ base }: { base: string }) {
                 </Table.Td>
                 {all && <Table.Td>{e.hospitalName}</Table.Td>}
                 <Table.Td>{e.procedure || "—"}</Table.Td>
+                <Table.Td>{formatOptionalDate(e.plannedDate)}</Table.Td>
+                <Table.Td>{formatOptionalDate(e.poaDate)}</Table.Td>
                 <Table.Td>{e.questionnaireName} v{e.versionNo}</Table.Td>
                 <Table.Td>
                   <StatusBadge status={e.status} />

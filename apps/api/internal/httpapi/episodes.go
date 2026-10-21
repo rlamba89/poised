@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/episode"
@@ -22,15 +23,30 @@ const episodeNotFound = "Episode not found."
 // Patients and episodes need no role check: everyone in a hospital is at least a clinician, and
 // sees all its data (A-5). The middleware has checked they're a member here.
 
+// publishedHQ is an HQ an episode can be given. isDefault marks the hospital's default HQ (its
+// defaultHq setting, S10), which the New episode page chooses first (S19).
+type publishedHQ struct {
+	VersionID       uuid.UUID `json:"versionId"`
+	VersionNo       int32     `json:"versionNo"`
+	Name            string    `json:"name"`
+	QuestionnaireID uuid.UUID `json:"questionnaireId"`
+	IsDefault       bool      `json:"isDefault"`
+}
+
 // listPublishedHQs lists the questionnaires an episode can be given: the published versions of
 // those this hospital uses.
 func (s *server) listPublishedHQs(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.q.ListPublishedVersions(r.Context(), db.ListPublishedVersionsParams{OrgID: orgID(r), HospitalID: hospitalID(r)})
+	rows, def, err := s.hospitalHQs(r.Context(), orgID(r), hospitalID(r))
 	if err != nil {
 		serverError(w, "list published", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, rows)
+	out := []publishedHQ{}
+	for _, h := range rows {
+		out = append(out, publishedHQ{VersionID: h.VersionID, VersionNo: h.VersionNo, Name: h.Name, QuestionnaireID: h.QuestionnaireID,
+			IsDefault: def.Valid && def.UUID == h.QuestionnaireID})
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // listEpisodes is one hospital's episodes, newest first, optionally of one status.
@@ -72,7 +88,9 @@ func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 		CreateAnyway   bool          `json:"createAnyway"`   // after a possible-duplicate warning
 		VersionID      string        `json:"versionId"`      // a string, so "" (nothing chosen) gets its own message
 		HospitalNumber string        `json:"hospitalNumber"` // this hospital's label for the patient (PAT-01b)
-		Procedure      string        `json:"procedure"`
+		ProcedureID    string        `json:"procedureId"`    // one the trust's list offers here (S19), or "" for none
+		PlannedDate    string        `json:"plannedDate"`    // YYYY-MM-DD, or "" (EPI-01)
+		PoaDate        string        `json:"poaDate"`
 		Anaesthetic    string        `json:"anaesthetic"`
 		Consultant     string        `json:"consultant"`
 	}
@@ -81,9 +99,11 @@ func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 	}
 	in.HospitalNumber = strings.TrimSpace(in.HospitalNumber)
 	versionID, versionErr := uuid.Parse(in.VersionID)
+	dates, msg := readEpisodeDates(in.ProcedureID, in.PlannedDate, in.PoaDate)
 	var typed patient.Details
-	var sex, msg string
+	var sex string
 	switch {
+	case msg != "":
 	case (in.PatientID == nil) == (in.Patient == nil):
 		msg = "Choose a patient from the search, or enter a new patient's details."
 	case versionErr != nil || versionID == uuid.Nil:
@@ -105,6 +125,9 @@ func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 	q := db.New(tx)
+	if dates.procedure.Valid && !procedureOffered(w, r, q, dates.procedure.UUID) {
+		return
+	}
 	var pid uuid.UUID
 	if in.PatientID != nil {
 		p, err := q.GetHospitalPatient(ctx, db.GetHospitalPatientParams{ID: *in.PatientID, OrgID: orgID(r), HospitalID: hospitalID(r)})
@@ -129,7 +152,7 @@ func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := q.CreateEpisode(ctx, db.CreateEpisodeParams{
 		OrgID: orgID(r), HospitalID: hospitalID(r), PatientID: pid, VersionID: versionID,
-		Procedure: strings.TrimSpace(in.Procedure), Anaesthetic: strings.TrimSpace(in.Anaesthetic),
+		ProcedureID: dates.procedure, PlannedDate: dates.planned, PoaDate: dates.poa, Anaesthetic: strings.TrimSpace(in.Anaesthetic),
 		Consultant: strings.TrimSpace(in.Consultant), HospitalNumber: in.HospitalNumber,
 		CreatedBy: currentUser(r).ID,
 	})
@@ -201,10 +224,13 @@ func (s *server) getEpisode(w http.ResponseWriter, r *http.Request) {
 }
 
 // episodeChange is what updateEpisode changes. A field sent as null decodes to a nil pointer;
-// for an ASA grade that keeps the current grade (see asaChange).
+// for an ASA grade that keeps the current grade (see asaChange), and for the procedure and the
+// dates it clears them.
 type episodeChange struct {
 	Status          *string `json:"status"`
-	Procedure       *string `json:"procedure"`
+	ProcedureID     *string `json:"procedureId"` // S19: an id, or "" for none
+	PlannedDate     *string `json:"plannedDate"` // YYYY-MM-DD, or ""
+	PoaDate         *string `json:"poaDate"`
 	Anaesthetic     *string `json:"anaesthetic"`
 	Consultant      *string `json:"consultant"`
 	NurseAsa        *int32  `json:"nurseAsa"`
@@ -213,31 +239,51 @@ type episodeChange struct {
 
 // validate trims the procedure details and returns a plain-language problem, or "".
 func (in *episodeChange) validate() string {
-	if in.Status == nil || in.Procedure == nil || in.Anaesthetic == nil || in.Consultant == nil {
+	if in.Status == nil || in.Anaesthetic == nil || in.Consultant == nil {
 		return "The request could not be read."
 	}
-	for _, f := range []*string{in.Procedure, in.Anaesthetic, in.Consultant} {
+	for _, f := range []*string{in.Anaesthetic, in.Consultant} {
 		*f = strings.TrimSpace(*f)
 	}
 	return ""
 }
 
 // updateEpisode changes the status (by hand, see episode.CanSetStatus), the procedure details
-// and the ASA grades. Fields left out keep their value; an ASA grade of 0 clears it.
+// and the ASA grades. Fields left out keep their value; an ASA grade of 0 clears it. The
+// procedure and its dates can be changed until the HQ review is complete (S19); a new procedure
+// must be one the trust's list offers here, while the one the episode has stays even if retired.
 func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return
 	}
 	// Defaults point at copies, so e keeps the current values to compare with.
-	status, procedure, anaesthetic, consultant := e.Status, e.Procedure, e.Anaesthetic, e.Consultant
-	in := episodeChange{Status: &status, Procedure: &procedure, Anaesthetic: &anaesthetic, Consultant: &consultant}
+	status, anaesthetic, consultant := e.Status, e.Anaesthetic, e.Consultant
+	was := episodeDates{procedure: e.ProcedureID, planned: e.PlannedDate, poa: e.PoaDate}
+	procedure, planned, poa := was.strings()
+	in := episodeChange{Status: &status, ProcedureID: &procedure, PlannedDate: &planned, PoaDate: &poa,
+		Anaesthetic: &anaesthetic, Consultant: &consultant}
 	if !readJSON(w, r, 8<<10, &in) {
 		return
 	}
-	if msg := in.validate(); msg != "" {
+	msg := in.validate()
+	var next episodeDates
+	if msg == "" {
+		next, msg = readEpisodeDates(deref(in.ProcedureID), deref(in.PlannedDate), deref(in.PoaDate))
+	}
+	if msg != "" {
 		writeError(w, http.StatusBadRequest, msg)
 		return
+	}
+	if next != was && e.ReviewCompletedAt.Valid {
+		writeError(w, http.StatusConflict, "The procedure and its dates can't be changed once the HQ review is complete.")
+		return
+	}
+	procedureName := e.Procedure
+	if next.procedure != was.procedure && next.procedure.Valid {
+		if procedureName, ok = offeredProcedureName(w, r, s.q, next.procedure.UUID); !ok {
+			return
+		}
 	}
 	if !episode.CanSetStatus(e.Status, *in.Status) {
 		writeError(w, http.StatusConflict, "The status can't be changed to that now.")
@@ -250,7 +296,8 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n, err := s.q.UpdateEpisode(r.Context(), db.UpdateEpisodeParams{
-		ID: e.ID, LoadedStatus: e.Status, Status: *in.Status, Procedure: *in.Procedure, Anaesthetic: *in.Anaesthetic,
+		ID: e.ID, LoadedStatus: e.Status, Status: *in.Status, ProcedureID: next.procedure, PlannedDate: next.planned,
+		PoaDate: next.poa, Anaesthetic: *in.Anaesthetic,
 		Consultant: *in.Consultant, NurseAsa: nurse, AnaesthetistAsa: anaes,
 	})
 	if err != nil {
@@ -265,7 +312,7 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 	if *in.Status != e.Status {
 		s.event(r, e.ID, "Status changed to "+episode.Labels[*in.Status], uid)
 	}
-	for _, msg := range []string{nurseMsg, anaesMsg} {
+	for _, msg := range append(was.changes(next, procedureName), nurseMsg, anaesMsg) {
 		if msg != "" {
 			s.event(r, e.ID, msg, uid)
 		}
@@ -324,4 +371,106 @@ func (s *server) event(r *http.Request, episodeID uuid.UUID, text string, userID
 	if err := s.q.AddEpisodeEvent(r.Context(), db.AddEpisodeEventParams{EpisodeID: episodeID, Kind: "event", Text: text, UserID: user}); err != nil {
 		log.Printf("episode event: %v", err)
 	}
+}
+
+// episodeDates are an episode's procedure (S19) and its two dates (EPI-01), each optional.
+type episodeDates struct {
+	procedure    uuid.NullUUID
+	planned, poa pgtype.Date
+}
+
+// readEpisodeDates reads a procedure id and the planned procedure and POA appointment dates
+// (YYYY-MM-DD), each "" for none. It returns a plain-language problem, or "".
+func readEpisodeDates(procedure, planned, poa string) (episodeDates, string) {
+	var d episodeDates
+	if p := strings.TrimSpace(procedure); p != "" {
+		id, err := uuid.Parse(p)
+		if err != nil {
+			return d, procedureNotOffered
+		}
+		d.procedure = uuid.NullUUID{UUID: id, Valid: true}
+	}
+	var ok bool
+	if d.planned, ok = optionalDate(planned); !ok {
+		return d, "Enter the planned procedure date as a date."
+	}
+	if d.poa, ok = optionalDate(poa); !ok {
+		return d, "Enter the POA appointment date as a date."
+	}
+	return d, ""
+}
+
+// optionalDate reads a YYYY-MM-DD date in the years 1900 to 2199, or "" for none.
+func optionalDate(s string) (pgtype.Date, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return pgtype.Date{}, true
+	}
+	t, err := time.Parse(time.DateOnly, s)
+	if err != nil || t.Year() < 1900 || t.Year() > 2199 {
+		return pgtype.Date{}, false
+	}
+	return pgtype.Date{Time: t, Valid: true}, true
+}
+
+// strings are the fields as the PATCH body sends them: an id or "", a date or "".
+func (d episodeDates) strings() (procedure, planned, poa string) {
+	if d.procedure.Valid {
+		procedure = d.procedure.UUID.String()
+	}
+	return procedure, dateString(d.planned), dateString(d.poa)
+}
+
+func dateString(d pgtype.Date) string {
+	if !d.Valid {
+		return ""
+	}
+	return d.Time.Format(time.DateOnly)
+}
+
+// changes describe the change from d to next for the General notes; name is next's procedure's.
+func (d episodeDates) changes(next episodeDates, name string) []string {
+	var out []string
+	if next.procedure != d.procedure {
+		if next.procedure.Valid {
+			out = append(out, "Procedure set to "+name)
+		} else {
+			out = append(out, "Procedure cleared")
+		}
+	}
+	for _, c := range []struct {
+		label     string
+		was, next pgtype.Date
+	}{{"Planned procedure date", d.planned, next.planned}, {"POA appointment date", d.poa, next.poa}} {
+		switch {
+		case c.was == c.next:
+		case c.next.Valid:
+			out = append(out, c.label+" set to "+dateString(c.next))
+		default:
+			out = append(out, c.label+" cleared")
+		}
+	}
+	return out
+}
+
+const procedureNotOffered = "Choose a procedure from the trust's list for this hospital."
+
+// offeredProcedureName is the procedure's name if an episode here can be given it now (not
+// retired, the trust's or this hospital's own), answering 400 itself if it can't.
+func offeredProcedureName(w http.ResponseWriter, r *http.Request, q db.Querier, id uuid.UUID) (string, bool) {
+	name, err := q.OfferedProcedureName(r.Context(), db.OfferedProcedureNameParams{ID: id, OrgID: orgID(r), HospitalID: hospitalID(r)})
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusBadRequest, procedureNotOffered)
+		return "", false
+	}
+	if err != nil {
+		serverError(w, "procedure", err)
+		return "", false
+	}
+	return name, true
+}
+
+func procedureOffered(w http.ResponseWriter, r *http.Request, q db.Querier, id uuid.UUID) bool {
+	_, ok := offeredProcedureName(w, r, q, id)
+	return ok
 }

@@ -33,8 +33,13 @@ def test_patient_fills_in_and_sends_their_hq_on_a_phone(page: Page, phone: Brows
     page.get_by_label("NHS number").fill(f"{nhs[:3]} {nhs[3:6]} {nhs[6:]}")
     page.get_by_label("Mobile").fill("07700 900123")
     page.get_by_label("Hospital number").fill("J3-1")
+    # The procedure from the trust's list (S19) chooses its default HQ (the seed's demo HQ); she
+    # picks the journey's HQ instead, and the dates.
+    pick(page, "Procedure", "Knee arthroscopy (KNEE-02)")
+    expect(page.get_by_role("combobox", name="Health questionnaire")).to_have_value("Demo pre-op HQ v1")
     pick(page, "Health questionnaire", f"{hq['name']} v1")
-    page.get_by_label("Procedure").fill("Knee replacement")
+    page.get_by_label("Planned procedure date").fill("2026-11-03")
+    page.get_by_label("POA appointment date").fill("2026-10-28")
     page.get_by_role("button", name="Create episode").click()
     expect(page.get_by_role("heading", name=f"Sam {last_name}")).to_be_visible()
     # The NHS number and mobile are stored cleaned up; the hospital number is the episode's.
@@ -47,6 +52,10 @@ def test_patient_fills_in_and_sends_their_hq_on_a_phone(page: Page, phone: Brows
     expect(page.get_by_text("Invite sent by text message.", exact=True)).to_be_visible()  # the mobile only
     # Dates use the deployment's locale from GET /api/config (A-20): en-GB, make dev's default.
     expect(page.get_by_text("17 May 1980 (age")).to_be_visible()
+    expect(page.get_by_text("Knee arthroscopy", exact=True)).to_be_visible()
+    expect(page.get_by_text("03/11/2026", exact=True)).to_be_visible()  # the planned procedure date
+    expect(page.get_by_text("28/10/2026", exact=True)).to_be_visible()  # the POA appointment date
+    expect(page.get_by_text(f"{hq['name']} v1", exact=True)).to_be_visible()
 
     # The patient taps the link in their text message (captured, not sent), on their phone.
     patient = phone.new_page()

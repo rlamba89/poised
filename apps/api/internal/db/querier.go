@@ -69,6 +69,7 @@ type Querier interface {
 	// Nothing is returned when the code is taken (any case).
 	CreateOrg(ctx context.Context, arg CreateOrgParams) ([]uuid.UUID, error)
 	CreatePatient(ctx context.Context, arg CreatePatientParams) (uuid.UUID, error)
+	CreateProcedure(ctx context.Context, arg CreateProcedureParams) (uuid.UUID, error)
 	// A new questionnaire is the trust's, for all its hospitals.
 	CreateQuestionnaire(ctx context.Context, arg CreateQuestionnaireParams) (uuid.UUID, error)
 	CreateStaffInvite(ctx context.Context, arg CreateStaffInviteParams) error
@@ -126,6 +127,8 @@ type Querier interface {
 	// What the follow-up decides on: the episode's state, whether the patient has started (any
 	// answers of theirs on the HQ form, or entered for them), and the hospital's zone and settings.
 	GetFollowup(ctx context.Context, id uuid.UUID) (GetFollowupRow, error)
+	// A hospital's stored settings and its trust's, for its effective values (the default HQ).
+	GetHospitalAndOrgSettings(ctx context.Context, arg GetHospitalAndOrgSettingsParams) (GetHospitalAndOrgSettingsRow, error)
 	// The trust's record of one of this hospital's patients; no row for anyone else.
 	GetHospitalPatient(ctx context.Context, arg GetHospitalPatientParams) (GetHospitalPatientRow, error)
 	// What an invite needs: who to send it to, the hospital's name and its trust's and own settings
@@ -137,6 +140,8 @@ type Querier interface {
 	// Whose the list is: NULL for the trust's, else the hospital whose own it is.
 	GetOptionListOwner(ctx context.Context, arg GetOptionListOwnerParams) (uuid.NullUUID, error)
 	GetOrgForAdmin(ctx context.Context, id uuid.UUID) (GetOrgForAdminRow, error)
+	// One of the trust's procedures, as stored, for a change.
+	GetProcedure(ctx context.Context, arg GetProcedureParams) (GetProcedureRow, error)
 	// MESSAGING=capture only: how far ahead of real time the jobs timer runs, and its last run.
 	GetQAJobsClock(ctx context.Context) (GetQAJobsClockRow, error)
 	GetQuestionnaire(ctx context.Context, arg GetQuestionnaireParams) (GetQuestionnaireRow, error)
@@ -202,6 +207,15 @@ type Querier interface {
 	ListOrgsForAdmin(ctx context.Context) ([]ListOrgsForAdminRow, error)
 	// A patient's episodes at this hospital only, newest first: never another hospital's.
 	ListPatientEpisodesHere(ctx context.Context, arg ListPatientEpisodesHereParams) ([]ListPatientEpisodesHereRow, error)
+	// The trust's procedure list (PRC-01, S19). hospital_id NULL: offered at every hospital of the
+	// trust; otherwise at that hospital only. Retired procedures stay listed for managing, and on the
+	// episodes that have them, but aren't offered for new episodes.
+	// The trust's procedures that the caller sees: every one for a whole-trust member (all_hospitals),
+	// else the trust-wide ones and those of the hospitals listed. Retired ones included.
+	ListProcedures(ctx context.Context, arg ListProceduresParams) ([]ListProceduresRow, error)
+	// The procedures a new episode at this hospital can be given: the trust's and this hospital's
+	// own, not retired.
+	ListProceduresOffered(ctx context.Context, arg ListProceduresOfferedParams) ([]ListProceduresOfferedRow, error)
 	// Patient records belong to the trust (org_id); an episode is at one of its hospitals. Every
 	// episode lookup is scoped to the hospital, or to the hospitals the caller can see.
 	// The HQs an episode can be given: each questionnaire's published version.
@@ -260,6 +274,9 @@ type Querier interface {
 	// The user's role in one membership: the whole trust (hospital_id NULL) or one hospital.
 	MembershipRole(ctx context.Context, arg MembershipRoleParams) (string, error)
 	NoteQAJobsTick(ctx context.Context, arg NoteQAJobsTickParams) error
+	// The procedure's name if an episode at this hospital can be given it now (ListProceduresOffered);
+	// no row if it can't.
+	OfferedProcedureName(ctx context.Context, arg OfferedProcedureNameParams) (string, error)
 	// The right date of birth on an invite link: the episode's count starts again. No row: the link
 	// was locked meanwhile.
 	PassInviteDob(ctx context.Context, id uuid.UUID) (int64, error)
@@ -372,6 +389,7 @@ type Querier interface {
 	// A trust's details (S10 answers 3: the platform admin edits them at any time). A code another
 	// trust has fails on orgs_code_upper_key.
 	UpdateOrgDetails(ctx context.Context, arg UpdateOrgDetailsParams) error
+	UpdateProcedure(ctx context.Context, arg UpdateProcedureParams) error
 	// A sign-in or verification link works once, until it expires. No row: used, locked or expired
 	// meanwhile.
 	UseContactLink(ctx context.Context, arg UseContactLinkParams) (int64, error)

@@ -10,5 +10,9 @@ export const formatDateTime = (iso: string) =>
 export const formatDate = (ymd: string) =>
   new Intl.DateTimeFormat(locale(), { dateStyle: "long", timeZone: "UTC" }).format(new Date(ymd + "T00:00:00Z"));
 
+/** A YYYY-MM-DD date in the short style ("03/11/2026" in en-GB), or "—" for none (S19's episode dates). */
+export const formatOptionalDate = (ymd: string | null | undefined) =>
+  ymd ? new Intl.DateTimeFormat(locale(), { dateStyle: "short", timeZone: "UTC" }).format(new Date(ymd + "T00:00:00Z")) : "—";
+
 /** The day only, in the browser's time zone: "12/10/2026" in en-GB. */
 export const formatShortDate = (iso: string) => new Date(iso).toLocaleDateString(locale());

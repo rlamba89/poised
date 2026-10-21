@@ -1,9 +1,13 @@
 package httpapi
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/rlamba89/poised/apps/api/internal/config"
 )
@@ -47,16 +51,15 @@ func TestPatientDetails(t *testing.T) {
 func TestEpisodeChangeValidate(t *testing.T) {
 	s := func(v string) *string { return &v }
 	valid := func() episodeChange {
-		return episodeChange{Status: s("ready_for_poa"), Procedure: s(" Hip replacement "), Anaesthetic: s(" GA "), Consultant: s(" Dr Who ")}
+		return episodeChange{Status: s("ready_for_poa"), Anaesthetic: s(" GA "), Consultant: s(" Dr Who ")}
 	}
 
 	in := valid()
-	if msg := in.validate(); msg != "" || *in.Procedure != "Hip replacement" || *in.Anaesthetic != "GA" || *in.Consultant != "Dr Who" {
-		t.Errorf("valid change: %q, %q %q %q; want no problem, trimmed", msg, *in.Procedure, *in.Anaesthetic, *in.Consultant)
+	if msg := in.validate(); msg != "" || *in.Anaesthetic != "GA" || *in.Consultant != "Dr Who" {
+		t.Errorf("valid change: %q, %q %q; want no problem, trimmed", msg, *in.Anaesthetic, *in.Consultant)
 	}
 	for name, change := range map[string]func(*episodeChange){
 		"null status":      func(c *episodeChange) { c.Status = nil },
-		"null procedure":   func(c *episodeChange) { c.Procedure = nil },
 		"null anaesthetic": func(c *episodeChange) { c.Anaesthetic = nil },
 		"null consultant":  func(c *episodeChange) { c.Consultant = nil },
 	} {
@@ -65,5 +68,46 @@ func TestEpisodeChangeValidate(t *testing.T) {
 		if in.validate() == "" {
 			t.Errorf("%s: no problem reported", name)
 		}
+	}
+}
+
+// The procedure and its dates (S19): each optional, "" for none; a null in a PATCH clears it too.
+func TestReadEpisodeDates(t *testing.T) {
+	id := uuid.New()
+	d, msg := readEpisodeDates(" "+id.String()+" ", " 2026-11-03 ", "")
+	if msg != "" || !d.procedure.Valid || d.procedure.UUID != id || !d.planned.Valid || d.planned.Time.Format(time.DateOnly) != "2026-11-03" || d.poa.Valid {
+		t.Errorf("valid: %q %+v", msg, d)
+	}
+	if d, msg := readEpisodeDates("", "", ""); msg != "" || d != (episodeDates{}) {
+		t.Errorf("none: %q %+v", msg, d)
+	}
+	for name, in := range map[string][3]string{
+		"a procedure that isn't an id": {"hip", "", ""},
+		"a planned date not a date":    {"", "03/11/2026", ""},
+		"a POA date not a date":        {"", "", "2026-02-30"},
+		"a date before 1900":           {"", "1899-12-31", ""},
+		"a date after 2199":            {"", "", "2200-01-01"},
+	} {
+		if _, msg := readEpisodeDates(in[0], in[1], in[2]); msg == "" {
+			t.Errorf("%s: no problem reported", name)
+		}
+	}
+}
+
+func TestEpisodeDatesChanges(t *testing.T) {
+	date := func(s string) pgtype.Date { d, _ := optionalDate(s); return d }
+	hip := uuid.NullUUID{UUID: uuid.New(), Valid: true}
+	was := episodeDates{procedure: hip, planned: date("2026-11-03")}
+	if got := was.changes(was, "Hip"); len(got) != 0 {
+		t.Errorf("no change: %q", got)
+	}
+	knee := uuid.NullUUID{UUID: uuid.New(), Valid: true}
+	got := was.changes(episodeDates{procedure: knee, poa: date("2026-10-28")}, "Knee scope")
+	want := []string{"Procedure set to Knee scope", "Planned procedure date cleared", "POA appointment date set to 2026-10-28"}
+	if !slices.Equal(got, want) {
+		t.Errorf("changes = %q, want %q", got, want)
+	}
+	if got := was.changes(episodeDates{planned: date("2026-11-04")}, ""); !slices.Equal(got, []string{"Procedure cleared", "Planned procedure date set to 2026-11-04"}) {
+		t.Errorf("changes = %q", got)
 	}
 }

@@ -4,7 +4,9 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -75,6 +77,34 @@ var demoPatients = []struct{ id, first, last, dob, sex, nhs, mobile, email strin
 	{"00000000-0000-4000-8000-0000000000c1", "Jo", "Bloggs", "1974-12-11", "male", "9990001006", "+447700900001", "jo.bloggs@example.test"},
 	{"00000000-0000-4000-8000-0000000000c2", "Pat", "Example", "1961-03-02", "female", "", "+447700900002", "pat.example@example.test"},
 	{"00000000-0000-4000-8000-0000000000c3", "Robin", "Sample", "1990-07-21", "other", "9990001014", "", ""},
+}
+
+// The demo HQ (S19), one published copy per trust, so the demo procedures have a default HQ and
+// a tester can create an episode without authoring one first. Made up, like the e2e journeys' HQ.
+//
+//go:embed demo-hq.json
+var demoHQ []byte
+
+// demoHQs are each trust's copy: the questionnaire, its version 1, and its Question Sets' ids
+// (the third and later digits of the last group count up from chapterBase), made by its author.
+var demoHQs = []struct{ trust, questionnaire, version, chapterBase, author string }{
+	{trustA, "00000000-0000-4000-8000-000000000101", "00000000-0000-4000-8000-000000000102", "00000000-0000-4000-8000-00000000011", "00000000-0000-4000-8000-0000000000a1"},
+	{trustB, "00000000-0000-4000-8000-000000000201", "00000000-0000-4000-8000-000000000202", "00000000-0000-4000-8000-00000000021", "00000000-0000-4000-8000-0000000000b1"},
+}
+
+// demoProcedures are each trust's procedure list (S19): made-up codes, a hospital of "" is every
+// hospital of the trust, and withHQ gives it the trust's demo HQ as its default. One has no
+// default HQ, so it falls back to the hospital's default HQ (Settings) on a new episode.
+var demoProcedures = []struct {
+	id, trust, hospital, name, code, specialty string
+	withHQ                                     bool
+}{
+	{"00000000-0000-4000-8000-000000000301", trustA, "", "Total hip replacement", "HIP-01", "Orthopaedics", true},
+	{"00000000-0000-4000-8000-000000000302", trustA, "", "Knee arthroscopy", "KNEE-02", "Orthopaedics", true},
+	{"00000000-0000-4000-8000-000000000303", trustA, "", "Laparoscopic cholecystectomy", "", "General surgery", false},
+	{"00000000-0000-4000-8000-000000000304", trustA, hospitalA1, "Cataract surgery", "EYE-01", "Ophthalmology", true},
+	{"00000000-0000-4000-8000-000000000305", trustB, "", "Total hip replacement", "HIP-01", "Orthopaedics", true},
+	{"00000000-0000-4000-8000-000000000306", trustB, "", "Inguinal hernia repair", "", "General surgery", true},
 }
 
 func main() {
@@ -243,7 +273,81 @@ func seedDemo(ctx context.Context, tx pgx.Tx) error {
 			return fmt.Errorf("patient %s: %w", p.last, err)
 		}
 	}
-	fmt.Printf("trusts: %d, users: %d, patients: %d\n", len(demoTrusts), len(demoUsers), len(demoPatients))
+	if err := seedHQs(ctx, tx, orgs); err != nil {
+		return err
+	}
+	if err := seedProcedures(ctx, tx, orgs); err != nil {
+		return err
+	}
+	fmt.Printf("trusts: %d, users: %d, patients: %d, demo HQs: %d, procedures: %d\n",
+		len(demoTrusts), len(demoUsers), len(demoPatients), len(demoHQs), len(demoProcedures))
+	return nil
+}
+
+// seedHQs adds each trust's published demo HQ the first time. Later runs leave it as it is: a
+// published version can't change, and a tester may have made a new version of it.
+func seedHQs(ctx context.Context, tx pgx.Tx, orgs map[string]string) error {
+	var hq struct {
+		Name, Description string
+		Chapters          []struct {
+			Name, Audience string
+			Content        json.RawMessage
+		}
+	}
+	if err := json.Unmarshal(demoHQ, &hq); err != nil {
+		return fmt.Errorf("demo-hq.json: %w", err)
+	}
+	if len(hq.Chapters) > 9 {
+		return fmt.Errorf("demo-hq.json: %d Question Sets, at most 9", len(hq.Chapters))
+	}
+	for _, d := range demoHQs {
+		if _, err := tx.Exec(ctx, `INSERT INTO questionnaires (id, org_id, name, description, created_by) VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (id) DO NOTHING`, d.questionnaire, orgs[d.trust], hq.Name, hq.Description, d.author); err != nil {
+			return fmt.Errorf("demo HQ: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO questionnaire_versions (id, questionnaire_id, version_no, status, updated_by)
+			VALUES ($1, $2, 1, 'published', $3) ON CONFLICT (id) DO NOTHING`, d.version, d.questionnaire, d.author); err != nil {
+			return fmt.Errorf("demo HQ version: %w", err)
+		}
+		for i, ch := range hq.Chapters {
+			if _, err := tx.Exec(ctx, `INSERT INTO chapters (id, version_id, position, name, audience, content, updated_by)
+				VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING`,
+				fmt.Sprintf("%s%d", d.chapterBase, i+1), d.version, i+1, ch.Name, ch.Audience, ch.Content, d.author); err != nil {
+				return fmt.Errorf("demo HQ set %s: %w", ch.Name, err)
+			}
+		}
+	}
+	return nil
+}
+
+// seedProcedures puts each demo procedure back as seeded: in use, with its fields and default HQ.
+// A name a tester has since given another procedure of the trust is left alone (names are unique).
+func seedProcedures(ctx context.Context, tx pgx.Tx, orgs map[string]string) error {
+	hqOf := map[string]string{}
+	for _, d := range demoHQs {
+		hqOf[d.trust] = d.questionnaire
+	}
+	for _, p := range demoProcedures {
+		var hospital, hq any // NULL: every hospital; no default HQ
+		if p.hospital != "" {
+			hospital = p.hospital
+		}
+		if p.withHQ {
+			hq = hqOf[p.trust]
+		}
+		// ON CONFLICT DO NOTHING covers both the id and a name already taken.
+		if _, err := tx.Exec(ctx, `INSERT INTO procedures (id, org_id, hospital_id, name, code, specialty, default_questionnaire_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
+			p.id, orgs[p.trust], hospital, p.name, p.code, p.specialty, hq); err != nil {
+			return fmt.Errorf("procedure %s: %w", p.name, err)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE procedures SET hospital_id = $3, name = $4, code = $5, specialty = $6,
+				default_questionnaire_id = $7, retired = false, info_content = '[]', proms_plan = '[]', updated_at = now()
+			WHERE id = $1 AND org_id = $2 AND NOT EXISTS (SELECT 1 FROM procedures o WHERE o.org_id = $2 AND lower(o.name) = lower($4) AND o.id <> $1)`,
+			p.id, orgs[p.trust], hospital, p.name, p.code, p.specialty, hq); err != nil {
+			return fmt.Errorf("procedure %s: %w", p.name, err)
+		}
+	}
 	return nil
 }
 

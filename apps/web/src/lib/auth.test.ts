@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allHospitals, atLeast, canChange, canManageSettings, canManageStaff, canSeeAudit, findHospital, homePath, startPath, switchPath, type Here, type Hospital, type Me, type Trust } from "./auth";
+import { allHospitals, atLeast, canChange, canManageProcedures, canManageSettings, canManageStaff, canSeeAudit, findHospital, homePath, startPath, switchPath, type Here, type Hospital, type Me, type Trust } from "./auth";
 
 const hospital = (id: string, role: Hospital["role"]): Hospital => ({ id, name: `Hospital ${id}`, timeZone: "UTC", role });
 const trustA: Trust = { id: "ta", name: "Trust A", code: "TA", role: "super_clinician", hospitals: [hospital("a1", "super_clinician"), hospital("a2", "admin")] };
@@ -108,5 +108,19 @@ describe("who sees the audit log (S11)", () => {
     expect(canSeeAudit({ ...trustA, role: "admin" })).toBe(true);
     expect(canSeeAudit(trustA)).toBe(false); // a whole-trust super clinician
     expect(canSeeAudit({ ...trustB, hospitals: [hospital("b1", "admin")] })).toBe(false); // an admin of one hospital
+  });
+});
+
+describe("who manages the trust's procedures (S19)", () => {
+  it("is the trust's whole-trust super clinicians and admins (answers 1)", () => {
+    expect(canManageProcedures(trustA)).toBe(true); // a whole-trust super clinician
+    expect(canManageProcedures({ ...trustA, role: "admin" })).toBe(true);
+    expect(canManageProcedures({ ...trustA, role: "clinician" })).toBe(false);
+    // A super clinician of one hospital only (trust role null), as Sue Super.
+    expect(canManageProcedures({ ...trustB, role: null, hospitals: [hospital("b1", "super_clinician")] })).toBe(false);
+  });
+  it("switching hospital keeps Procedures where they manage the trust", () => {
+    expect(switchPath("/o/ta/h/a1/procedures", trustA, trustA.hospitals[1])).toBe("/o/ta/h/a2/procedures");
+    expect(switchPath("/o/ta/h/a1/procedures", { ...trustB, role: "clinician" }, trustB.hospitals[0])).toBe("/o/tb/h/b1/episodes");
   });
 });

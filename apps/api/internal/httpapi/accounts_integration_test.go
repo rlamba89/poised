@@ -356,7 +356,9 @@ func TestPatientHome(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := w.db.Exec(t.Context(), `UPDATE episodes SET procedure = 'Hip replacement' WHERE id = $1`, inB.ID); err != nil {
+	// The procedure's name from trust B's list (S19).
+	if _, err := w.db.Exec(t.Context(), `WITH p AS (INSERT INTO procedures (org_id, name) SELECT org_id, 'Hip replacement' FROM episodes WHERE id = $1 RETURNING id)
+		UPDATE episodes SET procedure_id = (SELECT id FROM p) WHERE id = $1`, inB.ID); err != nil {
 		t.Fatal(err)
 	}
 

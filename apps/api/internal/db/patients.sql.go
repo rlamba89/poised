@@ -92,8 +92,10 @@ func (q *Queries) GetHospitalPatient(ctx context.Context, arg GetHospitalPatient
 }
 
 const listPatientEpisodesHere = `-- name: ListPatientEpisodesHere :many
-SELECT e.id, e.status, e.procedure, e.hospital_number, e.created_at, q.name AS questionnaire_name, v.version_no
+SELECT e.id, e.status, coalesce(pr.name, '')::text AS procedure, e.planned_date, e.hospital_number, e.created_at,
+       q.name AS questionnaire_name, v.version_no
 FROM episodes e
+LEFT JOIN procedures pr ON pr.id = e.procedure_id
 JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
 JOIN questionnaire_versions v ON v.id = f.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
@@ -107,13 +109,14 @@ type ListPatientEpisodesHereParams struct {
 }
 
 type ListPatientEpisodesHereRow struct {
-	ID                uuid.UUID `json:"id"`
-	Status            string    `json:"status"`
-	Procedure         string    `json:"procedure"`
-	HospitalNumber    string    `json:"hospitalNumber"`
-	CreatedAt         time.Time `json:"createdAt"`
-	QuestionnaireName string    `json:"questionnaireName"`
-	VersionNo         int32     `json:"versionNo"`
+	ID                uuid.UUID   `json:"id"`
+	Status            string      `json:"status"`
+	Procedure         string      `json:"procedure"`
+	PlannedDate       pgtype.Date `json:"plannedDate"`
+	HospitalNumber    string      `json:"hospitalNumber"`
+	CreatedAt         time.Time   `json:"createdAt"`
+	QuestionnaireName string      `json:"questionnaireName"`
+	VersionNo         int32       `json:"versionNo"`
 }
 
 // A patient's episodes at this hospital only, newest first: never another hospital's.
@@ -130,6 +133,7 @@ func (q *Queries) ListPatientEpisodesHere(ctx context.Context, arg ListPatientEp
 			&i.ID,
 			&i.Status,
 			&i.Procedure,
+			&i.PlannedDate,
 			&i.HospitalNumber,
 			&i.CreatedAt,
 			&i.QuestionnaireName,

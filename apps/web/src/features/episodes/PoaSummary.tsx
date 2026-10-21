@@ -11,7 +11,7 @@ import { IconPrinter } from "@tabler/icons-react";
 import { ageFrom, patientVariables, poaSummary, reportedBmi, type PoaCapture, type PoaSet } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { nationalIdLabel } from "@/lib/config";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime, formatOptionalDate } from "@/lib/format";
 import { StatusBadge } from "./EpisodeList";
 import { useEpisode } from "./EpisodePage";
 import { GeneralNotes } from "./GeneralNotes";
@@ -101,6 +101,8 @@ function Summary({ tab, episode: e, events, hq, path, onChanged }: SummaryProps)
         </Stack>
         <Stack gap={6}>
           <Detail label="Procedure" value={e.procedure} />
+          <Detail label="Planned procedure date" value={e.plannedDate ? formatOptionalDate(e.plannedDate) : ""} />
+          <Detail label="POA appointment date" value={e.poaDate ? formatOptionalDate(e.poaDate) : ""} />
           <Detail label="Anaesthetic" value={e.anaesthetic} />
           <Detail label="Patient reported BMI" value={bmi === undefined ? "" : String(bmi)} />
           <Detail label="Anaesthetist ASA grade" value={asaLabel(e.anaesthetistAsa)} />

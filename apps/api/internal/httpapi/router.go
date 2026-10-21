@@ -149,6 +149,12 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	// The audit log (S11): whole-trust admins only; ?format=csv exports it. Reading it is audited too.
 	mux.HandleFunc("GET /api/o/{oid}/audit", org(auditAdmin(s.audited("audit.view", s.listAudit))))
 
+	// The trust's procedure list (S19, PRC-01): everyone in the trust reads it; whole-trust super
+	// clinicians and admins change it, and each change is in the audit log.
+	mux.HandleFunc("GET /api/o/{oid}/procedures", org(s.listProcedures))
+	mux.HandleFunc("POST /api/o/{oid}/procedures", org(s.audited("procedure.create", s.createProcedure)))
+	mux.HandleFunc("PATCH /api/o/{oid}/procedures/{prid}", org(s.audited("procedure.update", s.updateProcedure)))
+
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/questionnaires", hosp(s.listQuestionnaires))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires", hosp(s.createQuestionnaire))
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/questionnaires/{qid}", hosp(s.getQuestionnaire))

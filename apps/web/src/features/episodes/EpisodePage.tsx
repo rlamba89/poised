@@ -11,7 +11,8 @@ import { ageFrom, patientVariables, shownSets } from "@poised/clinical";
 import { AUDIENCE_LABELS } from "@/features/chapters/types";
 import { api } from "@/lib/api";
 import { nationalIdLabel } from "@/lib/config";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime, formatOptionalDate } from "@/lib/format";
+import { EditProcedure } from "./EditProcedure";
 import { StatusBadge } from "./EpisodeList";
 import { GeneralNotes } from "./GeneralNotes";
 import { currentAnswers, useEpisodeHQ } from "./hq";
@@ -40,6 +41,7 @@ export function useEpisode(base: string, episodeId: string) {
 
 export function EpisodePage({ base, episodeId }: { base: string; episodeId: string }) {
   const { data, error, reload } = useEpisode(base, episodeId);
+  const [editing, setEditing] = useState(false);
   const path = `${base}/episodes/${episodeId}`;
   if (!data) return error ? <Alert color="red">{error}</Alert> : <Center h="40vh"><Loader /></Center>;
   const e = data.episode;
@@ -79,8 +81,20 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
           <Detail label="Health questionnaire" value={`${e.questionnaireName} v${e.versionNo}`} />
           <Detail label="Email" value={e.email} />
           <Detail label="Created" value={formatDateTime(e.createdAt)} />
+          <Detail label="Planned procedure date" value={e.plannedDate ? formatOptionalDate(e.plannedDate) : ""} />
+          <Detail label="POA appointment date" value={e.poaDate ? formatOptionalDate(e.poaDate) : ""} />
         </SimpleGrid>
+        {/* The procedure and its dates can be changed until the HQ review is complete (S19). */}
+        {!e.reviewCompletedAt && !editing && (
+          <Group justify="flex-end" mt="xs">
+            <Button size="xs" variant="default" onClick={() => setEditing(true)}>Edit procedure and dates</Button>
+          </Group>
+        )}
       </Card>
+      {editing && (
+        <EditProcedure path={path} episode={e} onCancel={() => setEditing(false)}
+          onSaved={() => { setEditing(false); reload(); }} />
+      )}
 
       {e.status === "hq_not_complete" && <Invite path={path} episode={e} invite={data.invite} undelivered={data.undelivered} onSent={reload} />}
 

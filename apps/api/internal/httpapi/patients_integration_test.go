@@ -229,7 +229,7 @@ func TestGetPatient(t *testing.T) {
 
 // newPatient is a create-episode body for typed details at the HQ.
 func newPatient(hq apitest.HQ, patient map[string]any) map[string]any {
-	return map[string]any{"versionId": hq.VersionID, "procedure": "Knee replacement", "hospitalNumber": " K-1 ", "patient": patient}
+	return map[string]any{"versionId": hq.VersionID, "hospitalNumber": " K-1 ", "patient": patient}
 }
 
 func TestCreateEpisodeForANewPatient(t *testing.T) {
@@ -310,17 +310,17 @@ func TestCreateEpisodeForANewPatient(t *testing.T) {
 			t.Fatalf("response = %v, want only the episode's id", got)
 		}
 		var org uuid.UUID
-		var first, last, dob, sex, id, typ, mobile, email, number, procedure string
+		var first, last, dob, sex, id, typ, mobile, email, number string
 		err := w.db.QueryRow(t.Context(), `SELECT p.org_id, p.first_name, p.last_name, p.date_of_birth::text, p.sex,
-			p.national_id, p.national_id_type, p.mobile, p.email, e.hospital_number, e.procedure
+			p.national_id, p.national_id_type, p.mobile, p.email, e.hospital_number
 			FROM episodes e JOIN patients p ON p.id = e.patient_id WHERE e.id = $1`, got["id"]).Scan(
-			&org, &first, &last, &dob, &sex, &id, &typ, &mobile, &email, &number, &procedure)
+			&org, &first, &last, &dob, &sex, &id, &typ, &mobile, &email, &number)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if org != w.a.Org || first != "Sam" || last != "Smith" || dob != "1980-05-17" || sex != "female" || id != nhsFree ||
-			typ != "nhs" || mobile != "+447700900123" || email != "sam@example.test" || number != "K-1" || procedure != "Knee replacement" {
-			t.Errorf("row = %v %q %q %q %q %q %q %q %q %q %q", org, first, last, dob, sex, id, typ, mobile, email, number, procedure)
+			typ != "nhs" || mobile != "+447700900123" || email != "sam@example.test" || number != "K-1" {
+			t.Errorf("row = %v %q %q %q %q %q %q %q %q %q", org, first, last, dob, sex, id, typ, mobile, email, number)
 		}
 	})
 	t.Run("happy path: no NHS number, no contacts (PAT-01a)", func(t *testing.T) {

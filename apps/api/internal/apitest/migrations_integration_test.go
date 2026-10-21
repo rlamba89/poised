@@ -3,6 +3,7 @@
 package apitest_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -155,6 +156,123 @@ func TestEpisodeFormsMigration(t *testing.T) {
 		if n := count(t, `SELECT count(*) FROM information_schema.columns WHERE table_name = 'episode_answers'
 			AND column_name = 'episode_id'`); n != 1 {
 			t.Error("rolled back, episode_answers isn't keyed by the episode")
+		}
+		m.Up(t)
+	})
+}
+
+// S19 replaces the episode's free-text procedure with one from the trust's list (S19 answers 4a,
+// Rahul 20 Oct): each trust's distinct texts become its procedures, trimmed and in any case once,
+// and its episodes are linked to them. Episodes made since migration 00019 keep their procedure.
+func TestProceduresMigration(t *testing.T) {
+	t.Parallel()
+	m := apitest.NewMigrations(t, 19)
+	const (
+		trustA, trustB = "00000000-0000-0000-0000-0000000000a0", "00000000-0000-0000-0000-0000000000b0"
+		hosA, hosB     = "00000000-0000-0000-0000-0000000000a1", "00000000-0000-0000-0000-0000000000b1"
+		user           = "00000000-0000-0000-0000-0000000000c0"
+	)
+	setup := `
+INSERT INTO orgs (id, name, code) VALUES ('` + trustA + `', 'Trust A', 'MA'), ('` + trustB + `', 'Trust B', 'MB');
+INSERT INTO hospitals (id, org_id, name) VALUES ('` + hosA + `', '` + trustA + `', 'A1'), ('` + hosB + `', '` + trustB + `', 'B1');
+INSERT INTO users (id, name, email) VALUES ('` + user + `', 'Cara', 'cara@example.test');
+INSERT INTO patients (id, org_id, first_name, last_name, date_of_birth, sex)
+VALUES ('00000000-0000-0000-0000-0000000000d0', '` + trustA + `', 'Sam', 'Smith', '1970-01-01', 'unknown'),
+       ('00000000-0000-0000-0000-0000000000d1', '` + trustB + `', 'Jo', 'Jones', '1970-01-01', 'unknown');
+INSERT INTO episodes (id, org_id, hospital_id, patient_id, procedure, created_by) VALUES
+  ('00000000-0000-0000-0000-0000000000e0', '` + trustA + `', '` + hosA + `', '00000000-0000-0000-0000-0000000000d0', 'Hip replacement', '` + user + `'),
+  ('00000000-0000-0000-0000-0000000000e1', '` + trustA + `', '` + hosA + `', '00000000-0000-0000-0000-0000000000d0', ' hip REPLACEMENT ', '` + user + `'),
+  ('00000000-0000-0000-0000-0000000000e2', '` + trustA + `', '` + hosA + `', '00000000-0000-0000-0000-0000000000d0', 'Knee scope', '` + user + `'),
+  ('00000000-0000-0000-0000-0000000000e3', '` + trustA + `', '` + hosA + `', '00000000-0000-0000-0000-0000000000d0', '  ', '` + user + `'),
+  ('00000000-0000-0000-0000-0000000000e4', '` + trustB + `', '` + hosB + `', '00000000-0000-0000-0000-0000000000d1', 'Hip replacement', '` + user + `');
+`
+	if _, err := m.DB.Exec(t.Context(), setup); err != nil {
+		t.Fatalf("old shape: %v", err)
+	}
+	m.UpTo(t, 20)
+
+	procedures := func(t *testing.T, org string) []string {
+		t.Helper()
+		rows, err := m.DB.Query(t.Context(), `SELECT name || '|' || code || '|' || specialty || '|' || coalesce(hospital_id::text, '') || '|' ||
+			coalesce(default_questionnaire_id::text, '') || '|' || retired || '|' || info_content::text || '|' || proms_plan::text
+			FROM procedures WHERE org_id = $1 ORDER BY lower(name)`, org)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var out []string
+		for rows.Next() {
+			var s string
+			if err := rows.Scan(&s); err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, s)
+		}
+		return out
+	}
+	t.Run("each trust's distinct texts are its procedures, for every hospital, with no default HQ", func(t *testing.T) {
+		if got, want := procedures(t, trustA), []string{"Hip replacement|||||false|[]|[]", "Knee scope|||||false|[]|[]"}; !slices.Equal(got, want) {
+			t.Errorf("trust A = %q, want %q", got, want)
+		}
+		if got, want := procedures(t, trustB), []string{"Hip replacement|||||false|[]|[]"}; !slices.Equal(got, want) {
+			t.Errorf("trust B = %q, want %q", got, want)
+		}
+	})
+	t.Run("each episode names its trust's procedure; a blank one names none", func(t *testing.T) {
+		rows, err := m.DB.Query(t.Context(), `SELECT e.id::text || '=' || coalesce(p.name, '') || coalesce('@' || p.org_id::text, '')
+			FROM episodes e LEFT JOIN procedures p ON p.id = e.procedure_id ORDER BY e.id`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var got []string
+		for rows.Next() {
+			var s string
+			if err := rows.Scan(&s); err != nil {
+				t.Fatal(err)
+			}
+			got = append(got, s)
+		}
+		want := []string{
+			"00000000-0000-0000-0000-0000000000e0=Hip replacement@" + trustA,
+			"00000000-0000-0000-0000-0000000000e1=Hip replacement@" + trustA,
+			"00000000-0000-0000-0000-0000000000e2=Knee scope@" + trustA,
+			"00000000-0000-0000-0000-0000000000e3=",
+			"00000000-0000-0000-0000-0000000000e4=Hip replacement@" + trustB,
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("episodes = %q, want %q", got, want)
+		}
+	})
+	t.Run("the free text is gone, and the dates start empty", func(t *testing.T) {
+		var n int
+		if err := m.DB.QueryRow(t.Context(), `SELECT count(*) FROM information_schema.columns
+			WHERE table_name = 'episodes' AND column_name = 'procedure'`).Scan(&n); err != nil || n != 0 {
+			t.Errorf("episodes.procedure columns = %d (%v), want 0", n, err)
+		}
+		if err := m.DB.QueryRow(t.Context(), `SELECT count(*) FROM episodes WHERE planned_date IS NOT NULL OR poa_date IS NOT NULL`).Scan(&n); err != nil || n != 0 {
+			t.Errorf("episodes with dates = %d (%v), want 0", n, err)
+		}
+	})
+	t.Run("a name is unique in the trust in any case, and the lists must be lists", func(t *testing.T) {
+		if _, err := m.DB.Exec(t.Context(), `INSERT INTO procedures (org_id, name) VALUES ($1, 'KNEE SCOPE')`, trustA); err == nil {
+			t.Error("a second 'Knee scope' in trust A was allowed")
+		}
+		if _, err := m.DB.Exec(t.Context(), `INSERT INTO procedures (org_id, name) VALUES ($1, 'Knee scope')`, trustB); err != nil {
+			t.Errorf("trust B's own 'Knee scope': %v", err)
+		}
+		if _, err := m.DB.Exec(t.Context(), `INSERT INTO procedures (org_id, name, proms_plan) VALUES ($1, 'Odd', '{}')`, trustA); err == nil {
+			t.Error("a PROMs plan that isn't a list was allowed")
+		}
+		if _, err := m.DB.Exec(t.Context(), `INSERT INTO procedures (org_id, hospital_id, name) VALUES ($1, $2, 'Elsewhere')`, trustA, hosB); err == nil {
+			t.Error("a procedure for another trust's hospital was allowed")
+		}
+	})
+	t.Run("down puts the text back, then up again", func(t *testing.T) {
+		m.DownTo(t, 19)
+		var text string
+		if err := m.DB.QueryRow(t.Context(), `SELECT procedure FROM episodes WHERE id = '00000000-0000-0000-0000-0000000000e1'`).Scan(&text); err != nil || text != "Hip replacement" {
+			t.Errorf("procedure after down = %q (%v), want the procedure's name", text, err)
 		}
 		m.Up(t)
 	})

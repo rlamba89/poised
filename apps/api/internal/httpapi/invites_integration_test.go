@@ -36,7 +36,7 @@ func linkIn(t *testing.T, m messaging.Message) string {
 func newPatientEpisode(t *testing.T, w *clinic, last, mobile, email string) uuid.UUID {
 	t.Helper()
 	r := w.clinician.Do("POST", at(w.a, "/episodes"), map[string]any{
-		"versionId": w.hq.VersionID, "procedure": "Knee",
+		"versionId": w.hq.VersionID, "procedureId": w.knee,
 		"patient": map[string]string{"firstName": "Sam", "lastName": last, "dateOfBirth": "1980-05-17", "sex": "female",
 			"mobile": mobile, "email": email},
 	})
