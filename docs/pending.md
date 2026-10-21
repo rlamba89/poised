@@ -22,7 +22,7 @@ docker compose up -d --force-recreate db
   - Files, and Send to EPR
   - hospital-reported BMI
   - a suggested ASA from disclosures
-- **Statuses:** recovery (C9) and archive (S22) are not built yet. *Admitted, discharged and cancelled: S20.*
+- **Statuses:** recovery (C9) is not built yet. *Admitted, discharged and cancelled: S20. Archived: S22.*
 - **Patients:**
   - accounts, and invitations by email or SMS
   - patient search
@@ -53,6 +53,22 @@ docker compose up -d --force-recreate db
 | Saved option lists: copied or linked? | Built as copies: a question keeps its options when the list changes, which protects stable IDs (OPT-02). Confirm that's what's wanted. |
 
 ## 3. Small gaps in what's built
+
+### From S22's verification (21 Oct; none blocking, details in [verify.md](sessions/S22-archive/verify.md))
+
+- **For Rahul: a patient's sent questionnaire loses its View once archived** (normally 30 days after discharge): the home shows "Closed by the hospital" and the form answers 403. Recommended: show an archived-after-sent questionnaire as Sent with a read-only View; or keep it closed if the patient's copy should end with the episode.
+- **Closing an account can deadlock with an archive or cancel of one of its episodes in the same instant** (opposite lock order: `closeAccount` locks `jobs` then the episode; `applyStatus` and the auto-archive the reverse). One side gets a clean rollback and a 500. Fix: lock the records' episodes first in `closeAccount`.
+- **A patient autosave racing an archive can still be saved** (`SavePatientAnswers` checks only that the form is open). Add `status <> 'archived'` to its SQL.
+- **`RunDue` returns before the follow-ups if adding an auto-archive job fails;** log and carry on instead.
+- **An episode archived from Cancelled:** the patient's home says "Cancelled by the hospital", an old link's form says "This questionnaire is closed". Use the cancelled message for both.
+
+### From S22's test report 1 (21 Oct)
+
+- **Archived rows still say "1 open task"** in the episode list (with Show archived) and on the episode's Tasks title. The tasks can't be changed while it's archived, so it may read as work outstanding. Cosmetic; Rahul to judge (hide the count on archived rows, or keep it as a record).
+- **General notes look out of order after a future-dated run, then a real-time change** (test report 3): e.g. an auto-archive dated 31 days on by a /qa/jobs run, then an un-archive dated now; notes sort by their time. Testers' tool only.
+- **An archived episode still shows the red NOT RESPONDING badge** beside ARCHIVED (test report 3). Harmless (the flag is history); Rahul to judge whether to hide it once archived.
+- **/qa/messages shows a reminder's real send time, while its General note is dated with the "as of" run's time** (test report 2). Testers' tool only (the message log is capture mode's); on a real clock they're the same moment.
+- **A run of /qa/jobs "as of" a later time dates what it writes as of then** (fixed in S22, F-2): its notes and the activity they mean are in that future, so the episode's General notes can list them after later real comments, and a simulated episode won't auto-archive until 6 months after the simulated time. Testers' tool only; on AWS and locally the run's time is the real time.
 
 ### From S21's verification (21 Oct; none blocking, details in [verify.md](sessions/S21-tasks-worklists/verify.md))
 

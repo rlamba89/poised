@@ -48,7 +48,7 @@
 
 ## Status
 
-**Split into sessions on 20 Oct 2026.** **S18 verified** (20 Oct; [build notes](../sessions/S18-episode-forms/build-notes.md), [verify.md](../sessions/S18-episode-forms/verify.md)). **S19 verified** (21 Oct; [build notes](../sessions/S19-procedures/build-notes.md), [verify.md](../sessions/S19-procedures/verify.md)). **S20 verified** (21 Oct; [build notes](../sessions/S20-statuses/build-notes.md), [verify.md](../sessions/S20-statuses/verify.md)). **S21 verified** (21 Oct; [build notes](../sessions/S21-tasks-worklists/build-notes.md), [verify.md](../sessions/S21-tasks-worklists/verify.md)). The briefs are in [docs/sessions/](../sessions/README.md):
+**Done (21 Oct 2026).** Split into sessions on 20 Oct 2026. **S18 verified** (20 Oct; [build notes](../sessions/S18-episode-forms/build-notes.md), [verify.md](../sessions/S18-episode-forms/verify.md)). **S19 verified** (21 Oct; [build notes](../sessions/S19-procedures/build-notes.md), [verify.md](../sessions/S19-procedures/verify.md)). **S20 verified** (21 Oct; [build notes](../sessions/S20-statuses/build-notes.md), [verify.md](../sessions/S20-statuses/verify.md)). **S21 verified** (21 Oct; [build notes](../sessions/S21-tasks-worklists/build-notes.md), [verify.md](../sessions/S21-tasks-worklists/verify.md)). **S22 verified** (21 Oct; [build notes](../sessions/S22-archive/build-notes.md), [verify.md](../sessions/S22-archive/verify.md)). The briefs are in [docs/sessions/](../sessions/README.md):
 - **S18:** episode forms (the reshape, first, so C4–C6 build on it);
 - **S19:** procedures and episode dates;
 - **S20:** every status, cancel and re-open;
@@ -81,3 +81,9 @@ Differences in S21 (tasks, worklists and status messages, 21 Oct; **tested 21 Oc
 - **A task is for a team** (`team`: nurse, anaesthetist, admin; S21 answers 1), where the plan said `role`; `created_by_rule` names a rule's task (C6), and `reopened_by` / `reopened_at` keep who re-opened it. The PATCH names the task: `PATCH …/episodes/{eid}/tasks/{tid}`.
 - **Each worklist's rule is one SQL function, `in_worklist`**, used by both `GET …/episodes?worklist=` and a new route for the tabs' counts, **`GET …/worklists`** (and the trust's `GET /api/o/{oid}/worklists`), which the plan didn't name.
 - **A task change is an episode change:** it sends the episode's revision and bumps it (S20).
+
+Differences in S22 (archive, auto-archive and closing an account, 21 Oct; **tested 21 Oct, test report 3 all passed; verified 21 Oct**; details in its [build notes](../sessions/S22-archive/build-notes.md)):
+- **Archive and un-archive are a super clinician's** (S22 answers 1); un-archive restores `archived_from` exactly. Notes are refused on an archived episode too.
+- **The auto-archive decision is `episode.ArchiveDue`** (the plan's "decision function"), and cancelled episodes fall under its "no activity" rule. `last_activity_at` is kept by database triggers.
+- **One job per hospital** (`auto_archive`), added by the runner itself; the testers' "run as of" also runs every hospital's auto-archive.
+- **EPI-09** adds `POST /api/p/account/close`; the J8 journey of the plan is **J9** (`test_j9_lifecycle.py`), plus `test_close_account.py`.
