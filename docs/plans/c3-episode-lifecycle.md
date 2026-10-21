@@ -48,7 +48,7 @@
 
 ## Status
 
-**Split into sessions on 20 Oct 2026.** **S18 verified** (20 Oct; [build notes](../sessions/S18-episode-forms/build-notes.md), [verify.md](../sessions/S18-episode-forms/verify.md)). **S19 verified** (21 Oct; [build notes](../sessions/S19-procedures/build-notes.md), [verify.md](../sessions/S19-procedures/verify.md)). The briefs are in [docs/sessions/](../sessions/README.md):
+**Split into sessions on 20 Oct 2026.** **S18 verified** (20 Oct; [build notes](../sessions/S18-episode-forms/build-notes.md), [verify.md](../sessions/S18-episode-forms/verify.md)). **S19 verified** (21 Oct; [build notes](../sessions/S19-procedures/build-notes.md), [verify.md](../sessions/S19-procedures/verify.md)). **S20 verified** (21 Oct; [build notes](../sessions/S20-statuses/build-notes.md), [verify.md](../sessions/S20-statuses/verify.md)). The briefs are in [docs/sessions/](../sessions/README.md):
 - **S18:** episode forms (the reshape, first, so C4–C6 build on it);
 - **S19:** procedures and episode dates;
 - **S20:** every status, cancel and re-open;
@@ -71,3 +71,8 @@ Differences in S19 (procedures and episode dates, 20 Oct; details in its [build 
 - **The free-text procedure is carried across, not re-seeded:** migration 00020 makes each trust's distinct texts into its procedures and links the episodes (only those made since 00019).
 - **The seed adds one published "Demo pre-op HQ" per trust**, so the demo procedures have a default HQ.
 - **"Picking a procedure fills the default HQ" is tested on `GET …/procedures?hospital=`**, which gives each procedure the HQ it picks there; the New episode page applies it.
+
+Differences in S20 (statuses, cancel and re-open, 21 Oct; details in its [build notes](../sessions/S20-statuses/build-notes.md)):
+- **Undo, not a super clinician's step back** (S20 answers 2): any clinician steps back the latest move made by hand, with a reason, repeatably. It has its own route, `POST …/episodes/{eid}/undo`, beside the plan's status, cancel and re-open.
+- **The status events are a new table, `episode_status_events`**, and every episode write carries a **revision** (a stale one → 409), which the plan didn't name.
+- **Admitted and discharged are dates** (`admitted_at`, `discharged_at` as `date`), as entered.

@@ -22,13 +22,13 @@ docker compose up -d --force-recreate db
   - Files, and Send to EPR
   - hospital-reported BMI
   - a suggested ASA from disclosures
-- **Statuses:** admitted, discharged, recovery and archive are not built yet.
+- **Statuses:** recovery (C9) and archive (S22) are not built yet. *Admitted, discharged and cancelled: S20.*
 - **Patients:**
   - accounts, and invitations by email or SMS
   - patient search
   - Short HQ
-- **Re-opening:** a review can't be re-opened after it is complete.
-- **Two simultaneous episode PATCHes can overwrite each other's ASA grade** (found by S02a's verification, 9 Oct; older than S02a).
+- ~~**Re-opening:** a review can't be re-opened after it is complete.~~ *Built in S20 (super clinicians, with a reason).*
+- ~~**Two simultaneous episode PATCHes can overwrite each other's ASA grade**~~ *Fixed in S20 by the episode revision, with the related wrong-status 409 below.* (found by S02a's verification, 9 Oct; older than S02a).
   - S02a's guard covers only the status. The handler still fills the fields a PATCH didn't send from the row it loaded, so of two PATCHes in the same milliseconds (Nurse ASA and Anaesthetist ASA), the last empties the other's grade.
   - **Fix:** an UPDATE that sets only the fields sent (`sqlc.narg` with `coalesce`), or a revision on the episode row. Details in [S02a verify.md](sessions/S02a-answer-revisions/verify.md) item 2.
   - **Related (S02a verification 2, finding 5):** the PATCH 409 says "This episode changed since you opened it", but it compares with the status the request loaded a moment earlier, not the one the user's page loaded. A stale POA Summary page isn't detected. A revision on the episode row would fix both, and make the message true.
@@ -53,6 +53,12 @@ docker compose up -d --force-recreate db
 | Saved option lists: copied or linked? | Built as copies: a question keeps its options when the list changes, which protects stable IDs (OPT-02). Confirm that's what's wanted. |
 
 ## 3. Small gaps in what's built
+
+### From S20's test report 1 (21 Oct)
+
+- **An Undo form open in a stale tab retargets after Reload** (test report 2): its title changes to the new step back ("back to POA complete") and the reason stays, instead of closing as a no-longer-offered move does. Safe: nothing is sent without another click, and the title says what will happen. Could close too if the target changed (`StatusControl.tsx`, the `offered` check).
+- **POA Summary at 500 px** (test report 2, cosmetic, older than S20): when the two ASA grade fields wrap, "Anaesthetist ASA grade" sits about 20 px further right than "Nurse ASA grade" (its `ml="lg"` in `PoaSummary.tsx`).
+- **Staff's on-behalf form for a cancelled episode shows the patient's wording** ("…Please contact the hospital if you have any questions."), from the shared refusal in `patient.go` (`formCancelled`). Cosmetic: staff see the episode is cancelled.
 
 - **Disclosures on "Other (please specify)":** not possible yet.
 - **Question Set conditions:**
