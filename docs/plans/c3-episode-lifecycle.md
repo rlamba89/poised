@@ -48,7 +48,7 @@
 
 ## Status
 
-**Split into sessions on 20 Oct 2026.** **S18 verified** (20 Oct; [build notes](../sessions/S18-episode-forms/build-notes.md), [verify.md](../sessions/S18-episode-forms/verify.md)). The briefs are in [docs/sessions/](../sessions/README.md):
+**Split into sessions on 20 Oct 2026.** **S18 verified** (20 Oct; [build notes](../sessions/S18-episode-forms/build-notes.md), [verify.md](../sessions/S18-episode-forms/verify.md)). **S19 verified** (21 Oct; [build notes](../sessions/S19-procedures/build-notes.md), [verify.md](../sessions/S19-procedures/verify.md)). The briefs are in [docs/sessions/](../sessions/README.md):
 - **S18:** episode forms (the reshape, first, so C4–C6 build on it);
 - **S19:** procedures and episode dates;
 - **S20:** every status, cancel and re-open;
@@ -64,3 +64,10 @@ Differences in S18 (episode forms, 20 Oct; details in its [build notes](../sessi
 - **A form's status is `open` or `submitted`** for now; the database keeps it in step with `submitted_at`. C7 and C9 add any others they need.
 - **Who sent the HQ for the patient** (`patient_submitted_by`, PAT-09) moved to the form too, as `submitted_by`.
 - **The reshape is migration 00019,** which removes every made-up episode (with its answers, notes, messages, jobs and invite links) and keeps everything else. So QA needs no hand reset: the pipeline's migrate step does it.
+
+Differences in S19 (procedures and episode dates, 20 Oct; details in its [build notes](../sessions/S19-procedures/build-notes.md)):
+- **The default HQ is stored as a questionnaire (`default_questionnaire_id`), not a version** (the plan said `default_version_id`). A new episode gets that questionnaire's published version at the time, so publishing a new version doesn't strand the default; S10's `defaultHq` setting works the same way.
+- **The info content (INF-04) and PROMs plan (PRM-01) columns are added now** (S19 answers 3) as empty JSON lists, returned by the API but not yet editable: C5 and C9 define their items.
+- **The free-text procedure is carried across, not re-seeded:** migration 00020 makes each trust's distinct texts into its procedures and links the episodes (only those made since 00019).
+- **The seed adds one published "Demo pre-op HQ" per trust**, so the demo procedures have a default HQ.
+- **"Picking a procedure fills the default HQ" is tested on `GET …/procedures?hospital=`**, which gives each procedure the HQ it picks there; the New episode page applies it.

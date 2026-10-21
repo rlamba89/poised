@@ -385,6 +385,15 @@ docker compose up -d --force-recreate db
        - 00019's header and the migration test say "the seed puts back the demo data", but the seed has no episodes;
        - `GetEpisode`'s comment says the JSON is unchanged, but it gains `hqFormId`.
     5. **The HQ-form join is copied into about 9 queries.** Consider an `episode_hq` view when C7/C9 add form kinds.
+  - **From the S19 manual test (20 Oct, minor; [test-report-1.md](sessions/S19-procedures/test-report-1.md)):**
+    1. **The header overflows for a whole-trust admin below about 1280 px:** at 1126 px Sign out is off-screen (Ada: Questionnaires, Episodes, Procedures, Staff, Settings, Audit). S19's Procedures link adds about 114 px, but without it Sign out would still end at about 1140 px. A menu for the trust's admin pages (Procedures, Staff, Settings, Audit) would fix it.
+    2. **The New episode page's Health questionnaire select isn't searchable** (older than S19). With many published HQs (1,243 locally, from the journeys) it's hard to use; the Settings page's Default HQ select is searchable.
+    3. **(Cosmetic) After Edit on a lower row of Procedures, the form's heading sits under the fixed header** (test report 4): the form scrolls into view with `block: "nearest"`, which puts its top about 17 px from the window's top, under the 56 px header. Name and the fields below are visible. A `scroll-margin-top` of the header's height on the form would fix it.
+  - **From the S19 verification (21 Oct, minor; [verify.md](sessions/S19-procedures/verify.md)):**
+    1. **The Procedures page's Default HQ choices come from `…/h/{hid}/published-hqs`** (which includes the hospital's own questionnaires), but the API accepts only the trust's (`PublishedQuestionnairesInOrg`). Not reachable while questionnaires can only be the trust's; fix it before hospital-only HQs can be made (list the trust-wide set, or let a hospital-only procedure take its hospital's HQ).
+    2. **New episode: a procedure picked before the HQ list has loaded loses its default HQ** (`hqForProcedure` sees an empty list; the hospital's default fills in). A window of milliseconds; re-apply the pick when the HQs arrive, or enable the Procedure select only once both have loaded.
+    3. **`episodes.procedure_id` and `procedures.default_questionnaire_id` are single-column FKs**, unlike the repo's composite `(org_id, …)` tenancy FKs. Go checks the trust on every write; a follow-up migration (unique `(org_id, id)` on procedures and questionnaires, then composite FKs) would make the database enforce it too.
+    4. **QA push:** 00020 drops `episodes.procedure`, so as with S18 the episode routes return 500 on QA between the Lambda deploy and the migrate step.
 - **Lifebox import:**
   - Conditions that cross Question Sets on pages and questions are still dropped with a warning.
   - Lifebox has no Question Set-level conditions to import.
