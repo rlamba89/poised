@@ -18,8 +18,9 @@ import { GeneralNotes } from "./GeneralNotes";
 import { currentAnswers, useEpisodeHQ } from "./hq";
 import type { StatusEvent, StatusOption, UndoOption } from "./status";
 import { StatusControl, StatusHistory } from "./StatusControl";
+import { TasksPanel } from "./TasksPanel";
 import { patientName, type Episode, type EpisodeEvent, type EpisodeInvite } from "./types";
-import { undeliveredText, type Undelivered } from "./undelivered";
+import { inviteUndelivered, statusUndelivered, undeliveredText, type Undelivered } from "./undelivered";
 
 /**
  * GET …/episodes/:id. S20 added the status: `moves` (what this user may do from here), `undo`
@@ -61,6 +62,9 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
   const cancelled = e.status === "cancelled";
   // The reason as recorded, with any details (S20): the latest cancel in the history.
   const cancelledWhy = data.statusHistory.findLast((h) => h.move === "cancel")?.reason;
+  // The invite's and reminders' failures go with the invite card; the status messages' (S21) with the status.
+  const inviteFailed = inviteUndelivered(data.undelivered);
+  const statusFailed = statusUndelivered(data.undelivered);
 
   return (
     <Stack maw={960} mx="auto">
@@ -77,7 +81,7 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
             // EPI-02 (S16): the HQ wasn't sent by the hospital's "not responding" day. The worklist is C3's.
             <Badge color="red" variant="light" data-testid="not-responding">Not responding</Badge>
           )}
-          {data.undelivered.length > 0 && !e.patientSubmittedAt && (
+          {inviteFailed.length > 0 && !e.patientSubmittedAt && (
             // OPS-05 (S17): a text or email of the latest invite, or a later reminder, didn't reach the patient.
             <Badge color="red" variant="light" data-testid="undelivered-badge">Invite not delivered</Badge>
           )}
@@ -120,13 +124,26 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
           onSaved={() => { setEditing(false); reload(); }} />
       )}
 
-      {e.status === "hq_not_complete" && <Invite path={path} episode={e} invite={data.invite} undelivered={data.undelivered} onSent={reload} />}
+      {e.status === "hq_not_complete" && <Invite path={path} episode={e} invite={data.invite} undelivered={inviteFailed} onSent={reload} />}
 
       <QuestionSets base={base} episode={e} onReviewed={reload} />
 
       <Card withBorder>
         <StatusControl path={path} detail={data} onChanged={reload} />
+        {statusFailed.length > 0 && (
+          // S21 (EPI-08): a message about a status change that didn't reach the patient.
+          <Alert color="red" mt="sm" title="Message not delivered" data-testid="status-undelivered">
+            {statusFailed.map((u) => (
+              <Text size="sm" key={`${u.sentAt}-${u.status}-${u.channel}`}>
+                {undeliveredText(u)} (Sent {formatDateTime(u.sentAt)}.)
+              </Text>
+            ))}
+            <Text size="sm" mt={4}>Check the patient&apos;s mobile number and email address, and tell them another way.</Text>
+          </Alert>
+        )}
       </Card>
+
+      <TasksPanel path={path} episode={e} onChanged={reload} />
 
       <Card withBorder>
         <Title order={4} mb="xs">Status history</Title>

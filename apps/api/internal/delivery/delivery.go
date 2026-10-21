@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/episode"
 	"github.com/rlamba89/poised/apps/api/internal/messaging"
 )
 
@@ -101,11 +102,16 @@ func Parse(message string) (f Failure, failed bool, err error) {
 	return f, true, nil
 }
 
-// Note is the General notes entry for a failure: kind is the message's ("invite" or "reminder").
-func Note(kind, channel, reason string) string {
+// Note is the General notes entry for a failure: kind is the message's ("invite", "reminder" or
+// "status"), and status, for a status message (S21), the status it was sent for.
+func Note(kind, status, channel, reason string) string {
 	what, contact := "email", "email address"
 	if channel == "sms" {
 		what, contact = "text message", "mobile number"
+	}
+	if kind == "status" {
+		return fmt.Sprintf("The %s %s wasn't delivered: %s. Check the patient's %s, and tell them another way.",
+			episode.Labels[status], what, reason, contact)
 	}
 	which := "The invite's"
 	if kind == "reminder" {
@@ -131,7 +137,7 @@ func Record(ctx context.Context, pool *pgxpool.Pool, f Failure, now time.Time) e
 	if err != nil {
 		return err
 	}
-	if err := q.AddAutomaticEpisodeEvent(ctx, db.AddAutomaticEpisodeEventParams{EpisodeID: row.EpisodeID, Text: Note(row.Kind, row.Channel, f.Reason)}); err != nil {
+	if err := q.AddAutomaticEpisodeEvent(ctx, db.AddAutomaticEpisodeEventParams{EpisodeID: row.EpisodeID, Text: Note(row.Kind, row.Status, row.Channel, f.Reason)}); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {

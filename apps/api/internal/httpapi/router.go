@@ -181,6 +181,9 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/published-hqs", hosp(s.listPublishedHQs))
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes", hosp(s.audited("episode.list", s.listEpisodes)))
 	mux.HandleFunc("GET /api/o/{oid}/episodes", org(s.audited("episode.list_trust", s.listTrustEpisodes))) // "All hospitals" (STF-03)
+	// The worklists' tabs (S21, EPI-02): their labels and counts; the lists are ?worklist= above (worklists.go).
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/worklists", hosp(s.listWorklists))
+	mux.HandleFunc("GET /api/o/{oid}/worklists", org(s.listTrustWorklists))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes", hosp(s.audited("episode.create", s.createEpisode)))
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}", hosp(s.audited("episode.view", s.getEpisode)))
 	mux.HandleFunc("PATCH /api/o/{oid}/h/{hid}/episodes/{eid}", hosp(s.audited("episode.update", s.updateEpisode)))
@@ -190,6 +193,10 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/cancel", hosp(s.audited("episode.cancel", s.cancelEpisode)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/reopen", hosp(s.audited("episode.reopen", s.reopenReview)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/undo", hosp(s.audited("episode.undo", s.undoStatus)))
+	// Tasks (S21, TSK-01): anyone at the hospital adds, completes or re-opens one (tasks.go).
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/tasks", hosp(s.audited("task.list", s.listTasks)))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/tasks", hosp(s.audited("task.create", s.createTask)))
+	mux.HandleFunc("PATCH /api/o/{oid}/h/{hid}/episodes/{eid}/tasks/{tid}", hosp(s.audited("task.update", s.updateTask)))
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/hq", hosp(s.audited("answers.view", s.episodeHQ)))
 	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/episodes/{eid}/answers/{cid}", hosp(s.audited("answers.save", s.saveClinicianAnswers)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/complete-review", hosp(s.audited("review.complete", s.completeReview)))

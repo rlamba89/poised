@@ -61,11 +61,18 @@ func (s *server) listTrustEpisodes(w http.ResponseWriter, r *http.Request) {
 	s.writeEpisodes(w, r, db.ListEpisodesParams{OrgID: p.Org, AllHospitals: p.Role != role.None, HospitalIds: p.Hospitals})
 }
 
+// writeEpisodes answers a list, with ?status= and ?worklist= (S21, EPI-02) applied.
 func (s *server) writeEpisodes(w http.ResponseWriter, r *http.Request, arg db.ListEpisodesParams) {
 	arg.Status = r.URL.Query().Get("status")
+	arg.Worklist = r.URL.Query().Get("worklist")
+	if arg.Worklist != "" && !episode.IsWorklist(arg.Worklist) {
+		writeError(w, http.StatusBadRequest, "Choose a worklist.")
+		return
+	}
 	if arg.HospitalIds == nil {
 		arg.HospitalIds = []uuid.UUID{}
 	}
+	arg.Now, arg.DefaultZone, arg.SoonDays = s.clock.Now(), s.cfg.Country.TimeZone, defaultSoonDays()
 	rows, err := s.q.ListEpisodes(r.Context(), arg)
 	if err != nil {
 		serverError(w, "list episodes", err)

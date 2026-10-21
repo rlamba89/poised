@@ -55,7 +55,7 @@ const (
 	Email         Kind = "email"         // "" or an email address, kept in lower case
 	Phone         Kind = "phone"         // "" or a phone number: digits, spaces, + ( ) -
 	Questionnaire Kind = "questionnaire" // "" or the id of one of the trust's questionnaires
-	Template      Kind = "template"      // patient message text with {{placeholders}}; must hold {{link}}
+	Template      Kind = "template"      // patient message text with {{placeholders}}; must hold {{link}} unless LinkOptional
 )
 
 // Def is one setting.
@@ -70,6 +70,9 @@ type Def struct {
 	Default json.RawMessage `json:"default"`
 	Min     int             `json:"min,omitempty"`
 	Max     int             `json:"max,omitempty"` // for text: the most characters
+	// LinkOptional: a template that needn't hold {{link}} (a status message, S21 answers 4). An
+	// invite's and a reminder's must: the link is the point of them.
+	LinkOptional bool `json:"-"`
 }
 
 // Placeholders are the names a message template may use.
@@ -81,9 +84,14 @@ const (
 	gPatients  = "What patients see"
 	gWorkflow  = "Reminders and archiving"
 	gTemplates = "Patient messages"
+	gWorklists = "Worklists"
+	gStatus    = "Messages when the status changes"
 )
 
-const templateHelp = "Use {{firstName}}, {{hospital}} and {{link}}. {{link}} is required."
+const (
+	templateHelp       = "Use {{firstName}}, {{hospital}} and {{link}}. {{link}} is required."
+	statusTemplateHelp = "Use {{firstName}}, {{hospital}} and {{link}}. {{link}} is optional: it opens the patient's sign-in page."
+)
 
 // Defs is every setting, in the order screens show them.
 var Defs = []Def{
@@ -133,6 +141,34 @@ var Defs = []Def{
 	{Key: "templates.reminderEmail", Label: "Reminder email", Group: gTemplates, Level: Hospital, Kind: Template, Help: templateHelp,
 		Default: j("Hello {{firstName}},\n\nThis is a reminder from {{hospital}}: please fill in your health questionnaire before your operation:\n\n{{link}}"),
 		Max:     5000},
+
+	// S21 (EPI-02, answers 3): the "procedure within N days" worklist.
+	{Key: "worklists.soonDays", Label: "\"Procedure within N days\" worklist: number of days", Group: gWorklists, Level: Hospital, Kind: Int,
+		Help:    "Episodes with a planned procedure date from today to this many days ahead, and not yet Ready for admission.",
+		Default: j(14), Min: 1, Max: 365},
+
+	// S21 (EPI-08, answers 4): a message to the patient when the status changes, by text and by
+	// email, each with its own switch, off until the hospital turns it on.
+	{Key: "statusMessages.readyForAdmissionSms", Label: "Text the patient when the episode is Ready for admission", Group: gStatus,
+		Level: Hospital, Kind: Bool, Default: j(false)},
+	{Key: "templates.readyForAdmissionSms", Label: "Ready for admission text message", Group: gStatus, Level: Hospital, Kind: Template,
+		Help: statusTemplateHelp, LinkOptional: true, Max: 600,
+		Default: j("Hello {{firstName}}, {{hospital}}: your pre-operative assessment is complete and you are ready for your operation. The hospital will contact you about your admission.")},
+	{Key: "statusMessages.readyForAdmissionEmail", Label: "Email the patient when the episode is Ready for admission", Group: gStatus,
+		Level: Hospital, Kind: Bool, Default: j(false)},
+	{Key: "templates.readyForAdmissionEmail", Label: "Ready for admission email", Group: gStatus, Level: Hospital, Kind: Template,
+		Help: statusTemplateHelp, LinkOptional: true, Max: 5000,
+		Default: j("Hello {{firstName}},\n\nYour pre-operative assessment at {{hospital}} is complete, and you are ready for your operation. The hospital will contact you about your admission date and what to bring.")},
+	{Key: "statusMessages.cancelledSms", Label: "Text the patient when the episode is cancelled", Group: gStatus,
+		Level: Hospital, Kind: Bool, Default: j(false)},
+	{Key: "templates.cancelledSms", Label: "Cancelled text message", Group: gStatus, Level: Hospital, Kind: Template,
+		Help: statusTemplateHelp, LinkOptional: true, Max: 600,
+		Default: j("Hello {{firstName}}, {{hospital}} has cancelled your pre-operative health questionnaire, so you don't need to fill it in. Please contact the hospital if you have any questions.")},
+	{Key: "statusMessages.cancelledEmail", Label: "Email the patient when the episode is cancelled", Group: gStatus,
+		Level: Hospital, Kind: Bool, Default: j(false)},
+	{Key: "templates.cancelledEmail", Label: "Cancelled email", Group: gStatus, Level: Hospital, Kind: Template,
+		Help: statusTemplateHelp, LinkOptional: true, Max: 5000,
+		Default: j("Hello {{firstName}},\n\n{{hospital}} has cancelled your pre-operative health questionnaire, so you don't need to fill it in. Please contact the hospital if you have any questions.")},
 }
 
 func j(v any) json.RawMessage {
@@ -270,11 +306,11 @@ func Validate(key string, raw json.RawMessage) (json.RawMessage, string) {
 		hasLink := false
 		for _, m := range placeholder.FindAllStringSubmatch(s, -1) {
 			if !slices.Contains(Placeholders, m[1]) {
-				return nil, fmt.Sprintf("%s: {{%s}} isn't a placeholder. %s", d.Label, m[1], templateHelp)
+				return nil, fmt.Sprintf("%s: {{%s}} isn't a placeholder. %s", d.Label, m[1], d.Help)
 			}
 			hasLink = hasLink || m[1] == "link"
 		}
-		if !hasLink {
+		if !hasLink && !d.LinkOptional {
 			return nil, d.Label + ": the message must include {{link}}, so the patient can open their questionnaire."
 		}
 	}

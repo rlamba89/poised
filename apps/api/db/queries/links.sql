@@ -143,20 +143,21 @@ UPDATE patient_sessions SET ended_at = sqlc.arg(now) WHERE id = sqlc.arg(id) AND
 -- name: RecordEpisodeMessage :exec
 -- A text or email sent to the patient about the episode (S17): failed_at is set when it
 -- couldn't be sent at all.
-INSERT INTO episode_messages (episode_id, kind, channel, provider_id, created_at, failed_at, failure)
-VALUES (@episode_id, @kind, @channel, sqlc.narg(provider_id), @now, sqlc.narg(failed_at), @failure);
+-- kind "status" (S21) names the status it was sent for; the others have none.
+INSERT INTO episode_messages (episode_id, kind, status, channel, provider_id, created_at, failed_at, failure)
+VALUES (@episode_id, @kind, sqlc.narg(status), @channel, sqlc.narg(provider_id), @now, sqlc.narg(failed_at), @failure);
 
 -- name: FailEpisodeMessage :one
 -- AWS reported that a message wasn't delivered (S17). No row: it isn't an episode's message (a
 -- sign-in link), or it's already marked.
 UPDATE episode_messages SET failed_at = @now::timestamptz, failure = @failure
 WHERE provider_id = @provider_id::text AND failed_at IS NULL
-RETURNING episode_id, kind, channel;
+RETURNING episode_id, kind, coalesce(status, '')::text AS status, channel;
 
 -- name: ListUndeliveredMessages :many
 -- The episode's messages that didn't reach the patient since its latest invite or Resend (S17):
--- a later Resend starts afresh.
-SELECT kind, channel, created_at AS sent_at, failed_at, failure
+-- a later Resend starts afresh. status: for a status message (S21), the status it was sent for.
+SELECT kind, coalesce(status, '')::text AS status, channel, created_at AS sent_at, failed_at, failure
 FROM episode_messages m
 WHERE m.episode_id = @episode_id AND m.failed_at IS NOT NULL
   AND m.created_at >= coalesce(

@@ -33,12 +33,17 @@ type Querier interface {
 	AuditPatientNames(ctx context.Context, arg AuditPatientNamesParams) ([]AuditPatientNamesRow, error)
 	// Whether the account has an invite not yet accepted: it has never signed in.
 	AwaitingFirstSignIn(ctx context.Context, userID uuid.UUID) (bool, error)
+	// A change to the episode's tasks is a change to the episode (S20's revision): another tab's
+	// page is then stale, as after a status move.
+	BumpEpisodeRevision(ctx context.Context, id uuid.UUID) error
 	// Takes one due job: its run_at moves to lease_until, so no other runner sees it as due while
 	// this one runs it (FOR UPDATE SKIP LOCKED: a row another runner is taking at the same moment is
 	// skipped). If this runner dies, the job is due again at lease_until. Nothing stays locked while
 	// the job runs, so a runner holds one database connection at a time.
 	ClaimDueJob(ctx context.Context, arg ClaimDueJobParams) (ClaimDueJobRow, error)
 	CompleteReview(ctx context.Context, arg CompleteReviewParams) (int64, error)
+	// No row: it's already done.
+	CompleteTask(ctx context.Context, arg CompleteTaskParams) (int64, error)
 	// Another account with the same details (date of birth, first name, surname) already signs in with this
 	// contact: two accounts would then answer the same sign-in, so the change is refused.
 	ContactTaken(ctx context.Context, arg ContactTakenParams) (bool, error)
@@ -50,6 +55,9 @@ type Querier interface {
 	// if two runners decide at once. No row: it was already taken, the HQ has been sent, or the
 	// episode was cancelled meanwhile.
 	CountReminder(ctx context.Context, arg CountReminderParams) (int64, error)
+	// How many episodes each worklist has (S21): the episodes ListEpisodes would list for it, with the
+	// same scope and the same arguments. A worklist with none has no row.
+	CountWorklists(ctx context.Context, arg CountWorklistsParams) ([]CountWorklistsRow, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (uuid.UUID, error)
 	CreateChapter(ctx context.Context, arg CreateChapterParams) (uuid.UUID, error)
 	// A sign-in link (kind signin) to a contact, or a verification link (kind verify) for an
@@ -77,6 +85,7 @@ type Querier interface {
 	// A new questionnaire is the trust's, for all its hospitals.
 	CreateQuestionnaire(ctx context.Context, arg CreateQuestionnaireParams) (uuid.UUID, error)
 	CreateStaffInvite(ctx context.Context, arg CreateStaffInviteParams) error
+	CreateTask(ctx context.Context, arg CreateTaskParams) (uuid.UUID, error)
 	// Nothing is returned when the email is already taken (by an invite running at the same time).
 	CreateUserIfNew(ctx context.Context, arg CreateUserIfNewParams) ([]uuid.UUID, error)
 	CreateVersion(ctx context.Context, arg CreateVersionParams) (uuid.UUID, error)
@@ -153,6 +162,7 @@ type Querier interface {
 	GetQuestionnaire(ctx context.Context, arg GetQuestionnaireParams) (GetQuestionnaireRow, error)
 	// One person's rows of ListStaff.
 	GetStaffMember(ctx context.Context, arg GetStaffMemberParams) ([]GetStaffMemberRow, error)
+	GetTask(ctx context.Context, arg GetTaskParams) (GetTaskRow, error)
 	GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error)
 	// The staff member a Cognito sign-in is for (S12), once their first sign-in stored the sub.
 	GetUserByCognitoSub(ctx context.Context, cognitoSub *string) (GetUserByCognitoSubRow, error)
@@ -190,7 +200,11 @@ type Querier interface {
 	// user_name is NULL for the patient's entries and the automatic ones.
 	ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeEventsRow, error)
 	// One trust's episodes: at every hospital when all_hospitals (a trust-wide member's "All
-	// hospitals", STF-03), else only at the hospitals listed.
+	// hospitals", STF-03), else only at the hospitals listed. Optionally of one status, and of one
+	// worklist (S21, EPI-02: in_worklist, migration 00022), whose "procedure within N days" counts
+	// from today at each episode's hospital (its time zone, else default_zone) and uses the hospital's
+	// worklists.soonDays setting (its own, else its trust's, else soon_days, the platform default).
+	// open_tasks: how many of its tasks are still open (TSK-01).
 	ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]ListEpisodesRow, error)
 	// The person's home (PX-08): every episode of every record joined to their account, in every
 	// trust, newest first, with the hospital's name. Suspended trusts and hospitals are left out
@@ -242,11 +256,16 @@ type Querier interface {
 	ListStaff(ctx context.Context, orgID uuid.UUID) ([]ListStaffRow, error)
 	// The status history, oldest first. user_name is NULL for the patient's submit and automatic changes.
 	ListStatusEvents(ctx context.Context, episodeID uuid.UUID) ([]ListStatusEventsRow, error)
+	// An episode's tasks (plan C3, session S21; TSK-01). The handlers have checked the episode is the
+	// caller's hospital's, and hold LockEpisodeStatus while they change one.
+	// Oldest first. The names are NULL where nobody is named: a rule's task, an open or never
+	// re-opened one.
+	ListTasks(ctx context.Context, episodeID uuid.UUID) ([]ListTasksRow, error)
 	// The trust's whole-trust admins, for the platform admin, with each account's latest open
 	// invite (set while it waits for its first sign-in).
 	ListTrustAdmins(ctx context.Context, orgID uuid.UUID) ([]ListTrustAdminsRow, error)
 	// The episode's messages that didn't reach the patient since its latest invite or Resend (S17):
-	// a later Resend starts afresh.
+	// a later Resend starts afresh. status: for a status message (S21), the status it was sent for.
 	ListUndeliveredMessages(ctx context.Context, episodeID uuid.UUID) ([]ListUndeliveredMessagesRow, error)
 	ListUsers(ctx context.Context) ([]ListUsersRow, error)
 	ListVersionChapters(ctx context.Context, versionID uuid.UUID) ([]ListVersionChaptersRow, error)
@@ -309,7 +328,10 @@ type Querier interface {
 	PublishedQuestionnairesInOrg(ctx context.Context, orgID uuid.UUID) ([]PublishedQuestionnairesInOrgRow, error)
 	// A text or email sent to the patient about the episode (S17): failed_at is set when it
 	// couldn't be sent at all.
+	// kind "status" (S21) names the status it was sent for; the others have none.
 	RecordEpisodeMessage(ctx context.Context, arg RecordEpisodeMessageParams) error
+	// No row: it's already open.
+	ReopenTask(ctx context.Context, arg ReopenTaskParams) (int64, error)
 	// The job ran: look again at run_at.
 	RescheduleJob(ctx context.Context, arg RescheduleJobParams) error
 	// A Resend: the new link starts with the episode's five tries again.

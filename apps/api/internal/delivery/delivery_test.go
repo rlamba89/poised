@@ -63,14 +63,19 @@ func TestParse(t *testing.T) {
 }
 
 func TestNote(t *testing.T) {
-	cases := []struct{ kind, channel, reason, want string }{
-		{"invite", "email", "it bounced",
+	cases := []struct{ kind, status, channel, reason, want string }{
+		{"invite", "", "email", "it bounced",
 			"The invite's email wasn't delivered: it bounced. Check the patient's email address, then resend the invite."},
-		{"reminder", "sms", "the mobile number isn't valid",
+		{"reminder", "", "sms", "the mobile number isn't valid",
 			"A reminder's text message wasn't delivered: the mobile number isn't valid. Check the patient's mobile number, then resend the invite."},
+		// S21: a status message has no invite to resend.
+		{"status", "ready_for_admission", "sms", "the phone couldn't be reached",
+			"The Ready for admission text message wasn't delivered: the phone couldn't be reached. Check the patient's mobile number, and tell them another way."},
+		{"status", "cancelled", "email", "it bounced",
+			"The Cancelled email wasn't delivered: it bounced. Check the patient's email address, and tell them another way."},
 	}
 	for _, c := range cases {
-		if got := delivery.Note(c.kind, c.channel, c.reason); got != c.want {
+		if got := delivery.Note(c.kind, c.status, c.channel, c.reason); got != c.want {
 			t.Errorf("Note(%s, %s) =\n %s\nwant\n %s", c.kind, c.channel, got, c.want)
 		}
 	}

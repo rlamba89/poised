@@ -67,7 +67,7 @@ func (q *Queries) EndPatientSession(ctx context.Context, arg EndPatientSessionPa
 const failEpisodeMessage = `-- name: FailEpisodeMessage :one
 UPDATE episode_messages SET failed_at = $1::timestamptz, failure = $2
 WHERE provider_id = $3::text AND failed_at IS NULL
-RETURNING episode_id, kind, channel
+RETURNING episode_id, kind, coalesce(status, '')::text AS status, channel
 `
 
 type FailEpisodeMessageParams struct {
@@ -79,6 +79,7 @@ type FailEpisodeMessageParams struct {
 type FailEpisodeMessageRow struct {
 	EpisodeID uuid.UUID `json:"episodeId"`
 	Kind      string    `json:"kind"`
+	Status    string    `json:"status"`
 	Channel   string    `json:"channel"`
 }
 
@@ -87,7 +88,12 @@ type FailEpisodeMessageRow struct {
 func (q *Queries) FailEpisodeMessage(ctx context.Context, arg FailEpisodeMessageParams) (FailEpisodeMessageRow, error) {
 	row := q.db.QueryRow(ctx, failEpisodeMessage, arg.Now, arg.Failure, arg.ProviderID)
 	var i FailEpisodeMessageRow
-	err := row.Scan(&i.EpisodeID, &i.Kind, &i.Channel)
+	err := row.Scan(
+		&i.EpisodeID,
+		&i.Kind,
+		&i.Status,
+		&i.Channel,
+	)
 	return i, err
 }
 
@@ -323,7 +329,7 @@ func (q *Queries) ListSentMessages(ctx context.Context, recipient string) ([]Sen
 }
 
 const listUndeliveredMessages = `-- name: ListUndeliveredMessages :many
-SELECT kind, channel, created_at AS sent_at, failed_at, failure
+SELECT kind, coalesce(status, '')::text AS status, channel, created_at AS sent_at, failed_at, failure
 FROM episode_messages m
 WHERE m.episode_id = $1 AND m.failed_at IS NOT NULL
   AND m.created_at >= coalesce(
@@ -334,6 +340,7 @@ ORDER BY m.created_at, m.channel
 
 type ListUndeliveredMessagesRow struct {
 	Kind     string             `json:"kind"`
+	Status   string             `json:"status"`
 	Channel  string             `json:"channel"`
 	SentAt   time.Time          `json:"sentAt"`
 	FailedAt pgtype.Timestamptz `json:"failedAt"`
@@ -341,7 +348,7 @@ type ListUndeliveredMessagesRow struct {
 }
 
 // The episode's messages that didn't reach the patient since its latest invite or Resend (S17):
-// a later Resend starts afresh.
+// a later Resend starts afresh. status: for a status message (S21), the status it was sent for.
 func (q *Queries) ListUndeliveredMessages(ctx context.Context, episodeID uuid.UUID) ([]ListUndeliveredMessagesRow, error) {
 	rows, err := q.db.Query(ctx, listUndeliveredMessages, episodeID)
 	if err != nil {
@@ -353,6 +360,7 @@ func (q *Queries) ListUndeliveredMessages(ctx context.Context, episodeID uuid.UU
 		var i ListUndeliveredMessagesRow
 		if err := rows.Scan(
 			&i.Kind,
+			&i.Status,
 			&i.Channel,
 			&i.SentAt,
 			&i.FailedAt,
@@ -401,13 +409,14 @@ func (q *Queries) PassInviteDob(ctx context.Context, id uuid.UUID) (int64, error
 }
 
 const recordEpisodeMessage = `-- name: RecordEpisodeMessage :exec
-INSERT INTO episode_messages (episode_id, kind, channel, provider_id, created_at, failed_at, failure)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO episode_messages (episode_id, kind, status, channel, provider_id, created_at, failed_at, failure)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `
 
 type RecordEpisodeMessageParams struct {
 	EpisodeID  uuid.UUID          `json:"episodeId"`
 	Kind       string             `json:"kind"`
+	Status     *string            `json:"status"`
 	Channel    string             `json:"channel"`
 	ProviderID *string            `json:"providerId"`
 	Now        time.Time          `json:"now"`
@@ -417,10 +426,12 @@ type RecordEpisodeMessageParams struct {
 
 // A text or email sent to the patient about the episode (S17): failed_at is set when it
 // couldn't be sent at all.
+// kind "status" (S21) names the status it was sent for; the others have none.
 func (q *Queries) RecordEpisodeMessage(ctx context.Context, arg RecordEpisodeMessageParams) error {
 	_, err := q.db.Exec(ctx, recordEpisodeMessage,
 		arg.EpisodeID,
 		arg.Kind,
+		arg.Status,
 		arg.Channel,
 		arg.ProviderID,
 		arg.Now,

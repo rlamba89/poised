@@ -32,13 +32,19 @@ SELECT id FROM e;
 
 -- name: ListEpisodes :many
 -- One trust's episodes: at every hospital when all_hospitals (a trust-wide member's "All
--- hospitals", STF-03), else only at the hospitals listed.
+-- hospitals", STF-03), else only at the hospitals listed. Optionally of one status, and of one
+-- worklist (S21, EPI-02: in_worklist, migration 00022), whose "procedure within N days" counts
+-- from today at each episode's hospital (its time zone, else default_zone) and uses the hospital's
+-- worklists.soonDays setting (its own, else its trust's, else soon_days, the platform default).
+-- open_tasks: how many of its tasks are still open (TSK-01).
 SELECT e.id, e.hospital_id, h.name AS hospital_name, e.status, coalesce(pr.name, '')::text AS procedure,
        e.planned_date, e.poa_date, e.created_at,
        e.patient_id, p.first_name, p.last_name, e.hospital_number,
-       q.name AS questionnaire_name, v.version_no
+       q.name AS questionnaire_name, v.version_no,
+       (SELECT count(*) FROM tasks t WHERE t.episode_id = e.id AND t.done_at IS NULL)::int AS open_tasks
 FROM episodes e
 JOIN hospitals h ON h.id = e.hospital_id
+JOIN orgs o ON o.id = e.org_id
 JOIN patients p ON p.id = e.patient_id
 LEFT JOIN procedures pr ON pr.id = e.procedure_id
 JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
@@ -47,7 +53,25 @@ JOIN questionnaires q ON q.id = v.questionnaire_id
 WHERE e.org_id = sqlc.arg(org_id) AND h.status = 'active' -- a suspended hospital's are kept, not shown (ORG-03)
   AND (sqlc.arg(all_hospitals)::boolean OR e.hospital_id = ANY (sqlc.arg(hospital_ids)::uuid[]))
   AND (sqlc.arg(status)::text = '' OR e.status = sqlc.arg(status))
+  AND (sqlc.arg(worklist)::text = '' OR in_worklist(sqlc.arg(worklist)::text, e.id, e.status, e.not_responding_at, e.planned_date,
+      (sqlc.arg(now)::timestamptz AT TIME ZONE coalesce(h.timezone, sqlc.arg(default_zone)::text))::date,
+      coalesce((h.settings->>'worklists.soonDays')::int, (o.settings->>'worklists.soonDays')::int, sqlc.arg(soon_days)::int)))
 ORDER BY e.created_at DESC;
+
+-- name: CountWorklists :many
+-- How many episodes each worklist has (S21): the episodes ListEpisodes would list for it, with the
+-- same scope and the same arguments. A worklist with none has no row.
+SELECT w.key::text AS worklist, count(*)::int AS episodes
+FROM episodes e
+JOIN hospitals h ON h.id = e.hospital_id
+JOIN orgs o ON o.id = e.org_id
+CROSS JOIN unnest(sqlc.arg(worklists)::text[]) AS w(key)
+WHERE e.org_id = sqlc.arg(org_id) AND h.status = 'active'
+  AND (sqlc.arg(all_hospitals)::boolean OR e.hospital_id = ANY (sqlc.arg(hospital_ids)::uuid[]))
+  AND in_worklist(w.key, e.id, e.status, e.not_responding_at, e.planned_date,
+      (sqlc.arg(now)::timestamptz AT TIME ZONE coalesce(h.timezone, sqlc.arg(default_zone)::text))::date,
+      coalesce((h.settings->>'worklists.soonDays')::int, (o.settings->>'worklists.soonDays')::int, sqlc.arg(soon_days)::int))
+GROUP BY w.key;
 
 -- name: GetEpisode :one
 -- With its HQ form (S18): the version, the patient's submit and who sent it keep their names

@@ -112,26 +112,36 @@ func (s *server) listProceduresAt(w http.ResponseWriter, r *http.Request, hid uu
 // pgx.ErrNoRows: the hospital isn't the trust's.
 func (s *server) hospitalHQs(ctx context.Context, org, hid uuid.UUID) ([]db.ListPublishedVersionsRow, uuid.NullUUID, error) {
 	var def uuid.NullUUID
-	st, err := s.q.GetHospitalAndOrgSettings(ctx, db.GetHospitalAndOrgSettingsParams{HospitalID: hid, OrgID: org})
+	v, err := s.hospitalSettings(ctx, org, hid)
 	if err != nil {
 		return nil, def, err
 	}
-	trust, err := settings.Decode(st.OrgSettings)
-	if err != nil {
-		return nil, def, fmt.Errorf("trust settings: %w", err)
-	}
-	own, err := settings.Decode(st.HospitalSettings)
-	if err != nil {
-		return nil, def, fmt.Errorf("hospital settings: %w", err)
-	}
 	var id string
-	if json.Unmarshal(settings.Effective(settings.Platform(), trust, own)["defaultHq"], &id) == nil {
+	if json.Unmarshal(v["defaultHq"], &id) == nil {
 		if q, err := uuid.Parse(id); err == nil {
 			def = uuid.NullUUID{UUID: q, Valid: true}
 		}
 	}
 	hqs, err := s.q.ListPublishedVersions(ctx, db.ListPublishedVersionsParams{OrgID: org, HospitalID: hid})
 	return hqs, def, err
+}
+
+// hospitalSettings are a hospital's effective settings: its own where it may override, else its
+// trust's, else Preopsis's defaults (S10).
+func (s *server) hospitalSettings(ctx context.Context, org, hid uuid.UUID) (settings.Values, error) {
+	st, err := s.q.GetHospitalAndOrgSettings(ctx, db.GetHospitalAndOrgSettingsParams{HospitalID: hid, OrgID: org})
+	if err != nil {
+		return nil, err
+	}
+	trust, err := settings.Decode(st.OrgSettings)
+	if err != nil {
+		return nil, fmt.Errorf("trust settings: %w", err)
+	}
+	own, err := settings.Decode(st.HospitalSettings)
+	if err != nil {
+		return nil, fmt.Errorf("hospital settings: %w", err)
+	}
+	return settings.Effective(settings.Platform(), trust, own), nil
 }
 
 // versionOf is the published version of questionnaire q among hqs, or nil if it has none there.

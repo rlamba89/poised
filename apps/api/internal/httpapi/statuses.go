@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -297,7 +298,26 @@ func (s *server) applyStatus(w http.ResponseWriter, r *http.Request, e db.GetEpi
 		serverError(w, "commit", err)
 		return
 	}
+	if stem := episode.StatusMessage(c.move, c.to); stem != "" {
+		s.statusMessage(r, e.ID, stem, c.to) // EPI-08 (S21): a failure is noted, never refused
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// statusMessage sends the patient the hospital's message for the new status, if it's switched on
+// there (S21 answers 4), and notes in the General notes how it went. The move is already saved, so
+// a failure is noted and logged, never refused.
+func (s *server) statusMessage(r *http.Request, eid uuid.UUID, stem, status string) {
+	by, what := currentUser(r).ID, episode.Labels[status]+" message"
+	res, on, err := s.inviter.SendStatus(context.WithoutCancel(r.Context()), eid, stem, status) // the move is saved: finish what's started
+	if err != nil {
+		log.Printf("status message for episode %s: %v", eid, err)
+		s.event(r, eid, what+" not sent: something went wrong.", by)
+		return
+	}
+	if on {
+		s.event(r, eid, res.Note(what+" sent", what+" not sent"), by)
+	}
 }
 
 // writeStatusRefusal answers a move the table refuses: 403 for a role too low, else 409.

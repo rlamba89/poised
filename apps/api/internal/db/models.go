@@ -128,6 +128,7 @@ type EpisodeMessage struct {
 	CreatedAt  time.Time          `json:"createdAt"`
 	FailedAt   pgtype.Timestamptz `json:"failedAt"`
 	Failure    string             `json:"failure"`
+	Status     *string            `json:"status"`
 }
 
 type EpisodeStatusEvent struct {
@@ -317,6 +318,20 @@ type StaffInvite struct {
 	CreatedAt  time.Time          `json:"createdAt"`
 	ExpiresAt  time.Time          `json:"expiresAt"`
 	AcceptedAt pgtype.Timestamptz `json:"acceptedAt"`
+}
+
+type Task struct {
+	ID            uuid.UUID          `json:"id"`
+	EpisodeID     uuid.UUID          `json:"episodeId"`
+	Title         string             `json:"title"`
+	Team          string             `json:"team"`
+	CreatedBy     uuid.NullUUID      `json:"createdBy"`
+	CreatedByRule *string            `json:"createdByRule"`
+	CreatedAt     time.Time          `json:"createdAt"`
+	DoneBy        uuid.NullUUID      `json:"doneBy"`
+	DoneAt        pgtype.Timestamptz `json:"doneAt"`
+	ReopenedBy    uuid.NullUUID      `json:"reopenedBy"`
+	ReopenedAt    pgtype.Timestamptz `json:"reopenedAt"`
 }
 
 type User struct {

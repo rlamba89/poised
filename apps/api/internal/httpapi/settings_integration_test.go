@@ -5,6 +5,7 @@ package httpapi_test
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -164,6 +165,19 @@ func TestPatchTrustSettings(t *testing.T) {
 		v, _ := patchSettings(t, w, w.a2.ID, map[string]any{"contact.phone": nil}, http.StatusOK)
 		if _, ok := v.hospital(w.a2.ID).Values["contact.phone"]; ok || string(v.hospital(w.a2.ID).Effective["contact.phone"]) != `"0100 000 0000"` {
 			t.Errorf("a2 %v", v.hospital(w.a2.ID).Values)
+		}
+	})
+	t.Run("S21: a status message without {{link}} is accepted, switched on for one hospital; an invite without one isn't", func(t *testing.T) {
+		v, _ := patchSettings(t, w, w.a1.ID, map[string]any{"statusMessages.readyForAdmissionSms": true,
+			"templates.readyForAdmissionSms": "{{hospital}}: you're ready, {{firstName}}.", "worklists.soonDays": 10}, http.StatusOK)
+		if string(v.hospital(w.a1.ID).Effective["statusMessages.readyForAdmissionSms"]) != "true" ||
+			string(v.hospital(w.a2.ID).Effective["statusMessages.readyForAdmissionSms"]) != "false" ||
+			string(v.hospital(w.a1.ID).Effective["worklists.soonDays"]) != "10" || string(v.hospital(w.a2.ID).Effective["worklists.soonDays"]) != "14" {
+			t.Errorf("a1 %v / a2 %v", v.hospital(w.a1.ID).Values, v.hospital(w.a2.ID).Effective["statusMessages.readyForAdmissionSms"])
+		}
+		_, msg := patchSettings(t, w, w.a1.ID, map[string]any{"templates.inviteSms": "{{hospital}}: you're ready, {{firstName}}."}, http.StatusBadRequest)
+		if !strings.Contains(msg, "{{link}}") {
+			t.Errorf("message %q, want it to say {{link}} is needed", msg)
 		}
 	})
 	t.Run("trust-only settings can't be set for a hospital", func(t *testing.T) {

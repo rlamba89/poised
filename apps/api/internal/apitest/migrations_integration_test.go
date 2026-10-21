@@ -325,3 +325,65 @@ INSERT INTO episodes (id, org_id, hospital_id, patient_id, status, created_by) V
 		t.Errorf("down: %s", status)
 	}
 }
+
+// Migration 00022 (S21): tasks, the worklists' rule and status messages. Existing episode
+// messages keep their kind; a status message must name its status; Down removes it all.
+func TestTasksWorklistsMigration(t *testing.T) {
+	t.Parallel()
+	m := apitest.NewMigrations(t, 21)
+	const (
+		trust, hos, user, pat, ep = "00000000-0000-0000-0000-0000000000a0", "00000000-0000-0000-0000-0000000000a1",
+			"00000000-0000-0000-0000-0000000000c0", "00000000-0000-0000-0000-0000000000d0", "00000000-0000-0000-0000-0000000000e0"
+	)
+	setup := `
+INSERT INTO orgs (id, name, code) VALUES ('` + trust + `', 'Trust A', 'MA');
+INSERT INTO hospitals (id, org_id, name) VALUES ('` + hos + `', '` + trust + `', 'A1');
+INSERT INTO users (id, name, email) VALUES ('` + user + `', 'Cara', 'cara@example.test');
+INSERT INTO patients (id, org_id, first_name, last_name, date_of_birth, sex) VALUES ('` + pat + `', '` + trust + `', 'Sam', 'Smith', '1970-01-01', 'unknown');
+INSERT INTO episodes (id, org_id, hospital_id, patient_id, status, created_by) VALUES ('` + ep + `', '` + trust + `', '` + hos + `', '` + pat + `', 'on_hold', '` + user + `');
+INSERT INTO episode_messages (episode_id, kind, channel, created_at) VALUES ('` + ep + `', 'invite', 'sms', now());
+`
+	if _, err := m.DB.Exec(t.Context(), setup); err != nil {
+		t.Fatalf("old shape: %v", err)
+	}
+	m.UpTo(t, 22)
+	exec := func(sql string) error {
+		_, err := m.DB.Exec(t.Context(), sql)
+		return err
+	}
+	if err := exec(`INSERT INTO tasks (episode_id, title, team, created_by) VALUES ('` + ep + `', 'Book review', 'anaesthetist', '` + user + `')`); err != nil {
+		t.Fatalf("a task: %v", err)
+	}
+	for name, bad := range map[string]string{
+		"a team off the list":         `INSERT INTO tasks (episode_id, title, team, created_by) VALUES ('` + ep + `', 'x', 'surgeon', '` + user + `')`,
+		"no creator and no rule":      `INSERT INTO tasks (episode_id, title, team) VALUES ('` + ep + `', 'x', 'nurse')`,
+		"an empty title":              `INSERT INTO tasks (episode_id, title, team, created_by) VALUES ('` + ep + `', '', 'nurse', '` + user + `')`,
+		"done with nobody":            `UPDATE tasks SET done_at = now()`,
+		"a status message, no status": `INSERT INTO episode_messages (episode_id, kind, channel, created_at) VALUES ('` + ep + `', 'status', 'sms', now())`,
+		"an invite with a status":     `INSERT INTO episode_messages (episode_id, kind, status, channel, created_at) VALUES ('` + ep + `', 'invite', 'cancelled', 'sms', now())`,
+	} {
+		if err := exec(bad); err == nil {
+			t.Errorf("%s was stored", name)
+		}
+	}
+	if err := exec(`INSERT INTO episode_messages (episode_id, kind, status, channel, created_at) VALUES ('` + ep + `', 'status', 'cancelled', 'email', now())`); err != nil {
+		t.Errorf("a status message: %v", err)
+	}
+	var onHold, openTasks, review bool
+	if err := m.DB.QueryRow(t.Context(), `SELECT in_worklist('on_hold', id, status, not_responding_at, planned_date, current_date, 14),
+		in_worklist('open_tasks', id, status, not_responding_at, planned_date, current_date, 14),
+		in_worklist('ready_for_review', id, status, not_responding_at, planned_date, current_date, 14) FROM episodes`).Scan(&onHold, &openTasks, &review); err != nil {
+		t.Fatal(err)
+	}
+	if !onHold || !openTasks || review {
+		t.Errorf("in_worklist: on hold %v, open tasks %v, ready for review %v", onHold, openTasks, review)
+	}
+	m.DownTo(t, 21)
+	var n int
+	if err := m.DB.QueryRow(t.Context(), `SELECT count(*) FROM episode_messages`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("down: %d messages (%v), want the invite's only", n, err)
+	}
+	if err := exec(`SELECT 1 FROM tasks`); err == nil {
+		t.Error("down: tasks is still there")
+	}
+}

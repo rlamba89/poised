@@ -95,6 +95,65 @@ func (q *Queries) CompleteReview(ctx context.Context, arg CompleteReviewParams) 
 	return result.RowsAffected(), nil
 }
 
+const countWorklists = `-- name: CountWorklists :many
+SELECT w.key::text AS worklist, count(*)::int AS episodes
+FROM episodes e
+JOIN hospitals h ON h.id = e.hospital_id
+JOIN orgs o ON o.id = e.org_id
+CROSS JOIN unnest($1::text[]) AS w(key)
+WHERE e.org_id = $2 AND h.status = 'active'
+  AND ($3::boolean OR e.hospital_id = ANY ($4::uuid[]))
+  AND in_worklist(w.key, e.id, e.status, e.not_responding_at, e.planned_date,
+      ($6::timestamptz AT TIME ZONE coalesce(h.timezone, $5::text))::date,
+      coalesce((h.settings->>'worklists.soonDays')::int, (o.settings->>'worklists.soonDays')::int, $7::int))
+GROUP BY w.key
+`
+
+type CountWorklistsParams struct {
+	Worklists    []string    `json:"worklists"`
+	OrgID        uuid.UUID   `json:"orgId"`
+	AllHospitals bool        `json:"allHospitals"`
+	HospitalIds  []uuid.UUID `json:"hospitalIds"`
+	DefaultZone  string      `json:"defaultZone"`
+	Now          time.Time   `json:"now"`
+	SoonDays     int32       `json:"soonDays"`
+}
+
+type CountWorklistsRow struct {
+	Worklist string `json:"worklist"`
+	Episodes int32  `json:"episodes"`
+}
+
+// How many episodes each worklist has (S21): the episodes ListEpisodes would list for it, with the
+// same scope and the same arguments. A worklist with none has no row.
+func (q *Queries) CountWorklists(ctx context.Context, arg CountWorklistsParams) ([]CountWorklistsRow, error) {
+	rows, err := q.db.Query(ctx, countWorklists,
+		arg.Worklists,
+		arg.OrgID,
+		arg.AllHospitals,
+		arg.HospitalIds,
+		arg.DefaultZone,
+		arg.Now,
+		arg.SoonDays,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountWorklistsRow{}
+	for rows.Next() {
+		var i CountWorklistsRow
+		if err := rows.Scan(&i.Worklist, &i.Episodes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createEpisode = `-- name: CreateEpisode :one
 WITH e AS (
     INSERT INTO episodes (org_id, hospital_id, patient_id, procedure_id, planned_date, poa_date, anaesthetic, consultant,
@@ -478,9 +537,11 @@ const listEpisodes = `-- name: ListEpisodes :many
 SELECT e.id, e.hospital_id, h.name AS hospital_name, e.status, coalesce(pr.name, '')::text AS procedure,
        e.planned_date, e.poa_date, e.created_at,
        e.patient_id, p.first_name, p.last_name, e.hospital_number,
-       q.name AS questionnaire_name, v.version_no
+       q.name AS questionnaire_name, v.version_no,
+       (SELECT count(*) FROM tasks t WHERE t.episode_id = e.id AND t.done_at IS NULL)::int AS open_tasks
 FROM episodes e
 JOIN hospitals h ON h.id = e.hospital_id
+JOIN orgs o ON o.id = e.org_id
 JOIN patients p ON p.id = e.patient_id
 LEFT JOIN procedures pr ON pr.id = e.procedure_id
 JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
@@ -489,6 +550,9 @@ JOIN questionnaires q ON q.id = v.questionnaire_id
 WHERE e.org_id = $1 AND h.status = 'active' -- a suspended hospital's are kept, not shown (ORG-03)
   AND ($2::boolean OR e.hospital_id = ANY ($3::uuid[]))
   AND ($4::text = '' OR e.status = $4)
+  AND ($5::text = '' OR in_worklist($5::text, e.id, e.status, e.not_responding_at, e.planned_date,
+      ($7::timestamptz AT TIME ZONE coalesce(h.timezone, $6::text))::date,
+      coalesce((h.settings->>'worklists.soonDays')::int, (o.settings->>'worklists.soonDays')::int, $8::int)))
 ORDER BY e.created_at DESC
 `
 
@@ -497,6 +561,10 @@ type ListEpisodesParams struct {
 	AllHospitals bool        `json:"allHospitals"`
 	HospitalIds  []uuid.UUID `json:"hospitalIds"`
 	Status       string      `json:"status"`
+	Worklist     string      `json:"worklist"`
+	DefaultZone  string      `json:"defaultZone"`
+	Now          time.Time   `json:"now"`
+	SoonDays     int32       `json:"soonDays"`
 }
 
 type ListEpisodesRow struct {
@@ -514,16 +582,25 @@ type ListEpisodesRow struct {
 	HospitalNumber    string      `json:"hospitalNumber"`
 	QuestionnaireName string      `json:"questionnaireName"`
 	VersionNo         int32       `json:"versionNo"`
+	OpenTasks         int32       `json:"openTasks"`
 }
 
 // One trust's episodes: at every hospital when all_hospitals (a trust-wide member's "All
-// hospitals", STF-03), else only at the hospitals listed.
+// hospitals", STF-03), else only at the hospitals listed. Optionally of one status, and of one
+// worklist (S21, EPI-02: in_worklist, migration 00022), whose "procedure within N days" counts
+// from today at each episode's hospital (its time zone, else default_zone) and uses the hospital's
+// worklists.soonDays setting (its own, else its trust's, else soon_days, the platform default).
+// open_tasks: how many of its tasks are still open (TSK-01).
 func (q *Queries) ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]ListEpisodesRow, error) {
 	rows, err := q.db.Query(ctx, listEpisodes,
 		arg.OrgID,
 		arg.AllHospitals,
 		arg.HospitalIds,
 		arg.Status,
+		arg.Worklist,
+		arg.DefaultZone,
+		arg.Now,
+		arg.SoonDays,
 	)
 	if err != nil {
 		return nil, err
@@ -547,6 +624,7 @@ func (q *Queries) ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]L
 			&i.HospitalNumber,
 			&i.QuestionnaireName,
 			&i.VersionNo,
+			&i.OpenTasks,
 		); err != nil {
 			return nil, err
 		}

@@ -35,7 +35,11 @@ func TestEveryKeyHasAValidDefault(t *testing.T) {
 		"instrument.eq5d5l", "instrument.oxfordHip", "instrument.oxfordKnee", "branding.logoUrl", "contact.phone",
 		"contact.email", "defaultHq", "reminders.days", "reminders.notRespondingDay", "autoArchive.afterDischargeDays",
 		"autoArchive.inactiveMonths", "whatHappensNext", "templates.inviteSms", "templates.inviteEmail",
-		"templates.reminderSms", "templates.reminderEmail"} {
+		"templates.reminderSms", "templates.reminderEmail",
+		// S21: the worklist's days, and each status message's switch and template (answers 3, 4).
+		"worklists.soonDays", "statusMessages.readyForAdmissionSms", "statusMessages.readyForAdmissionEmail",
+		"statusMessages.cancelledSms", "statusMessages.cancelledEmail", "templates.readyForAdmissionSms",
+		"templates.readyForAdmissionEmail", "templates.cancelledSms", "templates.cancelledEmail"} {
 		if d, ok := Lookup(k); !ok || d.Level != Hospital {
 			t.Errorf("%s should be a setting a hospital can override", k)
 		}
@@ -127,6 +131,11 @@ func TestValidate(t *testing.T) {
 		{"autoArchive.inactiveMonths", "6", "6"},
 		{"whatHappensNext", `"  Thanks.  "`, `"Thanks."`},
 		{"templates.inviteSms", `"Hi {{firstName}}, {{hospital}}: {{link}}"`, `"Hi {{firstName}}, {{hospital}}: {{link}}"`},
+		// S21: a status message needn't hold {{link}} (answers 4), but may.
+		{"worklists.soonDays", "14", "14"},
+		{"statusMessages.cancelledSms", "true", "true"},
+		{"templates.readyForAdmissionSms", `" Hi {{firstName}}, {{hospital}} is ready for you. "`, `"Hi {{firstName}}, {{hospital}} is ready for you."`},
+		{"templates.cancelledEmail", `"Sign in: {{link}}"`, `"Sign in: {{link}}"`},
 	}
 	for _, c := range ok {
 		got, msg := Validate(c.key, raw(c.in))
@@ -163,11 +172,38 @@ func TestValidate(t *testing.T) {
 		{"templates.inviteSms", `"Hi {{name}} {{link}}"`},        // unknown placeholder
 		{"templates.reminderEmail", `""`},                        // empty
 		{"templates.reminderEmail", `"{{link}} {{ hospital }}"`}, // a placeholder written oddly
+		{"templates.reminderSms", `"Hi {{firstName}}"`},          // invites and reminders still need {{link}}
+		{"templates.inviteEmail", `"Hi {{firstName}}"`},
+		{"templates.readyForAdmissionSms", `""`},    // empty
+		{"templates.cancelledSms", `"Hi {{name}}"`}, // unknown placeholder
+		{"templates.cancelledSms", `"` + strings.Repeat("a", 601) + `"`},
+		{"worklists.soonDays", "0"},
+		{"worklists.soonDays", "366"},
+		{"statusMessages.readyForAdmissionEmail", `"on"`},
 	}
 	for _, c := range bad {
 		if got, msg := Validate(c.key, raw(c.in)); msg == "" {
 			t.Errorf("Validate(%s, %s) = %s; want a refusal", c.key, c.in, got)
 		}
+	}
+}
+
+// Each status message is off by default (S21 answers 4), and its help says {{link}} is optional.
+func TestStatusMessagesAreOffByDefault(t *testing.T) {
+	for _, stem := range []string{"readyForAdmission", "cancelled"} {
+		for _, ch := range []string{"Sms", "Email"} {
+			sw, ok := Lookup("statusMessages." + stem + ch)
+			if !ok || sw.Kind != Bool || string(sw.Default) != "false" {
+				t.Errorf("statusMessages.%s%s = %+v, want a switch, off by default", stem, ch, sw)
+			}
+			tmpl, ok := Lookup("templates." + stem + ch)
+			if !ok || tmpl.Kind != Template || !strings.Contains(tmpl.Help, "optional") || tmpl.Group != sw.Group {
+				t.Errorf("templates.%s%s = %+v, want a template beside its switch, with {{link}} optional", stem, ch, tmpl)
+			}
+		}
+	}
+	if d, _ := Lookup("worklists.soonDays"); string(d.Default) != "14" {
+		t.Errorf("worklists.soonDays defaults to %s, want 14 (S21 answers 3)", d.Default)
 	}
 }
 
