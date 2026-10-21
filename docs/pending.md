@@ -54,6 +54,21 @@ docker compose up -d --force-recreate db
 
 ## 3. Small gaps in what's built
 
+### From S21's verification (21 Oct; none blocking, details in [verify.md](sessions/S21-tasks-worklists/verify.md))
+
+- **For Rahul: the default "Cancelled" message assumes an open HQ** ("…so you don't need to fill it in"), but Cancel is allowed from any status and sends it. Recommended: a neutral default ("…has cancelled your pre-operative assessment…"); or send it only while the HQ is open. Off by default and editable, so nothing is wrong today (`settings.go`, `episode.StatusMessage`).
+- **Ready for admission is sent again** each time the status is picked again (On hold → Ready for admission, or Undo then pick). A reasonable reading of answer 4; say if once per episode is wanted.
+- **The "… message sent" General notes line uses the request's context** while the send doesn't (`statuses.go` `statusMessage` → `s.event`): a browser disconnect mid-send could lose the note (the `episode_messages` row stays). One-line fix: write the note with the uncancelled context.
+- **`CountWorklists` skips `ListEpisodes`' inner joins** (patients, HQ form, version, questionnaire). Equal today, because every episode has its HQ form (S18); keep the two in step if that ever changes (`episodes.sql`).
+- **Status email subjects are fixed in Go** (`invite.SendStatus`); a third status message would need its own subject.
+
+### From S21's test report 1 (21 Oct; all passed, no code change, as the conductor asked)
+
+- **General notes dates are ISO, not the locale** (older than S21: S19's and S20's lines): "Planned procedure date set to 2026-10-28", "Status changed to Admitted (admission date 2026-10-21)". The notes are stored text, so they'd need the date formatted when shown (or stored as a value beside the text).
+- **"← Episodes" on the episode page goes to All, not the worklist the user came from** (browser Back does return to it). Could carry `?worklist=` (and `?hospitals=all`) through the episode link, or go back in history (`EpisodePage.tsx`).
+- **The worklist tabs' help is a native `title` tooltip** (slow to show, not reliably read by screen readers), and **All** has none. The selected tab's help also shows as a line under the tabs. A Mantine `Tooltip` or a visible line for every tab would be better (`EpisodeList.tsx`).
+- **A cancelled episode's Tasks title still counts its open tasks** ("(1 open)"), which can never be done now (accurate, read-only). Could say "(1 left open)" or hide the count once cancelled (`TasksPanel.tsx`).
+
 ### From S20's test report 1 (21 Oct)
 
 - **An Undo form open in a stale tab retargets after Reload** (test report 2): its title changes to the new step back ("back to POA complete") and the reason stays, instead of closing as a no-longer-offered move does. Safe: nothing is sent without another click, and the title says what will happen. Could close too if the target changed (`StatusControl.tsx`, the `offered` check).
@@ -224,7 +239,7 @@ docker compose up -d --force-recreate db
   - **The invite is still sent in the Create request**, not from a job (C2's S14 status line had said S16 would move it; the brief didn't list it). Staff keep the immediate "Invite sent by …" note. **For S17 / Rahul:** move it to a job if retries or request time matter once real SMS and email are slow or fail.
   - **The jobs write no audit rows** (S11's actors are staff and patient). What they did is in the episode's General notes ("Automatic"). If a "system" actor is wanted in the audit log, it's a small change (`audit_log.actor`).
   - **A reminder whose sending fails isn't retried** (as an invite): the General notes say so and staff can resend. The reminder is counted before it's sent, so a crash between counting and sending loses that reminder rather than sending it twice.
-  - **"Not responding" is a badge on the episode only**; the worklist (EPI-02) is C3's.
+  - ~~**"Not responding" is a badge on the episode only**; the worklist (EPI-02) is C3's.~~ *Built in S21: the Not responding worklist.*
   - **Old episodes have no follow-up:** only episodes whose first invite went after migration 00016 get one (no backfill: local data only).
   - **`rate_limit_hits` clean-up** (S15's item above) could now be a job.
   - **For Rahul: on catch-up the reminder and "Not responding" can come together** (S16 test report 1, exploring 1): after a suspended hospital is re-activated past day 7 (or a run missed days 5–7), one run sends the day 5 reminder and flags the episode "Not responding" at the same moment. As designed (only the latest reminder, once); the alternative is to skip a reminder whose day is at or after the "not responding" day.

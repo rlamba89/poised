@@ -48,7 +48,7 @@
 
 ## Status
 
-**Split into sessions on 20 Oct 2026.** **S18 verified** (20 Oct; [build notes](../sessions/S18-episode-forms/build-notes.md), [verify.md](../sessions/S18-episode-forms/verify.md)). **S19 verified** (21 Oct; [build notes](../sessions/S19-procedures/build-notes.md), [verify.md](../sessions/S19-procedures/verify.md)). **S20 verified** (21 Oct; [build notes](../sessions/S20-statuses/build-notes.md), [verify.md](../sessions/S20-statuses/verify.md)). The briefs are in [docs/sessions/](../sessions/README.md):
+**Split into sessions on 20 Oct 2026.** **S18 verified** (20 Oct; [build notes](../sessions/S18-episode-forms/build-notes.md), [verify.md](../sessions/S18-episode-forms/verify.md)). **S19 verified** (21 Oct; [build notes](../sessions/S19-procedures/build-notes.md), [verify.md](../sessions/S19-procedures/verify.md)). **S20 verified** (21 Oct; [build notes](../sessions/S20-statuses/build-notes.md), [verify.md](../sessions/S20-statuses/verify.md)). **S21 verified** (21 Oct; [build notes](../sessions/S21-tasks-worklists/build-notes.md), [verify.md](../sessions/S21-tasks-worklists/verify.md)). The briefs are in [docs/sessions/](../sessions/README.md):
 - **S18:** episode forms (the reshape, first, so C4–C6 build on it);
 - **S19:** procedures and episode dates;
 - **S20:** every status, cancel and re-open;
@@ -76,3 +76,8 @@ Differences in S20 (statuses, cancel and re-open, 21 Oct; details in its [build 
 - **Undo, not a super clinician's step back** (S20 answers 2): any clinician steps back the latest move made by hand, with a reason, repeatably. It has its own route, `POST …/episodes/{eid}/undo`, beside the plan's status, cancel and re-open.
 - **The status events are a new table, `episode_status_events`**, and every episode write carries a **revision** (a stale one → 409), which the plan didn't name.
 - **Admitted and discharged are dates** (`admitted_at`, `discharged_at` as `date`), as entered.
+
+Differences in S21 (tasks, worklists and status messages, 21 Oct; **tested 21 Oct, test report 1 all passed; verified 21 Oct**; details in its [build notes](../sessions/S21-tasks-worklists/build-notes.md)):
+- **A task is for a team** (`team`: nurse, anaesthetist, admin; S21 answers 1), where the plan said `role`; `created_by_rule` names a rule's task (C6), and `reopened_by` / `reopened_at` keep who re-opened it. The PATCH names the task: `PATCH …/episodes/{eid}/tasks/{tid}`.
+- **Each worklist's rule is one SQL function, `in_worklist`**, used by both `GET …/episodes?worklist=` and a new route for the tabs' counts, **`GET …/worklists`** (and the trust's `GET /api/o/{oid}/worklists`), which the plan didn't name.
+- **A task change is an episode change:** it sends the episode's revision and bumps it (S20).

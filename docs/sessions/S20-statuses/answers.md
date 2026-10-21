@@ -8,3 +8,7 @@ Asked by the conductor (`/run-sessions S18 S22`), 20 Oct 2026.
 4. **When is a reason required?** **For cancel, re-open and a step back (undo)** (recommended). It's optional for other manual moves.
 5. **What cancelling does to the patient:** **yes** (recommended). Their invite link and sessions for the episode end, follow-up jobs stop, and their home shows "Cancelled by the hospital" with no form.
 6. **Re-open:** **yes** (recommended). It clears the review stamp and unlocks the clinician's answers. Answers and validations stay, the episode goes back to Ready for review, and the patient isn't asked again.
+
+## After verification 1 (21 Oct 2026, asked by the conductor)
+
+7. **Where undo stops** (the verifier's question on answer 2): **keep as built** (recommended). Undo stops at Complete HQ review, at staff sending the HQ for the patient, at re-open, at cancel and at an earlier undo. Undoing the review would let any clinician re-open it, which answer 1 gives to super clinicians only.
