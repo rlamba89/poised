@@ -79,6 +79,10 @@ type Episode struct {
 	ProcedureID       uuid.NullUUID      `json:"procedureId"`
 	PlannedDate       pgtype.Date        `json:"plannedDate"`
 	PoaDate           pgtype.Date        `json:"poaDate"`
+	Revision          int32              `json:"revision"`
+	AdmittedAt        pgtype.Date        `json:"admittedAt"`
+	DischargedAt      pgtype.Date        `json:"dischargedAt"`
+	CancelReason      *string            `json:"cancelReason"`
 }
 
 type EpisodeAnswer struct {
@@ -124,6 +128,20 @@ type EpisodeMessage struct {
 	CreatedAt  time.Time          `json:"createdAt"`
 	FailedAt   pgtype.Timestamptz `json:"failedAt"`
 	Failure    string             `json:"failure"`
+}
+
+type EpisodeStatusEvent struct {
+	ID         uuid.UUID          `json:"id"`
+	Seq        *int64             `json:"seq"`
+	EpisodeID  uuid.UUID          `json:"episodeId"`
+	Move       string             `json:"move"`
+	FromStatus *string            `json:"fromStatus"`
+	ToStatus   string             `json:"toStatus"`
+	Reason     string             `json:"reason"`
+	UserID     uuid.NullUUID      `json:"userId"`
+	Rule       *string            `json:"rule"`
+	UndoneAt   pgtype.Timestamptz `json:"undoneAt"`
+	CreatedAt  time.Time          `json:"createdAt"`
 }
 
 type Hospital struct {

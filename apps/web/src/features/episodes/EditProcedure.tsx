@@ -42,7 +42,7 @@ export function EditProcedure({ path, episode, onSaved, onCancel }: {
     }
     setSaving(true);
     try {
-      await api(path, { method: "PATCH", body: JSON.stringify(form) });
+      await api(path, { method: "PATCH", body: JSON.stringify({ ...form, revision: episode.revision }) }); // S20: a stale page gets 409
       onSaved();
     } catch (e) {
       setError((e as Error).message);

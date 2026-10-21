@@ -61,11 +61,16 @@ export function PatientHome() {
                 <Text>{e.questionnaireName}</Text>
                 <Text size="sm">For {e.patientName}</Text>
                 {e.procedure && <Text size="sm" c="dimmed">Procedure: {e.procedure}</Text>}
+                {e.state === "cancelled" && (
+                  <Text size="sm">The hospital has cancelled this, so there&apos;s nothing to fill in. Please contact them if you have any questions.</Text>
+                )}
                 <Group justify="space-between">
                   <Text size="sm" c="dimmed">Sent to you {formatShortDate(e.createdAt)}</Text>
-                  <Button component={Link} to={`/home/episodes/${e.id}`} variant={e.state === "sent" ? "default" : "filled"}>
-                    {s.action}
-                  </Button>
+                  {s.action && (
+                    <Button component={Link} to={`/home/episodes/${e.id}`} variant={e.state === "sent" ? "default" : "filled"}>
+                      {s.action}
+                    </Button>
+                  )}
                 </Group>
               </Stack>
             </Card>

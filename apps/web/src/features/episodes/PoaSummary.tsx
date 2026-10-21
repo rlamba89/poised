@@ -16,7 +16,7 @@ import { StatusBadge } from "./EpisodeList";
 import { useEpisode } from "./EpisodePage";
 import { GeneralNotes } from "./GeneralNotes";
 import { currentAnswers, useEpisodeHQ, type EpisodeHQ } from "./hq";
-import { StatusSelect } from "./StatusSelect";
+import { SaveError, isStale, StatusControl } from "./StatusControl";
 import { patientName, type Episode, type EpisodeEvent } from "./types";
 
 type Tab = "validated" | "patient";
@@ -52,7 +52,7 @@ export default function PoaSummary({ base, episodeId }: { base: string; episodeI
       <Card withBorder padding="lg">
         <Stack>
           <div className="sj-no-print">
-            <StatusSelect path={path} status={e.status} onChanged={reload} />
+            <StatusControl path={path} detail={data} onChanged={reload} />
           </div>
           <Tabs value={tab} onChange={(v) => setTab((v as Tab) ?? "validated")}>
             <Tabs.List>
@@ -234,29 +234,43 @@ function Capture({ capture }: { capture: PoaCapture }) {
 const ASA = ["I", "II", "III", "IV", "V", "VI"];
 const asaLabel = (n: number | null) => (n ? `ASA ${ASA[n - 1]}` : "Not recorded");
 
+/**
+ * The two ASA grades, each saved on its own with the revision the page loaded (S20). If the other
+ * was saved meanwhile (another tab), the save is refused: the grade typed stays, with Reload.
+ * After a reload, a grade nobody is changing here shows the saved one.
+ */
 function AsaGrades({ episode, path, onSaved }: { episode: Episode; path: string; onSaved: () => void }) {
-  const [nurse, setNurse] = useState(episode.nurseAsa ? String(episode.nurseAsa) : null);
-  const [anaes, setAnaes] = useState(episode.anaesthetistAsa ? String(episode.anaesthetistAsa) : null);
+  const saved = { nurseAsa: episode.nurseAsa ? String(episode.nurseAsa) : null, anaesthetistAsa: episode.anaesthetistAsa ? String(episode.anaesthetistAsa) : null };
+  // A grade being changed here (`value`), or null: it shows the saved one.
+  const [editing, setEditing] = useState<{ nurseAsa: string | null | undefined; anaesthetistAsa: string | null | undefined }>({
+    nurseAsa: undefined, anaesthetistAsa: undefined,
+  });
+  const shown = (f: "nurseAsa" | "anaesthetistAsa") => (editing[f] === undefined ? saved[f] : editing[f]);
   const [error, setError] = useState("");
-  const save = async (field: "nurseAsa" | "anaesthetistAsa", value: string | null) => {
+  const [stale, setStale] = useState(false);
+  const save = async (field: "nurseAsa" | "anaesthetistAsa") => {
+    const value = shown(field);
     try {
-      await api(path, { method: "PATCH", body: JSON.stringify({ [field]: value ? Number(value) : 0 }) });
+      await api(path, { method: "PATCH", body: JSON.stringify({ [field]: value ? Number(value) : 0, revision: episode.revision }) });
       setError("");
+      setEditing((was) => ({ ...was, [field]: undefined }));
       onSaved();
     } catch (err) {
       setError((err as Error).message);
+      setStale(isStale(err));
     }
   };
   const data = ASA.map((g, i) => ({ value: String(i + 1), label: `ASA ${g}` }));
+  const set = (f: "nurseAsa" | "anaesthetistAsa") => (v: string | null) => setEditing((was) => ({ ...was, [f]: v }));
   return (
     <Stack>
       {!episode.nurseAsa && !episode.anaesthetistAsa && <Text size="sm">No ASA grades have been added.</Text>}
-      {error && <Alert color="red">{error}</Alert>}
+      <SaveError error={error} stale={stale} onReload={() => { setError(""); onSaved(); }} />
       <Group align="flex-end">
-        <Select label="Nurse ASA grade" placeholder="ASA grade" data={data} value={nurse} onChange={setNurse} clearable w={180} />
-        <Button className="sj-no-print" variant="default" onClick={() => save("nurseAsa", nurse)} disabled={nurse === (episode.nurseAsa ? String(episode.nurseAsa) : null)}>Save</Button>
-        <Select label="Anaesthetist ASA grade" placeholder="ASA grade" data={data} value={anaes} onChange={setAnaes} clearable w={200} ml="lg" />
-        <Button className="sj-no-print" variant="default" onClick={() => save("anaesthetistAsa", anaes)} disabled={anaes === (episode.anaesthetistAsa ? String(episode.anaesthetistAsa) : null)}>Save</Button>
+        <Select label="Nurse ASA grade" placeholder="ASA grade" data={data} value={shown("nurseAsa")} onChange={set("nurseAsa")} clearable w={180} />
+        <Button className="sj-no-print" variant="default" onClick={() => save("nurseAsa")} disabled={shown("nurseAsa") === saved.nurseAsa}>Save</Button>
+        <Select label="Anaesthetist ASA grade" placeholder="ASA grade" data={data} value={shown("anaesthetistAsa")} onChange={set("anaesthetistAsa")} clearable w={200} ml="lg" />
+        <Button className="sj-no-print" variant="default" onClick={() => save("anaesthetistAsa")} disabled={shown("anaesthetistAsa") === saved.anaesthetistAsa}>Save</Button>
       </Group>
     </Stack>
   );

@@ -185,6 +185,11 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}", hosp(s.audited("episode.view", s.getEpisode)))
 	mux.HandleFunc("PATCH /api/o/{oid}/h/{hid}/episodes/{eid}", hosp(s.audited("episode.update", s.updateEpisode)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/notes", hosp(s.audited("episode.note", s.addEpisodeNote)))
+	// The status (S20): the transition table's moves, cancel, re-open and undo (statuses.go).
+	mux.HandleFunc("PATCH /api/o/{oid}/h/{hid}/episodes/{eid}/status", hosp(s.audited("episode.status", s.changeStatus)))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/cancel", hosp(s.audited("episode.cancel", s.cancelEpisode)))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/reopen", hosp(s.audited("episode.reopen", s.reopenReview)))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/undo", hosp(s.audited("episode.undo", s.undoStatus)))
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/hq", hosp(s.audited("answers.view", s.episodeHQ)))
 	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/episodes/{eid}/answers/{cid}", hosp(s.audited("answers.save", s.saveClinicianAnswers)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/complete-review", hosp(s.audited("review.complete", s.completeReview)))

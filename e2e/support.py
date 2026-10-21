@@ -211,6 +211,21 @@ def pick(page: Page, label: str, option: str) -> None:
     expect(page.get_by_role("combobox", name=label)).to_have_value(option)
 
 
+def change_status(page: Page, option: str, reason: str = "", date: str = "") -> None:
+    """Picks a status from the "Episode status" dropdown, fills in its short form (the date for
+    Admitted and Discharged, an optional reason) and confirms it (S20)."""
+    page.get_by_role("combobox", name="Episode status").click()
+    page.get_by_role("option", name=option, exact=True).click()
+    form = page.get_by_test_id("status-form")
+    expect(form.get_by_role("heading", name=f"Change the status to {option}")).to_be_visible()
+    if date:
+        form.get_by_label("Admission date" if option == "Admitted" else "Discharge date").fill(date)
+    if reason:
+        form.get_by_label("Reason (optional)").fill(reason)
+    form.get_by_role("button", name="Change status").click()
+    expect(page.get_by_role("combobox", name="Episode status")).to_have_value(option)
+
+
 INVITE = re.compile(r"/i/([A-Za-z0-9_-]{43})")
 
 

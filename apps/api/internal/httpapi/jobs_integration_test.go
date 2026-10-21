@@ -228,6 +228,30 @@ func TestFollowupStops(t *testing.T) {
 			t.Errorf("finished jobs: %d", n)
 		}
 	})
+	t.Run("cancelling stops reminders and not responding (S20 answers 5)", func(t *testing.T) {
+		id := newPatientEpisode(t, w, "Cancelled", "07700 900319", "")
+		day := func(n int) time.Time { return dayOf(t, w, id, n) }
+		w.clinician.Do("POST", at(w.a, "/episodes/"+id.String()+"/cancel"), map[string]any{"reason": "patient_withdrew", "revision": 0}).
+			Want(t, http.StatusNoContent)
+		s := runJobs(t, w.anon, day(7))
+		if s.Reminders != 0 || s.NotResponding != 0 || len(msgs.To("+447700900319")) != 1 {
+			t.Errorf("summary %+v, sent %d", s, len(msgs.To("+447700900319")))
+		}
+		if f := readFollowup(t, w, id); f.NotRespondingAt != nil || f.RemindersSent != 0 {
+			t.Errorf("follow-up %+v", f)
+		}
+	})
+	t.Run("a follow-up already running when the episode is cancelled sends nothing", func(t *testing.T) {
+		id := newPatientEpisode(t, w, "Cancelled later", "07700 900318", "")
+		day := func(n int) time.Time { return dayOf(t, w, id, n) }
+		// Cancelled behind the jobs' back: the job is still open, as if a runner had claimed it first.
+		if _, err := w.db.Exec(t.Context(), `UPDATE episodes SET status = 'cancelled' WHERE id = $1`, id); err != nil {
+			t.Fatal(err)
+		}
+		if s := runJobs(t, w.anon, day(7)); s.Reminders != 0 || s.NotResponding != 0 || len(msgs.To("+447700900318")) != 1 {
+			t.Errorf("summary %+v, sent %d", s, len(msgs.To("+447700900318")))
+		}
+	})
 	t.Run("starting stops reminders, but not responding still comes on day 7", func(t *testing.T) {
 		id := newPatientEpisode(t, w, "Starts", "07700 900312", "")
 		day := func(n int) time.Time { return dayOf(t, w, id, n) }

@@ -206,8 +206,13 @@ func TestAuditRowsWritten(t *testing.T) {
 	}{
 		{"episode.view", "GET", "", nil, 200},
 		{"answers.view", "GET", "/hq", nil, 200},
-		{"episode.update", "PATCH", "", map[string]any{"procedureId": w.hip}, 204},
+		{"episode.update", "PATCH", "", map[string]any{"procedureId": w.hip, "revision": 0}, 204},
 		{"episode.note", "POST", "/notes", map[string]string{"text": "Rang the patient"}, 201},
+		// S20: refused here (the episode waits for the patient; cancel has no reason), and audited all the same.
+		{"episode.status", "PATCH", "/status", map[string]any{"to": "poa_complete", "revision": 1}, 409},
+		{"episode.cancel", "POST", "/cancel", map[string]any{"reason": "", "revision": 1}, 400},
+		{"episode.reopen", "POST", "/reopen", map[string]any{"reason": "Wrong", "revision": 1}, 409},
+		{"episode.undo", "POST", "/undo", map[string]any{"reason": "Wrong", "revision": 1}, 409},
 	} {
 		t.Run("one episode: "+c.action, func(t *testing.T) {
 			row := oneAudit(t, w.clinic, c.action, func() *apitest.Resp { return w.clinician.Do(c.method, epPath(w.a, w.ep, c.path), c.body) }, c.want)

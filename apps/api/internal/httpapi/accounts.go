@@ -17,6 +17,7 @@ import (
 
 	"github.com/rlamba89/poised/apps/api/internal/auth"
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/episode"
 	"github.com/rlamba89/poised/apps/api/internal/patient"
 )
 
@@ -399,6 +400,8 @@ func (s *server) patientHome(w http.ResponseWriter, r *http.Request) {
 		firstName = greeting(firstName, e.FirstName)
 		state := "to_do"
 		switch {
+		case e.Status == episode.Cancelled: // S20 answers 5: "Cancelled by the hospital", no form
+			state = "cancelled"
 		case e.PatientSubmittedAt.Valid:
 			state = "sent"
 		case e.Started:

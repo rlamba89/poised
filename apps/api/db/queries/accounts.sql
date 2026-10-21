@@ -99,7 +99,7 @@ WHERE id = sqlc.arg(id) AND used_at IS NULL AND locked_at IS NULL AND revoked_at
 -- The person's home (PX-08): every episode of every record joined to their account, in every
 -- trust, newest first, with the hospital's name. Suspended trusts and hospitals are left out
 -- (ORG-03). org, hospital and patient ids are for the audit log, never sent.
-SELECT e.id, e.created_at, coalesce(pr.name, '')::text AS procedure, f.submitted_at AS patient_submitted_at, e.org_id, e.hospital_id, e.patient_id,
+SELECT e.id, e.created_at, e.status, coalesce(pr.name, '')::text AS procedure, f.submitted_at AS patient_submitted_at, e.org_id, e.hospital_id, e.patient_id,
        p.first_name, p.last_name, h.name AS hospital_name, q.name AS questionnaire_name,
        EXISTS (SELECT 1 FROM episode_answers a WHERE a.episode_form_id = f.id AND a.actor = 'patient')::boolean AS started
 FROM patients p

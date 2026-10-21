@@ -164,6 +164,11 @@ func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "create episode", err)
 		return
 	}
+	// Its first status, in the history (EPI-03); General notes say "Episode created" below.
+	if err := recordStatus(ctx, q, id, episode.Create, "", episode.HQNotComplete, "", currentUser(r).ID, ""); err != nil {
+		serverError(w, "status history", err)
+		return
+	}
 	if err := tx.Commit(ctx); err != nil {
 		serverError(w, "commit", err)
 		return
@@ -220,14 +225,22 @@ func (s *server) getEpisode(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "undelivered messages", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"episode": e, "events": events, "invite": invite, "undelivered": undelivered})
+	// The status (S20): the moves this user may make from here, the undo, and the history.
+	status, err := s.statusView(r.Context(), e, here(r).Role)
+	if err != nil {
+		serverError(w, "status", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"episode": e, "events": events, "invite": invite, "undelivered": undelivered,
+		"moves": status.Moves, "undo": status.Undo, "statusHistory": status.History})
 }
 
 // episodeChange is what updateEpisode changes. A field sent as null decodes to a nil pointer;
 // for an ASA grade that keeps the current grade (see asaChange), and for the procedure and the
-// dates it clears them.
+// dates it clears them. Revision is the episode's revision the page loaded (S20): required.
 type episodeChange struct {
-	Status          *string `json:"status"`
+	Revision        *int32  `json:"revision"`
+	Status          *string `json:"status"`      // refused: the status has its own routes (S20), so an old page can't think it saved one
 	ProcedureID     *string `json:"procedureId"` // S19: an id, or "" for none
 	PlannedDate     *string `json:"plannedDate"` // YYYY-MM-DD, or ""
 	PoaDate         *string `json:"poaDate"`
@@ -239,8 +252,11 @@ type episodeChange struct {
 
 // validate trims the procedure details and returns a plain-language problem, or "".
 func (in *episodeChange) validate() string {
-	if in.Status == nil || in.Anaesthetic == nil || in.Consultant == nil {
+	if in.Revision == nil || in.Anaesthetic == nil || in.Consultant == nil {
 		return "The request could not be read."
+	}
+	if in.Status != nil {
+		return "The status is changed on its own (PATCH …/status)."
 	}
 	for _, f := range []*string{in.Anaesthetic, in.Consultant} {
 		*f = strings.TrimSpace(*f)
@@ -248,20 +264,22 @@ func (in *episodeChange) validate() string {
 	return ""
 }
 
-// updateEpisode changes the status (by hand, see episode.CanSetStatus), the procedure details
-// and the ASA grades. Fields left out keep their value; an ASA grade of 0 clears it. The
+// updateEpisode changes the procedure details and the ASA grades; the status has its own routes
+// (statuses.go, S20). Fields left out keep their value; an ASA grade of 0 clears it. The
 // procedure and its dates can be changed until the HQ review is complete (S19); a new procedure
 // must be one the trust's list offers here, while the one the episode has stays even if retired.
+// The revision sent must be the episode's current one (409 otherwise), so of two tabs, the second
+// to save is told, not silently overwriting the first (pending.md §1a).
 func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return
 	}
 	// Defaults point at copies, so e keeps the current values to compare with.
-	status, anaesthetic, consultant := e.Status, e.Anaesthetic, e.Consultant
+	anaesthetic, consultant := e.Anaesthetic, e.Consultant
 	was := episodeDates{procedure: e.ProcedureID, planned: e.PlannedDate, poa: e.PoaDate}
 	procedure, planned, poa := was.strings()
-	in := episodeChange{Status: &status, ProcedureID: &procedure, PlannedDate: &planned, PoaDate: &poa,
+	in := episodeChange{ProcedureID: &procedure, PlannedDate: &planned, PoaDate: &poa,
 		Anaesthetic: &anaesthetic, Consultant: &consultant}
 	if !readJSON(w, r, 8<<10, &in) {
 		return
@@ -275,6 +293,14 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	if e.Revision != *in.Revision {
+		writeStale(w)
+		return
+	}
+	if e.Status == episode.Cancelled {
+		writeError(w, http.StatusConflict, cancelledMsg)
+		return
+	}
 	if next != was && e.ReviewCompletedAt.Valid {
 		writeError(w, http.StatusConflict, "The procedure and its dates can't be changed once the HQ review is complete.")
 		return
@@ -285,10 +311,6 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if !episode.CanSetStatus(e.Status, *in.Status) {
-		writeError(w, http.StatusConflict, "The status can't be changed to that now.")
-		return
-	}
 	nurse, nurseMsg, okN := asaChange(e.NurseAsa, in.NurseAsa, "Nurse")
 	anaes, anaesMsg, okA := asaChange(e.AnaesthetistAsa, in.AnaesthetistAsa, "Anaesthetist")
 	if !okN || !okA {
@@ -296,7 +318,7 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n, err := s.q.UpdateEpisode(r.Context(), db.UpdateEpisodeParams{
-		ID: e.ID, LoadedStatus: e.Status, Status: *in.Status, ProcedureID: next.procedure, PlannedDate: next.planned,
+		ID: e.ID, Revision: *in.Revision, ProcedureID: next.procedure, PlannedDate: next.planned,
 		PoaDate: next.poa, Anaesthetic: *in.Anaesthetic,
 		Consultant: *in.Consultant, NurseAsa: nurse, AnaesthetistAsa: anaes,
 	})
@@ -305,13 +327,10 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if n == 0 {
-		writeError(w, http.StatusConflict, "This episode changed since you opened it. Reload to see the latest; your change was not saved.")
+		writeStale(w)
 		return
 	}
 	uid := currentUser(r).ID
-	if *in.Status != e.Status {
-		s.event(r, e.ID, "Status changed to "+episode.Labels[*in.Status], uid)
-	}
 	for _, msg := range append(was.changes(next, procedureName), nurseMsg, anaesMsg) {
 		if msg != "" {
 			s.event(r, e.ID, msg, uid)

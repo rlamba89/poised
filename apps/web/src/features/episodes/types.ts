@@ -1,6 +1,7 @@
 // Episodes as the Go API returns them (apps/api/db/queries/episodes.sql).
 export type EpisodeStatus =
-  | "hq_not_complete" | "ready_for_review" | "ready_for_poa" | "poa_complete" | "on_hold" | "not_ready" | "ready_for_admission";
+  | "hq_not_complete" | "ready_for_review" | "ready_for_poa" | "poa_complete" | "on_hold" | "not_ready" | "ready_for_admission"
+  | "admitted" | "discharged" | "cancelled"; // S20
 
 export type EpisodeRow = {
   id: string;
@@ -42,6 +43,13 @@ export type Episode = EpisodeRow & {
   invitedAt: string | null;
   remindersSent: number;
   notRespondingAt: string | null;
+  /** S20: counts the changes staff make; every write sends the one the page loaded (a stale one gets 409). */
+  revision: number;
+  /** The admission and discharge dates (YYYY-MM-DD), or null. */
+  admittedAt: string | null;
+  dischargedAt: string | null;
+  /** The cancel reason's key (cancelReasons in status.ts), or null. */
+  cancelReason: string | null;
 };
 
 /** The patient's working invite (S14), or null before one is sent: when, and whether five wrong dates of birth locked it. */
@@ -89,6 +97,9 @@ export const STATUS_LABELS: Record<EpisodeStatus, string> = {
   on_hold: "On hold",
   not_ready: "Not ready for admission",
   ready_for_admission: "Ready for admission",
+  admitted: "Admitted",
+  discharged: "Discharged",
+  cancelled: "Cancelled",
 };
 
 export const STATUS_COLORS: Record<EpisodeStatus, string> = {
@@ -99,9 +110,9 @@ export const STATUS_COLORS: Record<EpisodeStatus, string> = {
   on_hold: "yellow",
   not_ready: "red",
   ready_for_admission: "green",
+  admitted: "indigo",
+  discharged: "dark",
+  cancelled: "gray",
 };
-
-/** Statuses a clinician picks by hand, once the HQ review is complete. */
-export const MANUAL_STATUSES: EpisodeStatus[] = ["poa_complete", "on_hold", "not_ready", "ready_for_admission"];
 
 export const patientName = (p: { firstName: string; lastName: string }) => `${p.firstName} ${p.lastName}`;

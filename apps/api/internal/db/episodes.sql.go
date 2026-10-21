@@ -50,8 +50,35 @@ func (q *Queries) AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams
 	return err
 }
 
+const addStatusEvent = `-- name: AddStatusEvent :exec
+INSERT INTO episode_status_events (episode_id, move, from_status, to_status, reason, user_id)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type AddStatusEventParams struct {
+	EpisodeID  uuid.UUID     `json:"episodeId"`
+	Move       string        `json:"move"`
+	FromStatus *string       `json:"fromStatus"`
+	ToStatus   string        `json:"toStatus"`
+	Reason     string        `json:"reason"`
+	UserID     uuid.NullUUID `json:"userId"`
+}
+
+// One status change in the history (EPI-03).
+func (q *Queries) AddStatusEvent(ctx context.Context, arg AddStatusEventParams) error {
+	_, err := q.db.Exec(ctx, addStatusEvent,
+		arg.EpisodeID,
+		arg.Move,
+		arg.FromStatus,
+		arg.ToStatus,
+		arg.Reason,
+		arg.UserID,
+	)
+	return err
+}
+
 const completeReview = `-- name: CompleteReview :execrows
-UPDATE episodes SET status = 'ready_for_poa', review_completed_by = $2, review_completed_at = now()
+UPDATE episodes SET status = 'ready_for_poa', review_completed_by = $2, review_completed_at = now(), revision = revision + 1
 WHERE id = $1 AND status = 'ready_for_review'
 `
 
@@ -122,11 +149,22 @@ func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (u
 	return id, err
 }
 
+const finishEpisodeJobs = `-- name: FinishEpisodeJobs :exec
+UPDATE jobs SET done_at = now() WHERE episode_id = $1 AND done_at IS NULL
+`
+
+// Cancelling: the episode's follow-up (reminders, "not responding") stops.
+func (q *Queries) FinishEpisodeJobs(ctx context.Context, episodeID uuid.NullUUID) error {
+	_, err := q.db.Exec(ctx, finishEpisodeJobs, episodeID)
+	return err
+}
+
 const getEpisode = `-- name: GetEpisode :one
 SELECT e.id, e.status, e.procedure_id, coalesce(pr.name, '')::text AS procedure, e.planned_date, e.poa_date,
        e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
        f.submitted_at AS patient_submitted_at, e.review_completed_at, e.created_at, f.version_id, e.hospital_number,
        e.invited_at, e.reminders_sent, e.not_responding_at, -- the follow-up (S16)
+       e.revision, e.admitted_at, e.discharged_at, e.cancel_reason, -- S20
        reviewer.name AS review_completed_by_name, submitter.name AS patient_submitted_by_name,
        p.id AS patient_id, p.first_name, p.last_name, p.date_of_birth, p.sex, p.national_id, p.national_id_type,
        p.mobile, p.email,
@@ -166,6 +204,10 @@ type GetEpisodeRow struct {
 	InvitedAt              pgtype.Timestamptz `json:"invitedAt"`
 	RemindersSent          int32              `json:"remindersSent"`
 	NotRespondingAt        pgtype.Timestamptz `json:"notRespondingAt"`
+	Revision               int32              `json:"revision"`
+	AdmittedAt             pgtype.Date        `json:"admittedAt"`
+	DischargedAt           pgtype.Date        `json:"dischargedAt"`
+	CancelReason           *string            `json:"cancelReason"`
 	ReviewCompletedByName  *string            `json:"reviewCompletedByName"`
 	PatientSubmittedByName *string            `json:"patientSubmittedByName"`
 	PatientID              uuid.UUID          `json:"patientId"`
@@ -206,6 +248,10 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 		&i.InvitedAt,
 		&i.RemindersSent,
 		&i.NotRespondingAt,
+		&i.Revision,
+		&i.AdmittedAt,
+		&i.DischargedAt,
+		&i.CancelReason,
 		&i.ReviewCompletedByName,
 		&i.PatientSubmittedByName,
 		&i.PatientID,
@@ -306,6 +352,34 @@ func (q *Queries) GetVersionChapter(ctx context.Context, arg GetVersionChapterPa
 	row := q.db.QueryRow(ctx, getVersionChapter, arg.ID, arg.VersionID)
 	var i GetVersionChapterRow
 	err := row.Scan(&i.ID, &i.Audience, &i.Content)
+	return i, err
+}
+
+const latestUndoable = `-- name: LatestUndoable :one
+SELECT id, move, coalesce(from_status, '')::text AS from_status, to_status
+FROM episode_status_events
+WHERE episode_id = $1 AND move <> 'undo' AND undone_at IS NULL
+ORDER BY seq DESC LIMIT 1
+`
+
+type LatestUndoableRow struct {
+	ID         uuid.UUID `json:"id"`
+	Move       string    `json:"move"`
+	FromStatus string    `json:"fromStatus"`
+	ToStatus   string    `json:"toStatus"`
+}
+
+// The newest change that isn't an undo and hasn't been undone: what an undo would step back
+// (episode.UndoTarget decides whether it can). No row: none.
+func (q *Queries) LatestUndoable(ctx context.Context, episodeID uuid.UUID) (LatestUndoableRow, error) {
+	row := q.db.QueryRow(ctx, latestUndoable, episodeID)
+	var i LatestUndoableRow
+	err := row.Scan(
+		&i.ID,
+		&i.Move,
+		&i.FromStatus,
+		&i.ToStatus,
+	)
 	return i, err
 }
 
@@ -534,6 +608,57 @@ func (q *Queries) ListPublishedVersions(ctx context.Context, arg ListPublishedVe
 	return items, nil
 }
 
+const listStatusEvents = `-- name: ListStatusEvents :many
+SELECT ev.id, ev.move, ev.from_status, ev.to_status, ev.reason, ev.rule, ev.undone_at, ev.created_at, u.name AS user_name
+FROM episode_status_events ev
+LEFT JOIN users u ON u.id = ev.user_id
+WHERE ev.episode_id = $1
+ORDER BY ev.seq
+`
+
+type ListStatusEventsRow struct {
+	ID         uuid.UUID          `json:"id"`
+	Move       string             `json:"move"`
+	FromStatus *string            `json:"fromStatus"`
+	ToStatus   string             `json:"toStatus"`
+	Reason     string             `json:"reason"`
+	Rule       *string            `json:"rule"`
+	UndoneAt   pgtype.Timestamptz `json:"undoneAt"`
+	CreatedAt  time.Time          `json:"createdAt"`
+	UserName   *string            `json:"userName"`
+}
+
+// The status history, oldest first. user_name is NULL for the patient's submit and automatic changes.
+func (q *Queries) ListStatusEvents(ctx context.Context, episodeID uuid.UUID) ([]ListStatusEventsRow, error) {
+	rows, err := q.db.Query(ctx, listStatusEvents, episodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStatusEventsRow{}
+	for rows.Next() {
+		var i ListStatusEventsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Move,
+			&i.FromStatus,
+			&i.ToStatus,
+			&i.Reason,
+			&i.Rule,
+			&i.UndoneAt,
+			&i.CreatedAt,
+			&i.UserName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listVersionChapters = `-- name: ListVersionChapters :many
 SELECT id, name, description, icon, audience, content
 FROM chapters WHERE version_id = $1
@@ -574,6 +699,57 @@ func (q *Queries) ListVersionChapters(ctx context.Context, versionID uuid.UUID) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockEpisodeStatus = `-- name: LockEpisodeStatus :one
+SELECT e.status, e.revision, e.admitted_at, e.discharged_at, h.timezone
+FROM episodes e JOIN hospitals h ON h.id = e.hospital_id
+WHERE e.id = $1 FOR UPDATE OF e
+`
+
+type LockEpisodeStatusRow struct {
+	Status       string      `json:"status"`
+	Revision     int32       `json:"revision"`
+	AdmittedAt   pgtype.Date `json:"admittedAt"`
+	DischargedAt pgtype.Date `json:"dischargedAt"`
+	Timezone     *string     `json:"timezone"`
+}
+
+// Taken before a status change (S20), so two changes at once are applied one after the other,
+// each checking the revision and the table against the status as it is.
+// The hospital's time zone is for the dates' "not in the future".
+func (q *Queries) LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpisodeStatusRow, error) {
+	row := q.db.QueryRow(ctx, lockEpisodeStatus, id)
+	var i LockEpisodeStatusRow
+	err := row.Scan(
+		&i.Status,
+		&i.Revision,
+		&i.AdmittedAt,
+		&i.DischargedAt,
+		&i.Timezone,
+	)
+	return i, err
+}
+
+const markUndone = `-- name: MarkUndone :exec
+UPDATE episode_status_events SET undone_at = now() WHERE id = $1
+`
+
+func (q *Queries) MarkUndone(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markUndone, id)
+	return err
+}
+
+const revokeEpisodeInvites = `-- name: RevokeEpisodeInvites :exec
+UPDATE login_links SET revoked_at = now()
+WHERE episode_id = $1 AND kind = 'invite' AND revoked_at IS NULL
+`
+
+// Cancelling (S20 answers 5): the episode's invite links stop working, and with them the patient
+// sessions opened from them (TouchPatientSession checks the link).
+func (q *Queries) RevokeEpisodeInvites(ctx context.Context, episodeID uuid.NullUUID) error {
+	_, err := q.db.Exec(ctx, revokeEpisodeInvites, episodeID)
+	return err
 }
 
 const saveClinicianAnswers = `-- name: SaveClinicianAnswers :one
@@ -663,13 +839,48 @@ func (q *Queries) SavePatientAnswers(ctx context.Context, arg SavePatientAnswers
 	return revision, err
 }
 
+const setEpisodeStatus = `-- name: SetEpisodeStatus :exec
+UPDATE episodes
+SET status = $1, admitted_at = $2, discharged_at = $3,
+    cancel_reason = $4,
+    review_completed_by = CASE WHEN $5::boolean THEN NULL ELSE review_completed_by END,
+    review_completed_at = CASE WHEN $5::boolean THEN NULL ELSE review_completed_at END,
+    revision = revision + 1
+WHERE id = $6
+`
+
+type SetEpisodeStatusParams struct {
+	Status       string      `json:"status"`
+	AdmittedAt   pgtype.Date `json:"admittedAt"`
+	DischargedAt pgtype.Date `json:"dischargedAt"`
+	CancelReason *string     `json:"cancelReason"`
+	Reopen       bool        `json:"reopen"`
+	ID           uuid.UUID   `json:"id"`
+}
+
+// A status change, with what goes with it: the dates, the cancel reason, and for a re-open
+// (EPI-07) the review stamp cleared, which unlocks the clinician's answers (they're saved only
+// while the episode is Ready for review). The caller holds LockEpisodeStatus.
+func (q *Queries) SetEpisodeStatus(ctx context.Context, arg SetEpisodeStatusParams) error {
+	_, err := q.db.Exec(ctx, setEpisodeStatus,
+		arg.Status,
+		arg.AdmittedAt,
+		arg.DischargedAt,
+		arg.CancelReason,
+		arg.Reopen,
+		arg.ID,
+	)
+	return err
+}
+
 const submitPatientHQ = `-- name: SubmitPatientHQ :execrows
 WITH submitted AS (
     UPDATE episode_forms hq SET status = 'submitted', submitted_at = now(), submitted_by = $1
     WHERE hq.id = $2 AND hq.kind = 'hq' AND hq.status = 'open'
+      AND EXISTS (SELECT 1 FROM episodes x WHERE x.id = hq.episode_id AND x.status = 'hq_not_complete')
     RETURNING hq.episode_id
 )
-UPDATE episodes e SET status = 'ready_for_review' FROM submitted WHERE e.id = submitted.episode_id
+UPDATE episodes e SET status = 'ready_for_review', revision = e.revision + 1 FROM submitted WHERE e.id = submitted.episode_id
 `
 
 type SubmitPatientHQParams struct {
@@ -680,6 +891,7 @@ type SubmitPatientHQParams struct {
 // Submits the HQ form, freezing the patient's answers, and moves its episode to Ready for review.
 // submitted_by: the staff member who sent it on the patient's behalf (PAT-09), NULL for the patient.
 // No row: the form was already submitted.
+// Only while the episode is HQ not complete (S20: the transition table; not once cancelled).
 func (q *Queries) SubmitPatientHQ(ctx context.Context, arg SubmitPatientHQParams) (int64, error) {
 	result, err := q.db.Exec(ctx, submitPatientHQ, arg.SubmittedBy, arg.FormID)
 	if err != nil {
@@ -690,14 +902,14 @@ func (q *Queries) SubmitPatientHQ(ctx context.Context, arg SubmitPatientHQParams
 
 const updateEpisode = `-- name: UpdateEpisode :execrows
 UPDATE episodes
-SET status = $1, procedure_id = $2, planned_date = $3,
-    poa_date = $4, anaesthetic = $5,
-    consultant = $6, nurse_asa = $7, anaesthetist_asa = $8
-WHERE id = $9 AND status = $10
+SET procedure_id = $1, planned_date = $2,
+    poa_date = $3, anaesthetic = $4,
+    consultant = $5, nurse_asa = $6, anaesthetist_asa = $7,
+    revision = revision + 1
+WHERE id = $8 AND revision = $9
 `
 
 type UpdateEpisodeParams struct {
-	Status          string        `json:"status"`
 	ProcedureID     uuid.NullUUID `json:"procedureId"`
 	PlannedDate     pgtype.Date   `json:"plannedDate"`
 	PoaDate         pgtype.Date   `json:"poaDate"`
@@ -706,14 +918,14 @@ type UpdateEpisodeParams struct {
 	NurseAsa        *int32        `json:"nurseAsa"`
 	AnaesthetistAsa *int32        `json:"anaesthetistAsa"`
 	ID              uuid.UUID     `json:"id"`
-	LoadedStatus    string        `json:"loadedStatus"`
+	Revision        int32         `json:"revision"`
 }
 
-// Changes nothing if the status is no longer `loaded_status`, the one the caller read: the
-// workflow (the patient's submit, completing the review) may have moved it on since.
+// The details staff edit (the status has its own routes, S20). Changes nothing if the episode's
+// revision is no longer the one the caller's page loaded: someone, or the workflow, changed it
+// since.
 func (q *Queries) UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateEpisode,
-		arg.Status,
 		arg.ProcedureID,
 		arg.PlannedDate,
 		arg.PoaDate,
@@ -722,7 +934,7 @@ func (q *Queries) UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (i
 		arg.NurseAsa,
 		arg.AnaesthetistAsa,
 		arg.ID,
-		arg.LoadedStatus,
+		arg.Revision,
 	)
 	if err != nil {
 		return 0, err

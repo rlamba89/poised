@@ -407,7 +407,7 @@ func (q *Queries) JoinMatchingRecords(ctx context.Context, arg JoinMatchingRecor
 }
 
 const listHome = `-- name: ListHome :many
-SELECT e.id, e.created_at, coalesce(pr.name, '')::text AS procedure, f.submitted_at AS patient_submitted_at, e.org_id, e.hospital_id, e.patient_id,
+SELECT e.id, e.created_at, e.status, coalesce(pr.name, '')::text AS procedure, f.submitted_at AS patient_submitted_at, e.org_id, e.hospital_id, e.patient_id,
        p.first_name, p.last_name, h.name AS hospital_name, q.name AS questionnaire_name,
        EXISTS (SELECT 1 FROM episode_answers a WHERE a.episode_form_id = f.id AND a.actor = 'patient')::boolean AS started
 FROM patients p
@@ -425,6 +425,7 @@ ORDER BY e.created_at DESC, e.id
 type ListHomeRow struct {
 	ID                 uuid.UUID          `json:"id"`
 	CreatedAt          time.Time          `json:"createdAt"`
+	Status             string             `json:"status"`
 	Procedure          string             `json:"procedure"`
 	PatientSubmittedAt pgtype.Timestamptz `json:"patientSubmittedAt"`
 	OrgID              uuid.UUID          `json:"orgId"`
@@ -452,6 +453,7 @@ func (q *Queries) ListHome(ctx context.Context, accountID uuid.NullUUID) ([]List
 		if err := rows.Scan(
 			&i.ID,
 			&i.CreatedAt,
+			&i.Status,
 			&i.Procedure,
 			&i.PatientSubmittedAt,
 			&i.OrgID,

@@ -189,7 +189,8 @@ def test_a_clinician_edits_the_procedure_and_dates_until_the_review_is_complete(
     expect(page.get_by_text("HQ review completed by Cara Clinician", exact=True)).to_be_visible()  # General notes
     expect(page.get_by_role("button", name="Edit procedure and dates")).to_have_count(0)
     expect(page.get_by_text("Total hip replacement", exact=True)).to_be_visible()
-    res = cara.request.fetch(f"/api{cara.h(f'/episodes/{episode['id']}')}", method="PATCH", data={"poaDate": "2026-12-01"})
+    revision = cara.call("GET", cara.h(f"/episodes/{episode['id']}"))["episode"]["revision"]  # S20: the page's revision
+    res = cara.request.fetch(f"/api{cara.h(f'/episodes/{episode['id']}')}", method="PATCH", data={"poaDate": "2026-12-01", "revision": revision})
     assert res.status == 409, res.status
 
 

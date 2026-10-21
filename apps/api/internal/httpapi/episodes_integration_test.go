@@ -3,6 +3,7 @@
 package httpapi_test
 
 import (
+	"maps"
 	"net/http"
 	"reflect"
 	"slices"
@@ -501,12 +502,20 @@ func TestGetEpisode(t *testing.T) {
 func TestUpdateEpisode(t *testing.T) {
 	t.Parallel()
 	w := newClinic(t)
+	// patch sends the episode's current revision, as the page would (S20), unless the body has one.
 	patch := func(c *apitest.Client, h apitest.Hospital, e apitest.Episode, body any) *apitest.Resp {
+		if m, ok := body.(map[string]any); ok {
+			if _, has := m["revision"]; !has {
+				m = maps.Clone(m)
+				m["revision"] = revisionOf(t, w, e.ID)
+				body = m
+			}
+		}
 		return c.Do("PATCH", epPath(h, e, ""), body)
 	}
 	reviewed := w.fx.Episode(t, w.hq, w.cara)
 	setStatus(t, w, reviewed, "ready_for_poa")
-	change := map[string]any{"status": "poa_complete"}
+	change := map[string]any{"consultant": "Dr Who"}
 	before := readEpisode(t, w, reviewed.ID)
 
 	t.Run("no sign-in", func(t *testing.T) {
@@ -522,26 +531,23 @@ func TestUpdateEpisode(t *testing.T) {
 	t.Run("invalid input", func(t *testing.T) {
 		for _, bad := range []any{
 			// A null text field crashed the handler (S01 code review): now a 400.
-			`{"status": null}`,
-			`{"anaesthetic": null}`,
-			`{"consultant": null}`,
-			map[string]int{"nurseAsa": 7},
-			map[string]int{"anaesthetistAsa": -1},
-			map[string]string{"procedureId": "hip"},
-			map[string]string{"plannedDate": "tomorrow"},
-			map[string]string{"poaDate": "2026-02-30"},
-			`{"status":`,
+			`{"anaesthetic": null, "revision": 0}`,
+			`{"consultant": null, "revision": 0}`,
+			map[string]any{"nurseAsa": 7},
+			map[string]any{"anaesthetistAsa": -1},
+			map[string]any{"procedureId": "hip"},
+			map[string]any{"plannedDate": "tomorrow"},
+			map[string]any{"poaDate": "2026-02-30"},
+			map[string]any{"consultant": "Dr Who", "revision": nil}, // S20: the revision the page loaded is required
+			map[string]any{"status": "poa_complete"},                // S20: the status has its own route
+			`{"consultant":`,
 		} {
 			refused(t, patch(w.clinician, w.a, reviewed, bad), http.StatusBadRequest)
 		}
 		refused(t, w.clinician.Do("PATCH", at(w.a, "/episodes/abc"), change), http.StatusNotFound)
 	})
-	t.Run("a status the workflow sets is refused", func(t *testing.T) {
-		for _, status := range []string{"ready_for_review", "hq_not_complete", "nonsense"} {
-			refused(t, patch(w.clinician, w.a, reviewed, map[string]string{"status": status}), http.StatusConflict)
-		}
-		// Before the HQ review is complete, no status can be picked by hand.
-		refused(t, patch(w.clinician, w.a, w.ep, change), http.StatusConflict)
+	t.Run("a stale revision is refused (S20)", func(t *testing.T) {
+		refused(t, patch(w.clinician, w.a, reviewed, map[string]any{"consultant": "Dr Who", "revision": 7}), http.StatusConflict)
 	})
 	if after := readEpisode(t, w, reviewed.ID); !reflect.DeepEqual(after, before) {
 		t.Fatalf("refusals changed the episode: %+v, was %+v", after, before)
@@ -550,15 +556,18 @@ func TestUpdateEpisode(t *testing.T) {
 		t.Fatalf("refusals wrote events: %+v", ev)
 	}
 
-	t.Run("happy path: status, details and ASA grades, each change with an event", func(t *testing.T) {
-		patch(w.clinician, w.a, reviewed, map[string]any{"status": "poa_complete",
+	t.Run("happy path: details and ASA grades, each change with an event", func(t *testing.T) {
+		patch(w.clinician, w.a, reviewed, map[string]any{
 			"consultant": " Dr Who ", "nurseAsa": 2, "anaesthetistAsa": 3}).Want(t, http.StatusNoContent)
 		e := readEpisode(t, w, reviewed.ID)
-		if e.Status != "poa_complete" || e.Consultant != "Dr Who" || e.Anaesthetic != before.Anaesthetic ||
+		if e.Status != "ready_for_poa" || e.Consultant != "Dr Who" || e.Anaesthetic != before.Anaesthetic ||
 			e.NurseAsa == nil || *e.NurseAsa != 2 || e.AnaesthetistAsa == nil || *e.AnaesthetistAsa != 3 {
 			t.Errorf("episode = %+v", e)
 		}
-		want := []string{"Status changed to POA complete", "Nurse ASA grade set to 2", "Anaesthetist ASA grade set to 3"}
+		if rev := revisionOf(t, w, reviewed.ID); rev != 1 {
+			t.Errorf("revision %d, want 1", rev)
+		}
+		want := []string{"Nurse ASA grade set to 2", "Anaesthetist ASA grade set to 3"}
 		ev := readEvents(t, w, reviewed.ID)
 		if len(ev) != len(want) {
 			t.Fatalf("events = %+v, want %q", ev, want)
@@ -570,7 +579,7 @@ func TestUpdateEpisode(t *testing.T) {
 		}
 	})
 	t.Run("happy path: the procedure and its dates, before the review, each change with an event (S19)", func(t *testing.T) {
-		patch(w.clinician, w.a, w.ep, map[string]string{"procedureId": w.hip.String(), "plannedDate": "2026-11-03",
+		patch(w.clinician, w.a, w.ep, map[string]any{"procedureId": w.hip.String(), "plannedDate": "2026-11-03",
 			"poaDate": "2026-10-28"}).Want(t, http.StatusNoContent)
 		if e := readEpisode(t, w, w.ep.ID); e.Status != "hq_not_complete" || e.Procedure != "Hip replacement" ||
 			e.Planned != "2026-11-03" || e.Poa != "2026-10-28" {
@@ -626,37 +635,39 @@ func TestUpdateEpisode(t *testing.T) {
 		patch(w.clinician, w.a, reviewed, map[string]any{"procedureId": "", "plannedDate": "", "anaesthetic": "Spinal"}).Want(t, http.StatusNoContent)
 	})
 	t.Run("happy path: no change, no event; 0 clears a grade", func(t *testing.T) {
-		patch(w.clinician, w.a, reviewed, map[string]any{"status": "poa_complete", "nurseAsa": 0, "anaesthetistAsa": 3}).Want(t, http.StatusNoContent)
+		patch(w.clinician, w.a, reviewed, map[string]any{"nurseAsa": 0, "anaesthetistAsa": 3}).Want(t, http.StatusNoContent)
 		e := readEpisode(t, w, reviewed.ID)
 		if e.NurseAsa != nil || e.AnaesthetistAsa == nil || *e.AnaesthetistAsa != 3 {
 			t.Errorf("episode = %+v, want the nurse grade cleared and the anaesthetist's kept", e)
 		}
 		ev := readEvents(t, w, reviewed.ID)
-		if len(ev) != 4 || ev[3].Text != "Nurse ASA grade cleared" {
+		if len(ev) != 3 || ev[2].Text != "Nurse ASA grade cleared" {
 			t.Errorf("events = %+v, want one more: 'Nurse ASA grade cleared'", ev)
 		}
 	})
 }
 
-// A PATCH that changes only details sends no status, so the server keeps the one it loaded. If
-// the workflow moves the status on between that load and the write, the PATCH must not put the
-// old status back (S02's verification, item 2): it gets a 409 and writes nothing.
+// A PATCH sends the revision its page loaded (S20). If the workflow moves the episode on between
+// that load and the write (the patient submits, the review is completed), the PATCH is refused
+// with 409 and writes nothing: the page didn't see the change. (Before S20 this compared the
+// status the request loaded, not the page's: pending.md §1a.)
 func TestUpdateEpisodeKeepsAStatusThatJustChanged(t *testing.T) {
 	t.Parallel()
 	w := newClinic(t)
-	for _, race := range []struct{ name, from, sql, want string }{
-		{"the review is completed", "ready_for_review",
-			`UPDATE episodes SET status = 'ready_for_poa', review_completed_at = now() WHERE id = $1`, "ready_for_poa"},
-		{"the patient submits", "hq_not_complete",
-			`WITH f AS (UPDATE episode_forms SET status = 'submitted', submitted_at = now() WHERE episode_id = $1 AND kind = 'hq')
-			 UPDATE episodes SET status = 'ready_for_review' WHERE id = $1`, "ready_for_review"},
+	for _, race := range []struct{ name, from, want string }{
+		{"the review is completed", "ready_for_review", "ready_for_poa"},
+		{"the patient submits", "hq_not_complete", "ready_for_review"},
 	} {
 		t.Run(race.name, func(t *testing.T) {
 			e := w.fx.Episode(t, w.hq, w.cara)
 			setStatus(t, w, e, race.from)
-			r := meanwhile(t, w.db, race.sql, []any{e.ID}, func() *apitest.Resp {
-				return w.clinician.Do("PATCH", epPath(w.a, e, ""), map[string]any{"procedureId": w.knee, "nurseAsa": 2})
-			})
+			loaded := revisionOf(t, w, e.ID) // the page loads
+			if race.from == "ready_for_review" {
+				w.clinician.Do("POST", epPath(w.a, e, "/complete-review"), nil).Want(t, http.StatusNoContent)
+			} else {
+				w.clinician.Do("POST", epPath(w.a, e, "/patient-form/submit"), nil).Want(t, http.StatusNoContent)
+			}
+			r := w.clinician.Do("PATCH", epPath(w.a, e, ""), map[string]any{"procedureId": w.knee, "nurseAsa": 2, "revision": loaded})
 			refused(t, r, http.StatusConflict)
 			if !strings.Contains(r.Message(), "changed since you opened it") {
 				t.Errorf("message = %q", r.Message())
@@ -664,11 +675,18 @@ func TestUpdateEpisodeKeepsAStatusThatJustChanged(t *testing.T) {
 			if got := readEpisode(t, w, e.ID); got.Status != race.want || got.Procedure != "" || got.NurseAsa != nil {
 				t.Errorf("episode = %+v, want status %s and nothing else changed", got, race.want)
 			}
-			if ev := readEvents(t, w, e.ID); len(ev) != 0 {
-				t.Errorf("events = %+v, want none", ev)
-			}
 		})
 	}
+	t.Run("two PATCHes at once from the same revision: the second waits, then is refused", func(t *testing.T) {
+		e := w.fx.Episode(t, w.hq, w.cara)
+		r := meanwhile(t, w.db, `UPDATE episodes SET nurse_asa = 2, revision = revision + 1 WHERE id = $1`, []any{e.ID}, func() *apitest.Resp {
+			return w.clinician.Do("PATCH", epPath(w.a, e, ""), map[string]any{"anaesthetistAsa": 3, "revision": 0})
+		})
+		refused(t, r, http.StatusConflict)
+		if got := readEpisode(t, w, e.ID); got.NurseAsa == nil || *got.NurseAsa != 2 || got.AnaesthetistAsa != nil {
+			t.Errorf("episode = %+v", got)
+		}
+	})
 }
 
 func TestAddEpisodeNote(t *testing.T) {

@@ -3,7 +3,7 @@ episode status; a comment is added to General notes. The Print button exists."""
 
 from playwright.sync_api import Page, expect
 
-from support import PATIENT_ANSWERS, pick, sign_in, unique
+from support import PATIENT_ANSWERS, change_status, sign_in, unique
 
 
 def test_poa_summary_shows_both_tabs_and_records_status_and_comments(page: Page, as_user, patient_link):
@@ -42,7 +42,7 @@ def test_poa_summary_shows_both_tabs_and_records_status_and_comments(page: Page,
 
     # The status changes, and General notes records it.
     notes = page.get_by_role("region", name="General notes")
-    pick(page, "Episode status", "POA complete")
+    change_status(page, "POA complete")  # S20: confirmed in a short form
     expect(notes.get_by_text("Status changed to POA complete", exact=True)).to_be_visible()
 
     # A comment is added to General notes.

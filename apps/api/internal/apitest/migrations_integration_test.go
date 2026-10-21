@@ -277,3 +277,51 @@ INSERT INTO episodes (id, org_id, hospital_id, patient_id, procedure, created_by
 		m.Up(t)
 	})
 }
+
+// S20 adds the statuses after the POA, the episode's revision and the status history. Episodes
+// already there keep their status, at revision 0 with no history; going back down turns the new
+// statuses into On hold, the nearest older one, rather than losing the episodes.
+func TestEpisodeStatusesMigration(t *testing.T) {
+	t.Parallel()
+	m := apitest.NewMigrations(t, 20)
+	const (
+		trust, hos, user, pat = "00000000-0000-0000-0000-0000000000a0", "00000000-0000-0000-0000-0000000000a1",
+			"00000000-0000-0000-0000-0000000000c0", "00000000-0000-0000-0000-0000000000d0"
+	)
+	setup := `
+INSERT INTO orgs (id, name, code) VALUES ('` + trust + `', 'Trust A', 'MA');
+INSERT INTO hospitals (id, org_id, name) VALUES ('` + hos + `', '` + trust + `', 'A1');
+INSERT INTO users (id, name, email) VALUES ('` + user + `', 'Cara', 'cara@example.test');
+INSERT INTO patients (id, org_id, first_name, last_name, date_of_birth, sex) VALUES ('` + pat + `', '` + trust + `', 'Sam', 'Smith', '1970-01-01', 'unknown');
+INSERT INTO episodes (id, org_id, hospital_id, patient_id, status, created_by) VALUES
+  ('00000000-0000-0000-0000-0000000000e0', '` + trust + `', '` + hos + `', '` + pat + `', 'on_hold', '` + user + `'),
+  ('00000000-0000-0000-0000-0000000000e1', '` + trust + `', '` + hos + `', '` + pat + `', 'ready_for_admission', '` + user + `');
+`
+	if _, err := m.DB.Exec(t.Context(), setup); err != nil {
+		t.Fatalf("old shape: %v", err)
+	}
+	m.UpTo(t, 21)
+	var status string
+	var rev, history int
+	if err := m.DB.QueryRow(t.Context(), `SELECT status, revision, (SELECT count(*) FROM episode_status_events) FROM episodes
+		WHERE id = '00000000-0000-0000-0000-0000000000e0'`).Scan(&status, &rev, &history); err != nil {
+		t.Fatal(err)
+	}
+	if status != "on_hold" || rev != 0 || history != 0 {
+		t.Errorf("after: %s, revision %d, %d history rows", status, rev, history)
+	}
+	if _, err := m.DB.Exec(t.Context(), `UPDATE episodes SET status = 'cancelled', cancel_reason = 'other'
+		WHERE id = '00000000-0000-0000-0000-0000000000e1'`); err != nil {
+		t.Fatalf("a new status: %v", err)
+	}
+	if _, err := m.DB.Exec(t.Context(), `UPDATE episodes SET cancel_reason = 'bored' WHERE id = '00000000-0000-0000-0000-0000000000e1'`); err == nil {
+		t.Error("a cancel reason off the list was stored")
+	}
+	m.DownTo(t, 20)
+	if err := m.DB.QueryRow(t.Context(), `SELECT status FROM episodes WHERE id = '00000000-0000-0000-0000-0000000000e1'`).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "on_hold" {
+		t.Errorf("down: %s", status)
+	}
+}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/rlamba89/poised/apps/api/internal/episode"
 	"github.com/rlamba89/poised/apps/api/internal/invite"
 )
 
@@ -39,6 +40,10 @@ func (s *server) inviteAfterCreate(r *http.Request, episodeID uuid.UUID) {
 func (s *server) resendInvite(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
+		return
+	}
+	if e.Status == episode.Cancelled { // S20 answers 5: the patient's links ended with it
+		writeError(w, http.StatusConflict, "This episode is cancelled, so no invite can be sent.")
 		return
 	}
 	if e.PatientSubmittedAt.Valid {

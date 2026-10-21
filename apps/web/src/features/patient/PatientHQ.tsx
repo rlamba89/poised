@@ -155,8 +155,13 @@ export default function PatientHQ({ path, onBehalf }: Props) {
   if (!hq || !vars) {
     const waiting = error ? <Alert color="red" m="md">{error}</Alert> : <Center h="60vh"><Loader /></Center>;
     if (isPatient) {
-      // e.g. another person's episode address: "not found", with the way back to their own (S15).
-      return <PatientFrame>{homeLink}{waiting}</PatientFrame>;
+      // e.g. another person's episode address: "not found", or one the hospital cancelled (S20),
+      // with the way back to their own (S15) and, once the refusal is in, Sign out (S20 test report 1).
+      const signOutHere = async () => {
+        await api("/p/logout", { method: "POST" }).catch(() => undefined);
+        setEnded({ message: "You've signed out. To come back, open the link in your text message or email again.", lost: {} });
+      };
+      return <PatientFrame onSignOut={error ? signOutHere : undefined}>{homeLink}{waiting}</PatientFrame>;
     }
     return (
       <Box>

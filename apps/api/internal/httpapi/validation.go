@@ -111,30 +111,54 @@ func (s *server) saveClinicianAnswers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]int32{"revision": rev})
 }
 
-// completeReview moves the episode to Ready for POA. The browser enables it once every
-// Question Set shown is validated (plan 2.1: Go doesn't evaluate Question Set conditions).
+// completeReview moves the episode to Ready for POA, through the transition table (S20). The
+// browser enables it once every Question Set shown is validated (plan 2.1: Go doesn't evaluate
+// Question Set conditions).
 func (s *server) completeReview(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
 		return
 	}
+	if _, err := episode.Check(e.Status, episode.ReadyForPOA, episode.CompleteReview, here(r).Role); err != nil {
+		writeError(w, http.StatusConflict, notInReview(e.Status))
+		return
+	}
+	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		serverError(w, "begin", err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
 	uid := currentUser(r).ID
-	n, err := s.q.CompleteReview(r.Context(), db.CompleteReviewParams{ID: e.ID, ReviewCompletedBy: uuid.NullUUID{UUID: uid, Valid: true}})
+	n, err := q.CompleteReview(ctx, db.CompleteReviewParams{ID: e.ID, ReviewCompletedBy: uuid.NullUUID{UUID: uid, Valid: true}})
 	if err != nil {
 		serverError(w, "complete review", err)
 		return
 	}
-	if n == 0 {
-		writeError(w, http.StatusConflict, notInReview(e.Status))
+	if n == 0 { // moved on meanwhile
+		writeError(w, http.StatusConflict, notInReview(episode.ReadyForPOA))
 		return
 	}
-	s.event(r, e.ID, "HQ review completed by "+currentUser(r).Name, uid)
+	note := "HQ review completed by " + currentUser(r).Name
+	if err := recordStatus(ctx, q, e.ID, episode.CompleteReview, episode.ReadyForReview, episode.ReadyForPOA, "", uid, note); err != nil {
+		serverError(w, "status history", err)
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		serverError(w, "commit", err)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func notInReview(status string) string {
-	if status == episode.HQNotComplete {
+	switch status {
+	case episode.HQNotComplete:
 		return "The patient hasn't sent their answers yet."
+	case episode.Cancelled:
+		return cancelledMsg
 	}
 	return "The HQ review is already complete, so the answers can't be changed."
 }

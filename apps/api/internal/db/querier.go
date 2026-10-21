@@ -27,6 +27,8 @@ type Querier interface {
 	AddMembership(ctx context.Context, arg AddMembershipParams) error
 	// Makes the user a superadmin (A-21); nothing changes if they already are.
 	AddPlatformAdmin(ctx context.Context, userID uuid.UUID) error
+	// One status change in the history (EPI-03).
+	AddStatusEvent(ctx context.Context, arg AddStatusEventParams) error
 	// The names of the trust's patients in a page of the log, read now (the log holds only IDs).
 	AuditPatientNames(ctx context.Context, arg AuditPatientNamesParams) ([]AuditPatientNamesRow, error)
 	// Whether the account has an invite not yet accepted: it has never signed in.
@@ -43,8 +45,10 @@ type Querier interface {
 	CountHits(ctx context.Context, arg CountHitsParams) (int32, error)
 	// The trust's whole-trust admins other than this user.
 	CountOtherTrustAdmins(ctx context.Context, arg CountOtherTrustAdminsParams) (int64, error)
+	// a cancelled episode's follow-up stops (S20 answers 5)
 	// Takes reminder number `count` for the episode before it's sent, so it's sent at most once even
-	// if two runners decide at once. No row: it was already taken, or the HQ has been sent.
+	// if two runners decide at once. No row: it was already taken, the HQ has been sent, or the
+	// episode was cancelled meanwhile.
 	CountReminder(ctx context.Context, arg CountReminderParams) (int64, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (uuid.UUID, error)
 	CreateChapter(ctx context.Context, arg CreateChapterParams) (uuid.UUID, error)
@@ -107,6 +111,8 @@ type Querier interface {
 	// sharing a birthday and a first name, on one phone stay apart). The oldest, if (rarely) more
 	// than one.
 	FindAccountForRecord(ctx context.Context, arg FindAccountForRecordParams) (uuid.UUID, error)
+	// Cancelling: the episode's follow-up (reminders, "not responding") stops.
+	FinishEpisodeJobs(ctx context.Context, episodeID uuid.NullUUID) error
 	FinishJob(ctx context.Context, arg FinishJobParams) error
 	GetAccount(ctx context.Context, id uuid.UUID) (GetAccountRow, error)
 	GetChapter(ctx context.Context, arg GetChapterParams) (GetChapterRow, error)
@@ -166,6 +172,9 @@ type Querier interface {
 	// The person's other records, in any trust, not yet joined: the same date of birth, the account's
 	// first name and surname, and one of the contacts they've just proved (a link reached them there).
 	JoinMatchingRecords(ctx context.Context, arg JoinMatchingRecordsParams) ([]JoinMatchingRecordsRow, error)
+	// The newest change that isn't an undo and hasn't been undone: what an undo would step back
+	// (episode.UndoTarget decides whether it can). No row: none.
+	LatestUndoable(ctx context.Context, episodeID uuid.UUID) (LatestUndoableRow, error)
 	// One trust's log, newest first, with the filters that are set: someone (a staff member, or
 	// patients_only for the patient's link), a time range [from_at, to_at), and patients (any of
 	// patient_ids, when by_patient).
@@ -231,6 +240,8 @@ type Querier interface {
 	// person's account is waiting for its first sign-in: the latest deadline of their open invites
 	// (the join keeps only the latest of them).
 	ListStaff(ctx context.Context, orgID uuid.UUID) ([]ListStaffRow, error)
+	// The status history, oldest first. user_name is NULL for the patient's submit and automatic changes.
+	ListStatusEvents(ctx context.Context, episodeID uuid.UUID) ([]ListStatusEventsRow, error)
 	// The trust's whole-trust admins, for the platform admin, with each account's latest open
 	// invite (set while it waits for its first sign-in).
 	ListTrustAdmins(ctx context.Context, orgID uuid.UUID) ([]ListTrustAdminsRow, error)
@@ -246,6 +257,10 @@ type Querier interface {
 	// Taken before an invite's links are replaced, so two resends at once are applied one after
 	// the other.
 	LockEpisode(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	// Taken before a status change (S20), so two changes at once are applied one after the other,
+	// each checking the revision and the table against the status as it is.
+	// The hospital's time zone is for the dates' "not in the future".
+	LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpisodeStatusRow, error)
 	// One hospital of the trust, locked until the transaction ends.
 	LockHospitalForAdmin(ctx context.Context, arg LockHospitalForAdminParams) (LockHospitalForAdminRow, error)
 	// A hospital of the trust and its stored settings, locked until the transaction ends.
@@ -265,8 +280,9 @@ type Querier interface {
 	// Rate limits (PAT-11): rate_limit_hits.
 	// Hits on one key are counted and added one request at a time.
 	LockRateKey(ctx context.Context, key string) error
-	// No row: already marked, or the HQ has been sent.
+	// No row: already marked, the HQ has been sent, or the episode was cancelled.
 	MarkNotResponding(ctx context.Context, arg MarkNotRespondingParams) (int64, error)
+	MarkUndone(ctx context.Context, id uuid.UUID) error
 	// The trust's patients that a "Patient" filter names: part of their name ("Jane Smith" or
 	// "Smith Jane"), part of a hospital number on one of their episodes (S13 moved it there), their
 	// national ID (exactly, as normalised), or their record's id.
@@ -300,6 +316,9 @@ type Querier interface {
 	ResetEpisodeDob(ctx context.Context, id uuid.UUID) error
 	// MESSAGING=capture only (local, QA): a tester's fresh start.
 	ResetRateLimits(ctx context.Context) error
+	// Cancelling (S20 answers 5): the episode's invite links stop working, and with them the patient
+	// sessions opened from them (TouchPatientSession checks the link).
+	RevokeEpisodeInvites(ctx context.Context, episodeID uuid.NullUUID) error
 	// An invite whose messages all failed: its link never reached anyone.
 	RevokeLink(ctx context.Context, id uuid.UUID) error
 	// An invite went: the episode's links older than it stop working (only the newest works, even
@@ -346,6 +365,10 @@ type Querier interface {
 	// Ties the account to its user in the staff pool at a sign-in found by the verified email (no
 	// account holds that sub yet: the sub is looked up first).
 	SetCognitoSub(ctx context.Context, arg SetCognitoSubParams) error
+	// A status change, with what goes with it: the dates, the cancel reason, and for a re-open
+	// (EPI-07) the review stamp cleared, which unlocks the clinician's answers (they're saved only
+	// while the episode is Ready for review). The caller holds LockEpisodeStatus.
+	SetEpisodeStatus(ctx context.Context, arg SetEpisodeStatusParams) error
 	SetHospitalSettings(ctx context.Context, arg SetHospitalSettingsParams) error
 	SetHospitalStatus(ctx context.Context, arg SetHospitalStatusParams) error
 	SetOrgSettings(ctx context.Context, arg SetOrgSettingsParams) error
@@ -370,6 +393,7 @@ type Querier interface {
 	// Submits the HQ form, freezing the patient's answers, and moves its episode to Ready for review.
 	// submitted_by: the staff member who sent it on the patient's behalf (PAT-09), NULL for the patient.
 	// No row: the form was already submitted.
+	// Only while the episode is HQ not complete (S20: the transition table; not once cancelled).
 	SubmitPatientHQ(ctx context.Context, arg SubmitPatientHQParams) (int64, error)
 	// Every patient request: the session's account, if the session is live (not signed out, seen
 	// since idle_since) and its link wasn't replaced by a resend or locked. It counts as activity.
@@ -378,8 +402,9 @@ type Querier interface {
 	TouchPatientSession(ctx context.Context, arg TouchPatientSessionParams) (uuid.UUID, error)
 	TouchVersion(ctx context.Context, arg TouchVersionParams) error
 	UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) error
-	// Changes nothing if the status is no longer `loaded_status`, the one the caller read: the
-	// workflow (the patient's submit, completing the review) may have moved it on since.
+	// The details staff edit (the status has its own routes, S20). Changes nothing if the episode's
+	// revision is no longer the one the caller's page loaded: someone, or the workflow, changed it
+	// since.
 	UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (int64, error)
 	// A name another hospital of the trust has fails on hospitals_org_name_key.
 	UpdateHospitalDetails(ctx context.Context, arg UpdateHospitalDetailsParams) error

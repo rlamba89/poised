@@ -16,6 +16,8 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/auth"
 	"github.com/rlamba89/poised/apps/api/internal/chapter"
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/episode"
+	"github.com/rlamba89/poised/apps/api/internal/role"
 )
 
 // The patient's side (plan C2, session S14; A-4, PAT-04, PAT-05). Every session starts with a
@@ -32,10 +34,11 @@ import (
 var tokenFormat = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 
 const (
-	linkNotFound = "This link doesn't work. Please check it, or contact the hospital."
-	linkLocked   = "This link is locked because the date of birth was entered wrongly too many times. Please contact the hospital to send you a new link."
-	formClosed   = "This questionnaire isn't available at the moment. Please contact the hospital."
-	sessionEnded = "For your security, you've been signed out. Please open the link in your text message or email again."
+	linkNotFound  = "This link doesn't work. Please check it, or contact the hospital."
+	linkLocked    = "This link is locked because the date of birth was entered wrongly too many times. Please contact the hospital to send you a new link."
+	formClosed    = "This questionnaire isn't available at the moment. Please contact the hospital."
+	formCancelled = "This questionnaire was cancelled by the hospital, so there's nothing more to fill in. Please contact the hospital if you have any questions."
+	sessionEnded  = "For your security, you've been signed out. Please open the link in your text message or email again."
 	// maxDobAttempts wrong dates of birth lock a link (PAT-05).
 	maxDobAttempts = 5
 )
@@ -319,6 +322,10 @@ func (s *server) loadForm(w http.ResponseWriter, r *http.Request) (form, bool) {
 		writeError(w, http.StatusForbidden, formClosed)
 		return f, false
 	}
+	if e.Status == episode.Cancelled { // S20 answers 5: no form; code "cancelled" lets the page say so
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": formCancelled, "code": "cancelled"})
+		return f, false
+	}
 	return f, true
 }
 
@@ -471,10 +478,26 @@ func (s *server) saveForm(w http.ResponseWriter, r *http.Request, f form) {
 }
 
 // submitForm submits the HQ form, freezing the patient's answers, and moves the episode to Ready
-// for review (triage).
+// for review (triage), through the transition table (S20), recording the change.
 // The browser has checked every required question (plan 2.1).
 func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
-	n, err := s.q.SubmitPatientHQ(r.Context(), db.SubmitPatientHQParams{
+	who := role.None // the patient
+	if f.enteredBy != uuid.Nil {
+		who = here(r).Role
+	}
+	if _, err := episode.Check(f.Status, episode.ReadyForReview, episode.Submit, who); err != nil {
+		writeError(w, http.StatusConflict, "These answers have already been sent.")
+		return
+	}
+	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		serverError(w, "begin", err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	n, err := q.SubmitPatientHQ(ctx, db.SubmitPatientHQParams{
 		FormID: f.FormID, SubmittedBy: uuid.NullUUID{UUID: f.enteredBy, Valid: f.enteredBy != uuid.Nil},
 	})
 	if err != nil {
@@ -485,10 +508,17 @@ func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
 		writeError(w, http.StatusConflict, "These answers have already been sent.")
 		return
 	}
-	if f.enteredBy == uuid.Nil {
-		s.event(r, f.ID, "HQ completed by the patient", uuid.Nil)
-	} else {
-		s.event(r, f.ID, "HQ completed on the patient's behalf", f.enteredBy)
+	note := "HQ completed by the patient"
+	if f.enteredBy != uuid.Nil {
+		note = "HQ completed on the patient's behalf"
+	}
+	if err := recordStatus(ctx, q, f.ID, episode.Submit, episode.HQNotComplete, episode.ReadyForReview, "", f.enteredBy, note); err != nil {
+		serverError(w, "status history", err)
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		serverError(w, "commit", err)
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

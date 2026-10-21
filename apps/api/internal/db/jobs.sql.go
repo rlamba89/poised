@@ -50,8 +50,9 @@ func (q *Queries) ClaimDueJob(ctx context.Context, arg ClaimDueJobParams) (Claim
 }
 
 const countReminder = `-- name: CountReminder :execrows
+
 UPDATE episodes e SET reminders_sent = $1
-WHERE e.id = $2 AND e.reminders_sent < $1
+WHERE e.id = $2 AND e.reminders_sent < $1 AND e.status <> 'cancelled'
   AND EXISTS (SELECT 1 FROM episode_forms f WHERE f.episode_id = e.id AND f.kind = 'hq' AND f.status = 'open')
 `
 
@@ -60,8 +61,10 @@ type CountReminderParams struct {
 	ID    uuid.UUID `json:"id"`
 }
 
+// a cancelled episode's follow-up stops (S20 answers 5)
 // Takes reminder number `count` for the episode before it's sent, so it's sent at most once even
-// if two runners decide at once. No row: it was already taken, or the HQ has been sent.
+// if two runners decide at once. No row: it was already taken, the HQ has been sent, or the
+// episode was cancelled meanwhile.
 func (q *Queries) CountReminder(ctx context.Context, arg CountReminderParams) (int64, error) {
 	result, err := q.db.Exec(ctx, countReminder, arg.Count, arg.ID)
 	if err != nil {
@@ -112,7 +115,7 @@ FROM episodes e
 JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
 JOIN hospitals h ON h.id = e.hospital_id
 JOIN orgs o ON o.id = e.org_id
-WHERE e.id = $1
+WHERE e.id = $1 AND e.status <> 'cancelled'
 `
 
 type GetFollowupRow struct {
@@ -170,7 +173,7 @@ func (q *Queries) GetQAJobsClock(ctx context.Context) (GetQAJobsClockRow, error)
 
 const markNotResponding = `-- name: MarkNotResponding :execrows
 UPDATE episodes e SET not_responding_at = $1::timestamptz
-WHERE e.id = $2 AND e.not_responding_at IS NULL
+WHERE e.id = $2 AND e.not_responding_at IS NULL AND e.status <> 'cancelled'
   AND EXISTS (SELECT 1 FROM episode_forms f WHERE f.episode_id = e.id AND f.kind = 'hq' AND f.status = 'open')
 `
 
@@ -179,7 +182,7 @@ type MarkNotRespondingParams struct {
 	ID  uuid.UUID `json:"id"`
 }
 
-// No row: already marked, or the HQ has been sent.
+// No row: already marked, the HQ has been sent, or the episode was cancelled.
 func (q *Queries) MarkNotResponding(ctx context.Context, arg MarkNotRespondingParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markNotResponding, arg.Now, arg.ID)
 	if err != nil {

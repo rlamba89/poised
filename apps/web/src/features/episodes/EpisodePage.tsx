@@ -16,11 +16,24 @@ import { EditProcedure } from "./EditProcedure";
 import { StatusBadge } from "./EpisodeList";
 import { GeneralNotes } from "./GeneralNotes";
 import { currentAnswers, useEpisodeHQ } from "./hq";
-import { StatusSelect } from "./StatusSelect";
+import type { StatusEvent, StatusOption, UndoOption } from "./status";
+import { StatusControl, StatusHistory } from "./StatusControl";
 import { patientName, type Episode, type EpisodeEvent, type EpisodeInvite } from "./types";
 import { undeliveredText, type Undelivered } from "./undelivered";
 
-export type EpisodeDetail = { episode: Episode; events: EpisodeEvent[]; invite: EpisodeInvite; undelivered: Undelivered[] };
+/**
+ * GET …/episodes/:id. S20 added the status: `moves` (what this user may do from here), `undo`
+ * (the last move made by hand, if it can be stepped back) and `statusHistory`.
+ */
+export type EpisodeDetail = {
+  episode: Episode;
+  events: EpisodeEvent[];
+  invite: EpisodeInvite;
+  undelivered: Undelivered[];
+  moves: StatusOption[];
+  undo: UndoOption;
+  statusHistory: StatusEvent[];
+};
 
 /** Loads an episode and its events; `reload` refetches both. */
 export function useEpisode(base: string, episodeId: string) {
@@ -45,6 +58,9 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
   const path = `${base}/episodes/${episodeId}`;
   if (!data) return error ? <Alert color="red">{error}</Alert> : <Center h="40vh"><Loader /></Center>;
   const e = data.episode;
+  const cancelled = e.status === "cancelled";
+  // The reason as recorded, with any details (S20): the latest cancel in the history.
+  const cancelledWhy = data.statusHistory.findLast((h) => h.move === "cancel")?.reason;
 
   return (
     <Stack maw={960} mx="auto">
@@ -68,6 +84,12 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
         </Group>
         <Button component={Link} to={`${path}/poa`} variant="default">POA Summary</Button>
       </Group>
+      {cancelled && (
+        <Alert color="gray" title="This episode is cancelled" data-testid="cancelled">
+          {cancelledWhy ? `Reason: ${cancelledWhy}. ` : ""}Cancelling is final: the patient&apos;s link no longer works, and their home shows the
+          questionnaire as cancelled by the hospital.
+        </Alert>
+      )}
 
       <Card withBorder>
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
@@ -83,9 +105,11 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
           <Detail label="Created" value={formatDateTime(e.createdAt)} />
           <Detail label="Planned procedure date" value={e.plannedDate ? formatOptionalDate(e.plannedDate) : ""} />
           <Detail label="POA appointment date" value={e.poaDate ? formatOptionalDate(e.poaDate) : ""} />
+          {e.admittedAt && <Detail label="Admission date" value={formatOptionalDate(e.admittedAt)} />}
+          {e.dischargedAt && <Detail label="Discharge date" value={formatOptionalDate(e.dischargedAt)} />}
         </SimpleGrid>
-        {/* The procedure and its dates can be changed until the HQ review is complete (S19). */}
-        {!e.reviewCompletedAt && !editing && (
+        {/* The procedure and its dates can be changed until the HQ review is complete (S19), unless it's cancelled (S20). */}
+        {!e.reviewCompletedAt && !cancelled && !editing && (
           <Group justify="flex-end" mt="xs">
             <Button size="xs" variant="default" onClick={() => setEditing(true)}>Edit procedure and dates</Button>
           </Group>
@@ -101,7 +125,12 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
       <QuestionSets base={base} episode={e} onReviewed={reload} />
 
       <Card withBorder>
-        <StatusSelect path={path} status={e.status} onChanged={reload} />
+        <StatusControl path={path} detail={data} onChanged={reload} />
+      </Card>
+
+      <Card withBorder>
+        <Title order={4} mb="xs">Status history</Title>
+        <StatusHistory events={data.statusHistory} />
       </Card>
 
       <Card withBorder>

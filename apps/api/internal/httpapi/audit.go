@@ -43,6 +43,10 @@ var auditActions = map[string]string{
 	"episode.view":       "Opened an episode",
 	"episode.update":     "Changed an episode",
 	"episode.note":       "Added a note",
+	"episode.status":     "Changed an episode's status", // S20
+	"episode.cancel":     "Cancelled an episode",
+	"episode.reopen":     "Re-opened the HQ review",
+	"episode.undo":       "Undid a status change",
 	"answers.view":       "Opened the answers",
 	"answers.save":       "Saved the clinician's answers",
 	"review.complete":    "Completed the HQ review",

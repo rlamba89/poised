@@ -48,19 +48,20 @@ FROM episodes e
 JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
 JOIN hospitals h ON h.id = e.hospital_id
 JOIN orgs o ON o.id = e.org_id
-WHERE e.id = $1;
+WHERE e.id = $1 AND e.status <> 'cancelled'; -- a cancelled episode's follow-up stops (S20 answers 5)
 
 -- name: CountReminder :execrows
 -- Takes reminder number `count` for the episode before it's sent, so it's sent at most once even
--- if two runners decide at once. No row: it was already taken, or the HQ has been sent.
+-- if two runners decide at once. No row: it was already taken, the HQ has been sent, or the
+-- episode was cancelled meanwhile.
 UPDATE episodes e SET reminders_sent = sqlc.arg(count)
-WHERE e.id = sqlc.arg(id) AND e.reminders_sent < sqlc.arg(count)
+WHERE e.id = sqlc.arg(id) AND e.reminders_sent < sqlc.arg(count) AND e.status <> 'cancelled'
   AND EXISTS (SELECT 1 FROM episode_forms f WHERE f.episode_id = e.id AND f.kind = 'hq' AND f.status = 'open');
 
 -- name: MarkNotResponding :execrows
--- No row: already marked, or the HQ has been sent.
+-- No row: already marked, the HQ has been sent, or the episode was cancelled.
 UPDATE episodes e SET not_responding_at = sqlc.arg(now)::timestamptz
-WHERE e.id = sqlc.arg(id) AND e.not_responding_at IS NULL
+WHERE e.id = sqlc.arg(id) AND e.not_responding_at IS NULL AND e.status <> 'cancelled'
   AND EXISTS (SELECT 1 FROM episode_forms f WHERE f.episode_id = e.id AND f.kind = 'hq' AND f.status = 'open');
 
 -- name: GetQAJobsClock :one

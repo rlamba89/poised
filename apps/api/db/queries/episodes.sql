@@ -56,6 +56,7 @@ SELECT e.id, e.status, e.procedure_id, coalesce(pr.name, '')::text AS procedure,
        e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
        f.submitted_at AS patient_submitted_at, e.review_completed_at, e.created_at, f.version_id, e.hospital_number,
        e.invited_at, e.reminders_sent, e.not_responding_at, -- the follow-up (S16)
+       e.revision, e.admitted_at, e.discharged_at, e.cancel_reason, -- S20
        reviewer.name AS review_completed_by_name, submitter.name AS patient_submitted_by_name,
        p.id AS patient_id, p.first_name, p.last_name, p.date_of_birth, p.sex, p.national_id, p.national_id_type,
        p.mobile, p.email,
@@ -71,13 +72,69 @@ LEFT JOIN users submitter ON submitter.id = f.submitted_by
 WHERE e.id = $1 AND e.hospital_id = $2;
 
 -- name: UpdateEpisode :execrows
--- Changes nothing if the status is no longer `loaded_status`, the one the caller read: the
--- workflow (the patient's submit, completing the review) may have moved it on since.
+-- The details staff edit (the status has its own routes, S20). Changes nothing if the episode's
+-- revision is no longer the one the caller's page loaded: someone, or the workflow, changed it
+-- since.
 UPDATE episodes
-SET status = sqlc.arg(status), procedure_id = sqlc.arg(procedure_id), planned_date = sqlc.arg(planned_date),
+SET procedure_id = sqlc.arg(procedure_id), planned_date = sqlc.arg(planned_date),
     poa_date = sqlc.arg(poa_date), anaesthetic = sqlc.arg(anaesthetic),
-    consultant = sqlc.arg(consultant), nurse_asa = sqlc.arg(nurse_asa), anaesthetist_asa = sqlc.arg(anaesthetist_asa)
-WHERE id = sqlc.arg(id) AND status = sqlc.arg(loaded_status);
+    consultant = sqlc.arg(consultant), nurse_asa = sqlc.arg(nurse_asa), anaesthetist_asa = sqlc.arg(anaesthetist_asa),
+    revision = revision + 1
+WHERE id = sqlc.arg(id) AND revision = sqlc.arg(revision);
+
+-- name: LockEpisodeStatus :one
+-- Taken before a status change (S20), so two changes at once are applied one after the other,
+-- each checking the revision and the table against the status as it is.
+-- The hospital's time zone is for the dates' "not in the future".
+SELECT e.status, e.revision, e.admitted_at, e.discharged_at, h.timezone
+FROM episodes e JOIN hospitals h ON h.id = e.hospital_id
+WHERE e.id = $1 FOR UPDATE OF e;
+
+-- name: SetEpisodeStatus :exec
+-- A status change, with what goes with it: the dates, the cancel reason, and for a re-open
+-- (EPI-07) the review stamp cleared, which unlocks the clinician's answers (they're saved only
+-- while the episode is Ready for review). The caller holds LockEpisodeStatus.
+UPDATE episodes
+SET status = sqlc.arg(status), admitted_at = sqlc.arg(admitted_at), discharged_at = sqlc.arg(discharged_at),
+    cancel_reason = sqlc.narg(cancel_reason),
+    review_completed_by = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE review_completed_by END,
+    review_completed_at = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE review_completed_at END,
+    revision = revision + 1
+WHERE id = sqlc.arg(id);
+
+-- name: AddStatusEvent :exec
+-- One status change in the history (EPI-03).
+INSERT INTO episode_status_events (episode_id, move, from_status, to_status, reason, user_id)
+VALUES (sqlc.arg(episode_id), sqlc.arg(move), sqlc.narg(from_status), sqlc.arg(to_status), sqlc.arg(reason), sqlc.narg(user_id));
+
+-- name: LatestUndoable :one
+-- The newest change that isn't an undo and hasn't been undone: what an undo would step back
+-- (episode.UndoTarget decides whether it can). No row: none.
+SELECT id, move, coalesce(from_status, '')::text AS from_status, to_status
+FROM episode_status_events
+WHERE episode_id = $1 AND move <> 'undo' AND undone_at IS NULL
+ORDER BY seq DESC LIMIT 1;
+
+-- name: MarkUndone :exec
+UPDATE episode_status_events SET undone_at = now() WHERE id = $1;
+
+-- name: ListStatusEvents :many
+-- The status history, oldest first. user_name is NULL for the patient's submit and automatic changes.
+SELECT ev.id, ev.move, ev.from_status, ev.to_status, ev.reason, ev.rule, ev.undone_at, ev.created_at, u.name AS user_name
+FROM episode_status_events ev
+LEFT JOIN users u ON u.id = ev.user_id
+WHERE ev.episode_id = $1
+ORDER BY ev.seq;
+
+-- name: RevokeEpisodeInvites :exec
+-- Cancelling (S20 answers 5): the episode's invite links stop working, and with them the patient
+-- sessions opened from them (TouchPatientSession checks the link).
+UPDATE login_links SET revoked_at = now()
+WHERE episode_id = $1 AND kind = 'invite' AND revoked_at IS NULL;
+
+-- name: FinishEpisodeJobs :exec
+-- Cancelling: the episode's follow-up (reminders, "not responding") stops.
+UPDATE jobs SET done_at = now() WHERE episode_id = $1 AND done_at IS NULL;
 
 -- name: AddEpisodeEvent :exec
 INSERT INTO episode_events (episode_id, kind, text, user_id) VALUES ($1, $2, $3, $4);
@@ -148,12 +205,14 @@ RETURNING revision;
 -- Submits the HQ form, freezing the patient's answers, and moves its episode to Ready for review.
 -- submitted_by: the staff member who sent it on the patient's behalf (PAT-09), NULL for the patient.
 -- No row: the form was already submitted.
+-- Only while the episode is HQ not complete (S20: the transition table; not once cancelled).
 WITH submitted AS (
     UPDATE episode_forms hq SET status = 'submitted', submitted_at = now(), submitted_by = sqlc.arg(submitted_by)
     WHERE hq.id = sqlc.arg(form_id) AND hq.kind = 'hq' AND hq.status = 'open'
+      AND EXISTS (SELECT 1 FROM episodes x WHERE x.id = hq.episode_id AND x.status = 'hq_not_complete')
     RETURNING hq.episode_id
 )
-UPDATE episodes e SET status = 'ready_for_review' FROM submitted WHERE e.id = submitted.episode_id;
+UPDATE episodes e SET status = 'ready_for_review', revision = e.revision + 1 FROM submitted WHERE e.id = submitted.episode_id;
 
 -- name: SaveClinicianAnswers :one
 -- The clinician's copy of a Question Set's answers, which is final. `validated` stamps it
@@ -179,5 +238,5 @@ WHERE episode_answers.revision = sqlc.arg(revision)
 RETURNING revision;
 
 -- name: CompleteReview :execrows
-UPDATE episodes SET status = 'ready_for_poa', review_completed_by = $2, review_completed_at = now()
+UPDATE episodes SET status = 'ready_for_poa', review_completed_by = $2, review_completed_at = now(), revision = revision + 1
 WHERE id = $1 AND status = 'ready_for_review';
