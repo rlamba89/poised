@@ -5,12 +5,13 @@
 import type { EpisodeStatus } from "./types";
 
 /** internal/episode's Move: the kind of a status change. */
-export type StatusMove = "create" | "submit" | "complete_review" | "set" | "admit" | "discharge" | "cancel" | "reopen" | "undo";
+export type StatusMove = "create" | "submit" | "complete_review" | "set" | "admit" | "discharge" | "cancel" | "reopen" | "undo"
+  | "archive" | "unarchive"; // S22
 
 /** A move the status control offers (episode.Option). */
 export type StatusOption = { to: EpisodeStatus; label: string; move: StatusMove; needsReason: boolean; needsDate: boolean };
 
-/** The undo, if there's one: back to `to` (S20 answers 2). */
+/** The undo, if there's one: back to `to` (S20 answers 2). Also the un-archive (S22): back to the status it was archived from. */
 export type UndoOption = { to: EpisodeStatus; label: string } | null;
 
 /** One change in the status history (EPI-03). userName is null for the patient's submit and automatic changes. */
@@ -34,12 +35,12 @@ export const CANCEL_REASONS = [
   { value: "other", label: "Other" },
 ];
 
-/** The moves the "Episode status" dropdown lists: the picks, Admitted and Discharged. Cancel and re-open have buttons. */
+/** The moves the "Episode status" dropdown lists: the picks, Admitted and Discharged. Cancel, re-open and archive have buttons. */
 export const pickOptions = (moves: StatusOption[]) => moves.filter((m) => m.move === "set" || m.move === "admit" || m.move === "discharge");
 
-/** What the person filled in: a pick (with its target), cancel, re-open or undo. */
+/** What the person filled in: a pick (with its target), cancel, re-open, undo, archive or un-archive (S22). */
 export type StatusForm = {
-  kind: "pick" | "cancel" | "reopen" | "undo";
+  kind: "pick" | "cancel" | "reopen" | "undo" | "archive" | "unarchive";
   to?: StatusOption;
   reason: string; // cancel: the list's value
   details: string; // cancel only
@@ -63,6 +64,11 @@ export function statusRequest(f: StatusForm, revision: number): { path: string; 
     case "undo":
       if (!reason) return { error: "Say why the status change is being undone." };
       return { path: "/undo", body: { reason, revision } };
+    case "archive": // S22: the reason is optional
+      return { path: "/archive", body: { reason, revision } };
+    case "unarchive":
+      if (!reason) return { error: "Say why the episode is being un-archived." };
+      return { path: "/unarchive", body: { reason, revision } };
   }
   if (!f.to) return { error: "Choose a status." };
   if (f.to.needsDate && !f.date) return { error: `Enter the ${f.to.move === "discharge" ? "discharge" : "admission"} date as a date.` };
@@ -80,6 +86,8 @@ export function historyText(ev: StatusEvent, labels: Record<EpisodeStatus, strin
     cancel: "Cancelled",
     reopen: "HQ review re-opened",
     undo: "Undone",
+    archive: "Archived",
+    unarchive: "Un-archived",
   };
   if (ev.move === "create") return `Created: ${to}`;
   const what = kind[ev.move];

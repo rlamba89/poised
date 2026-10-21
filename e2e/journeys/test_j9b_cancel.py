@@ -6,7 +6,7 @@
   - On the patient's phone the session has ended, the invite link no longer works, and when they
     sign in by email their home shows the questionnaire "Cancelled by the hospital", with no button.
 
-J9 (the full lifecycle, with archive) comes in S22.
+J9 (the full lifecycle, with archive) is test_j9_lifecycle.py (S22).
 """
 
 import re

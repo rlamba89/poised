@@ -1,6 +1,7 @@
 // The episode's status control (S20): the "Episode status" dropdown offers only the moves this
 // user may make from here (Go's transition table sends them as `moves`), with Cancel episode,
-// Re-open HQ review and Undo as buttons when they're allowed. Every move opens a short inline
+// Re-open HQ review and Undo as buttons when they're allowed. S22 adds Archive episode and
+// Un-archive, for super clinicians (`moves` holds the archive; `unarchive` its way back). Every move opens a short inline
 // form first (no modal): the date for Admitted and Discharged, the reason (required for cancel,
 // re-open and undo, optional otherwise). Each request sends the revision the page loaded; a
 // stale one is refused, and the form keeps what was typed, with Reload. If after the reload the
@@ -55,7 +56,7 @@ export function StatusControl({ path, detail, onChanged }: { path: string; detai
 
   // After a reload, a form for a move that's no longer offered closes (the API would refuse it).
   const offered = !form || (form.kind === "pick" ? picks.some((m) => m.to === form.to?.to)
-    : form.kind === "undo" ? detail.undo !== null : can(form.kind));
+    : form.kind === "undo" ? detail.undo !== null : form.kind === "unarchive" ? detail.unarchive !== null : can(form.kind));
   useEffect(() => {
     if (!offered) {
       setForm(null);
@@ -104,8 +105,12 @@ export function StatusControl({ path, detail, onChanged }: { path: string; detai
     cancel: "Cancel this episode",
     reopen: "Re-open the HQ review",
     undo: `Undo the last status change: back to ${detail.undo?.label}`,
+    archive: "Archive this episode",
+    unarchive: `Un-archive this episode: back to ${detail.unarchive?.label}`,
   }[form.kind];
-  const confirm = !form ? "" : { pick: "Change status", cancel: "Cancel episode", reopen: "Re-open review", undo: "Undo" }[form.kind];
+  const confirm = !form ? "" : {
+    pick: "Change status", cancel: "Cancel episode", reopen: "Re-open review", undo: "Undo", archive: "Archive episode", unarchive: "Un-archive",
+  }[form.kind];
 
   return (
     <Stack gap="sm" data-testid="status-control">
@@ -126,6 +131,10 @@ export function StatusControl({ path, detail, onChanged }: { path: string; detai
         {can("reopen") && <Button size="xs" variant="default" onClick={() => open({ kind: "reopen" })}>Re-open HQ review</Button>}
         {detail.undo && <Button size="xs" variant="default" onClick={() => open({ kind: "undo" })}>Undo: back to {detail.undo.label}</Button>}
         {can("cancel") && <Button size="xs" variant="light" color="red" onClick={() => open({ kind: "cancel" })}>Cancel episode</Button>}
+        {can("archive") && <Button size="xs" variant="default" onClick={() => open({ kind: "archive" })}>Archive episode</Button>}
+        {detail.unarchive && (
+          <Button size="xs" variant="default" onClick={() => open({ kind: "unarchive" })}>Un-archive: back to {detail.unarchive.label}</Button>
+        )}
       </Group>
       {notice && <Text size="sm" c="orange.8" data-testid="status-notice">{notice}</Text>}
       {(e.status === "hq_not_complete" || e.status === "ready_for_review") && (
@@ -141,6 +150,12 @@ export function StatusControl({ path, detail, onChanged }: { path: string; detai
             )}
             {form.kind === "cancel" && (
               <Text size="sm" c="dimmed">Cancelling is final. The patient&apos;s link stops working, reminders stop, and their home shows the questionnaire as cancelled by the hospital.</Text>
+            )}
+            {form.kind === "archive" && (
+              <Text size="sm" c="dimmed">An archived episode can&apos;t be changed, and leaves every worklist. It can still be found by searching, on the patient&apos;s page, and in the episode list with Show archived. Reminders stop, and the patient&apos;s questionnaire is closed. A super clinician can un-archive it.</Text>
+            )}
+            {form.kind === "unarchive" && (
+              <Text size="sm" c="dimmed">The episode goes back to {detail.unarchive?.label}, the status it was archived from, and can be changed again. Reminders don&apos;t start again; resend the invite if the patient still needs it.</Text>
             )}
             {form.to?.needsDate && (
               <TextInput
@@ -168,7 +183,7 @@ export function StatusControl({ path, detail, onChanged }: { path: string; detai
               </>
             ) : (
               <TextInput
-                label={form.kind === "pick" ? "Reason (optional)" : "Reason"}
+                label={form.kind === "pick" || form.kind === "archive" ? "Reason (optional)" : "Reason"}
                 maxLength={MAX_REASON}
                 value={form.reason}
                 onChange={(ev) => setForm({ ...form, reason: ev.currentTarget.value })}

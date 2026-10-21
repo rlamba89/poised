@@ -7,9 +7,12 @@
 // GET …/episodes?worklist=<key>, so the rules are Go's (the database's in_worklist). The tab is kept
 // in the URL as ?worklist=<key>, so a reload, a deep link and Back keep it. The status filter
 // belongs to "All".
+//
+// Archived episodes (S22) are in no worklist, and "All" leaves them out unless "Show archived" is
+// ticked (?archived=1 in the URL) or the status filter asks for Archived.
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { Alert, Badge, Button, Group, SegmentedControl, Select, Stack, Table, Tabs, Text, Title } from "@mantine/core";
+import { Alert, Badge, Button, Checkbox, Group, SegmentedControl, Select, Stack, Table, Tabs, Text, Title } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
 import { api } from "@/lib/api";
 import { hospitalBase, useHospital } from "@/lib/auth";
@@ -30,6 +33,7 @@ export function EpisodeList({ base }: { base: string }) {
   const trustWide = trust.role !== null;
   const all = trustWide && params.get("hospitals") === "all";
   const worklist = params.get("worklist") ?? "";
+  const showArchived = params.get("archived") === "1";
   const [status, setStatus] = useState<string | null>(null);
   const [rows, setRows] = useState<ListRow[] | null>(null);
   const [tabs, setTabs] = useState<WorklistTab[] | null>(null);
@@ -37,7 +41,7 @@ export function EpisodeList({ base }: { base: string }) {
 
   const load = useCallback(() => {
     const from = all ? `/o/${trust.id}` : base;
-    const query: Record<string, string> = worklist ? { worklist } : { status: status ?? "" };
+    const query: Record<string, string> = worklist ? { worklist } : { status: status ?? "", ...(showArchived ? { archived: "true" } : {}) };
     api<ListRow[]>(`${from}/episodes?${new URLSearchParams(query)}`)
       .then((r) => {
         setRows(r);
@@ -46,7 +50,7 @@ export function EpisodeList({ base }: { base: string }) {
       .catch((e: Error) => setError(e.message));
     // The counts with every list, so they match what the lists hold now.
     api<WorklistTab[]>(`${from}/worklists`).then(setTabs).catch((e: Error) => setError(e.message));
-  }, [all, trust.id, base, status, worklist]);
+  }, [all, trust.id, base, status, worklist, showArchived]);
   useEffect(load, [load]);
 
   // Changes one URL parameter, keeping the others ("" removes it).
@@ -90,15 +94,18 @@ export function EpisodeList({ base }: { base: string }) {
       {worklist ? (
         <Text size="sm" c="dimmed" data-testid="worklist-help">{tab?.help}</Text>
       ) : (
-        <Select
-          aria-label="Status"
-          placeholder="All statuses"
-          clearable
-          data={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))}
-          value={status}
-          onChange={setStatus}
-          maw={260}
-        />
+        <Group gap="md" align="center">
+          <Select
+            aria-label="Status"
+            placeholder="All statuses"
+            clearable
+            data={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+            value={status}
+            onChange={setStatus}
+            maw={260}
+          />
+          <Checkbox label="Show archived" checked={showArchived} onChange={(ev) => setParam("archived", ev.currentTarget.checked ? "1" : "")} />
+        </Group>
       )}
       {error && <Alert color="red">{error}</Alert>}
       {rows && rows.length === 0 && <Text c="dimmed">{worklist ? "No episodes in this worklist." : "No episodes yet."}</Text>}

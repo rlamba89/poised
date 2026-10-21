@@ -83,6 +83,8 @@ type Episode struct {
 	AdmittedAt        pgtype.Date        `json:"admittedAt"`
 	DischargedAt      pgtype.Date        `json:"dischargedAt"`
 	CancelReason      *string            `json:"cancelReason"`
+	ArchivedFrom      *string            `json:"archivedFrom"`
+	LastActivityAt    time.Time          `json:"lastActivityAt"`
 }
 
 type EpisodeAnswer struct {
@@ -104,6 +106,7 @@ type EpisodeEvent struct {
 	UserID    uuid.NullUUID `json:"userId"`
 	CreatedAt time.Time     `json:"createdAt"`
 	Automatic bool          `json:"automatic"`
+	Seq       *int64        `json:"seq"`
 }
 
 type EpisodeForm struct {
@@ -156,15 +159,16 @@ type Hospital struct {
 }
 
 type Job struct {
-	ID        uuid.UUID          `json:"id"`
-	Kind      string             `json:"kind"`
-	EpisodeID uuid.NullUUID      `json:"episodeId"`
-	Payload   json.RawMessage    `json:"payload"`
-	RunAt     time.Time          `json:"runAt"`
-	DoneAt    pgtype.Timestamptz `json:"doneAt"`
-	Attempts  int32              `json:"attempts"`
-	LastError string             `json:"lastError"`
-	CreatedAt time.Time          `json:"createdAt"`
+	ID         uuid.UUID          `json:"id"`
+	Kind       string             `json:"kind"`
+	EpisodeID  uuid.NullUUID      `json:"episodeId"`
+	Payload    json.RawMessage    `json:"payload"`
+	RunAt      time.Time          `json:"runAt"`
+	DoneAt     pgtype.Timestamptz `json:"doneAt"`
+	Attempts   int32              `json:"attempts"`
+	LastError  string             `json:"lastError"`
+	CreatedAt  time.Time          `json:"createdAt"`
+	HospitalID uuid.NullUUID      `json:"hospitalId"`
 }
 
 type LoginLink struct {

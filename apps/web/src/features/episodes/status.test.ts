@@ -8,9 +8,10 @@ const cancel: StatusOption = { to: "cancelled", label: "Cancelled", move: "cance
 const form = { reason: "", details: "", date: "" };
 
 describe("pickOptions", () => {
-  it("lists the picks, Admitted and Discharged, not cancel or re-open (they have buttons)", () => {
+  it("lists the picks, Admitted and Discharged, not cancel, re-open or archive (they have buttons)", () => {
     const reopen: StatusOption = { to: "ready_for_review", label: "Ready for review", move: "reopen", needsReason: true, needsDate: false };
-    expect(pickOptions([reopen, onHold, admit, cancel]).map((o) => o.to)).toEqual(["on_hold", "admitted"]);
+    const archive: StatusOption = { to: "archived", label: "Archived", move: "archive", needsReason: false, needsDate: false };
+    expect(pickOptions([reopen, onHold, admit, cancel, archive]).map((o) => o.to)).toEqual(["on_hold", "admitted"]);
   });
 });
 
@@ -33,6 +34,12 @@ describe("statusRequest", () => {
     });
     expect(statusRequest({ ...form, kind: "cancel", reason: "patient_withdrew" }, 2)).toMatchObject({ path: "/cancel" });
   });
+  it("archive takes an optional reason; un-archive needs one (S22)", () => {
+    expect(statusRequest({ ...form, kind: "archive" }, 5)).toEqual({ path: "/archive", body: { reason: "", revision: 5 } });
+    expect(statusRequest({ ...form, kind: "archive", reason: " Duplicate " }, 5)).toEqual({ path: "/archive", body: { reason: "Duplicate", revision: 5 } });
+    expect(statusRequest({ ...form, kind: "unarchive", reason: " " }, 6)).toEqual({ error: "Say why the episode is being un-archived." });
+    expect(statusRequest({ ...form, kind: "unarchive", reason: "Mistake" }, 6)).toEqual({ path: "/unarchive", body: { reason: "Mistake", revision: 6 } });
+  });
   it("re-open and undo need a reason", () => {
     expect(statusRequest({ ...form, kind: "reopen", reason: " " }, 3)).toEqual({ error: "Say why the HQ review is being re-opened." });
     expect(statusRequest({ ...form, kind: "undo" }, 3)).toEqual({ error: "Say why the status change is being undone." });
@@ -51,6 +58,8 @@ describe("the history", () => {
     [ev({ move: "submit", fromStatus: "hq_not_complete", toStatus: "ready_for_review" }), "HQ sent: HQ not complete → Ready for review"],
     [ev({ move: "cancel", toStatus: "cancelled" }), "Cancelled: Ready for POA → Cancelled"],
     [ev({ move: "undo", fromStatus: "admitted", toStatus: "ready_for_admission" }), "Undone: Admitted → Ready for admission"],
+    [ev({ move: "archive", fromStatus: "discharged", toStatus: "archived" }), "Archived: Discharged → Archived"],
+    [ev({ move: "unarchive", fromStatus: "archived", toStatus: "discharged" }), "Un-archived: Archived → Discharged"],
   ])("%#: %s", (e, want) => {
     expect(historyText(e, STATUS_LABELS)).toBe(want);
   });
@@ -58,5 +67,6 @@ describe("the history", () => {
     expect(historyWho(ev({}))).toBe("Cara Clinician");
     expect(historyWho(ev({ userName: null }))).toBe("Patient");
     expect(historyWho(ev({ userName: null, rule: "auto-triage" }))).toBe("Automatic (auto-triage)");
+    expect(historyWho(ev({ userName: null, rule: "Auto-archive: 30 days after discharge" }))).toBe("Automatic (Auto-archive: 30 days after discharge)");
   });
 });

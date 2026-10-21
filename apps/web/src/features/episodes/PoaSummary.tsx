@@ -114,7 +114,7 @@ function Summary({ tab, episode: e, events, hq, path, onChanged }: SummaryProps)
         <Accordion.Item value="notes">
           <Accordion.Control><Title order={4} c="blue.9">General notes</Title></Accordion.Control>
           <Accordion.Panel>
-            <GeneralNotes path={path} events={events} onAdded={onChanged} />
+            <GeneralNotes path={path} events={events} onAdded={onChanged} readOnly={e.status === "archived"} />
           </Accordion.Panel>
         </Accordion.Item>
 
@@ -131,7 +131,7 @@ function Summary({ tab, episode: e, events, hq, path, onChanged }: SummaryProps)
           <Accordion.Item value="asa">
             <Accordion.Control><Title order={4} c="blue.9">Pre operative assessment ASA grades</Title></Accordion.Control>
             <Accordion.Panel>
-              <AsaGrades episode={e} path={path} onSaved={onChanged} />
+              <AsaGrades episode={e} path={path} onSaved={onChanged} readOnly={e.status === "archived" || e.status === "cancelled"} />
             </Accordion.Panel>
           </Accordion.Item>
         )}
@@ -239,7 +239,7 @@ const asaLabel = (n: number | null) => (n ? `ASA ${ASA[n - 1]}` : "Not recorded"
  * was saved meanwhile (another tab), the save is refused: the grade typed stays, with Reload.
  * After a reload, a grade nobody is changing here shows the saved one.
  */
-function AsaGrades({ episode, path, onSaved }: { episode: Episode; path: string; onSaved: () => void }) {
+function AsaGrades({ episode, path, onSaved, readOnly }: { episode: Episode; path: string; onSaved: () => void; readOnly: boolean }) {
   const saved = { nurseAsa: episode.nurseAsa ? String(episode.nurseAsa) : null, anaesthetistAsa: episode.anaesthetistAsa ? String(episode.anaesthetistAsa) : null };
   // A grade being changed here (`value`), or null: it shows the saved one.
   const [editing, setEditing] = useState<{ nurseAsa: string | null | undefined; anaesthetistAsa: string | null | undefined }>({
@@ -267,10 +267,11 @@ function AsaGrades({ episode, path, onSaved }: { episode: Episode; path: string;
       {!episode.nurseAsa && !episode.anaesthetistAsa && <Text size="sm">No ASA grades have been added.</Text>}
       <SaveError error={error} stale={stale} onReload={() => { setError(""); onSaved(); }} />
       <Group align="flex-end">
-        <Select label="Nurse ASA grade" placeholder="ASA grade" data={data} value={shown("nurseAsa")} onChange={set("nurseAsa")} clearable w={180} />
-        <Button className="sj-no-print" variant="default" onClick={() => save("nurseAsa")} disabled={shown("nurseAsa") === saved.nurseAsa}>Save</Button>
-        <Select label="Anaesthetist ASA grade" placeholder="ASA grade" data={data} value={shown("anaesthetistAsa")} onChange={set("anaesthetistAsa")} clearable w={200} ml="lg" />
-        <Button className="sj-no-print" variant="default" onClick={() => save("anaesthetistAsa")} disabled={shown("anaesthetistAsa") === saved.anaesthetistAsa}>Save</Button>
+        {/* A cancelled (S20) or archived (S22) episode's grades are shown, not changed: the API refuses them. */}
+        <Select label="Nurse ASA grade" placeholder="ASA grade" data={data} value={shown("nurseAsa")} onChange={set("nurseAsa")} clearable w={180} disabled={readOnly} />
+        <Button className="sj-no-print" variant="default" onClick={() => save("nurseAsa")} disabled={readOnly || shown("nurseAsa") === saved.nurseAsa}>Save</Button>
+        <Select label="Anaesthetist ASA grade" placeholder="ASA grade" data={data} value={shown("anaesthetistAsa")} onChange={set("anaesthetistAsa")} clearable w={200} ml="lg" disabled={readOnly} />
+        <Button className="sj-no-print" variant="default" onClick={() => save("anaesthetistAsa")} disabled={readOnly || shown("anaesthetistAsa") === saved.anaesthetistAsa}>Save</Button>
       </Group>
     </Stack>
   );

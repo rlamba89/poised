@@ -14,11 +14,47 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addAutoArchiveJob = `-- name: AddAutoArchiveJob :exec
+INSERT INTO jobs (kind, hospital_id, run_at) VALUES ('auto_archive', $1, $2)
+ON CONFLICT DO NOTHING
+`
+
+type AddAutoArchiveJobParams struct {
+	HospitalID uuid.NullUUID `json:"hospitalId"`
+	RunAt      time.Time     `json:"runAt"`
+}
+
+func (q *Queries) AddAutoArchiveJob(ctx context.Context, arg AddAutoArchiveJobParams) error {
+	_, err := q.db.Exec(ctx, addAutoArchiveJob, arg.HospitalID, arg.RunAt)
+	return err
+}
+
+const autoArchiveEpisode = `-- name: AutoArchiveEpisode :execrows
+UPDATE episodes SET archived_from = status, status = 'archived', revision = revision + 1
+WHERE id = $1 AND status = $2 AND last_activity_at = $3
+`
+
+type AutoArchiveEpisodeParams struct {
+	ID             uuid.UUID `json:"id"`
+	Status         string    `json:"status"`
+	LastActivityAt time.Time `json:"lastActivityAt"`
+}
+
+// Archives the episode, if nothing has changed it since it was read (the same status, and no
+// write since: last_activity_at). No row: it changed meanwhile, and the next run decides again.
+func (q *Queries) AutoArchiveEpisode(ctx context.Context, arg AutoArchiveEpisodeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, autoArchiveEpisode, arg.ID, arg.Status, arg.LastActivityAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const claimDueJob = `-- name: ClaimDueJob :one
 UPDATE jobs SET run_at = $1
 WHERE id = (SELECT j.id FROM jobs j WHERE j.done_at IS NULL AND j.run_at <= $2
-            ORDER BY j.run_at LIMIT 1 FOR UPDATE SKIP LOCKED)
-RETURNING id, kind, episode_id, attempts
+            ORDER BY (j.kind <> 'auto_archive'), j.run_at LIMIT 1 FOR UPDATE SKIP LOCKED)
+RETURNING id, kind, episode_id, hospital_id, attempts
 `
 
 type ClaimDueJobParams struct {
@@ -27,16 +63,19 @@ type ClaimDueJobParams struct {
 }
 
 type ClaimDueJobRow struct {
-	ID        uuid.UUID     `json:"id"`
-	Kind      string        `json:"kind"`
-	EpisodeID uuid.NullUUID `json:"episodeId"`
-	Attempts  int32         `json:"attempts"`
+	ID         uuid.UUID     `json:"id"`
+	Kind       string        `json:"kind"`
+	EpisodeID  uuid.NullUUID `json:"episodeId"`
+	HospitalID uuid.NullUUID `json:"hospitalId"`
+	Attempts   int32         `json:"attempts"`
 }
 
 // Takes one due job: its run_at moves to lease_until, so no other runner sees it as due while
 // this one runs it (FOR UPDATE SKIP LOCKED: a row another runner is taking at the same moment is
 // skipped). If this runner dies, the job is due again at lease_until. Nothing stays locked while
 // the job runs, so a runner holds one database connection at a time.
+// The hospitals' auto-archives go first (S22 test report 1, F-2): they decide on the activity
+// there has been, before a reminder due in the same run would make an idle episode look active.
 func (q *Queries) ClaimDueJob(ctx context.Context, arg ClaimDueJobParams) (ClaimDueJobRow, error) {
 	row := q.db.QueryRow(ctx, claimDueJob, arg.LeaseUntil, arg.Now)
 	var i ClaimDueJobRow
@@ -44,6 +83,7 @@ func (q *Queries) ClaimDueJob(ctx context.Context, arg ClaimDueJobParams) (Claim
 		&i.ID,
 		&i.Kind,
 		&i.EpisodeID,
+		&i.HospitalID,
 		&i.Attempts,
 	)
 	return i, err
@@ -52,7 +92,7 @@ func (q *Queries) ClaimDueJob(ctx context.Context, arg ClaimDueJobParams) (Claim
 const countReminder = `-- name: CountReminder :execrows
 
 UPDATE episodes e SET reminders_sent = $1
-WHERE e.id = $2 AND e.reminders_sent < $1 AND e.status <> 'cancelled'
+WHERE e.id = $2 AND e.reminders_sent < $1 AND e.status NOT IN ('cancelled', 'archived')
   AND EXISTS (SELECT 1 FROM episode_forms f WHERE f.episode_id = e.id AND f.kind = 'hq' AND f.status = 'open')
 `
 
@@ -61,10 +101,10 @@ type CountReminderParams struct {
 	ID    uuid.UUID `json:"id"`
 }
 
-// a cancelled episode's follow-up stops (S20 answers 5)
+// a cancelled (S20 answers 5) or archived (S22) episode's follow-up stops
 // Takes reminder number `count` for the episode before it's sent, so it's sent at most once even
 // if two runners decide at once. No row: it was already taken, the HQ has been sent, or the
-// episode was cancelled meanwhile.
+// episode was cancelled or archived meanwhile.
 func (q *Queries) CountReminder(ctx context.Context, arg CountReminderParams) (int64, error) {
 	result, err := q.db.Exec(ctx, countReminder, arg.Count, arg.ID)
 	if err != nil {
@@ -104,6 +144,34 @@ func (q *Queries) FinishJob(ctx context.Context, arg FinishJobParams) error {
 	return err
 }
 
+const getArchivePolicy = `-- name: GetArchivePolicy :one
+SELECT h.timezone, h.settings AS hospital_settings, o.settings AS org_settings,
+       (o.status = 'active' AND h.status = 'active')::boolean AS open
+FROM hospitals h JOIN orgs o ON o.id = h.org_id
+WHERE h.id = $1
+`
+
+type GetArchivePolicyRow struct {
+	Timezone         *string         `json:"timezone"`
+	HospitalSettings json.RawMessage `json:"hospitalSettings"`
+	OrgSettings      json.RawMessage `json:"orgSettings"`
+	Open             bool            `json:"open"`
+}
+
+// What the hospital's auto-archive decides with: its zone, its and its trust's settings, and
+// whether both are active (nothing is archived while either is suspended, ORG-03).
+func (q *Queries) GetArchivePolicy(ctx context.Context, id uuid.UUID) (GetArchivePolicyRow, error) {
+	row := q.db.QueryRow(ctx, getArchivePolicy, id)
+	var i GetArchivePolicyRow
+	err := row.Scan(
+		&i.Timezone,
+		&i.HospitalSettings,
+		&i.OrgSettings,
+		&i.Open,
+	)
+	return i, err
+}
+
 const getFollowup = `-- name: GetFollowup :one
 SELECT e.id, e.invited_at, e.reminders_sent, e.not_responding_at, f.submitted_at AS patient_submitted_at,
        EXISTS (SELECT 1 FROM episode_answers a WHERE a.episode_form_id = f.id AND a.actor = 'patient')::boolean AS started,
@@ -115,7 +183,7 @@ FROM episodes e
 JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
 JOIN hospitals h ON h.id = e.hospital_id
 JOIN orgs o ON o.id = e.org_id
-WHERE e.id = $1 AND e.status <> 'cancelled'
+WHERE e.id = $1 AND e.status NOT IN ('cancelled', 'archived')
 `
 
 type GetFollowupRow struct {
@@ -171,9 +239,99 @@ func (q *Queries) GetQAJobsClock(ctx context.Context) (GetQAJobsClockRow, error)
 	return i, err
 }
 
+const hospitalsWithoutAutoArchive = `-- name: HospitalsWithoutAutoArchive :many
+
+SELECT h.id, h.timezone FROM hospitals h
+WHERE NOT EXISTS (SELECT 1 FROM jobs j WHERE j.kind = 'auto_archive' AND j.hospital_id = h.id AND j.done_at IS NULL)
+`
+
+type HospitalsWithoutAutoArchiveRow struct {
+	ID       uuid.UUID `json:"id"`
+	Timezone *string   `json:"timezone"`
+}
+
+// The daily auto-archive (S22, EPI-05): one job per hospital, at 02:00 there.
+// Hospitals that have no auto-archive job yet (new ones, or a fresh database): the runner adds
+// one for each, at its next 02:00.
+func (q *Queries) HospitalsWithoutAutoArchive(ctx context.Context) ([]HospitalsWithoutAutoArchiveRow, error) {
+	rows, err := q.db.Query(ctx, hospitalsWithoutAutoArchive)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HospitalsWithoutAutoArchiveRow{}
+	for rows.Next() {
+		var i HospitalsWithoutAutoArchiveRow
+		if err := rows.Scan(&i.ID, &i.Timezone); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listArchiveCandidates = `-- name: ListArchiveCandidates :many
+SELECT e.id, e.status, e.discharged_at, e.last_activity_at, u.created_at AS unarchived_at
+FROM episodes e
+LEFT JOIN episode_status_events u ON u.episode_id = e.id AND u.move = 'unarchive'
+    AND NOT EXISTS (SELECT 1 FROM episode_status_events v WHERE v.episode_id = e.id AND v.move = 'unarchive' AND v.seq > u.seq)
+WHERE e.hospital_id = $1 AND e.status NOT IN ('admitted', 'archived')
+ORDER BY e.created_at, e.id
+`
+
+type ListArchiveCandidatesRow struct {
+	ID             uuid.UUID          `json:"id"`
+	Status         string             `json:"status"`
+	DischargedAt   pgtype.Date        `json:"dischargedAt"`
+	LastActivityAt time.Time          `json:"lastActivityAt"`
+	UnarchivedAt   pgtype.Timestamptz `json:"unarchivedAt"`
+}
+
+// The hospital's episodes either rule could archive (episode.ArchiveDue decides): discharged,
+// before admission, or cancelled. unarchived_at: the latest un-archive, if any.
+func (q *Queries) ListArchiveCandidates(ctx context.Context, hospitalID uuid.UUID) ([]ListArchiveCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listArchiveCandidates, hospitalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListArchiveCandidatesRow{}
+	for rows.Next() {
+		var i ListArchiveCandidatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Status,
+			&i.DischargedAt,
+			&i.LastActivityAt,
+			&i.UnarchivedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const makeAutoArchivesDue = `-- name: MakeAutoArchivesDue :exec
+UPDATE jobs SET run_at = $1::timestamptz
+WHERE kind = 'auto_archive' AND done_at IS NULL AND run_at > $1::timestamptz
+`
+
+// MESSAGING=capture only: the testers' "run as of" runs every hospital's auto-archive (S22).
+func (q *Queries) MakeAutoArchivesDue(ctx context.Context, asOf time.Time) error {
+	_, err := q.db.Exec(ctx, makeAutoArchivesDue, asOf)
+	return err
+}
+
 const markNotResponding = `-- name: MarkNotResponding :execrows
 UPDATE episodes e SET not_responding_at = $1::timestamptz
-WHERE e.id = $2 AND e.not_responding_at IS NULL AND e.status <> 'cancelled'
+WHERE e.id = $2 AND e.not_responding_at IS NULL AND e.status NOT IN ('cancelled', 'archived')
   AND EXISTS (SELECT 1 FROM episode_forms f WHERE f.episode_id = e.id AND f.kind = 'hq' AND f.status = 'open')
 `
 

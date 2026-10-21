@@ -5,6 +5,7 @@ package apitest_test
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -385,5 +386,110 @@ INSERT INTO episode_messages (episode_id, kind, channel, created_at) VALUES ('` 
 	}
 	if err := exec(`SELECT 1 FROM tasks`); err == nil {
 		t.Error("down: tasks is still there")
+	}
+}
+
+// 00023 (S22): archive, last_activity_at and the auto-archive jobs.
+func TestArchiveMigration(t *testing.T) {
+	t.Parallel()
+	m := apitest.NewMigrations(t, 22)
+	const (
+		trust, hos, user, pat, ep, ep2 = "00000000-0000-0000-0000-0000000000a0", "00000000-0000-0000-0000-0000000000a1",
+			"00000000-0000-0000-0000-0000000000c0", "00000000-0000-0000-0000-0000000000d0", "00000000-0000-0000-0000-0000000000e0",
+			"00000000-0000-0000-0000-0000000000e1"
+	)
+	setup := `
+INSERT INTO orgs (id, name, code) VALUES ('` + trust + `', 'Trust A', 'MA');
+INSERT INTO hospitals (id, org_id, name) VALUES ('` + hos + `', '` + trust + `', 'A1');
+INSERT INTO users (id, name, email) VALUES ('` + user + `', 'Cara', 'cara@example.test');
+INSERT INTO patients (id, org_id, first_name, last_name, date_of_birth, sex) VALUES ('` + pat + `', '` + trust + `', 'Sam', 'Smith', '1970-01-01', 'unknown');
+INSERT INTO episodes (id, org_id, hospital_id, patient_id, status, created_by, created_at) VALUES
+    ('` + ep + `', '` + trust + `', '` + hos + `', '` + pat + `', 'on_hold', '` + user + `', '2026-01-01T10:00:00Z'),
+    ('` + ep2 + `', '` + trust + `', '` + hos + `', '` + pat + `', 'on_hold', '` + user + `', '2026-01-01T10:00:00Z');
+INSERT INTO episode_events (episode_id, kind, text, created_at) VALUES ('` + ep + `', 'event', 'Episode created', '2026-02-01T10:00:00Z');
+INSERT INTO tasks (episode_id, title, team, created_by, created_at, done_by, done_at) VALUES
+    ('` + ep + `', 'Book review', 'anaesthetist', '` + user + `', '2026-02-02T10:00:00Z', '` + user + `', '2026-03-03T10:00:00Z');
+`
+	if _, err := m.DB.Exec(t.Context(), setup); err != nil {
+		t.Fatalf("old shape: %v", err)
+	}
+	m.UpTo(t, 23)
+	exec := func(sql string) error {
+		_, err := m.DB.Exec(t.Context(), sql)
+		return err
+	}
+	activity := func(id string) time.Time {
+		var at time.Time
+		if err := m.DB.QueryRow(t.Context(), `SELECT last_activity_at FROM episodes WHERE id = $1`, id).Scan(&at); err != nil {
+			t.Fatal(err)
+		}
+		return at
+	}
+	// The newest write each episode already had: a task completed, or only its creation.
+	if got, want := activity(ep), time.Date(2026, 3, 3, 10, 0, 0, 0, time.UTC); !got.Equal(want) {
+		t.Errorf("last activity carried over as %s, want %s (the task's completion)", got, want)
+	}
+	if got, want := activity(ep2), time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC); !got.Equal(want) {
+		t.Errorf("last activity of an untouched episode %s, want its creation %s", got, want)
+	}
+	// A write moves it forward: a General notes line, a task, a status change, a message.
+	for name, write := range map[string]string{
+		"a note":          `INSERT INTO episode_events (episode_id, kind, text) VALUES ('` + ep2 + `', 'comment', 'Hello')`,
+		"a task":          `INSERT INTO tasks (episode_id, title, team, created_by) VALUES ('` + ep2 + `', 'x', 'nurse', '` + user + `')`,
+		"a status change": `INSERT INTO episode_status_events (episode_id, move, from_status, to_status) VALUES ('` + ep2 + `', 'set', 'on_hold', 'not_ready')`,
+		"a message":       `INSERT INTO episode_messages (episode_id, kind, channel, created_at) VALUES ('` + ep2 + `', 'invite', 'sms', now())`,
+	} {
+		if err := exec(`UPDATE episodes SET last_activity_at = '2026-01-01T10:00:00Z' WHERE id = '` + ep2 + `'`); err != nil {
+			t.Fatal(err)
+		}
+		if err := exec(write); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got := activity(ep2); time.Since(got) > time.Minute {
+			t.Errorf("%s left the last activity at %s", name, got)
+		}
+	}
+	if err := exec(`UPDATE episodes SET status = 'archived', archived_from = 'on_hold' WHERE id = '` + ep + `'`); err != nil {
+		t.Errorf("archive: %v", err)
+	}
+	for name, bad := range map[string]string{
+		"archived, from nothing":     `UPDATE episodes SET status = 'archived', archived_from = NULL WHERE id = '` + ep2 + `'`,
+		"archived from archived":     `UPDATE episodes SET status = 'archived', archived_from = 'archived' WHERE id = '` + ep2 + `'`,
+		"not archived, with a from":  `UPDATE episodes SET archived_from = 'on_hold' WHERE id = '` + ep2 + `'`,
+		"an auto-archive, no place":  `INSERT INTO jobs (kind, run_at) VALUES ('auto_archive', now())`,
+		"two auto-archives for one":  `INSERT INTO jobs (kind, hospital_id, run_at) VALUES ('auto_archive', '` + hos + `', now()), ('auto_archive', '` + hos + `', now())`,
+		"an unknown move in history": `INSERT INTO episode_status_events (episode_id, move, from_status, to_status) VALUES ('` + ep2 + `', 'bury', 'on_hold', 'archived')`,
+	} {
+		if err := exec(bad); err == nil {
+			t.Errorf("%s was stored", name)
+		}
+	}
+	if err := exec(`INSERT INTO jobs (kind, hospital_id, run_at) VALUES ('auto_archive', '` + hos + `', now());
+		INSERT INTO episode_status_events (episode_id, move, from_status, to_status, rule) VALUES ('` + ep + `', 'archive', 'on_hold', 'archived', 'Auto-archive: 6 months without activity')`); err != nil {
+		t.Errorf("an auto-archive job and its event: %v", err)
+	}
+	// An archived episode is in no worklist, even with an open task.
+	if err := exec(`UPDATE tasks SET done_by = NULL, done_at = NULL WHERE episode_id = '` + ep + `'`); err != nil {
+		t.Fatal(err)
+	}
+	var openTasks, anaesthetic bool
+	if err := m.DB.QueryRow(t.Context(), `SELECT in_worklist('open_tasks', id, status, not_responding_at, planned_date, current_date, 14),
+		in_worklist('anaesthetic_review', id, status, not_responding_at, planned_date, current_date, 14) FROM episodes WHERE id = $1`, ep).Scan(&openTasks, &anaesthetic); err != nil {
+		t.Fatal(err)
+	}
+	if openTasks || anaesthetic {
+		t.Errorf("an archived episode is in a worklist: open tasks %v, anaesthetic review %v", openTasks, anaesthetic)
+	}
+	m.DownTo(t, 22)
+	var status string
+	if err := m.DB.QueryRow(t.Context(), `SELECT status FROM episodes WHERE id = $1`, ep).Scan(&status); err != nil || status != "on_hold" {
+		t.Errorf("down: the archived episode is %q (%v), want on_hold, where it was archived from", status, err)
+	}
+	var n int
+	if err := m.DB.QueryRow(t.Context(), `SELECT count(*) FROM jobs`).Scan(&n); err != nil || n != 0 {
+		t.Errorf("down: %d jobs (%v), want the auto-archives gone", n, err)
+	}
+	if err := exec(`SELECT last_activity_at FROM episodes`); err == nil {
+		t.Error("down: last_activity_at is still there")
 	}
 }

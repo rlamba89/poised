@@ -194,6 +194,34 @@ func (q *Queries) CreateContactLink(ctx context.Context, arg CreateContactLinkPa
 	return id, err
 }
 
+const deleteAccount = `-- name: DeleteAccount :exec
+DELETE FROM patient_accounts WHERE id = $1
+`
+
+func (q *Queries) DeleteAccount(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteAccount, id)
+	return err
+}
+
+const deleteAccountLinks = `-- name: DeleteAccountLinks :exec
+DELETE FROM login_links WHERE account_id = $1
+`
+
+// Its links to confirm a new contact (PAT-10).
+func (q *Queries) DeleteAccountLinks(ctx context.Context, accountID uuid.NullUUID) error {
+	_, err := q.db.Exec(ctx, deleteAccountLinks, accountID)
+	return err
+}
+
+const deleteAccountSessions = `-- name: DeleteAccountSessions :exec
+DELETE FROM patient_sessions WHERE account_id = $1
+`
+
+func (q *Queries) DeleteAccountSessions(ctx context.Context, accountID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteAccountSessions, accountID)
+	return err
+}
+
 const dropOldHits = `-- name: DropOldHits :exec
 DELETE FROM rate_limit_hits WHERE key = $1 AND at < $2
 `
@@ -279,6 +307,18 @@ func (q *Queries) FindAccountForRecord(ctx context.Context, arg FindAccountForRe
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const finishRecordsFollowups = `-- name: FinishRecordsFollowups :exec
+UPDATE jobs SET done_at = now()
+WHERE kind = 'followup' AND done_at IS NULL
+  AND episode_id IN (SELECT e.id FROM episodes e WHERE e.patient_id = ANY($1::uuid[]))
+`
+
+// Their reminders stop too: each would send a new link.
+func (q *Queries) FinishRecordsFollowups(ctx context.Context, patientIds []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, finishRecordsFollowups, patientIds)
+	return err
 }
 
 const getAccount = `-- name: GetAccount :one
@@ -407,7 +447,7 @@ func (q *Queries) JoinMatchingRecords(ctx context.Context, arg JoinMatchingRecor
 }
 
 const listHome = `-- name: ListHome :many
-SELECT e.id, e.created_at, e.status, coalesce(pr.name, '')::text AS procedure, f.submitted_at AS patient_submitted_at, e.org_id, e.hospital_id, e.patient_id,
+SELECT e.id, e.created_at, e.status, e.archived_from, coalesce(pr.name, '')::text AS procedure, f.submitted_at AS patient_submitted_at, e.org_id, e.hospital_id, e.patient_id,
        p.first_name, p.last_name, h.name AS hospital_name, q.name AS questionnaire_name,
        EXISTS (SELECT 1 FROM episode_answers a WHERE a.episode_form_id = f.id AND a.actor = 'patient')::boolean AS started
 FROM patients p
@@ -426,6 +466,7 @@ type ListHomeRow struct {
 	ID                 uuid.UUID          `json:"id"`
 	CreatedAt          time.Time          `json:"createdAt"`
 	Status             string             `json:"status"`
+	ArchivedFrom       *string            `json:"archivedFrom"`
 	Procedure          string             `json:"procedure"`
 	PatientSubmittedAt pgtype.Timestamptz `json:"patientSubmittedAt"`
 	OrgID              uuid.UUID          `json:"orgId"`
@@ -454,6 +495,7 @@ func (q *Queries) ListHome(ctx context.Context, accountID uuid.NullUUID) ([]List
 			&i.ID,
 			&i.CreatedAt,
 			&i.Status,
+			&i.ArchivedFrom,
 			&i.Procedure,
 			&i.PatientSubmittedAt,
 			&i.OrgID,
@@ -560,6 +602,25 @@ func (q *Queries) LockRateKey(ctx context.Context, key string) error {
 	return err
 }
 
+const noteAccountClosed = `-- name: NoteAccountClosed :exec
+INSERT INTO episode_events (episode_id, kind, text)
+SELECT e.id, 'event', 'The patient closed their account on ' ||
+       to_char((now() AT TIME ZONE coalesce(h.timezone, $1::text))::date, 'YYYY-MM-DD') || '.'
+FROM episodes e JOIN hospitals h ON h.id = e.hospital_id
+WHERE e.patient_id = ANY($2::uuid[])
+`
+
+type NoteAccountClosedParams struct {
+	DefaultZone string      `json:"defaultZone"`
+	PatientIds  []uuid.UUID `json:"patientIds"`
+}
+
+// Staff see it on each of the records' episodes, dated at the episode's hospital.
+func (q *Queries) NoteAccountClosed(ctx context.Context, arg NoteAccountClosedParams) error {
+	_, err := q.db.Exec(ctx, noteAccountClosed, arg.DefaultZone, arg.PatientIds)
+	return err
+}
+
 const resetRateLimits = `-- name: ResetRateLimits :exec
 DELETE FROM rate_limit_hits
 `
@@ -567,6 +628,39 @@ DELETE FROM rate_limit_hits
 // MESSAGING=capture only (local, QA): a tester's fresh start.
 func (q *Queries) ResetRateLimits(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, resetRateLimits)
+	return err
+}
+
+const revokeAccountSigninLinks = `-- name: RevokeAccountSigninLinks :exec
+UPDATE login_links l SET revoked_at = now()
+WHERE l.kind = 'signin' AND l.used_at IS NULL AND l.revoked_at IS NULL
+  AND l.contact <> '' AND l.contact IN ($1::text, $2::text)
+  AND NOT EXISTS (SELECT 1 FROM patient_accounts o WHERE o.id <> $3
+                  AND (o.mobile = l.contact OR o.email = l.contact))
+`
+
+type RevokeAccountSigninLinksParams struct {
+	Mobile    string    `json:"mobile"`
+	Email     string    `json:"email"`
+	AccountID uuid.UUID `json:"accountId"`
+}
+
+// Unused sign-in links to the account's mobile or email stop working, unless another account
+// signs in with that contact too (twins sharing a phone, S15): theirs carries on.
+func (q *Queries) RevokeAccountSigninLinks(ctx context.Context, arg RevokeAccountSigninLinksParams) error {
+	_, err := q.db.Exec(ctx, revokeAccountSigninLinks, arg.Mobile, arg.Email, arg.AccountID)
+	return err
+}
+
+const revokeRecordsInvites = `-- name: RevokeRecordsInvites :exec
+UPDATE login_links SET revoked_at = now()
+WHERE kind = 'invite' AND revoked_at IS NULL AND patient_id = ANY($1::uuid[])
+`
+
+// The records' invite links stop working: an unsent HQ won't be sent. Staff can send a new
+// invite, which starts a new account.
+func (q *Queries) RevokeRecordsInvites(ctx context.Context, patientIds []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, revokeRecordsInvites, patientIds)
 	return err
 }
 
@@ -636,6 +730,39 @@ func (q *Queries) SetRecordsContact(ctx context.Context, arg SetRecordsContactPa
 	items := []SetRecordsContactRow{}
 	for rows.Next() {
 		var i SetRecordsContactRow
+		if err := rows.Scan(&i.ID, &i.OrgID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const unlinkAccountRecords = `-- name: UnlinkAccountRecords :many
+
+UPDATE patients SET account_id = NULL WHERE account_id = $1 RETURNING id, org_id
+`
+
+type UnlinkAccountRecordsRow struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"orgId"`
+}
+
+// Closing an account (S22, EPI-09): the login goes; every trust's records and episodes stay.
+// The trust's records of the person leave the account, which a later invite makes again (S15).
+// Returns them, for each trust's audit log and the episodes' notes.
+func (q *Queries) UnlinkAccountRecords(ctx context.Context, accountID uuid.NullUUID) ([]UnlinkAccountRecordsRow, error) {
+	rows, err := q.db.Query(ctx, unlinkAccountRecords, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UnlinkAccountRecordsRow{}
+	for rows.Next() {
+		var i UnlinkAccountRecordsRow
 		if err := rows.Scan(&i.ID, &i.OrgID); err != nil {
 			return nil, err
 		}

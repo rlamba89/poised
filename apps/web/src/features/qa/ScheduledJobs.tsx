@@ -14,7 +14,7 @@ import { SIGN_IN_FIRST, qaError } from "./access";
 import { formatDateTime } from "@/lib/format";
 import { addDays, ceilMinute, fromLocalInput, offsetMinutes, toLocalInput, whoRuns } from "./jobsTime";
 
-type Summary = { asOf: string; jobs: number; reminders: number; notResponding: number; failed: number };
+type Summary = { asOf: string; jobs: number; reminders: number; notResponding: number; archived: number; failed: number };
 type Clock = { timer: boolean; runner: "timer" | "schedule"; intervalSeconds: number; offsetMinutes: number; lastTickAt: string | null; lastTickAsOf: string | null };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -69,7 +69,8 @@ export function ScheduledJobs() {
         ok: s.failed === 0,
         text:
           `Ran ${plural(s.jobs, "job", "jobs")} as of ${formatDateTime(s.asOf)}: ` +
-          `${plural(s.reminders, "reminder", "reminders")} sent, ${s.notResponding} marked "not responding"` +
+          `${plural(s.reminders, "reminder", "reminders")} sent, ${s.notResponding} marked "not responding", ` +
+          `${plural(s.archived, "episode", "episodes")} archived` +
           (s.failed ? `, ${s.failed} failed (see the API's log).` : "."),
       });
     } catch (e) {
@@ -106,15 +107,18 @@ export function ScheduledJobs() {
           <Title order={2}>Scheduled jobs</Title>
           <Text c="dimmed" size="sm">
             Reminders go on the hospital&apos;s reminder days after the first invite (days 2 and 5 unless its settings say otherwise) until the
-            patient starts answering, and an episode is marked &quot;Not responding&quot; on day 7 if the HQ hasn&apos;t been sent. Messages are
-            captured, not sent: see <Anchor component={Link} to="/qa/messages">Captured messages</Anchor>.
+            patient starts answering, and an episode is marked &quot;Not responding&quot; on day 7 if the HQ hasn&apos;t been sent. Each night at
+            02:00 at each hospital, the auto-archive archives episodes 30 days after discharge, and those before admission (or cancelled)
+            with no activity for 6 months, unless the hospital&apos;s settings say otherwise. Messages are captured, not sent: see{" "}
+            <Anchor component={Link} to="/qa/messages">Captured messages</Anchor>.
           </Text>
         </div>
 
         <Card withBorder>
           <Title order={4} mb={4}>Run the jobs now, as of a later time</Title>
           <Text size="sm" c="dimmed" mb="xs">
-            Runs every job that would be due at that time, for every hospital. Days count from each episode&apos;s first invite.
+            Runs every job that would be due at that time, for every hospital, and every hospital&apos;s auto-archive as of then. Reminder days
+            count from each episode&apos;s first invite.
           </Text>
           {/* noValidate: a half-typed date would otherwise stop the form silently; run() says what's wrong. */}
           <form onSubmit={run} noValidate>
@@ -124,6 +128,9 @@ export function ScheduledJobs() {
                 <Button size="xs" variant="default" onClick={() => preset(2)}>Now + 2 days</Button>
                 <Button size="xs" variant="default" onClick={() => preset(5)}>Now + 5 days</Button>
                 <Button size="xs" variant="default" onClick={() => preset(7)}>Now + 7 days</Button>
+                {/* S22: either side of the default 30 days after discharge. */}
+                <Button size="xs" variant="default" onClick={() => preset(29)}>Now + 29 days</Button>
+                <Button size="xs" variant="default" onClick={() => preset(31)}>Now + 31 days</Button>
               </Group>
               <Group align="flex-end" wrap="wrap">
                 <TextInput type="datetime-local" label="Run as of (your time zone)" value={asOf} onChange={(e) => setAsOf(e.currentTarget.value)} />

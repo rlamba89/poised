@@ -11,7 +11,7 @@ import (
 )
 
 // Statuses are Lifebox's Full HQ states (statemodel.go) with readable keys, then the ones after
-// the POA (saas-requirements §5.2). `recovery` (C9) and `archived` (S22) aren't built yet.
+// the POA (saas-requirements §5.2). `recovery` (C9) isn't built yet.
 const (
 	HQNotComplete     = "hq_not_complete"     // Lifebox "primary"
 	ReadyForReview    = "ready_for_review"    // "review": the patient has submitted (triage)
@@ -23,11 +23,12 @@ const (
 	Admitted          = "admitted"            // with the admission date (EPI-01)
 	Discharged        = "discharged"          // with the discharge date
 	Cancelled         = "cancelled"           // with a reason; final (S20 answers 3)
+	Archived          = "archived"            // read-only; un-archive restores the status it came from (S22, EPI-04)
 )
 
 // Statuses in workflow order: the status control lists its options in this order.
 var Statuses = []string{HQNotComplete, ReadyForReview, ReadyForPOA, POAComplete, OnHold, NotReady, ReadyForAdmission,
-	Admitted, Discharged, Cancelled}
+	Admitted, Discharged, Cancelled, Archived}
 
 // Labels are the names shown to clinicians, as in Lifebox.
 var Labels = map[string]string{
@@ -41,6 +42,7 @@ var Labels = map[string]string{
 	Admitted:          "Admitted",
 	Discharged:        "Discharged",
 	Cancelled:         "Cancelled",
+	Archived:          "Archived",
 }
 
 // Move is the kind of a status change. Each is recorded with the change (EPI-03).
@@ -56,6 +58,8 @@ const (
 	Cancel         Move = "cancel"          // with a reason from the list; final
 	Reopen         Move = "reopen"          // re-opens the HQ review (EPI-07), with a reason
 	Undo           Move = "undo"            // steps back a move made by hand, with a reason
+	Archive        Move = "archive"         // by a super clinician, or the daily auto-archive (S22, EPI-04, EPI-05)
+	Unarchive      Move = "unarchive"       // back to the status it was archived from, with a reason
 )
 
 // Rule is what an allowed move needs.
@@ -101,6 +105,15 @@ var allowed = func() map[pair]Rule {
 	for _, from := range []string{HQNotComplete, ReadyForReview, ReadyForPOA, POAComplete, OnHold, NotReady, ReadyForAdmission, Admitted} {
 		t[pair{from, Cancelled}] = Rule{Move: Cancel, Who: role.Clinician, NeedsReason: true}
 	}
+	// A super clinician archives from any status, and un-archives with a reason (S22 answers 1).
+	// Un-archive goes back to the status the episode was archived from (archived_from), so the
+	// handler names that one as the target; the table allows any.
+	for _, s := range Statuses {
+		if s != Archived {
+			t[pair{s, Archived}] = Rule{Move: Archive, Who: role.SuperClinician}
+			t[pair{Archived, s}] = Rule{Move: Unarchive, Who: role.SuperClinician, NeedsReason: true}
+		}
+	}
 	return t
 }()
 
@@ -127,12 +140,13 @@ type Option struct {
 }
 
 // Options are the moves someone with role who may make by hand from here, in status order. The
-// workflow's own (the submit, completing the review) have their own buttons, so aren't listed.
+// workflow's own (the submit, completing the review) aren't listed, nor un-archive: its one
+// target is the status the episode was archived from, which the episode page is given itself.
 func Options(from string, who role.Role) []Option {
 	var out []Option
 	for _, to := range Statuses {
 		r, ok := allowed[pair{from, to}]
-		if !ok || r.Move == Submit || r.Move == CompleteReview {
+		if !ok || r.Move == Submit || r.Move == CompleteReview || r.Move == Unarchive {
 			continue
 		}
 		if _, err := Check(from, to, r.Move, who); err == nil {
@@ -150,7 +164,8 @@ type Event struct {
 
 // undoable are the moves made by hand that an undo can step back (S20 answers 2). Not the
 // workflow's (re-open undoes completing the review), not re-open (complete the review again),
-// not cancel (final), and not undo itself.
+// not cancel (final), not undo itself, and not archive or un-archive (S22: un-archive and
+// archive are each other's way back, for a super clinician).
 var undoable = map[Move]bool{Set: true, Admit: true, Discharge: true}
 
 // UndoTarget is where an undo goes from current: back to where latest came from. latest is the

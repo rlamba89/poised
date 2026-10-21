@@ -193,6 +193,9 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/cancel", hosp(s.audited("episode.cancel", s.cancelEpisode)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/reopen", hosp(s.audited("episode.reopen", s.reopenReview)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/undo", hosp(s.audited("episode.undo", s.undoStatus)))
+	// Archive and un-archive (S22, EPI-04): a super clinician's; an archived episode is read-only.
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/archive", hosp(s.audited("episode.archive", s.archiveEpisode)))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/unarchive", hosp(s.audited("episode.unarchive", s.unarchiveEpisode)))
 	// Tasks (S21, TSK-01): anyone at the hospital adds, completes or re-opens one (tasks.go).
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/tasks", hosp(s.audited("task.list", s.listTasks)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/tasks", hosp(s.audited("task.create", s.createTask)))
@@ -230,6 +233,8 @@ func (s *server) patientRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/p/home", session(s.audited("home.view", s.patientHome)))
 	mux.HandleFunc("POST /api/p/contact", session(s.requestContactChange))
 	mux.HandleFunc("POST /api/p/contact/{token}/confirm", noStore(s.audited("contact.update", s.confirmContact)))
+	// Closing the account (S22, EPI-09): the login goes; every trust's records and episodes stay.
+	mux.HandleFunc("POST /api/p/account/close", session(s.audited("account.close", s.closeAccount)))
 }
 
 // qaTool guards a tester's tool (S12). With the dev login on (local) anyone can sign in as

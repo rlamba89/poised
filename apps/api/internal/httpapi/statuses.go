@@ -26,7 +26,11 @@ import (
 //     follow-up end with it (S20 answers 5);
 //   - POST …/reopen {reason, revision}: a super clinician re-opens the HQ review (answers 6);
 //   - POST …/undo {reason, revision}: any clinician steps back the latest move made by hand
-//     (answers 2), again to go further back.
+//     (answers 2), again to go further back;
+//   - POST …/archive {reason, revision} and POST …/unarchive {reason, revision} (S22, EPI-04): a
+//     super clinician archives from any status (the reason is optional), and un-archives back to
+//     exactly the status it was archived from, with a reason (S22 answers 1). An archived
+//     episode is read-only: every other write to it gets 409 (archivedMsg).
 //
 // Each sends the episode's revision its page loaded: a stale one gets 409, so a move made in an
 // old tab is never applied to an episode that has changed. Each change is recorded in the status
@@ -35,6 +39,7 @@ import (
 const (
 	staleEpisodeMsg = "This episode changed since you opened it. Reload to see the latest; your change was not saved."
 	cancelledMsg    = "This episode is cancelled, so it can't be changed."
+	archivedMsg     = "This episode is archived, so it can't be changed. A super clinician can un-archive it."
 	maxReasonLen    = 1000
 )
 
@@ -137,6 +142,34 @@ func (s *server) undoStatus(w http.ResponseWriter, r *http.Request) {
 	s.applyStatus(w, r, e, statusChange{move: episode.Undo, reason: reason, revision: *in.Revision})
 }
 
+// archiveEpisode is POST …/episodes/{eid}/archive.
+func (s *server) archiveEpisode(w http.ResponseWriter, r *http.Request) {
+	e, in, ok := s.readStatusRequest(w, r)
+	if !ok {
+		return
+	}
+	reason, msg := optionalReason(in.Reason)
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	s.applyStatus(w, r, e, statusChange{move: episode.Archive, to: episode.Archived, reason: reason, revision: *in.Revision})
+}
+
+// unarchiveEpisode is POST …/episodes/{eid}/unarchive: back to the status it was archived from.
+func (s *server) unarchiveEpisode(w http.ResponseWriter, r *http.Request) {
+	e, in, ok := s.readStatusRequest(w, r)
+	if !ok {
+		return
+	}
+	reason, msg := requiredReason(in.Reason, "Say why the episode is being un-archived.")
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	s.applyStatus(w, r, e, statusChange{move: episode.Unarchive, reason: reason, revision: *in.Revision})
+}
+
 // readStatusRequest loads the episode (404 if it isn't this hospital's), then reads the body.
 func (s *server) readStatusRequest(w http.ResponseWriter, r *http.Request) (db.GetEpisodeRow, statusRequest, bool) {
 	var in statusRequest
@@ -208,6 +241,19 @@ func (s *server) applyStatus(w http.ResponseWriter, r *http.Request, e db.GetEpi
 		return
 	}
 	from := now.Status
+	// An archived episode is read-only: only un-archive changes it (S22 answers 2). Un-archive's
+	// target is the status it was archived from, exactly.
+	if from == episode.Archived && c.move != episode.Unarchive {
+		writeError(w, http.StatusConflict, archivedMsg)
+		return
+	}
+	if c.move == episode.Unarchive {
+		if from != episode.Archived || now.ArchivedFrom == nil {
+			writeError(w, http.StatusConflict, "This episode isn't archived.")
+			return
+		}
+		c.to = *now.ArchivedFrom
+	}
 	var undo *db.LatestUndoableRow
 	if c.move == episode.Undo {
 		latest, err := q.LatestUndoable(ctx, e.ID)
@@ -232,6 +278,12 @@ func (s *server) applyStatus(w http.ResponseWriter, r *http.Request, e db.GetEpi
 		CancelReason: c.cancel, Reopen: c.move == episode.Reopen}
 	note := ""
 	switch c.move {
+	case episode.Archive:
+		set.ArchivedFrom, set.CancelReason = &from, now.CancelReason // a cancelled episode keeps its reason
+		note = withReason("Episode archived", c.reason)
+	case episode.Unarchive:
+		set.CancelReason = now.CancelReason
+		note = withReason("Episode un-archived, back to "+episode.Labels[c.to], c.reason)
 	case episode.Admit:
 		if c.date.Time.After(dateToday(s.today(now.Timezone))) {
 			writeError(w, http.StatusBadRequest, "The admission date can't be in the future.")
@@ -264,10 +316,7 @@ func (s *server) applyStatus(w http.ResponseWriter, r *http.Request, e db.GetEpi
 		}
 		note = "Status change undone, back to " + episode.Labels[c.to] + ": " + c.reason
 	default:
-		note = "Status changed to " + episode.Labels[c.to]
-		if c.reason != "" {
-			note += ": " + c.reason
-		}
+		note = withReason("Status changed to "+episode.Labels[c.to], c.reason)
 	}
 	uid := currentUser(r).ID
 	if err := q.SetEpisodeStatus(ctx, set); err != nil {
@@ -289,6 +338,11 @@ func (s *server) applyStatus(w http.ResponseWriter, r *http.Request, e db.GetEpi
 			serverError(w, "revoke invites", err)
 			return
 		}
+	}
+	// Cancelling or archiving stops the follow-up (reminders, "not responding"); un-archiving
+	// doesn't start it again (S22: staff can resend the invite). Archiving keeps the patient's
+	// link, which opens nothing while the episode is archived, so un-archive restores it exactly.
+	if c.move == episode.Cancel || c.move == episode.Archive {
 		if err := q.FinishEpisodeJobs(ctx, uuid.NullUUID{UUID: e.ID, Valid: true}); err != nil {
 			serverError(w, "stop follow-up", err)
 			return
@@ -302,6 +356,14 @@ func (s *server) applyStatus(w http.ResponseWriter, r *http.Request, e db.GetEpi
 		s.statusMessage(r, e.ID, stem, c.to) // EPI-08 (S21): a failure is noted, never refused
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// withReason is a General notes line with the reason after it, if one was given.
+func withReason(note, reason string) string {
+	if reason == "" {
+		return note
+	}
+	return note + ": " + reason
 }
 
 // statusMessage sends the patient the hospital's message for the new status, if it's switched on
@@ -325,6 +387,10 @@ func writeStatusRefusal(w http.ResponseWriter, err error, from string, c statusC
 	switch {
 	case errors.Is(err, episode.ErrRole) && c.move == episode.Reopen:
 		writeError(w, http.StatusForbidden, "Only a super clinician or an admin can re-open the HQ review.")
+	case errors.Is(err, episode.ErrRole) && c.move == episode.Archive:
+		writeError(w, http.StatusForbidden, "Only a super clinician or an admin can archive an episode.")
+	case errors.Is(err, episode.ErrRole) && c.move == episode.Unarchive:
+		writeError(w, http.StatusForbidden, "Only a super clinician or an admin can un-archive an episode.")
 	case errors.Is(err, episode.ErrRole):
 		writeError(w, http.StatusForbidden, "Your role can't make this change.")
 	case from == episode.Cancelled:
@@ -364,11 +430,13 @@ func recordStatus(ctx context.Context, q *db.Queries, eid uuid.UUID, move episod
 }
 
 // statusView is what the episode page shows about the status: the moves this user may make
-// from here (the status control offers only these), the undo if there's one, and the history.
+// from here (the status control offers only these), the undo if there's one, the un-archive if
+// it's archived and this user may (S22), and the history.
 type statusView struct {
-	Moves   []episode.Option         `json:"moves"`
-	Undo    *undoOption              `json:"undo"`
-	History []db.ListStatusEventsRow `json:"statusHistory"`
+	Moves     []episode.Option         `json:"moves"`
+	Undo      *undoOption              `json:"undo"`
+	Unarchive *undoOption              `json:"unarchive"`
+	History   []db.ListStatusEventsRow `json:"statusHistory"`
 }
 
 // undoOption is the undo the control offers: back to `to`, from the current status.
@@ -381,6 +449,11 @@ func (s *server) statusView(ctx context.Context, e db.GetEpisodeRow, who role.Ro
 	v := statusView{Moves: episode.Options(e.Status, who)}
 	if v.Moves == nil {
 		v.Moves = []episode.Option{}
+	}
+	if e.ArchivedFrom != nil {
+		if _, err := episode.Check(e.Status, *e.ArchivedFrom, episode.Unarchive, who); err == nil {
+			v.Unarchive = &undoOption{To: *e.ArchivedFrom, Label: episode.Labels[*e.ArchivedFrom]}
+		}
 	}
 	latest, err := s.q.LatestUndoable(ctx, e.ID)
 	switch {

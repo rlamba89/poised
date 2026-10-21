@@ -1,7 +1,8 @@
 // Episodes as the Go API returns them (apps/api/db/queries/episodes.sql).
 export type EpisodeStatus =
   | "hq_not_complete" | "ready_for_review" | "ready_for_poa" | "poa_complete" | "on_hold" | "not_ready" | "ready_for_admission"
-  | "admitted" | "discharged" | "cancelled"; // S20
+  | "admitted" | "discharged" | "cancelled" // S20
+  | "archived"; // S22
 
 export type EpisodeRow = {
   id: string;
@@ -50,6 +51,8 @@ export type Episode = EpisodeRow & {
   dischargedAt: string | null;
   /** The cancel reason's key (cancelReasons in status.ts), or null. */
   cancelReason: string | null;
+  /** S22: the status it was archived from, which un-archive restores; null unless archived. */
+  archivedFrom: EpisodeStatus | null;
 };
 
 /** The patient's working invite (S14), or null before one is sent: when, and whether five wrong dates of birth locked it. */
@@ -100,6 +103,7 @@ export const STATUS_LABELS: Record<EpisodeStatus, string> = {
   admitted: "Admitted",
   discharged: "Discharged",
   cancelled: "Cancelled",
+  archived: "Archived",
 };
 
 export const STATUS_COLORS: Record<EpisodeStatus, string> = {
@@ -113,6 +117,7 @@ export const STATUS_COLORS: Record<EpisodeStatus, string> = {
   admitted: "indigo",
   discharged: "dark",
   cancelled: "gray",
+  archived: "gray",
 };
 
 export const patientName = (p: { firstName: string; lastName: string }) => `${p.firstName} ${p.lastName}`;

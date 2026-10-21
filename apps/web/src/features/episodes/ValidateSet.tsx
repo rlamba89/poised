@@ -146,7 +146,10 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
       </Group>
       {!editable && (
         <Alert color="gray">
-          {episode.status === "hq_not_complete" ? "The patient hasn't sent their answers yet." : "The HQ review is complete, so these answers can't be changed."}
+          {episode.status === "hq_not_complete" ? "The patient hasn't sent their answers yet."
+            : episode.status === "archived" ? "This episode is archived, so these answers can't be changed."
+              : episode.status === "cancelled" ? "This episode is cancelled, so these answers can't be changed."
+                : "The HQ review is complete, so these answers can't be changed."}
         </Alert>
       )}
       {editable && set.audience === "patient" && !patient && <Alert color="orange">The patient didn&apos;t answer this Question Set.</Alert>}

@@ -159,6 +159,8 @@ func notInReview(status string) string {
 		return "The patient hasn't sent their answers yet."
 	case episode.Cancelled:
 		return cancelledMsg
+	case episode.Archived:
+		return archivedMsg
 	}
 	return "The HQ review is already complete, so the answers can't be changed."
 }

@@ -1,7 +1,8 @@
 // The episode's Tasks panel (S21, TSK-01): add a task for a team, complete it, re-open it. Anyone
 // at the hospital may do any of these (S21 answers 1). Each task says who added it and when, and
 // who completed or re-opened it. A change sends the episode's revision (S20): a stale page is
-// refused with Reload, keeping what was typed. A cancelled episode's tasks are shown, not changed.
+// refused with Reload, keeping what was typed. A cancelled or archived (S22) episode's tasks are
+// shown, not changed.
 //
 // The add form is a real form with noValidate (S19's lesson), so Enter sends it with the app's own
 // messages; the title is one line, at most 200 characters, as the API takes.
@@ -21,7 +22,7 @@ export function TasksPanel({ path, episode, onChanged }: { path: string; episode
   const [error, setError] = useState("");
   const [stale, setStale] = useState(false);
   const [busy, setBusy] = useState(""); // "add", or the id of the task being changed
-  const readOnly = episode.status === "cancelled";
+  const readOnly = episode.status === "cancelled" || episode.status === "archived";
 
   // Loaded again whenever the episode changes (its revision), so after any change, here or by
   // someone else, the list is the server's.
@@ -83,7 +84,7 @@ export function TasksPanel({ path, episode, onChanged }: { path: string; episode
         )}
       </Group>
       {loadError && <Text size="sm" c="red">{loadError}</Text>}
-      {readOnly && <Text size="sm" c="dimmed" mb="xs">This episode is cancelled, so its tasks can&apos;t be changed.</Text>}
+      {readOnly && <Text size="sm" c="dimmed" mb="xs">This episode is {episode.status === "archived" ? "archived" : "cancelled"}, so its tasks can&apos;t be changed.</Text>}
       {tasks && tasks.length === 0 && !adding && <Text size="sm" c="dimmed">No tasks yet.</Text>}
 
       <Stack gap="xs">

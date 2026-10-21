@@ -3,12 +3,15 @@
 // name and whether it's to do, in progress or sent. Their own contact details are shown in part
 // (the last digits, the first letter and the domain), with Change (PAT-10): a link goes to the new
 // mobile or email, and nothing changes until it's opened there.
+//
+// Close my account (S22, EPI-09): at the bottom, behind an inline confirmation that warns about
+// any questionnaire not yet sent. The login goes; the hospitals keep their records.
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { Alert, Badge, Button, Card, Center, Group, Loader, Stack, Text, TextInput, Title } from "@mantine/core";
 import { ApiError, api } from "@/lib/api";
 import { formatShortDate } from "@/lib/format";
-import { stateOf, type EpisodeState } from "./home";
+import { stateOf, unsentWarning, type EpisodeState } from "./home";
 import { PatientFrame, SignedOut } from "./PatientHQ";
 
 type HomeEpisode = { id: string; patientName: string; hospital: string; questionnaireName: string; procedure: string; createdAt: string; state: EpisodeState };
@@ -31,6 +34,7 @@ export function PatientHome() {
     setEnded("You've signed out. To come back, open the link in your text message or email again.");
   };
 
+  if (ended === CLOSED) return <PatientFrame><AccountClosed /></PatientFrame>;
   if (ended) return <PatientFrame><SignedOut message={ended} /></PatientFrame>;
   if (!home) {
     return (
@@ -64,6 +68,9 @@ export function PatientHome() {
                 {e.state === "cancelled" && (
                   <Text size="sm">The hospital has cancelled this, so there&apos;s nothing to fill in. Please contact them if you have any questions.</Text>
                 )}
+                {e.state === "closed" && (
+                  <Text size="sm">The hospital has closed this, so there&apos;s nothing to fill in. Please contact them if you have any questions.</Text>
+                )}
                 <Group justify="space-between">
                   <Text size="sm" c="dimmed">Sent to you {formatShortDate(e.createdAt)}</Text>
                   {s.action && (
@@ -77,6 +84,7 @@ export function PatientHome() {
           );
         })}
         <Contacts contacts={home.contacts} />
+        <CloseAccount episodes={home.episodes} onClosed={() => setEnded(CLOSED)} />
       </Stack>
     </PatientFrame>
   );
@@ -155,5 +163,65 @@ function ContactRow({ label, shown, email }: { label: string; shown: string; ema
         </Alert>
       )}
     </div>
+  );
+}
+
+/** The `ended` value for a closed account: the page then says so, not "signed out". */
+const CLOSED = "closed";
+
+/**
+ * Close my account (S22, EPI-09): an inline confirmation (no modal), which warns about any
+ * questionnaire not yet sent. The server ends the session with it.
+ */
+function CloseAccount({ episodes, onClosed }: { episodes: HomeEpisode[]; onClosed: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const warning = unsentWarning(episodes);
+  const close = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await api("/p/account/close", { method: "POST" });
+      onClosed();
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  };
+  return (
+    <Card withBorder data-testid="close-account">
+      <Title order={4}>Close your account</Title>
+      {!confirming ? (
+        <>
+          <Text size="sm" c="dimmed" mb="sm">Stop signing in to Preopsis. Your hospitals keep their records of you.</Text>
+          <Button variant="light" color="red" onClick={() => setConfirming(true)} w="fit-content">Close my account</Button>
+        </>
+      ) : (
+        <Stack gap="sm" mt="xs">
+          <Text size="sm">
+            If you close your account, you can&apos;t sign in any more, and your sign-in links stop working. Your hospitals keep their records
+            of you and your questionnaires. If a hospital sends you a new questionnaire, its link starts a new account.
+          </Text>
+          {warning && <Alert color="orange" p="xs" data-testid="close-account-unsent">{warning}</Alert>}
+          {error && <Alert color="red" p="xs">{error}</Alert>}
+          <Group gap="xs">
+            <Button color="red" onClick={close} loading={busy}>Close my account</Button>
+            <Button variant="subtle" onClick={() => { setConfirming(false); setError(""); }} disabled={busy}>Keep my account</Button>
+          </Group>
+        </Stack>
+      )}
+    </Card>
+  );
+}
+
+/** After closing: the account is gone, so there's nothing to sign in to. */
+function AccountClosed() {
+  return (
+    <Card withBorder p="xl" data-testid="account-closed">
+      <Title order={3}>Your account is closed</Title>
+      <Text mt="xs">You&apos;ve been signed out, and you can&apos;t sign in with this account any more. Your hospitals keep their records of you.</Text>
+      <Text mt="xs" size="sm" c="dimmed">If a hospital sends you a new questionnaire, open the link in its text message or email to start again.</Text>
+    </Card>
   );
 }

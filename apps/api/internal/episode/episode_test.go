@@ -38,10 +38,17 @@ func agreed() []legal {
 	for _, from := range []string{HQNotComplete, ReadyForReview, ReadyForPOA, POAComplete, OnHold, NotReady, ReadyForAdmission, Admitted} {
 		out = append(out, legal{from: from, to: Cancelled, move: Cancel, who: role.Clinician, reason: true})
 	}
+	// S22 answers 1: a super clinician archives from any status (a reason is optional), and
+	// un-archives back to the status it was archived from, with a reason.
+	for _, s := range []string{HQNotComplete, ReadyForReview, ReadyForPOA, POAComplete, OnHold, NotReady, ReadyForAdmission,
+		Admitted, Discharged, Cancelled} {
+		out = append(out, legal{from: s, to: Archived, move: Archive, who: role.SuperClinician})
+		out = append(out, legal{from: Archived, to: s, move: Unarchive, who: role.SuperClinician, reason: true})
+	}
 	return out
 }
 
-var moves = []Move{Create, Submit, CompleteReview, Set, Admit, Discharge, Cancel, Reopen, Undo, "nonsense"}
+var moves = []Move{Create, Submit, CompleteReview, Set, Admit, Discharge, Cancel, Reopen, Undo, Archive, Unarchive, "nonsense"}
 
 // Every pair of statuses, with every move and every role (and the patient): the agreed moves are
 // allowed at their least role and above, refused below it (ErrRole); everything else is illegal.
@@ -114,15 +121,19 @@ func TestOptions(t *testing.T) {
 		want []string
 	}{
 		{HQNotComplete, role.Clinician, []string{"cancel:cancelled"}},
-		{ReadyForReview, role.Admin, []string{"cancel:cancelled"}},
+		{ReadyForReview, role.Admin, []string{"cancel:cancelled", "archive:archived"}},
 		{OnHold, role.Clinician, []string{"set:ready_for_poa", "set:poa_complete", "set:not_ready", "set:ready_for_admission", "cancel:cancelled"}},
 		{OnHold, role.SuperClinician, []string{"reopen:ready_for_review", "set:ready_for_poa", "set:poa_complete", "set:not_ready",
-			"set:ready_for_admission", "cancel:cancelled"}},
+			"set:ready_for_admission", "cancel:cancelled", "archive:archived"}},
 		{ReadyForAdmission, role.Clinician, []string{"set:ready_for_poa", "set:poa_complete", "set:on_hold", "set:not_ready",
 			"admit:admitted", "cancel:cancelled"}},
-		{Admitted, role.SuperClinician, []string{"discharge:discharged", "cancel:cancelled"}},
-		{Discharged, role.Admin, nil},
-		{Cancelled, role.Admin, nil},
+		{Admitted, role.SuperClinician, []string{"discharge:discharged", "cancel:cancelled", "archive:archived"}},
+		{Discharged, role.Clinician, nil},
+		{Discharged, role.Admin, []string{"archive:archived"}},
+		{Cancelled, role.SuperClinician, []string{"archive:archived"}},
+		{Cancelled, role.Clinician, nil},
+		// Un-archive has its own button: its target is the status it was archived from (S22).
+		{Archived, role.Admin, nil},
 		{ReadyForPOA, role.None, nil},
 	} {
 		if got := targets(Options(tt.from, tt.who)); !slices.Equal(got, tt.want) {
@@ -150,6 +161,8 @@ func TestUndoTarget(t *testing.T) {
 		{"a re-open", ReadyForReview, ptr(ev(Reopen, OnHold, ReadyForReview)), ""},
 		{"cancel stays final", Cancelled, ptr(ev(Cancel, OnHold, Cancelled)), ""},
 		{"created", HQNotComplete, ptr(ev(Create, "", HQNotComplete)), ""},
+		{"archived: un-archive instead (S22)", Archived, ptr(ev(Archive, OnHold, Archived)), ""},
+		{"un-archived: a stop, like re-open", OnHold, ptr(ev(Unarchive, Archived, OnHold)), ""},
 		{"no history", OnHold, nil, ""},
 		{"history out of step with the status", NotReady, ptr(ev(Set, ReadyForPOA, OnHold)), ""},
 	} {

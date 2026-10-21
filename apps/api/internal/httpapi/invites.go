@@ -46,6 +46,10 @@ func (s *server) resendInvite(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "This episode is cancelled, so no invite can be sent.")
 		return
 	}
+	if e.Status == episode.Archived { // S22 answers 2: read-only
+		writeError(w, http.StatusConflict, "This episode is archived, so no invite can be sent. A super clinician can un-archive it.")
+		return
+	}
 	if e.PatientSubmittedAt.Valid {
 		writeError(w, http.StatusConflict, "The patient's answers have already been sent, so there's nothing to invite them to.")
 		return

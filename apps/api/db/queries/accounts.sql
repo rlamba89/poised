@@ -99,7 +99,7 @@ WHERE id = sqlc.arg(id) AND used_at IS NULL AND locked_at IS NULL AND revoked_at
 -- The person's home (PX-08): every episode of every record joined to their account, in every
 -- trust, newest first, with the hospital's name. Suspended trusts and hospitals are left out
 -- (ORG-03). org, hospital and patient ids are for the audit log, never sent.
-SELECT e.id, e.created_at, e.status, coalesce(pr.name, '')::text AS procedure, f.submitted_at AS patient_submitted_at, e.org_id, e.hospital_id, e.patient_id,
+SELECT e.id, e.created_at, e.status, e.archived_from, coalesce(pr.name, '')::text AS procedure, f.submitted_at AS patient_submitted_at, e.org_id, e.hospital_id, e.patient_id,
        p.first_name, p.last_name, h.name AS hospital_name, q.name AS questionnaire_name,
        EXISTS (SELECT 1 FROM episode_answers a WHERE a.episode_form_id = f.id AND a.actor = 'patient')::boolean AS started
 FROM patients p
@@ -166,3 +166,49 @@ DELETE FROM rate_limit_hits WHERE key = sqlc.arg(key) AND at < sqlc.arg(before);
 -- name: ResetRateLimits :exec
 -- MESSAGING=capture only (local, QA): a tester's fresh start.
 DELETE FROM rate_limit_hits;
+
+-- Closing an account (S22, EPI-09): the login goes; every trust's records and episodes stay.
+
+-- name: UnlinkAccountRecords :many
+-- The trust's records of the person leave the account, which a later invite makes again (S15).
+-- Returns them, for each trust's audit log and the episodes' notes.
+UPDATE patients SET account_id = NULL WHERE account_id = $1 RETURNING id, org_id;
+
+-- name: RevokeRecordsInvites :exec
+-- The records' invite links stop working: an unsent HQ won't be sent. Staff can send a new
+-- invite, which starts a new account.
+UPDATE login_links SET revoked_at = now()
+WHERE kind = 'invite' AND revoked_at IS NULL AND patient_id = ANY(sqlc.arg(patient_ids)::uuid[]);
+
+-- name: FinishRecordsFollowups :exec
+-- Their reminders stop too: each would send a new link.
+UPDATE jobs SET done_at = now()
+WHERE kind = 'followup' AND done_at IS NULL
+  AND episode_id IN (SELECT e.id FROM episodes e WHERE e.patient_id = ANY(sqlc.arg(patient_ids)::uuid[]));
+
+-- name: RevokeAccountSigninLinks :exec
+-- Unused sign-in links to the account's mobile or email stop working, unless another account
+-- signs in with that contact too (twins sharing a phone, S15): theirs carries on.
+UPDATE login_links l SET revoked_at = now()
+WHERE l.kind = 'signin' AND l.used_at IS NULL AND l.revoked_at IS NULL
+  AND l.contact <> '' AND l.contact IN (sqlc.arg(mobile)::text, sqlc.arg(email)::text)
+  AND NOT EXISTS (SELECT 1 FROM patient_accounts o WHERE o.id <> sqlc.arg(account_id)
+                  AND (o.mobile = l.contact OR o.email = l.contact));
+
+-- name: DeleteAccountSessions :exec
+DELETE FROM patient_sessions WHERE account_id = $1;
+
+-- name: DeleteAccountLinks :exec
+-- Its links to confirm a new contact (PAT-10).
+DELETE FROM login_links WHERE account_id = $1;
+
+-- name: NoteAccountClosed :exec
+-- Staff see it on each of the records' episodes, dated at the episode's hospital.
+INSERT INTO episode_events (episode_id, kind, text)
+SELECT e.id, 'event', 'The patient closed their account on ' ||
+       to_char((now() AT TIME ZONE coalesce(h.timezone, sqlc.arg(default_zone)::text))::date, 'YYYY-MM-DD') || '.'
+FROM episodes e JOIN hospitals h ON h.id = e.hospital_id
+WHERE e.patient_id = ANY(sqlc.arg(patient_ids)::uuid[]);
+
+-- name: DeleteAccount :exec
+DELETE FROM patient_accounts WHERE id = $1;

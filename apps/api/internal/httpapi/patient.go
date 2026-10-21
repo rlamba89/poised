@@ -38,6 +38,7 @@ const (
 	linkLocked    = "This link is locked because the date of birth was entered wrongly too many times. Please contact the hospital to send you a new link."
 	formClosed    = "This questionnaire isn't available at the moment. Please contact the hospital."
 	formCancelled = "This questionnaire was cancelled by the hospital, so there's nothing more to fill in. Please contact the hospital if you have any questions."
+	formArchived  = "This questionnaire is closed, so there's nothing more to fill in. Please contact the hospital if you have any questions."
 	sessionEnded  = "For your security, you've been signed out. Please open the link in your text message or email again."
 	// maxDobAttempts wrong dates of birth lock a link (PAT-05).
 	maxDobAttempts = 5
@@ -324,6 +325,14 @@ func (s *server) loadForm(w http.ResponseWriter, r *http.Request) (form, bool) {
 	}
 	if e.Status == episode.Cancelled { // S20 answers 5: no form; code "cancelled" lets the page say so
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": formCancelled, "code": "cancelled"})
+		return f, false
+	}
+	if e.Status == episode.Archived { // S22: read-only. The patient's form is closed; staff get the 409 of every write
+		if accountOf(r) != uuid.Nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": formArchived, "code": "archived"})
+		} else {
+			writeError(w, http.StatusConflict, archivedMsg)
+		}
 		return f, false
 	}
 	return f, true

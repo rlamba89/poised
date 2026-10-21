@@ -148,8 +148,8 @@ func (s *server) changeTasks(w http.ResponseWriter, r *http.Request, e db.GetEpi
 		writeStale(w)
 		return false
 	}
-	if now.Status == episode.Cancelled {
-		writeError(w, http.StatusConflict, cancelledMsg)
+	if msg := readOnly(now.Status); msg != "" {
+		writeError(w, http.StatusConflict, msg)
 		return false
 	}
 	ok, err := change(q)

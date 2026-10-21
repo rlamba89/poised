@@ -47,6 +47,8 @@ var auditActions = map[string]string{
 	"episode.cancel":     "Cancelled an episode",
 	"episode.reopen":     "Re-opened the HQ review",
 	"episode.undo":       "Undid a status change",
+	"episode.archive":    "Archived an episode", // S22
+	"episode.unarchive":  "Un-archived an episode",
 	"task.list":          "Opened an episode's tasks", // S21
 	"task.create":        "Added a task",
 	"task.update":        "Completed or re-opened a task",
@@ -65,7 +67,8 @@ var auditActions = map[string]string{
 	"home.view":          "Patient opened their home", // S15: a row per hospital it listed
 	"account.join":       "Patient's record joined their sign-in account",
 	"contact.update":     "Patient changed their contact details",
-	"procedure.create":   "Added a procedure", // S19: the trust's procedure list
+	"account.close":      "Patient closed their account", // S22: a row per trust whose records it unlinked
+	"procedure.create":   "Added a procedure",            // S19: the trust's procedure list
 	"procedure.update":   "Changed a procedure",
 	"audit.view":         "Viewed the audit log",
 	"audit.export":       "Exported the audit log",

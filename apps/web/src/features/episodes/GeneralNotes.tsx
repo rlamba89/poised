@@ -1,11 +1,14 @@
-// "General notes" (Lifebox POA Summary): the episode's events and clinicians' comments.
+// "General notes" (Lifebox POA Summary): the episode's events and clinicians' comments. An archived
+// episode's are shown without "Add comment" (S22: read-only).
 import { useState } from "react";
 import { Alert, Button, Group, Stack, Text, Textarea } from "@mantine/core";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { EpisodeEvent } from "./types";
 
-export function GeneralNotes({ path, events, onAdded }: { path: string; events: EpisodeEvent[]; onAdded: () => void }) {
+export function GeneralNotes({ path, events, onAdded, readOnly = false }: {
+  path: string; events: EpisodeEvent[]; onAdded: () => void; readOnly?: boolean;
+}) {
   const [adding, setAdding] = useState(false);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
@@ -42,7 +45,7 @@ export function GeneralNotes({ path, events, onAdded }: { path: string; events: 
           </Group>
         </Stack>
       ) : (
-        <Button size="xs" mt={6} w="fit-content" onClick={() => setAdding(true)}>Add comment</Button>
+        !readOnly && <Button size="xs" mt={6} w="fit-content" onClick={() => setAdding(true)}>Add comment</Button>
       )}
     </Stack>
   );

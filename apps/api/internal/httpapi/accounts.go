@@ -375,7 +375,7 @@ type homeEpisode struct {
 	QuestionnaireName string    `json:"questionnaireName"`
 	Procedure         string    `json:"procedure"`
 	CreatedAt         time.Time `json:"createdAt"`
-	State             string    `json:"state"` // to_do, in_progress or sent
+	State             string    `json:"state"` // to_do, in_progress, sent, cancelled (S20) or closed (S22: archived)
 }
 
 // patientHome is GET /api/p/home: every episode of every trust's record of the person, newest
@@ -399,9 +399,12 @@ func (s *server) patientHome(w http.ResponseWriter, r *http.Request) {
 		auditOf(r).also("home.view", e.OrgID, e.HospitalID).touched(e.PatientID, e.ID)
 		firstName = greeting(firstName, e.FirstName)
 		state := "to_do"
+		cancelled := e.Status == episode.Cancelled || (e.ArchivedFrom != nil && *e.ArchivedFrom == episode.Cancelled)
 		switch {
-		case e.Status == episode.Cancelled: // S20 answers 5: "Cancelled by the hospital", no form
+		case cancelled: // S20 answers 5: "Cancelled by the hospital", no form; archived since, still cancelled
 			state = "cancelled"
+		case e.Status == episode.Archived: // S22: read-only, so "Closed by the hospital", no form
+			state = "closed"
 		case e.PatientSubmittedAt.Valid:
 			state = "sent"
 		case e.Started:
@@ -659,4 +662,74 @@ func clientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// --- Closing the account (EPI-09, S22 answers 5) ---
+
+// closeAccount is POST /api/p/account/close: the person's login goes, and every trust keeps its
+// records and episodes. In one transaction:
+//   - the trust's records leave the account (a later invite makes a new one, as for anyone, S15);
+//   - their invite links stop working, so an unsent HQ won't be sent, and their reminders stop
+//     (each would send a new link); staff can still send a new invite;
+//   - unused sign-in links to the account's mobile or email stop working, unless another account
+//     signs in with that contact too (twins, S15), whose links carry on;
+//   - the account's sessions and its links to confirm a new contact are deleted, then the account;
+//   - each of the records' episodes gets a General notes line, "The patient closed their account
+//     on …", and each trust's audit log a row.
+//
+// The session's cookie is cleared; the home's confirmation said what goes.
+func (s *server) closeAccount(w http.ResponseWriter, r *http.Request) {
+	ctx := context.WithoutCancel(r.Context()) // once started, finish
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		serverError(w, "close account", err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	acc, err := q.LockAccount(ctx, accountOf(r))
+	if err != nil {
+		serverError(w, "account", err)
+		return
+	}
+	records, err := q.UnlinkAccountRecords(ctx, uuid.NullUUID{UUID: acc.ID, Valid: true})
+	if err != nil {
+		serverError(w, "unlink records", err)
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(records))
+	for _, rec := range records {
+		ids = append(ids, rec.ID)
+	}
+	steps := []struct {
+		what string
+		do   func() error
+	}{
+		{"revoke invites", func() error { return q.RevokeRecordsInvites(ctx, ids) }},
+		{"stop reminders", func() error { return q.FinishRecordsFollowups(ctx, ids) }},
+		{"revoke sign-in links", func() error {
+			return q.RevokeAccountSigninLinks(ctx, db.RevokeAccountSigninLinksParams{AccountID: acc.ID, Mobile: acc.Mobile, Email: acc.Email})
+		}},
+		{"end sessions", func() error { return q.DeleteAccountSessions(ctx, acc.ID) }},
+		{"delete links", func() error { return q.DeleteAccountLinks(ctx, uuid.NullUUID{UUID: acc.ID, Valid: true}) }},
+		{"note episodes", func() error {
+			return q.NoteAccountClosed(ctx, db.NoteAccountClosedParams{PatientIds: ids, DefaultZone: s.cfg.Country.TimeZone})
+		}},
+		{"delete account", func() error { return q.DeleteAccount(ctx, acc.ID) }},
+	}
+	for _, step := range steps {
+		if err := step.do(); err != nil {
+			serverError(w, "close account: "+step.what, err)
+			return
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		serverError(w, "close account", err)
+		return
+	}
+	for _, rec := range records {
+		auditOf(r).also("account.close", rec.OrgID, uuid.Nil).touched(rec.ID, uuid.Nil)
+	}
+	http.SetCookie(w, &http.Cookie{Name: auth.PatientCookieName, Value: "", Path: "/api/p", HttpOnly: true, Secure: s.secureCookies(), MaxAge: -1})
+	w.WriteHeader(http.StatusNoContent)
 }

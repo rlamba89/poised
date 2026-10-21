@@ -177,6 +177,7 @@ func TestValidate(t *testing.T) {
 		{"templates.readyForAdmissionSms", `""`},    // empty
 		{"templates.cancelledSms", `"Hi {{name}}"`}, // unknown placeholder
 		{"templates.cancelledSms", `"` + strings.Repeat("a", 601) + `"`},
+		{"autoArchive.afterDischargeDays", "7.5"}, // S22 test report 2: a decimal is refused, not rounded
 		{"worklists.soonDays", "0"},
 		{"worklists.soonDays", "366"},
 		{"statusMessages.readyForAdmissionEmail", `"on"`},

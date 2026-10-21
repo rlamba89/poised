@@ -223,6 +223,23 @@ def test_a_trust_admin_gives_one_hospital_its_own_settings(page: Page, as_user):
     expect(retention).to_contain_text("8")
     expect(page.get_by_role("spinbutton", name="Keep episode data for (years)")).to_have_count(0)
 
+    # A number out of range is refused with the API's message, not quietly changed to the nearest
+    # allowed one and saved (S22 test report 1, F-1).
+    pick(page, "Settings for", south)
+    days = page.get_by_role("textbox", name="Archive episodes this many days after discharge", exact=True)
+    page.get_by_role("checkbox", name="Use the trust's setting: Archive episodes this many days after discharge").uncheck()
+    for bad in ["0", "366", "7.5"]:  # 7.5: kept as typed, not read as 75 (test report 2)
+        days.fill(bad)
+        days.blur()
+        expect(days).to_have_value(bad)
+        page.get_by_role("button", name=f"Save {south}'s settings").click()
+        expect(page.get_by_text("Archive episodes this many days after discharge: enter a whole number from 1 to 365.")).to_be_visible()
+        expect(days).to_have_value(bad)
+    page.reload()
+    pick(page, "Settings for", south)
+    expect(days).to_have_value("30")  # still the trust's: nothing was saved
+    expect(days).to_be_disabled()
+
 
 def test_the_platform_admin_edits_a_trusts_and_a_hospitals_details(page: Page, as_user):
     """S10 answers 3 (Rahul, 13 Oct): the platform admin edits them at any time."""

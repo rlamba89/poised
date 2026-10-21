@@ -137,7 +137,7 @@ func Record(ctx context.Context, pool *pgxpool.Pool, f Failure, now time.Time) e
 	if err != nil {
 		return err
 	}
-	if err := q.AddAutomaticEpisodeEvent(ctx, db.AddAutomaticEpisodeEventParams{EpisodeID: row.EpisodeID, Text: Note(row.Kind, row.Status, row.Channel, f.Reason)}); err != nil {
+	if err := q.AddAutomaticEpisodeEvent(ctx, db.AddAutomaticEpisodeEventParams{EpisodeID: row.EpisodeID, Text: Note(row.Kind, row.Status, row.Channel, f.Reason), At: now}); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {

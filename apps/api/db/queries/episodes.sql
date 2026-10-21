@@ -37,6 +37,8 @@ SELECT id FROM e;
 -- from today at each episode's hospital (its time zone, else default_zone) and uses the hospital's
 -- worklists.soonDays setting (its own, else its trust's, else soon_days, the platform default).
 -- open_tasks: how many of its tasks are still open (TSK-01).
+-- Archived episodes (S22, EPI-04) are left out unless include_archived, or the status asked for
+-- is archived; no worklist has them (in_worklist).
 SELECT e.id, e.hospital_id, h.name AS hospital_name, e.status, coalesce(pr.name, '')::text AS procedure,
        e.planned_date, e.poa_date, e.created_at,
        e.patient_id, p.first_name, p.last_name, e.hospital_number,
@@ -53,6 +55,7 @@ JOIN questionnaires q ON q.id = v.questionnaire_id
 WHERE e.org_id = sqlc.arg(org_id) AND h.status = 'active' -- a suspended hospital's are kept, not shown (ORG-03)
   AND (sqlc.arg(all_hospitals)::boolean OR e.hospital_id = ANY (sqlc.arg(hospital_ids)::uuid[]))
   AND (sqlc.arg(status)::text = '' OR e.status = sqlc.arg(status))
+  AND (e.status <> 'archived' OR sqlc.arg(include_archived)::boolean OR sqlc.arg(status)::text = 'archived')
   AND (sqlc.arg(worklist)::text = '' OR in_worklist(sqlc.arg(worklist)::text, e.id, e.status, e.not_responding_at, e.planned_date,
       (sqlc.arg(now)::timestamptz AT TIME ZONE coalesce(h.timezone, sqlc.arg(default_zone)::text))::date,
       coalesce((h.settings->>'worklists.soonDays')::int, (o.settings->>'worklists.soonDays')::int, sqlc.arg(soon_days)::int)))
@@ -81,6 +84,7 @@ SELECT e.id, e.status, e.procedure_id, coalesce(pr.name, '')::text AS procedure,
        f.submitted_at AS patient_submitted_at, e.review_completed_at, e.created_at, f.version_id, e.hospital_number,
        e.invited_at, e.reminders_sent, e.not_responding_at, -- the follow-up (S16)
        e.revision, e.admitted_at, e.discharged_at, e.cancel_reason, -- S20
+       e.archived_from, -- S22: the status un-archive goes back to
        reviewer.name AS review_completed_by_name, submitter.name AS patient_submitted_by_name,
        p.id AS patient_id, p.first_name, p.last_name, p.date_of_birth, p.sex, p.national_id, p.national_id_type,
        p.mobile, p.email,
@@ -109,8 +113,9 @@ WHERE id = sqlc.arg(id) AND revision = sqlc.arg(revision);
 -- name: LockEpisodeStatus :one
 -- Taken before a status change (S20), so two changes at once are applied one after the other,
 -- each checking the revision and the table against the status as it is.
--- The hospital's time zone is for the dates' "not in the future".
-SELECT e.status, e.revision, e.admitted_at, e.discharged_at, h.timezone
+-- The hospital's time zone is for the dates' "not in the future". archived_from is un-archive's
+-- target (S22); the cancel reason is kept when a cancelled episode is archived.
+SELECT e.status, e.revision, e.admitted_at, e.discharged_at, e.cancel_reason, e.archived_from, h.timezone
 FROM episodes e JOIN hospitals h ON h.id = e.hospital_id
 WHERE e.id = $1 FOR UPDATE OF e;
 
@@ -118,18 +123,22 @@ WHERE e.id = $1 FOR UPDATE OF e;
 -- A status change, with what goes with it: the dates, the cancel reason, and for a re-open
 -- (EPI-07) the review stamp cleared, which unlocks the clinician's answers (they're saved only
 -- while the episode is Ready for review). The caller holds LockEpisodeStatus.
+-- archived_from: the status it's archived from when archiving (S22), else NULL.
 UPDATE episodes
 SET status = sqlc.arg(status), admitted_at = sqlc.arg(admitted_at), discharged_at = sqlc.arg(discharged_at),
-    cancel_reason = sqlc.narg(cancel_reason),
+    cancel_reason = sqlc.narg(cancel_reason), archived_from = sqlc.narg(archived_from),
     review_completed_by = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE review_completed_by END,
     review_completed_at = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE review_completed_at END,
     revision = revision + 1
 WHERE id = sqlc.arg(id);
 
 -- name: AddStatusEvent :exec
--- One status change in the history (EPI-03).
-INSERT INTO episode_status_events (episode_id, move, from_status, to_status, reason, user_id)
-VALUES (sqlc.arg(episode_id), sqlc.arg(move), sqlc.narg(from_status), sqlc.arg(to_status), sqlc.arg(reason), sqlc.narg(user_id));
+-- One status change in the history (EPI-03). rule names an automatic change's rule (the daily
+-- auto-archive, S22), with no user. at: when, for a job run as of its own time (S22 test report 1,
+-- F-2); NULL is now.
+INSERT INTO episode_status_events (episode_id, move, from_status, to_status, reason, user_id, rule, created_at)
+VALUES (sqlc.arg(episode_id), sqlc.arg(move), sqlc.narg(from_status), sqlc.arg(to_status), sqlc.arg(reason), sqlc.narg(user_id),
+        sqlc.narg(rule), coalesce(sqlc.narg(at)::timestamptz, now()));
 
 -- name: LatestUndoable :one
 -- The newest change that isn't an undo and hasn't been undone: what an undo would step back
@@ -157,15 +166,18 @@ UPDATE login_links SET revoked_at = now()
 WHERE episode_id = $1 AND kind = 'invite' AND revoked_at IS NULL;
 
 -- name: FinishEpisodeJobs :exec
--- Cancelling: the episode's follow-up (reminders, "not responding") stops.
+-- Cancelling or archiving (S22): the episode's follow-up (reminders, "not responding") stops.
 UPDATE jobs SET done_at = now() WHERE episode_id = $1 AND done_at IS NULL;
 
 -- name: AddEpisodeEvent :exec
 INSERT INTO episode_events (episode_id, kind, text, user_id) VALUES ($1, $2, $3, $4);
 
 -- name: AddAutomaticEpisodeEvent :exec
--- An entry written by the jobs (S16): a reminder, "not responding".
-INSERT INTO episode_events (episode_id, kind, text, automatic) VALUES ($1, 'event', $2, true);
+-- An entry written by the jobs (S16): a reminder, "not responding", an auto-archive (S22); or by
+-- an undelivered report (S17). at is the run's time (S22 test report 1, F-2): a job run "as of" a
+-- later time writes as of then.
+INSERT INTO episode_events (episode_id, kind, text, automatic, created_at)
+VALUES (sqlc.arg(episode_id), 'event', sqlc.arg(text), true, sqlc.arg(at)::timestamptz);
 
 -- name: ListEpisodeEvents :many
 -- user_name is NULL for the patient's entries and the automatic ones.
@@ -173,7 +185,7 @@ SELECT ev.id, ev.kind, ev.text, ev.created_at, u.name AS user_name, ev.automatic
 FROM episode_events ev
 LEFT JOIN users u ON u.id = ev.user_id
 WHERE ev.episode_id = $1
-ORDER BY ev.created_at, ev.id;
+ORDER BY ev.created_at, ev.seq; -- seq: notes written at the same time, in the order written (S22)
 
 -- name: GetEpisodeForm :one
 -- An episode's HQ form as the patient fills it in: for the patient's session (the handler checks

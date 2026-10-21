@@ -15,17 +15,21 @@ import (
 )
 
 const addAutomaticEpisodeEvent = `-- name: AddAutomaticEpisodeEvent :exec
-INSERT INTO episode_events (episode_id, kind, text, automatic) VALUES ($1, 'event', $2, true)
+INSERT INTO episode_events (episode_id, kind, text, automatic, created_at)
+VALUES ($1, 'event', $2, true, $3::timestamptz)
 `
 
 type AddAutomaticEpisodeEventParams struct {
 	EpisodeID uuid.UUID `json:"episodeId"`
 	Text      string    `json:"text"`
+	At        time.Time `json:"at"`
 }
 
-// An entry written by the jobs (S16): a reminder, "not responding".
+// An entry written by the jobs (S16): a reminder, "not responding", an auto-archive (S22); or by
+// an undelivered report (S17). at is the run's time (S22 test report 1, F-2): a job run "as of" a
+// later time writes as of then.
 func (q *Queries) AddAutomaticEpisodeEvent(ctx context.Context, arg AddAutomaticEpisodeEventParams) error {
-	_, err := q.db.Exec(ctx, addAutomaticEpisodeEvent, arg.EpisodeID, arg.Text)
+	_, err := q.db.Exec(ctx, addAutomaticEpisodeEvent, arg.EpisodeID, arg.Text, arg.At)
 	return err
 }
 
@@ -51,20 +55,25 @@ func (q *Queries) AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams
 }
 
 const addStatusEvent = `-- name: AddStatusEvent :exec
-INSERT INTO episode_status_events (episode_id, move, from_status, to_status, reason, user_id)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO episode_status_events (episode_id, move, from_status, to_status, reason, user_id, rule, created_at)
+VALUES ($1, $2, $3, $4, $5, $6,
+        $7, coalesce($8::timestamptz, now()))
 `
 
 type AddStatusEventParams struct {
-	EpisodeID  uuid.UUID     `json:"episodeId"`
-	Move       string        `json:"move"`
-	FromStatus *string       `json:"fromStatus"`
-	ToStatus   string        `json:"toStatus"`
-	Reason     string        `json:"reason"`
-	UserID     uuid.NullUUID `json:"userId"`
+	EpisodeID  uuid.UUID          `json:"episodeId"`
+	Move       string             `json:"move"`
+	FromStatus *string            `json:"fromStatus"`
+	ToStatus   string             `json:"toStatus"`
+	Reason     string             `json:"reason"`
+	UserID     uuid.NullUUID      `json:"userId"`
+	Rule       *string            `json:"rule"`
+	At         pgtype.Timestamptz `json:"at"`
 }
 
-// One status change in the history (EPI-03).
+// One status change in the history (EPI-03). rule names an automatic change's rule (the daily
+// auto-archive, S22), with no user. at: when, for a job run as of its own time (S22 test report 1,
+// F-2); NULL is now.
 func (q *Queries) AddStatusEvent(ctx context.Context, arg AddStatusEventParams) error {
 	_, err := q.db.Exec(ctx, addStatusEvent,
 		arg.EpisodeID,
@@ -73,6 +82,8 @@ func (q *Queries) AddStatusEvent(ctx context.Context, arg AddStatusEventParams) 
 		arg.ToStatus,
 		arg.Reason,
 		arg.UserID,
+		arg.Rule,
+		arg.At,
 	)
 	return err
 }
@@ -212,7 +223,7 @@ const finishEpisodeJobs = `-- name: FinishEpisodeJobs :exec
 UPDATE jobs SET done_at = now() WHERE episode_id = $1 AND done_at IS NULL
 `
 
-// Cancelling: the episode's follow-up (reminders, "not responding") stops.
+// Cancelling or archiving (S22): the episode's follow-up (reminders, "not responding") stops.
 func (q *Queries) FinishEpisodeJobs(ctx context.Context, episodeID uuid.NullUUID) error {
 	_, err := q.db.Exec(ctx, finishEpisodeJobs, episodeID)
 	return err
@@ -224,6 +235,7 @@ SELECT e.id, e.status, e.procedure_id, coalesce(pr.name, '')::text AS procedure,
        f.submitted_at AS patient_submitted_at, e.review_completed_at, e.created_at, f.version_id, e.hospital_number,
        e.invited_at, e.reminders_sent, e.not_responding_at, -- the follow-up (S16)
        e.revision, e.admitted_at, e.discharged_at, e.cancel_reason, -- S20
+       e.archived_from, -- S22: the status un-archive goes back to
        reviewer.name AS review_completed_by_name, submitter.name AS patient_submitted_by_name,
        p.id AS patient_id, p.first_name, p.last_name, p.date_of_birth, p.sex, p.national_id, p.national_id_type,
        p.mobile, p.email,
@@ -267,6 +279,7 @@ type GetEpisodeRow struct {
 	AdmittedAt             pgtype.Date        `json:"admittedAt"`
 	DischargedAt           pgtype.Date        `json:"dischargedAt"`
 	CancelReason           *string            `json:"cancelReason"`
+	ArchivedFrom           *string            `json:"archivedFrom"`
 	ReviewCompletedByName  *string            `json:"reviewCompletedByName"`
 	PatientSubmittedByName *string            `json:"patientSubmittedByName"`
 	PatientID              uuid.UUID          `json:"patientId"`
@@ -311,6 +324,7 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 		&i.AdmittedAt,
 		&i.DischargedAt,
 		&i.CancelReason,
+		&i.ArchivedFrom,
 		&i.ReviewCompletedByName,
 		&i.PatientSubmittedByName,
 		&i.PatientID,
@@ -330,6 +344,7 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 }
 
 const getEpisodeForm = `-- name: GetEpisodeForm :one
+
 SELECT e.id, e.status, f.submitted_at AS patient_submitted_at, f.version_id, f.id AS form_id,
        e.org_id, e.hospital_id, e.patient_id, p.account_id, -- for the checks and the audit log, never sent to the patient
        p.first_name, p.last_name, p.date_of_birth, p.sex,
@@ -365,6 +380,7 @@ type GetEpisodeFormRow struct {
 	Open               bool               `json:"open"`
 }
 
+// seq: notes written at the same time, in the order written (S22)
 // An episode's HQ form as the patient fills it in: for the patient's session (the handler checks
 // the episode is theirs) or staff completing it on their behalf (it checks the hospital).
 func (q *Queries) GetEpisodeForm(ctx context.Context, id uuid.UUID) (GetEpisodeFormRow, error) {
@@ -493,7 +509,7 @@ SELECT ev.id, ev.kind, ev.text, ev.created_at, u.name AS user_name, ev.automatic
 FROM episode_events ev
 LEFT JOIN users u ON u.id = ev.user_id
 WHERE ev.episode_id = $1
-ORDER BY ev.created_at, ev.id
+ORDER BY ev.created_at, ev.seq
 `
 
 type ListEpisodeEventsRow struct {
@@ -550,21 +566,23 @@ JOIN questionnaires q ON q.id = v.questionnaire_id
 WHERE e.org_id = $1 AND h.status = 'active' -- a suspended hospital's are kept, not shown (ORG-03)
   AND ($2::boolean OR e.hospital_id = ANY ($3::uuid[]))
   AND ($4::text = '' OR e.status = $4)
-  AND ($5::text = '' OR in_worklist($5::text, e.id, e.status, e.not_responding_at, e.planned_date,
-      ($7::timestamptz AT TIME ZONE coalesce(h.timezone, $6::text))::date,
-      coalesce((h.settings->>'worklists.soonDays')::int, (o.settings->>'worklists.soonDays')::int, $8::int)))
+  AND (e.status <> 'archived' OR $5::boolean OR $4::text = 'archived')
+  AND ($6::text = '' OR in_worklist($6::text, e.id, e.status, e.not_responding_at, e.planned_date,
+      ($8::timestamptz AT TIME ZONE coalesce(h.timezone, $7::text))::date,
+      coalesce((h.settings->>'worklists.soonDays')::int, (o.settings->>'worklists.soonDays')::int, $9::int)))
 ORDER BY e.created_at DESC
 `
 
 type ListEpisodesParams struct {
-	OrgID        uuid.UUID   `json:"orgId"`
-	AllHospitals bool        `json:"allHospitals"`
-	HospitalIds  []uuid.UUID `json:"hospitalIds"`
-	Status       string      `json:"status"`
-	Worklist     string      `json:"worklist"`
-	DefaultZone  string      `json:"defaultZone"`
-	Now          time.Time   `json:"now"`
-	SoonDays     int32       `json:"soonDays"`
+	OrgID           uuid.UUID   `json:"orgId"`
+	AllHospitals    bool        `json:"allHospitals"`
+	HospitalIds     []uuid.UUID `json:"hospitalIds"`
+	Status          string      `json:"status"`
+	IncludeArchived bool        `json:"includeArchived"`
+	Worklist        string      `json:"worklist"`
+	DefaultZone     string      `json:"defaultZone"`
+	Now             time.Time   `json:"now"`
+	SoonDays        int32       `json:"soonDays"`
 }
 
 type ListEpisodesRow struct {
@@ -591,12 +609,15 @@ type ListEpisodesRow struct {
 // from today at each episode's hospital (its time zone, else default_zone) and uses the hospital's
 // worklists.soonDays setting (its own, else its trust's, else soon_days, the platform default).
 // open_tasks: how many of its tasks are still open (TSK-01).
+// Archived episodes (S22, EPI-04) are left out unless include_archived, or the status asked for
+// is archived; no worklist has them (in_worklist).
 func (q *Queries) ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]ListEpisodesRow, error) {
 	rows, err := q.db.Query(ctx, listEpisodes,
 		arg.OrgID,
 		arg.AllHospitals,
 		arg.HospitalIds,
 		arg.Status,
+		arg.IncludeArchived,
 		arg.Worklist,
 		arg.DefaultZone,
 		arg.Now,
@@ -780,7 +801,7 @@ func (q *Queries) ListVersionChapters(ctx context.Context, versionID uuid.UUID) 
 }
 
 const lockEpisodeStatus = `-- name: LockEpisodeStatus :one
-SELECT e.status, e.revision, e.admitted_at, e.discharged_at, h.timezone
+SELECT e.status, e.revision, e.admitted_at, e.discharged_at, e.cancel_reason, e.archived_from, h.timezone
 FROM episodes e JOIN hospitals h ON h.id = e.hospital_id
 WHERE e.id = $1 FOR UPDATE OF e
 `
@@ -790,12 +811,15 @@ type LockEpisodeStatusRow struct {
 	Revision     int32       `json:"revision"`
 	AdmittedAt   pgtype.Date `json:"admittedAt"`
 	DischargedAt pgtype.Date `json:"dischargedAt"`
+	CancelReason *string     `json:"cancelReason"`
+	ArchivedFrom *string     `json:"archivedFrom"`
 	Timezone     *string     `json:"timezone"`
 }
 
 // Taken before a status change (S20), so two changes at once are applied one after the other,
 // each checking the revision and the table against the status as it is.
-// The hospital's time zone is for the dates' "not in the future".
+// The hospital's time zone is for the dates' "not in the future". archived_from is un-archive's
+// target (S22); the cancel reason is kept when a cancelled episode is archived.
 func (q *Queries) LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpisodeStatusRow, error) {
 	row := q.db.QueryRow(ctx, lockEpisodeStatus, id)
 	var i LockEpisodeStatusRow
@@ -804,6 +828,8 @@ func (q *Queries) LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpis
 		&i.Revision,
 		&i.AdmittedAt,
 		&i.DischargedAt,
+		&i.CancelReason,
+		&i.ArchivedFrom,
 		&i.Timezone,
 	)
 	return i, err
@@ -920,11 +946,11 @@ func (q *Queries) SavePatientAnswers(ctx context.Context, arg SavePatientAnswers
 const setEpisodeStatus = `-- name: SetEpisodeStatus :exec
 UPDATE episodes
 SET status = $1, admitted_at = $2, discharged_at = $3,
-    cancel_reason = $4,
-    review_completed_by = CASE WHEN $5::boolean THEN NULL ELSE review_completed_by END,
-    review_completed_at = CASE WHEN $5::boolean THEN NULL ELSE review_completed_at END,
+    cancel_reason = $4, archived_from = $5,
+    review_completed_by = CASE WHEN $6::boolean THEN NULL ELSE review_completed_by END,
+    review_completed_at = CASE WHEN $6::boolean THEN NULL ELSE review_completed_at END,
     revision = revision + 1
-WHERE id = $6
+WHERE id = $7
 `
 
 type SetEpisodeStatusParams struct {
@@ -932,6 +958,7 @@ type SetEpisodeStatusParams struct {
 	AdmittedAt   pgtype.Date `json:"admittedAt"`
 	DischargedAt pgtype.Date `json:"dischargedAt"`
 	CancelReason *string     `json:"cancelReason"`
+	ArchivedFrom *string     `json:"archivedFrom"`
 	Reopen       bool        `json:"reopen"`
 	ID           uuid.UUID   `json:"id"`
 }
@@ -939,12 +966,14 @@ type SetEpisodeStatusParams struct {
 // A status change, with what goes with it: the dates, the cancel reason, and for a re-open
 // (EPI-07) the review stamp cleared, which unlocks the clinician's answers (they're saved only
 // while the episode is Ready for review). The caller holds LockEpisodeStatus.
+// archived_from: the status it's archived from when archiving (S22), else NULL.
 func (q *Queries) SetEpisodeStatus(ctx context.Context, arg SetEpisodeStatusParams) error {
 	_, err := q.db.Exec(ctx, setEpisodeStatus,
 		arg.Status,
 		arg.AdmittedAt,
 		arg.DischargedAt,
 		arg.CancelReason,
+		arg.ArchivedFrom,
 		arg.Reopen,
 		arg.ID,
 	)

@@ -96,7 +96,7 @@ type eventRow struct {
 func readEvents(t *testing.T, w *clinic, episode uuid.UUID) []eventRow {
 	t.Helper()
 	rows, err := w.db.Query(t.Context(), `SELECT kind, text, user_id, created_at FROM episode_events
-		WHERE episode_id = $1 ORDER BY created_at, id`, episode)
+		WHERE episode_id = $1 ORDER BY created_at, seq`, episode)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,8 +118,10 @@ func readEvents(t *testing.T, w *clinic, episode uuid.UUID) []eventRow {
 // setStatus moves an episode on directly, as the patient's submit and the review would.
 func setStatus(t *testing.T, w *clinic, e apitest.Episode, status string) {
 	t.Helper()
+	// An archived one is archived from On hold (S22: archived_from is set exactly while archived).
 	_, err := w.db.Exec(t.Context(), `UPDATE episodes SET status = $2,
-		review_completed_at = CASE WHEN $2 IN ('hq_not_complete', 'ready_for_review') THEN NULL ELSE now() END
+		review_completed_at = CASE WHEN $2 IN ('hq_not_complete', 'ready_for_review') THEN NULL ELSE now() END,
+		archived_from = CASE WHEN $2 = 'archived' THEN 'on_hold' END
 		WHERE id = $1`, e.ID, status)
 	if err != nil {
 		t.Fatal(err)

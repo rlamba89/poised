@@ -7,6 +7,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -20,17 +21,25 @@ type Querier interface {
 	// contact. More than one without a name: people sharing the contact and the birthday, such as twins
 	// (S15 answers 6 and 8).
 	AccountsForSignin(ctx context.Context, arg AccountsForSigninParams) ([]AccountsForSigninRow, error)
-	// An entry written by the jobs (S16): a reminder, "not responding".
+	AddAutoArchiveJob(ctx context.Context, arg AddAutoArchiveJobParams) error
+	// An entry written by the jobs (S16): a reminder, "not responding", an auto-archive (S22); or by
+	// an undelivered report (S17). at is the run's time (S22 test report 1, F-2): a job run "as of" a
+	// later time writes as of then.
 	AddAutomaticEpisodeEvent(ctx context.Context, arg AddAutomaticEpisodeEventParams) error
 	AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams) error
 	AddHit(ctx context.Context, arg AddHitParams) error
 	AddMembership(ctx context.Context, arg AddMembershipParams) error
 	// Makes the user a superadmin (A-21); nothing changes if they already are.
 	AddPlatformAdmin(ctx context.Context, userID uuid.UUID) error
-	// One status change in the history (EPI-03).
+	// One status change in the history (EPI-03). rule names an automatic change's rule (the daily
+	// auto-archive, S22), with no user. at: when, for a job run as of its own time (S22 test report 1,
+	// F-2); NULL is now.
 	AddStatusEvent(ctx context.Context, arg AddStatusEventParams) error
 	// The names of the trust's patients in a page of the log, read now (the log holds only IDs).
 	AuditPatientNames(ctx context.Context, arg AuditPatientNamesParams) ([]AuditPatientNamesRow, error)
+	// Archives the episode, if nothing has changed it since it was read (the same status, and no
+	// write since: last_activity_at). No row: it changed meanwhile, and the next run decides again.
+	AutoArchiveEpisode(ctx context.Context, arg AutoArchiveEpisodeParams) (int64, error)
 	// Whether the account has an invite not yet accepted: it has never signed in.
 	AwaitingFirstSignIn(ctx context.Context, userID uuid.UUID) (bool, error)
 	// A change to the episode's tasks is a change to the episode (S20's revision): another tab's
@@ -40,6 +49,8 @@ type Querier interface {
 	// this one runs it (FOR UPDATE SKIP LOCKED: a row another runner is taking at the same moment is
 	// skipped). If this runner dies, the job is due again at lease_until. Nothing stays locked while
 	// the job runs, so a runner holds one database connection at a time.
+	// The hospitals' auto-archives go first (S22 test report 1, F-2): they decide on the activity
+	// there has been, before a reminder due in the same run would make an idle episode look active.
 	ClaimDueJob(ctx context.Context, arg ClaimDueJobParams) (ClaimDueJobRow, error)
 	CompleteReview(ctx context.Context, arg CompleteReviewParams) (int64, error)
 	// No row: it's already done.
@@ -50,10 +61,10 @@ type Querier interface {
 	CountHits(ctx context.Context, arg CountHitsParams) (int32, error)
 	// The trust's whole-trust admins other than this user.
 	CountOtherTrustAdmins(ctx context.Context, arg CountOtherTrustAdminsParams) (int64, error)
-	// a cancelled episode's follow-up stops (S20 answers 5)
+	// a cancelled (S20 answers 5) or archived (S22) episode's follow-up stops
 	// Takes reminder number `count` for the episode before it's sent, so it's sent at most once even
 	// if two runners decide at once. No row: it was already taken, the HQ has been sent, or the
-	// episode was cancelled meanwhile.
+	// episode was cancelled or archived meanwhile.
 	CountReminder(ctx context.Context, arg CountReminderParams) (int64, error)
 	// How many episodes each worklist has (S21): the episodes ListEpisodes would list for it, with the
 	// same scope and the same arguments. A worklist with none has no row.
@@ -89,6 +100,10 @@ type Querier interface {
 	// Nothing is returned when the email is already taken (by an invite running at the same time).
 	CreateUserIfNew(ctx context.Context, arg CreateUserIfNewParams) ([]uuid.UUID, error)
 	CreateVersion(ctx context.Context, arg CreateVersionParams) (uuid.UUID, error)
+	DeleteAccount(ctx context.Context, id uuid.UUID) error
+	// Its links to confirm a new contact (PAT-10).
+	DeleteAccountLinks(ctx context.Context, accountID uuid.NullUUID) error
+	DeleteAccountSessions(ctx context.Context, accountID uuid.UUID) error
 	DeleteChapter(ctx context.Context, id uuid.UUID) error
 	DeleteMembership(ctx context.Context, arg DeleteMembershipParams) error
 	DeleteOptionList(ctx context.Context, arg DeleteOptionListParams) (int64, error)
@@ -120,10 +135,15 @@ type Querier interface {
 	// sharing a birthday and a first name, on one phone stay apart). The oldest, if (rarely) more
 	// than one.
 	FindAccountForRecord(ctx context.Context, arg FindAccountForRecordParams) (uuid.UUID, error)
-	// Cancelling: the episode's follow-up (reminders, "not responding") stops.
+	// Cancelling or archiving (S22): the episode's follow-up (reminders, "not responding") stops.
 	FinishEpisodeJobs(ctx context.Context, episodeID uuid.NullUUID) error
 	FinishJob(ctx context.Context, arg FinishJobParams) error
+	// Their reminders stop too: each would send a new link.
+	FinishRecordsFollowups(ctx context.Context, patientIds []uuid.UUID) error
 	GetAccount(ctx context.Context, id uuid.UUID) (GetAccountRow, error)
+	// What the hospital's auto-archive decides with: its zone, its and its trust's settings, and
+	// whether both are active (nothing is archived while either is suspended, ORG-03).
+	GetArchivePolicy(ctx context.Context, id uuid.UUID) (GetArchivePolicyRow, error)
 	GetChapter(ctx context.Context, arg GetChapterParams) (GetChapterRow, error)
 	GetChapterMeta(ctx context.Context, arg GetChapterMetaParams) (GetChapterMetaRow, error)
 	// A sign-in or verification link, used or not, expired or not (the handler says which).
@@ -132,6 +152,7 @@ type Querier interface {
 	// With its HQ form (S18): the version, the patient's submit and who sent it keep their names
 	// from before forms, so the episode's JSON is unchanged; hq_form_id holds the answers.
 	GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpisodeRow, error)
+	// seq: notes written at the same time, in the order written (S22)
 	// An episode's HQ form as the patient fills it in: for the patient's session (the handler checks
 	// the episode is theirs) or staff completing it on their behalf (it checks the hospital).
 	GetEpisodeForm(ctx context.Context, id uuid.UUID) (GetEpisodeFormRow, error)
@@ -170,6 +191,10 @@ type Querier interface {
 	GetVersionChapter(ctx context.Context, arg GetVersionChapterParams) (GetVersionChapterRow, error)
 	HasNonDraftVersion(ctx context.Context, questionnaireID uuid.UUID) (bool, error)
 	HospitalInOrg(ctx context.Context, arg HospitalInOrgParams) (bool, error)
+	// The daily auto-archive (S22, EPI-05): one job per hospital, at 02:00 there.
+	// Hospitals that have no auto-archive job yet (new ones, or a fresh database): the runner adds
+	// one for each, at its next 02:00.
+	HospitalsWithoutAutoArchive(ctx context.Context) ([]HospitalsWithoutAutoArchiveRow, error)
 	// The audit log (plan C1, session S11; STF-06). Rows are only ever inserted (00009_audit_log.sql).
 	// at is the server's clock (Deps.Clock), so tests can place rows in time.
 	InsertAudit(ctx context.Context, arg InsertAuditParams) error
@@ -185,6 +210,9 @@ type Querier interface {
 	// The newest change that isn't an undo and hasn't been undone: what an undo would step back
 	// (episode.UndoTarget decides whether it can). No row: none.
 	LatestUndoable(ctx context.Context, episodeID uuid.UUID) (LatestUndoableRow, error)
+	// The hospital's episodes either rule could archive (episode.ArchiveDue decides): discharged,
+	// before admission, or cancelled. unarchived_at: the latest un-archive, if any.
+	ListArchiveCandidates(ctx context.Context, hospitalID uuid.UUID) ([]ListArchiveCandidatesRow, error)
 	// One trust's log, newest first, with the filters that are set: someone (a staff member, or
 	// patients_only for the patient's link), a time range [from_at, to_at), and patients (any of
 	// patient_ids, when by_patient).
@@ -205,6 +233,8 @@ type Querier interface {
 	// from today at each episode's hospital (its time zone, else default_zone) and uses the hospital's
 	// worklists.soonDays setting (its own, else its trust's, else soon_days, the platform default).
 	// open_tasks: how many of its tasks are still open (TSK-01).
+	// Archived episodes (S22, EPI-04) are left out unless include_archived, or the status asked for
+	// is archived; no worklist has them (in_worklist).
 	ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]ListEpisodesRow, error)
 	// The person's home (PX-08): every episode of every record joined to their account, in every
 	// trust, newest first, with the hospital's name. Suspended trusts and hospitals are left out
@@ -278,7 +308,8 @@ type Querier interface {
 	LockEpisode(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	// Taken before a status change (S20), so two changes at once are applied one after the other,
 	// each checking the revision and the table against the status as it is.
-	// The hospital's time zone is for the dates' "not in the future".
+	// The hospital's time zone is for the dates' "not in the future". archived_from is un-archive's
+	// target (S22); the cancel reason is kept when a cancelled episode is archived.
 	LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpisodeStatusRow, error)
 	// One hospital of the trust, locked until the transaction ends.
 	LockHospitalForAdmin(ctx context.Context, arg LockHospitalForAdminParams) (LockHospitalForAdminRow, error)
@@ -299,6 +330,8 @@ type Querier interface {
 	// Rate limits (PAT-11): rate_limit_hits.
 	// Hits on one key are counted and added one request at a time.
 	LockRateKey(ctx context.Context, key string) error
+	// MESSAGING=capture only: the testers' "run as of" runs every hospital's auto-archive (S22).
+	MakeAutoArchivesDue(ctx context.Context, asOf time.Time) error
 	// No row: already marked, the HQ has been sent, or the episode was cancelled.
 	MarkNotResponding(ctx context.Context, arg MarkNotRespondingParams) (int64, error)
 	MarkUndone(ctx context.Context, id uuid.UUID) error
@@ -308,6 +341,8 @@ type Querier interface {
 	MatchAuditPatients(ctx context.Context, arg MatchAuditPatientsParams) ([]uuid.UUID, error)
 	// The user's role in one membership: the whole trust (hospital_id NULL) or one hospital.
 	MembershipRole(ctx context.Context, arg MembershipRoleParams) (string, error)
+	// Staff see it on each of the records' episodes, dated at the episode's hospital.
+	NoteAccountClosed(ctx context.Context, arg NoteAccountClosedParams) error
 	NoteQAJobsTick(ctx context.Context, arg NoteQAJobsTickParams) error
 	// The procedure's name if an episode at this hospital can be given it now (ListProceduresOffered);
 	// no row if it can't.
@@ -338,6 +373,9 @@ type Querier interface {
 	ResetEpisodeDob(ctx context.Context, id uuid.UUID) error
 	// MESSAGING=capture only (local, QA): a tester's fresh start.
 	ResetRateLimits(ctx context.Context) error
+	// Unused sign-in links to the account's mobile or email stop working, unless another account
+	// signs in with that contact too (twins sharing a phone, S15): theirs carries on.
+	RevokeAccountSigninLinks(ctx context.Context, arg RevokeAccountSigninLinksParams) error
 	// Cancelling (S20 answers 5): the episode's invite links stop working, and with them the patient
 	// sessions opened from them (TouchPatientSession checks the link).
 	RevokeEpisodeInvites(ctx context.Context, episodeID uuid.NullUUID) error
@@ -346,6 +384,9 @@ type Querier interface {
 	// An invite went: the episode's links older than it stop working (only the newest works, even
 	// when two resends cross: each revokes only what came before it).
 	RevokeOlderInviteLinks(ctx context.Context, arg RevokeOlderInviteLinksParams) error
+	// The records' invite links stop working: an unsent HQ won't be sent. Staff can send a new
+	// invite, which starts a new account.
+	RevokeRecordsInvites(ctx context.Context, patientIds []uuid.UUID) error
 	// A newer request for the same kind of contact (mobile or email) replaces the older links.
 	RevokeVerifyLinks(ctx context.Context, arg RevokeVerifyLinksParams) error
 	// The caller's roles at a hospital of a trust: trust-wide, at that hospital, or both. None when
@@ -390,6 +431,7 @@ type Querier interface {
 	// A status change, with what goes with it: the dates, the cancel reason, and for a re-open
 	// (EPI-07) the review stamp cleared, which unlocks the clinician's answers (they're saved only
 	// while the episode is Ready for review). The caller holds LockEpisodeStatus.
+	// archived_from: the status it's archived from when archiving (S22), else NULL.
 	SetEpisodeStatus(ctx context.Context, arg SetEpisodeStatusParams) error
 	SetHospitalSettings(ctx context.Context, arg SetHospitalSettingsParams) error
 	SetHospitalStatus(ctx context.Context, arg SetHospitalStatusParams) error
@@ -423,6 +465,10 @@ type Querier interface {
 	// other. No row: the session has ended.
 	TouchPatientSession(ctx context.Context, arg TouchPatientSessionParams) (uuid.UUID, error)
 	TouchVersion(ctx context.Context, arg TouchVersionParams) error
+	// Closing an account (S22, EPI-09): the login goes; every trust's records and episodes stay.
+	// The trust's records of the person leave the account, which a later invite makes again (S15).
+	// Returns them, for each trust's audit log and the episodes' notes.
+	UnlinkAccountRecords(ctx context.Context, accountID uuid.NullUUID) ([]UnlinkAccountRecordsRow, error)
 	UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) error
 	// The details staff edit (the status has its own routes, S20). Changes nothing if the episode's
 	// revision is no longer the one the caller's page loaded: someone, or the workflow, changed it

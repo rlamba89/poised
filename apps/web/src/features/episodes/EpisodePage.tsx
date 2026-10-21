@@ -16,15 +16,16 @@ import { EditProcedure } from "./EditProcedure";
 import { StatusBadge } from "./EpisodeList";
 import { GeneralNotes } from "./GeneralNotes";
 import { currentAnswers, useEpisodeHQ } from "./hq";
-import type { StatusEvent, StatusOption, UndoOption } from "./status";
+import { historyWho, type StatusEvent, type StatusOption, type UndoOption } from "./status";
 import { StatusControl, StatusHistory } from "./StatusControl";
 import { TasksPanel } from "./TasksPanel";
-import { patientName, type Episode, type EpisodeEvent, type EpisodeInvite } from "./types";
+import { patientName, STATUS_LABELS, type Episode, type EpisodeEvent, type EpisodeInvite } from "./types";
 import { inviteUndelivered, statusUndelivered, undeliveredText, type Undelivered } from "./undelivered";
 
 /**
  * GET …/episodes/:id. S20 added the status: `moves` (what this user may do from here), `undo`
- * (the last move made by hand, if it can be stepped back) and `statusHistory`.
+ * (the last move made by hand, if it can be stepped back) and `statusHistory`. S22: `unarchive`,
+ * the way back from Archived for a super clinician (null otherwise).
  */
 export type EpisodeDetail = {
   episode: Episode;
@@ -33,6 +34,7 @@ export type EpisodeDetail = {
   undelivered: Undelivered[];
   moves: StatusOption[];
   undo: UndoOption;
+  unarchive: UndoOption;
   statusHistory: StatusEvent[];
 };
 
@@ -60,6 +62,8 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
   if (!data) return error ? <Alert color="red">{error}</Alert> : <Center h="40vh"><Loader /></Center>;
   const e = data.episode;
   const cancelled = e.status === "cancelled";
+  const archived = e.status === "archived"; // S22: read-only, every control off
+  const archivedBy = data.statusHistory.findLast((h) => h.move === "archive");
   // The reason as recorded, with any details (S20): the latest cancel in the history.
   const cancelledWhy = data.statusHistory.findLast((h) => h.move === "cancel")?.reason;
   // The invite's and reminders' failures go with the invite card; the status messages' (S21) with the status.
@@ -94,6 +98,13 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
           questionnaire as cancelled by the hospital.
         </Alert>
       )}
+      {archived && (
+        <Alert color="gray" title="This episode is archived" data-testid="archived">
+          Archived from {e.archivedFrom ? STATUS_LABELS[e.archivedFrom] : "—"}
+          {archivedBy ? ` on ${formatDateTime(archivedBy.createdAt)} by ${historyWho(archivedBy)}` : ""}
+          {archivedBy?.reason ? `. Reason: ${archivedBy.reason}` : ""}. It can&apos;t be changed: a super clinician can un-archive it.
+        </Alert>
+      )}
 
       <Card withBorder>
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
@@ -113,7 +124,7 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
           {e.dischargedAt && <Detail label="Discharge date" value={formatOptionalDate(e.dischargedAt)} />}
         </SimpleGrid>
         {/* The procedure and its dates can be changed until the HQ review is complete (S19), unless it's cancelled (S20). */}
-        {!e.reviewCompletedAt && !cancelled && !editing && (
+        {!e.reviewCompletedAt && !cancelled && !archived && !editing && (
           <Group justify="flex-end" mt="xs">
             <Button size="xs" variant="default" onClick={() => setEditing(true)}>Edit procedure and dates</Button>
           </Group>
@@ -152,7 +163,7 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
 
       <Card withBorder>
         <Title order={4} mb="xs">General notes</Title>
-        <GeneralNotes path={path} events={data.events} onAdded={reload} />
+        <GeneralNotes path={path} events={data.events} onAdded={reload} readOnly={archived} />
       </Card>
     </Stack>
   );
@@ -187,7 +198,10 @@ function Invite({ path, episode, invite, undelivered, onSent }: {
       <Text size="sm" c="dimmed" mb="xs">
         {invite
           ? `Last sent ${formatDateTime(invite.sentAt)}. The patient opens the link in their text message or email, then confirms their date of birth. The General notes say how it was sent.`
-          : "No invite has been sent. The General notes say why."}
+          : episode.invitedAt
+            // Every link was stopped since one reached the patient: they closed their account (S22 test report 1).
+            ? "The patient's link no longer works: the General notes say why (for example, they closed their account). Send a new invite if they still need it."
+            : "No invite has been sent. The General notes say why."}
       </Text>
       {episode.invitedAt && (
         <Text size="sm" c="dimmed" mb="xs" data-testid="reminders">

@@ -22,8 +22,9 @@ import (
 // the only mode until S17 (S17's CDK check refuses capture outside QA).
 
 type jobsSummary struct {
-	AsOf                                     time.Time
+	AsOf                                   time.Time
 	Jobs, Reminders, NotResponding, Failed int
+	AutoArchives, Archived                 int // S22
 }
 
 func runJobs(t *testing.T, c *apitest.Client, asOf time.Time) jobsSummary {
@@ -35,6 +36,9 @@ func runJobs(t *testing.T, c *apitest.Client, asOf time.Time) jobsSummary {
 	if !s.AsOf.Equal(asOf) {
 		t.Errorf("asOf %v, want %v", s.AsOf, asOf)
 	}
+	// A run from the testers' page runs every hospital's auto-archive too (S22); Jobs counts
+	// the follow-ups only, as these tests were written.
+	s.Jobs -= s.AutoArchives
 	return s
 }
 

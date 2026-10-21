@@ -21,7 +21,7 @@ const maxQAOffset = 90 * 24 * 60
 func NewJobsRunner(d Deps) jobs.Runner { return newServer(d).jobs }
 
 // qaRunJobs is POST /api/qa/jobs/run {asOf}: runs every job due at asOf (an RFC 3339 time, e.g.
-// two days on) now, and says what it did.
+// two days on) now, and every hospital's auto-archive as of then (S22), and says what it did.
 func (s *server) qaRunJobs(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		AsOf string `json:"asOf"`
@@ -34,7 +34,7 @@ func (s *server) qaRunJobs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Give the date and time to run the jobs as of, e.g. 2026-10-15T09:30:00Z.")
 		return
 	}
-	sum, err := s.jobs.RunDue(r.Context(), asOf)
+	sum, err := s.jobs.RunAllAsOf(r.Context(), asOf)
 	if err != nil {
 		serverError(w, "run jobs", err)
 		return

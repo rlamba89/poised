@@ -214,7 +214,11 @@ function Field({ def, value, disabled, questionnaires, onChange }: {
     case "bool":
       return <Switch {...common} checked={!!value} onChange={(e) => onChange(e.currentTarget.checked)} />;
     case "int":
-      return <NumberInput {...common} w={200} min={def.min} max={def.max} allowDecimal={false} value={value as number}
+      // clampBehavior "none": a number out of range stays as typed, and Save shows the API's refusal
+      // ("…: enter a whole number from 1 to 365."), rather than quietly saving the nearest allowed
+      // one (S22 test report 1, F-1). Every number setting uses this box. Decimals are allowed in the
+      // box so "7.5" isn't read as 75 or 7; the API refuses anything but a whole number (test report 2).
+      return <NumberInput {...common} w={200} min={def.min} max={def.max} clampBehavior="none" value={value as number}
         onChange={(v) => onChange(typeof v === "number" ? v : v === "" ? "" : Number(v))} />;
     case "dayList":
       return <TextInput {...common} w={300} placeholder={disabled ? "None" : "e.g. 2, 5"} value={String(value ?? "")}

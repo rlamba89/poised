@@ -65,6 +65,7 @@ func (s *server) listTrustEpisodes(w http.ResponseWriter, r *http.Request) {
 func (s *server) writeEpisodes(w http.ResponseWriter, r *http.Request, arg db.ListEpisodesParams) {
 	arg.Status = r.URL.Query().Get("status")
 	arg.Worklist = r.URL.Query().Get("worklist")
+	arg.IncludeArchived = r.URL.Query().Get("archived") == "true" // "Show archived" (S22): left out otherwise
 	if arg.Worklist != "" && !episode.IsWorklist(arg.Worklist) {
 		writeError(w, http.StatusBadRequest, "Choose a worklist.")
 		return
@@ -239,7 +240,7 @@ func (s *server) getEpisode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"episode": e, "events": events, "invite": invite, "undelivered": undelivered,
-		"moves": status.Moves, "undo": status.Undo, "statusHistory": status.History})
+		"moves": status.Moves, "undo": status.Undo, "unarchive": status.Unarchive, "statusHistory": status.History})
 }
 
 // episodeChange is what updateEpisode changes. A field sent as null decodes to a nil pointer;
@@ -304,8 +305,8 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		writeStale(w)
 		return
 	}
-	if e.Status == episode.Cancelled {
-		writeError(w, http.StatusConflict, cancelledMsg)
+	if msg := readOnly(e.Status); msg != "" {
+		writeError(w, http.StatusConflict, msg)
 		return
 	}
 	if next != was && e.ReviewCompletedAt.Valid {
@@ -382,6 +383,10 @@ func (s *server) addEpisodeNote(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Enter a comment.")
 		return
 	}
+	if e.Status == episode.Archived { // S22 answers 2: notes too (a cancelled episode still takes them)
+		writeError(w, http.StatusConflict, archivedMsg)
+		return
+	}
 	uid := currentUser(r).ID
 	err := s.q.AddEpisodeEvent(r.Context(), db.AddEpisodeEventParams{EpisodeID: e.ID, Kind: "comment", Text: text, UserID: uuid.NullUUID{UUID: uid, Valid: true}})
 	if err != nil {
@@ -389,6 +394,17 @@ func (s *server) addEpisodeNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
+}
+
+// readOnly is why an episode in this status can't be changed (cancelled, S20; archived, S22), or "".
+func readOnly(status string) string {
+	switch status {
+	case episode.Cancelled:
+		return cancelledMsg
+	case episode.Archived:
+		return archivedMsg
+	}
+	return ""
 }
 
 // event records an automatic General note. A failure is logged only: the change itself is saved.
