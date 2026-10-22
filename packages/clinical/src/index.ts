@@ -12,6 +12,7 @@ export * from "./testcases";
 export * from "./translations";
 export * from "./questionSets";
 export * from "./publish";
+export * from "./keys";
 export * from "./respondent";
 export * from "./poa";
 export * from "./answerSaver";

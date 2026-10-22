@@ -294,11 +294,16 @@ type Querier interface {
 	// The trust's whole-trust admins, for the platform admin, with each account's latest open
 	// invite (set while it waits for its first sign-in).
 	ListTrustAdmins(ctx context.Context, orgID uuid.UUID) ([]ListTrustAdminsRow, error)
+	// Every Question Set of the trust's published and retired versions (S23): where each question
+	// key is used, and its options as published. Newest version first within each questionnaire.
+	ListTrustPublishedContents(ctx context.Context, orgID uuid.UUID) ([]ListTrustPublishedContentsRow, error)
 	// The episode's messages that didn't reach the patient since its latest invite or Resend (S17):
 	// a later Resend starts afresh. status: for a status message (S21), the status it was sent for.
 	ListUndeliveredMessages(ctx context.Context, episodeID uuid.UUID) ([]ListUndeliveredMessagesRow, error)
 	ListUsers(ctx context.Context) ([]ListUsersRow, error)
 	ListVersionChapters(ctx context.Context, versionID uuid.UUID) ([]ListVersionChaptersRow, error)
+	// A version's Question Sets with their content, for the key checks (S23).
+	ListVersionContents(ctx context.Context, versionID uuid.UUID) ([]ListVersionContentsRow, error)
 	LockAccount(ctx context.Context, id uuid.UUID) (LockAccountRow, error)
 	// Accounts are matched by date of birth: one person's records join one at a time, so two first
 	// visits at once (from two trusts' invites) can't make two accounts.

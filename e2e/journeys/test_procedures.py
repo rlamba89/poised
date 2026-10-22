@@ -92,7 +92,9 @@ def test_a_super_clinician_manages_the_list_and_a_clinician_picks_from_it(page: 
         p.goto(f"{sign_in(cara, 'Cara Clinician')}/episodes/new")
         pick(p, "Procedure", f"{hip} (E2E-1)")
         expect(p.get_by_role("combobox", name="Health questionnaire")).to_have_value(f"{hq['name']} v1")
-        pick(p, "Health questionnaire", "Demo pre-op HQ v1")
+        # Any published version of the seeded HQ: a tester may have published a new one (S23 R-05).
+        p.get_by_role("combobox", name="Health questionnaire").click()
+        p.get_by_role("option", name=re.compile(r"^Demo pre-op HQ v\d+$")).click()
         expect(p.get_by_role("combobox", name="Procedure")).to_have_value(f"{hip} (E2E-1)")
         # A1's own procedure is offered here.
         p.get_by_role("combobox", name="Procedure").fill(eye)

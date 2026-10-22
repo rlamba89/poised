@@ -144,7 +144,11 @@ export const isAnswerKind = (k: Kind) => !["group", "section", "statement", "pro
 /** BMI and Profile are fixed blocks: they can only be deleted (incumbent "Locked"). */
 export const isLocked = (k: Kind) => k === "bmi" || k === "profile";
 
-/** A new element of a kind, with fresh IDs. New questions are required (QST-02). */
+/**
+ * A new element of a kind, with fresh IDs. New questions are required (QST-02).
+ * Its default titles ("Text question", "Group"…) are placeholders that never match by wording for
+ * pre-fill: keep `placeholders` in apps/api/internal/keys/keys.go in step when they change.
+ */
 export function newElement(kind: Kind, taken: Set<string>): ElementJson {
   const name = freshId(kind === "group" || kind === "section" ? "g" : "q", 6, taken);
   const options = (labels: string[]) => {

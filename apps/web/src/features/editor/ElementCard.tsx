@@ -5,16 +5,17 @@ import { Fragment, useEffect, useState } from "react";
 import { ActionIcon, Badge, Button, Menu, Text, TextInput, Tooltip } from "@mantine/core";
 import {
   IconArrowDown, IconArrowUp, IconCalculator, IconCopy, IconDots, IconFileArrowRight, IconGitBranch, IconInfoCircle, IconLink,
-  IconFolderMinus, IconFolderPlus, IconLock, IconPlus, IconRepeat, IconSignature, IconTrash, IconUpload,
+  IconFolderMinus, IconFolderPlus, IconLock, IconPlus, IconRefresh, IconRepeat, IconSignature, IconTrash, IconUpload,
 } from "@tabler/icons-react";
 import {
-  bandsOf, calcFormOf, choiceDisplayOf, copyElement, countDisclosures, dateSettingsOf, describeLogic, enableIfToReadOnly,
+  bandsOf, calcFormOf, canAskFresh, choiceDisplayOf, keyPlace, copyElement, countDisclosures, dateSettingsOf, describeLogic, enableIfToReadOnly,
   findElement, groupsToMoveInto, hasQuestionOutputs, isLocked, kindOf, moveElement, moveElementTo, moveOutOfGroup, numberSettingsOf, optionsOf, pageTitle, pagesOf, plainText,
   repeatSettingsOf, textFormatOf, textOf, updateElement, DATE_FORMATS, TEXT_FORMATS, type ChoiceJson, type ElementJson, type Part,
   type Target,
 } from "@poised/clinical";
 import { AddContentBar } from "./AddContentBar";
 import { useEditor } from "./context";
+import { PrefillLabel } from "./questionKeys";
 import css from "./editor.module.css";
 
 export function ElementList({ elements, target, pageElements }: { elements: ElementJson[]; target: Omit<Target, "index">; pageElements: ElementJson[] }) {
@@ -25,6 +26,26 @@ export function ElementList({ elements, target, pageElements }: { elements: Elem
       ))}
     </>
   );
+}
+
+/**
+ * A patient question's pre-fill badge (S23): "Always ask fresh" when the author switched it on,
+ * else where it pre-fills from (PRE-05). Not on clinician-only content, nor inside a repeating
+ * group, whose rows are copied whole.
+ */
+function KeyBadge({ el }: { el: ElementJson }) {
+  const ed = useEditor();
+  if (!canAskFresh(el) || ed.clinicianSet) return null;
+  const place = keyPlace(ed.doc, el.name);
+  if (place.clinicianOnly || place.inList) return null;
+  if (el.alwaysFresh) {
+    return (
+      <Badge size="sm" variant="light" color="orange" radius="sm" leftSection={<IconRefresh size={10} />} data-testid="always-fresh">
+        Always ask fresh
+      </Badge>
+    );
+  }
+  return ed.keys ? <PrefillLabel matches={ed.keys.questions[el.name] ?? []} /> : null;
 }
 
 function ElementCard(props: { el: ElementJson; index: number; count: number; target: Omit<Target, "index">; pageElements: ElementJson[] }) {
@@ -102,6 +123,7 @@ function ElementCard(props: { el: ElementJson; index: number; count: number; tar
           {locked && (
             <Badge size="sm" variant="outline" color="gray" radius="sm" leftSection={<IconLock size={10} />}>Locked</Badge>
           )}
+          <KeyBadge el={el} />
         </span>
         {!ed.readOnly && (
           <span className={css.cardActions}>

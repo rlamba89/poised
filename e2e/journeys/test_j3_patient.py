@@ -36,7 +36,8 @@ def test_patient_fills_in_and_sends_their_hq_on_a_phone(page: Page, phone: Brows
     # The procedure from the trust's list (S19) chooses its default HQ (the seed's demo HQ); she
     # picks the journey's HQ instead, and the dates.
     pick(page, "Procedure", "Knee arthroscopy (KNEE-02)")
-    expect(page.get_by_role("combobox", name="Health questionnaire")).to_have_value("Demo pre-op HQ v1")
+    # Any published version of the seeded HQ: a tester may have published a new one (S23 R-05).
+    expect(page.get_by_role("combobox", name="Health questionnaire")).to_have_value(re.compile(r"^Demo pre-op HQ v\d+$"))
     pick(page, "Health questionnaire", f"{hq['name']} v1")
     page.get_by_label("Planned procedure date").fill("2026-11-03")
     page.get_by_label("POA appointment date").fill("2026-10-28")

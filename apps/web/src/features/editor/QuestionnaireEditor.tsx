@@ -11,13 +11,14 @@ import {
 } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { signOut as signOutStaff } from "@/lib/signin";
-import { canChange, useHospital, useMe } from "@/lib/auth";
+import { atLeast, canChange, useHospital, useMe } from "@/lib/auth";
 import type { Chapter } from "@/features/chapters/types";
 import { PageCanvas, SetCanvas } from "./Canvas";
 import { EditorContext, type EditorContextValue } from "./context";
 import { DisclosureModal, type DisclosureTarget } from "./DisclosureModal";
 import { PageLogic } from "./LogicEditor";
 import { PublishModal } from "./PublishModal";
+import { useQuestionKeys } from "./questionKeys";
 import { SettingsPanel, type PanelTab } from "./SettingsPanel";
 import { StructurePanel, type Selection } from "./StructurePanel";
 import { TranslateView } from "./TranslateView";
@@ -64,6 +65,16 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
   const shownConfirm = confirm ?? lastConfirm;
   const [translating, setTranslating] = useState(false);
   const [publishing, setPublishing] = useState(false);
+
+  // Where the trust uses each key (S23): fetched when the editor opens, and again after each save.
+  const [savedCount, setSavedCount] = useState(0);
+  useEffect(() => {
+    if (store.overall === "saved") setSavedCount((n) => n + 1);
+  }, [store.overall]);
+  const { keys, current: keysCurrent, reload: reloadKeys } = useQuestionKeys(
+    data && atLeast(here.role, "super_clinician") ? `${base}/questionnaires/${questionnaireId}/question-keys` : null,
+    `${data?.questionnaire.versionId}:${savedCount}`,
+  );
 
   const reload = useCallback(
     () =>
@@ -152,6 +163,8 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
       doc,
       pageName: page.name,
       readOnly,
+      keys,
+      clinicianSet: !!chapter && chapter.audience !== "patient",
       selected,
       select: selectElement,
       change,
@@ -187,7 +200,7 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
       setDragging,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, page, readOnly, selected, change, dragging]);
+  }, [doc, page, readOnly, keys, chapter, selected, change, dragging]);
 
   const withChapter = (id: string, edit: (d: ChapterJson) => ChapterJson) => !readOnly && store.apply(id, edit);
 
@@ -414,6 +427,7 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
               name={selected!}
               tab={tab}
               readOnly={readOnly}
+              clinicianSet={!!chapter && chapter.audience !== "patient"}
               onTab={setTab}
               onClose={() => setSelected(null)}
               change={change}
@@ -477,6 +491,8 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
         versionNo={q.versionNo}
         sets={data.chapters.every((c) => store.get(c.id)) ? data.chapters.map((c) => ({ name: c.name, doc: store.get(c.id)!.doc })) : null}
         unsaved={store.overall !== "saved"}
+        keyProblems={keysCurrent ? (keys?.problems ?? []) : null}
+        onOpen={reloadKeys}
       />
 
       <Modal opened={!!confirm} onClose={() => setConfirm(null)} title={shownConfirm?.title}>

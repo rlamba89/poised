@@ -163,6 +163,8 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/questionnaires/{qid}/chapter-order", hosp(s.reorderChapters))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires/{qid}/publish", hosp(s.publishQuestionnaire))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires/{qid}/versions", hosp(s.createVersion))
+	// Where the trust uses each question key (S23): the editor's pre-fill label and option lock (question_keys.go).
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/questionnaires/{qid}/question-keys", hosp(s.questionKeys))
 
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/chapters/{cid}", hosp(s.getChapter))
 	mux.HandleFunc("PATCH /api/o/{oid}/h/{hid}/chapters/{cid}", hosp(s.updateChapter))

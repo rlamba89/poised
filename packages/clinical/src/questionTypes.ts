@@ -92,6 +92,8 @@ export function registerQuestionTypes(): void {
   Serializer.addProperty("survey", { name: "testCases", ...hidden });
   Serializer.addProperty("surveytrigger", { name: "page", ...hidden });
   Serializer.addProperty("survey", { name: "chapterVisibleIf", ...hidden });
+  // "Always ask fresh" (S23): never pre-filled from an earlier HQ. Answer-holding questions only.
+  Serializer.addProperty("question", { name: "alwaysFresh:boolean", default: false, ...hidden });
 
   registerClinicalFunctions();
 

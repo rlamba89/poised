@@ -197,6 +197,90 @@ func (q *Queries) ListChapters(ctx context.Context, versionID uuid.UUID) ([]List
 	return items, nil
 }
 
+const listTrustPublishedContents = `-- name: ListTrustPublishedContents :many
+SELECT q.id AS questionnaire_id, q.name AS questionnaire_name, v.id AS version_id, v.version_no,
+       c.name, c.audience, c.content
+FROM chapters c
+JOIN questionnaire_versions v ON v.id = c.version_id
+JOIN questionnaires q ON q.id = v.questionnaire_id
+WHERE q.org_id = $1 AND v.status IN ('published', 'retired')
+ORDER BY q.name, q.id, v.version_no DESC, c.position, c.name
+`
+
+type ListTrustPublishedContentsRow struct {
+	QuestionnaireID   uuid.UUID       `json:"questionnaireId"`
+	QuestionnaireName string          `json:"questionnaireName"`
+	VersionID         uuid.UUID       `json:"versionId"`
+	VersionNo         int32           `json:"versionNo"`
+	Name              string          `json:"name"`
+	Audience          string          `json:"audience"`
+	Content           json.RawMessage `json:"content"`
+}
+
+// Every Question Set of the trust's published and retired versions (S23): where each question
+// key is used, and its options as published. Newest version first within each questionnaire.
+func (q *Queries) ListTrustPublishedContents(ctx context.Context, orgID uuid.UUID) ([]ListTrustPublishedContentsRow, error) {
+	rows, err := q.db.Query(ctx, listTrustPublishedContents, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTrustPublishedContentsRow{}
+	for rows.Next() {
+		var i ListTrustPublishedContentsRow
+		if err := rows.Scan(
+			&i.QuestionnaireID,
+			&i.QuestionnaireName,
+			&i.VersionID,
+			&i.VersionNo,
+			&i.Name,
+			&i.Audience,
+			&i.Content,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listVersionContents = `-- name: ListVersionContents :many
+SELECT c.name, c.audience, c.content
+FROM chapters c
+WHERE c.version_id = $1
+ORDER BY c.position, c.name
+`
+
+type ListVersionContentsRow struct {
+	Name     string          `json:"name"`
+	Audience string          `json:"audience"`
+	Content  json.RawMessage `json:"content"`
+}
+
+// A version's Question Sets with their content, for the key checks (S23).
+func (q *Queries) ListVersionContents(ctx context.Context, versionID uuid.UUID) ([]ListVersionContentsRow, error) {
+	rows, err := q.db.Query(ctx, listVersionContents, versionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListVersionContentsRow{}
+	for rows.Next() {
+		var i ListVersionContentsRow
+		if err := rows.Scan(&i.Name, &i.Audience, &i.Content); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const saveChapterContent = `-- name: SaveChapterContent :one
 UPDATE chapters
 SET content = $1, revision = revision + 1, updated_by = $2, updated_at = now()

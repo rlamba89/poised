@@ -183,6 +183,8 @@ func (s *server) deleteQuestionnaire(w http.ResponseWriter, r *http.Request) {
 // publishQuestionnaire publishes the latest version, which must be a draft (LCY-01). There is
 // no sign-off yet (SGN comes later). The browser has already checked logic problems and test
 // cases (plan 2.1). `versionId` is the version it checked, so a newer one isn't published by mistake.
+// Go checks the question keys itself (S23): a key used twice in the HQ, or a published keyed
+// question's options changed, is a 422 with the list of problems.
 func (s *server) publishQuestionnaire(w http.ResponseWriter, r *http.Request) {
 	row, ok := s.loadQuestionnaire(w, r)
 	if !ok {
@@ -202,22 +204,56 @@ func (s *server) publishQuestionnaire(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "This version has changed since you opened it. Reload and try again.")
 		return
 	}
-	chapters, err := s.q.ListChapters(r.Context(), row.VersionID)
+	ctx := r.Context()
+	// One publish at a time in a trust, so two HQs can't each pass the key checks against the other's old options.
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		serverError(w, "list chapters", err)
+		serverError(w, "begin", err)
 		return
 	}
-	if len(chapters) == 0 {
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	if err := q.LockOrgQuestionnaires(ctx, row.OrgID); err != nil {
+		serverError(w, "lock", err)
+		return
+	}
+	rows, err := q.ListVersionContents(ctx, row.VersionID)
+	if err != nil {
+		serverError(w, "list contents", err)
+		return
+	}
+	if len(rows) == 0 {
 		writeError(w, http.StatusBadRequest, "Add at least one Question Set before publishing.")
 		return
 	}
-	n, err := s.q.PublishVersion(r.Context(), db.PublishVersionParams{VersionID: row.VersionID, UpdatedBy: currentUser(r).ID})
+	draft, err := versionQuestions(rows)
+	if err != nil {
+		serverError(w, "walk questionnaire", err)
+		return
+	}
+	versions, err := trustVersions(ctx, q, row.OrgID)
+	if err != nil {
+		serverError(w, "walk trust questionnaires", err)
+		return
+	}
+	if problems := keyProblems(draft, versions); len(problems) > 0 {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":    "This version can't be published until these problems are fixed.",
+			"problems": problems,
+		})
+		return
+	}
+	n, err := q.PublishVersion(ctx, db.PublishVersionParams{VersionID: row.VersionID, UpdatedBy: currentUser(r).ID})
 	if err != nil {
 		serverError(w, "publish", err)
 		return
 	}
 	if n == 0 {
 		writeError(w, http.StatusConflict, "This version has changed since you opened it. Reload and try again.")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		serverError(w, "commit", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

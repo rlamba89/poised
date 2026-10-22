@@ -39,7 +39,8 @@ describe("publishProblems", () => {
 
   it("reports logic problems with the Question Set's name", () => {
     const doc = smoker([], "{q_gone} = 'o_y'");
-    const problems = publishProblems([{ name: "A" , doc: smoker() }, { name: "Lifestyle", doc }]);
+    const other: ChapterJson = { pages: [{ name: "p_2", elements: [{ type: "text", name: "q_other", title: "Other" }] }] }; // keys unique in the HQ (S23)
+    const problems = publishProblems([{ name: "A", doc: other }, { name: "Lifestyle", doc }]);
     expect(problems).toHaveLength(1);
     expect(problems[0].set).toBe("Lifestyle");
   });

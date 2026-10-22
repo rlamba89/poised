@@ -1,11 +1,16 @@
 // What every part of the page canvas needs: the chapter being edited and the editor's actions.
 import { createContext, useContext } from "react";
 import type { ChapterJson, Kind, Target } from "@poised/clinical";
+import type { QuestionKeys } from "./questionKeys";
 
 export type EditorContextValue = {
   doc: ChapterJson;
   pageName: string;
   readOnly: boolean;
+  /** Where the trust uses each key (S23), or null: not loaded, or the user can't see it. */
+  keys: QuestionKeys | null;
+  /** The Question Set is for clinicians: nothing in it is pre-filled. */
+  clinicianSet: boolean;
   selected: string | null;
   /** The group or section new elements go into (the incumbent: a selected Section receives Add content). */
   select: (name: string | null) => void;

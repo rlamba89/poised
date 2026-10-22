@@ -168,7 +168,7 @@ func TestRoleLadder(t *testing.T) {
 	t.Parallel()
 	w := newTrusts(t)
 	draft := func(t *testing.T) apitest.HQ {
-		return w.fx.DraftHQ(t, w.a1, w.fx.User(t, w.a1, "super_clinician"), "basic.json")
+		return w.fx.DraftHQ(t, w.a1, w.fx.User(t, w.a1, "super_clinician"), "workflow.json") // the trust publishes workflow.json too; basic.json's q_smokes is another kind of question (S23 lock)
 	}
 	publish := func(c *apitest.Client, h apitest.Hospital, hq apitest.HQ) *apitest.Resp {
 		return c.Do("POST", h.Path("/questionnaires/"+hq.ID.String()+"/publish"), map[string]any{"versionId": hq.VersionID})
@@ -366,6 +366,11 @@ func TestTrustContentNeedsAWholeTrustRole(t *testing.T) {
 	})
 	t.Run("and they change their hospital's own content", func(t *testing.T) {
 		own := ownedBy(t, w, w.fx.DraftHQ(t, w.a1, author, "basic.json"), w.a1)
+		// The trust has published both basic.json and workflow.json, whose q_smokes differ: a draft
+		// holding q_smokes can't satisfy both option locks (S23), so this one asks nothing yet.
+		if _, err := w.anon.DB.Exec(t.Context(), "UPDATE chapters SET content = '{}' WHERE version_id = $1", own.VersionID); err != nil {
+			t.Fatal(err)
+		}
 		suec.Do("POST", q(own, "/chapters"), map[string]string{"name": "Ours"}).Want(t, http.StatusCreated)
 		suec.Do("POST", q(own, "/publish"), map[string]any{"versionId": own.VersionID}).Want(t, http.StatusNoContent)
 	})

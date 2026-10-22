@@ -49,3 +49,21 @@ UPDATE chapters
 SET content = sqlc.arg(content), revision = revision + 1, updated_by = sqlc.arg(updated_by), updated_at = now()
 WHERE id = sqlc.arg(id) AND revision = sqlc.arg(revision)
 RETURNING revision;
+
+-- name: ListVersionContents :many
+-- A version's Question Sets with their content, for the key checks (S23).
+SELECT c.name, c.audience, c.content
+FROM chapters c
+WHERE c.version_id = $1
+ORDER BY c.position, c.name;
+
+-- name: ListTrustPublishedContents :many
+-- Every Question Set of the trust's published and retired versions (S23): where each question
+-- key is used, and its options as published. Newest version first within each questionnaire.
+SELECT q.id AS questionnaire_id, q.name AS questionnaire_name, v.id AS version_id, v.version_no,
+       c.name, c.audience, c.content
+FROM chapters c
+JOIN questionnaire_versions v ON v.id = c.version_id
+JOIN questionnaires q ON q.id = v.questionnaire_id
+WHERE q.org_id = $1 AND v.status IN ('published', 'retired')
+ORDER BY q.name, q.id, v.version_no DESC, c.position, c.name;

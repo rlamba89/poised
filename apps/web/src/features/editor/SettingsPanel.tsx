@@ -3,7 +3,7 @@
 import { ActionIcon, Button, Group, Menu, Select, Stack, Switch, Tabs, Text } from "@mantine/core";
 import { IconChevronDown, IconLink, IconPlus, IconX } from "@tabler/icons-react";
 import {
-  KIND_LABEL, bandsOf, convertKind, convertibleKinds, findElement, hasQuestionOutputs, isAnswerKind, isChoiceKind, kindOf,
+  KIND_LABEL, bandsOf, canAskFresh, convertKind, keyPlace, convertibleKinds, findElement, hasQuestionOutputs, isAnswerKind, isChoiceKind, kindOf,
   optionsOf, plainText, textOf, textToHtml, updateElement, type ChapterJson, type ElementJson,
 } from "@poised/clinical";
 import { KIND_ICON } from "./AddContentBar";
@@ -19,6 +19,8 @@ export function SettingsPanel(props: {
   name: string;
   tab: PanelTab;
   readOnly: boolean;
+  /** The Question Set is for clinicians: nothing in it is pre-filled. */
+  clinicianSet: boolean;
   onTab: (t: PanelTab) => void;
   onClose: () => void;
   change: (edit: (doc: ChapterJson) => ChapterJson) => void;
@@ -33,6 +35,9 @@ export function SettingsPanel(props: {
   const patch = (p: Partial<ElementJson>) => change((d) => updateElement(d, name, p));
   const targets = convertibleKinds(el);
   const isGroup = kind === "group" || kind === "section";
+  // "Always ask fresh" (S23): on a patient's answer that pre-fill could copy (not inside a repeating group, whose rows are copied whole).
+  const place = keyPlace(doc, name);
+  const askFresh = canAskFresh(el) && !props.clinicianSet && !place.clinicianOnly && !place.inList;
 
   return (
     <Tabs value={tab} onChange={(t) => t && onTab(t as PanelTab)} keepMounted={false}>
@@ -104,6 +109,15 @@ export function SettingsPanel(props: {
                 )}
                 {isAnswerKind(kind) && kind !== "calculation" && <RequiredFields el={el} readOnly={readOnly} patch={patch} />}
                 {kind !== "section" && <ClinicalSwitch el={el} readOnly={readOnly} patch={patch} />}
+                {askFresh && (
+                  <Switch
+                    label="Always ask fresh"
+                    description="Never filled in from the patient's earlier questionnaires. For answers that change, such as current symptoms or today's weight."
+                    checked={!!el.alwaysFresh}
+                    disabled={readOnly}
+                    onChange={(e) => patch({ alwaysFresh: e.currentTarget.checked || undefined })}
+                  />
+                )}
                 {kind === "section" && (
                   <Switch
                     label="Show as patient page heading"

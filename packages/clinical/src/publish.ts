@@ -1,5 +1,6 @@
 // Checks before publishing (SGN-04, without sign-off yet): logic problems and failing test cases
-// in every Question Set. They run in the browser (plan 2.1); publishing is blocked while any are found.
+// in every Question Set. They run in the browser (plan 2.1); publishing is blocked while any are
+// found. The question-key checks (S23) are Go's: the editor shows them from GET …/question-keys.
 import type { ChapterJson } from "./doc";
 import { logicProblems } from "./logic";
 import { registerClinicalProperties } from "./properties";

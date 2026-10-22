@@ -173,3 +173,20 @@ describe("saved option lists (OPT-07)", () => {
     expect(replaced.map((o) => o.text)).toEqual(["General", "Don't know"]);
   });
 });
+
+describe("Always ask fresh (S23)", () => {
+  it("survives a change of type and of date settings", () => {
+    const doc = one({ type: "radiogroup", yesNo: true, name: "q_y", alwaysFresh: true, choices: [{ value: "o_y", text: "Yes" }, { value: "o_n", text: "No" }] }, { type: "text", name: "q_t", alwaysFresh: true });
+    expect(el(convertKind(doc, "q_y", "selectmany"), "q_y").alwaysFresh).toBe(true);
+    expect(el(convertKind(doc, "q_t", "number"), "q_t").alwaysFresh).toBe(true);
+    const date = convertKind(doc, "q_t", "date");
+    expect(el(date, "q_t").alwaysFresh).toBe(true);
+    expect(el(setDateSettings(date, "q_t", { ...dateSettingsOf(el(date, "q_t")), multiple: true }), "q_t").alwaysFresh).toBe(true);
+  });
+
+  it("is kept through a SurveyJS save, and is off by default", () => {
+    const saved = new Model(one({ type: "text", name: "q_a", alwaysFresh: true }, { type: "paneldynamic", name: "q_l", alwaysFresh: true }, { type: "text", name: "q_b" })).toJSON();
+    const [a, l, b] = saved.pages[0].elements;
+    expect([a.alwaysFresh, l.alwaysFresh, b.alwaysFresh]).toEqual([true, true, undefined]);
+  });
+});
