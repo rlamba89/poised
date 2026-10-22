@@ -50,13 +50,17 @@
 
 ## Status
 
-**Split into sessions on 21 Oct 2026; not started.** The briefs are in [docs/sessions/](../sessions/README.md):
+**In progress: S23 verified** (22 Oct 2026, [verification 3](../sessions/S23-question-keys/verify.md); [test report 5](../sessions/S23-question-keys/test-report-5.md): 23 of 23 passed, after verification 1's and 2's fixes and test report 3's R-05 fix; [build notes](../sessions/S23-question-keys/build-notes.md)). Split into sessions on 21 Oct 2026. The briefs are in [docs/sessions/](../sessions/README.md):
 - **S23:** question keys in the editor: unique across an HQ, option values locked at publish (enforced in Go), "Always ask fresh", the "Pre-fills from N other HQs" label;
 - **S24:** the question library (platform and trust) and "Same as…", with `keys.Compatible`; PNL-06 changed;
 - **S25:** pre-fill from the same trust, and the patient's opening card and markers (PRE-01–03, PRE-06); J16's patient half;
 - **S26:** the clinician's markers (PRE-04) and pre-fill from another trust with the patient's agreement; J16 completed, J16b.
 
-Proposed in the briefs, for Rahul to confirm when each session starts:
+**Answered 22 Oct** (each session's `answers.md`; [decisions.md](../decisions.md) §2). Two differences from this plan: **pre-fill matches by key, then by exact wording** (with safeguards), and a published keyed question's **options are frozen completely** (values and wording).
+
+**Differences from the plan in S23** (build notes): the editor's route is `GET …/h/{hid}/questionnaires/{qid}/question-keys` (not `/api/o/{oid}/question-keys?questionnaire=`) and is re-fetched after every save; the editor's placeholder texts ("Text question", "Group"…) never match by wording; after verification 1 the lock freezes the whole answer (kind, unit, options, rows, columns, scale; Rahul), signatures, uploads and the BMI block never pre-fill, and the key checks are Go's only (the Publish window shows them from the route); after verification 2 a date's format and a text question's input format are frozen too.
+
+Proposed in the briefs, confirmed 22 Oct:
 - **The prefill map also stores the copied value** (`{key: {fromForm, answeredAt, value}}`), so "changed by patient" needs no second read. The plan says `fromForm`; [saas-requirements.md](../saas-requirements.md) §6 said `fromEpisode`, which predates `episode_forms` (S18).
 - **The keys are found by walking the trust's published chapters' JSON**, with no `question_keys` table, until that's slow.
 - **`keys.Compatible` is Go only**; the editor asks a Go route instead of keeping a TypeScript copy.

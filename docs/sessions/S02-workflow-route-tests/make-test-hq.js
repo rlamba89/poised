@@ -1,3 +1,7 @@
+// OBSOLETE (S23, 22 Oct 2026): this uses the API paths from before S08 (/api/h/…), so it no
+// longer runs. Don't revive it as it is: its q_angina and q_diabetes have other answers than the
+// seeded Demo pre-op HQ's, and since S23 a key published with different answers in one trust
+// blocks publishing that question anywhere in it. The three "S02 test HQ" it made were removed.
 // S02 manual test helper. Paste the whole file into the DevTools Console while signed in as
 // Alex Author on Hospital A's questionnaire list. It creates and publishes "S02 test HQ <time>":
 //   - "About you" (patient): two pages. Every question a patient must NOT see has STAFF ONLY in

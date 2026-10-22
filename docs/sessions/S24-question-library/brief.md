@@ -34,6 +34,7 @@
   - `POST /api/o/{oid}/question-keys/search` with the question's JSON returns the candidates with `compatible` and a reason;
   - adopting is offered only for compatible ones, and is refused if the key is already in this HQ.
 - **`keys.Compatible`**, test-first, as answered.
+- **Carried from S23's verification 3 (do first, test-first): a medication question's type is part of its frozen answer.** `medicationType` (prescribed, non-prescribed, recreational) isn't read by `internal/keys`, so a published medication key can switch from Prescribed to Recreational and still publish (reproduced: 204), and two medication blocks of different types with the same text match by wording. Pre-fill (S25) would then copy a patient's prescribed medicines into a recreational-drugs list. Read it in `keys.formatOf` (e.g. "prescribed medication"), so `answerChanges` refuses the change and `SameWording` compares it; unit tests beside `TestLockFreezesFormats` and `TestSameWordingFormats`, and a case in `TestPublishKeyChecks`. `keys.Compatible` should compare it too. Rahul's "freeze all kind of answers" (S23 answers, after verification 1) covers it.
 - **PNL-06 in [requirements.md](../../requirements.md):** library inserts keep their keys (the change agreed in §6).
 - **The seed's "Demo pre-op HQ"** (S19) uses library questions, so S25's pre-fill has shared keys to show.
 

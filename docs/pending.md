@@ -54,6 +54,22 @@ docker compose up -d --force-recreate db
 
 ## 3. Small gaps in what's built
 
+### From S23's test report 1 (22 Oct; all passed)
+
+- **A medication question's type isn't frozen yet** (S23 verification 3): a published medication key can switch Prescribed → Recreational and publish. **Carried into S24's brief as its first build item**, so it's fixed before S25 copies answers by key.
+- **The editor's badges can go stale until the next content save** (S23 verification 3, from `/code-review`): changing a Question Set's audience, or adding or deleting a set, doesn't re-fetch `question-keys`; the editor also fetches it twice as it opens. The Publish window always re-fetches, so publishing isn't affected.
+- **If the re-fetch after a 422 fails, the Publish window shows "ready" again** (S23 verification 3): the refusal is cleared and Publish is enabled; clicking gives the same 422. Go still refuses, so nothing wrong is published. Rare (the GET has to fail).
+- **`keyPlace` walks the whole document for each card on every render** (S23 verification 3): fine at today's sizes; pass the place down through `ElementList` if a big set feels slow.
+- ~~**The editor's pre-fill badge isn't reachable from the keyboard**~~ *Fixed after test report 3: it's a button; Escape closes its list.*
+- ~~**`GET …/question-keys` can be large**~~ *Fixed after verification 1: the route no longer sends the published options; Go returns the key problems instead.* It still walks every published chapter of the trust on each call (once per save); add a key table if that gets slow (S23 answers, Q1).
+- **A key-linked question whose options were changed in the draft still shows "Pre-fills from 1 other HQ · by link"**; only the Publish window warns. Publish blocks it, so nothing reaches a patient (5).
+- **Not S23:** a question in a clinician Question Set still shows the grey PATIENT chip on its editor card (7).
+- **The phone format's refusal shows its raw pattern** (test report 5, found 3): "…changed from any text to the pattern “^\+?[0-9 ()-]{7,20}$”". Go names only "email address"; naming the editor's other formats ("phone number"…) in Go would copy `fields.ts`'s TEXT_FORMATS, some of them country-specific (A-20). Cosmetic; Rahul to judge.
+- **Not S23 (test report 5, found 4):** the editor's Text Format list offers "NHS number" and "UK postcode" (`fields.ts` TEXT_FORMATS), country-specific options outside the config (A-20). They predate S23.
+- **Not S23 (test report 3, found 6):** the delete dialog for any question says "… will be deleted, with its options and disclosures", even for Text or Number questions, which have no options.
+- **A race older than S23 (verification 1, item 8):** a chapter save that has passed its draft check can commit between Publish's key checks and the publish itself, so a just-saved change could be published unchecked. Closing it needs the save to take the trust's lock too (or re-check the status under it).
+- ~~**Hand checks for Rahul:** R-05 and R-02 at 390×844~~ *Both passed in test reports 3 and 4 (R-05 after the old "S02 test HQ" data was removed).*
+
 ### From S22's verification (21 Oct; none blocking, details in [verify.md](sessions/S22-archive/verify.md))
 
 - **For Rahul: a patient's sent questionnaire loses its View once archived** (normally 30 days after discharge): the home shows "Closed by the hospital" and the form answers 403. Recommended: show an archived-after-sent questionnaire as Sent with a read-only View; or keep it closed if the patient's copy should end with the episode.
