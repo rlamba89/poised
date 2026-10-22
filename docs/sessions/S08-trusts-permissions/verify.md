@@ -58,7 +58,7 @@ These come from `/code-review high`, weighed by the verifier. All are logged in 
   - `GetEpisode` is scoped by the hospital, which the middleware has already checked belongs to the trust.
   - `CreateEpisode` checks that the patient and the HQ belong to the same trust.
   - Composite foreign keys stop rows from crossing trusts.
-- **A-20 grep:** it finds only comments in `apps/web/src/lib/format.ts`, which are older than S08. The "lifebox-health(c)are" grep finds nothing.
+- **A-20 grep:** it finds only comments in `apps/web/src/lib/format.ts`, which are older than S08. The incumbent-name grep finds nothing.
 - **Security:**
   - The diff adds no secrets and no new log lines.
   - `TestPatientRouter` still covers the patient router never serving staff routes.
@@ -101,7 +101,7 @@ None.
 
 ### Suggested commits
 1. **Trusts, hospitals, memberships and the role ladder, with the hospital picker (C1 / S08):** the API and the web app in one commit, because the API paths and the web app's URLs change together.
-   - **API:** `apps/api/**` (migration, queries, generated `internal/db`, `internal/role`, httpapi handlers, middleware, router and tests, the deleted fake-querier tests, apitest, seed, import-lifebox).
+   - **API:** `apps/api/**` (migration, queries, generated `internal/db`, `internal/role`, httpapi handlers, middleware, router and tests, the deleted fake-querier tests, apitest, seed, import-hq).
    - **Clinical logic:** `packages/clinical/**` (`normalizeOutput` and its tests).
    - **Web app:** `apps/web/**`.
    - **Journeys:** `e2e/**`.

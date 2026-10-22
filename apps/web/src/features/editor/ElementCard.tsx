@@ -262,7 +262,7 @@ export function DisplaysWhen({ condition, label = "Displays when", compact }: { 
   );
 }
 
-/** The `🔗 n` chip. Shown only when there are disclosures (Lifebox DisclosureIndicator). */
+/** The `🔗 n` chip. Shown only when there are disclosures (incumbent DisclosureIndicator). */
 function Chip({ count, onClick }: { count: number; onClick: () => void }) {
   if (count === 0) return null;
   return (

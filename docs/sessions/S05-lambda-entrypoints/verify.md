@@ -44,7 +44,7 @@ Everything in the brief is built, and nothing big was added beyond it:
   - `docs/decisions.md` (S05 section);
   - `CLAUDE.md`, `README.md` and `apps/web/AGENTS.md`.
 
-  The `lifebox-health…` grep prints nothing.
+  The incumbent-name grep prints nothing.
 
 ## Findings (all minor; none blocks; logged in [pending.md](../../pending.md) §3)
 

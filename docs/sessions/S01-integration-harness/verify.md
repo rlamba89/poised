@@ -61,14 +61,14 @@ No phone-size check: S01 changes no patient screen.
 ```
 go vet -tags integration ./...     (no findings)
 tsc --noEmit                       (no errors)
-make test:  ok auth, chapter, episode, httpapi, lifebox;  Test Files 13 passed (13), Tests 103 passed (103)
+make test:  ok auth, chapter, episode, httpapi, hqimport;  Test Files 13 passed (13), Tests 103 passed (103)
 make test-integration:
 ok  	github.com/rlamba89/poised/apps/api/internal/apitest	2.207s
 ok  	github.com/rlamba89/poised/apps/api/internal/auth	1.491s
 ok  	github.com/rlamba89/poised/apps/api/internal/chapter	0.386s
 ok  	github.com/rlamba89/poised/apps/api/internal/episode	0.929s
 ok  	github.com/rlamba89/poised/apps/api/internal/httpapi	4.813s
-ok  	github.com/rlamba89/poised/apps/api/internal/lifebox	1.227s
+ok  	github.com/rlamba89/poised/apps/api/internal/hqimport	1.227s
 ```
 
 `make e2e` doesn't exist yet (S03).

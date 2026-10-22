@@ -49,7 +49,7 @@ docker compose up -d --force-recreate db
 
 | Item | Detail |
 | --- | --- |
-| Real HJE Full HQ export | Today's copy has only Question Sets 1–4, transcribed from screenshots, with no disclosures. Run `tools/export-lifebox-hq.js` in the Lifebox Author tool and import the file with `go run ./cmd/import-lifebox` to get all 11 sets and their disclosure codes (EXP-04). |
+| Real HJE Full HQ export | Today's copy has only Question Sets 1–4, transcribed from screenshots, with no disclosures. Run `tools/export-hq.js` in the incumbent's authoring tool and import the file with `go run ./cmd/import-hq` to get all 11 sets and their disclosure codes (EXP-04). |
 | Saved option lists: copied or linked? | Built as copies: a question keeps its options when the list changes, which protects stable IDs (OPT-02). Confirm that's what's wanted. |
 
 ## 3. Small gaps in what's built
@@ -431,9 +431,9 @@ docker compose up -d --force-recreate db
     2. **New episode: a procedure picked before the HQ list has loaded loses its default HQ** (`hqForProcedure` sees an empty list; the hospital's default fills in). A window of milliseconds; re-apply the pick when the HQs arrive, or enable the Procedure select only once both have loaded.
     3. **`episodes.procedure_id` and `procedures.default_questionnaire_id` are single-column FKs**, unlike the repo's composite `(org_id, …)` tenancy FKs. Go checks the trust on every write; a follow-up migration (unique `(org_id, id)` on procedures and questionnaires, then composite FKs) would make the database enforce it too.
     4. **QA push:** 00020 drops `episodes.procedure`, so as with S18 the episode routes return 500 on QA between the Lambda deploy and the migrate step.
-- **Lifebox import:**
+- **Incumbent import:**
   - Conditions that cross Question Sets on pages and questions are still dropped with a warning.
-  - Lifebox has no Question Set-level conditions to import.
+  - The incumbent has no Question Set-level conditions to import.
 
 ## 4. Not started: Must
 

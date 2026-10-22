@@ -163,7 +163,7 @@ Do each journey yourself in the browser, the way a real user would. Afterwards, 
 ## Out of scope (don't report)
 
 - **Breaking the patient's "Send my answers" label to make J3 fail.** That needs a code change; the builder did it, and the verifier repeats it.
-- The app's "Lifebox" branding, and the Next.js tools button at the bottom left (both go in later sessions).
+- The app's old branding, and the Next.js tools button at the bottom left (both go in later sessions).
 - The `E2E …` questionnaires and `Sam J…` patients the suite leaves in Hospital A.
 - The order of the trace files (`trace-1.zip`, `trace-2.zip`, …), which isn't fixed; the README says so.
 - Features not built yet: patient records, invites, sign-in by magic link, AWS.

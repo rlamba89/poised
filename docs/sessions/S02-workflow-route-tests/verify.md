@@ -75,14 +75,14 @@
 
 ```
 make lint   go vet -tags integration ./...   (no findings);  tsc --noEmit (no errors)
-make test   ok auth, chapter, episode, httpapi, lifebox;  Vitest: Test Files 13 passed (13), Tests 103 passed (103)
+make test   ok auth, chapter, episode, httpapi, hqimport;  Vitest: Test Files 13 passed (13), Tests 103 passed (103)
 make test-integration
 ok  	github.com/rlamba89/poised/apps/api/internal/apitest	1.973s
 ok  	github.com/rlamba89/poised/apps/api/internal/auth	0.548s
 ok  	github.com/rlamba89/poised/apps/api/internal/chapter	0.300s
 ok  	github.com/rlamba89/poised/apps/api/internal/episode	1.010s
 ok  	github.com/rlamba89/poised/apps/api/internal/httpapi	10.972s
-ok  	github.com/rlamba89/poised/apps/api/internal/lifebox	0.780s
+ok  	github.com/rlamba89/poised/apps/api/internal/hqimport	0.780s
 exit 0
 ```
 

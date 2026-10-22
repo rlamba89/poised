@@ -70,7 +70,7 @@ This causes both T-07 and T-09.
 - **GIF:** `S02-T07.gif`.
 - **Context, for the builder:**
   - The question is a SurveyJS `boolean` (made by `make-test-hq.js`), and the patient saw a No / Yes switch for it.
-  - The editor's own **Yes / No** question is stored as a `radiogroup` with `yesNo: true` and Yes / No choices (I checked R-02's saved JSON). I found no `"boolean"` in the app code or the Lifebox importer.
+  - The editor's own **Yes / No** question is stored as a `radiogroup` with `yesNo: true` and Yes / No choices (I checked R-02's saved JSON). I found no `"boolean"` in the app code or the HQ importer.
   - So editor-made HQs probably don't hit this. Either the answer description needs to handle `boolean` (true/false → the labels, defaulting to Yes / No), or the test script should use the editor's Yes / No shape. That's the builder's call.
 
 ## Found while exploring

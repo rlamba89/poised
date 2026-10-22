@@ -1,6 +1,6 @@
-# Lifebox Author UI: notes for the redesign
+# Incumbent authoring UI: notes for the redesign
 
-These notes describe the current Lifebox Author tool, which we are copying. They cover layout and behaviour only, not colours or fonts.
+These notes describe the incumbent's current authoring tool, which we are copying. They cover layout and behaviour only, not colours or fonts.
 
 **Sources:**
 - Author: `web-app/Author/src`
@@ -10,7 +10,7 @@ These notes describe the current Lifebox Author tool, which we are copying. They
 
 ## 1. Naming
 
-| Lifebox | Poised today | Notes |
+| The incumbent | Poised today | Notes |
 | --- | --- | --- |
 | Questionnaire, "HQ" (Health Questionnaire) | Questionnaire | HQ *is* the questionnaire, not a template. |
 | Question Set (the patient app calls it a "chapter") | Chapter | Has a name, description, icon and sequence. |
@@ -188,7 +188,7 @@ These notes describe the current Lifebox Author tool, which we are copying. They
 1. **Questionnaire page:** replace the chapter list and modal with the **Structure tree + canvas** editor. Question Set = chapter; pages and sections are in the tree.
 2. **Canvas:** replace the stock SurveyJS Creator canvas with **cards** showing a Patient/Clinician badge, the disclosure chip `[🔗 n]` and a "Displays when" chip.
 3. **Settings panel:** replace the Creator property grid with a **left-column Settings | Disclosures | Logic panel**.
-4. **Outputs modal:** align it with the Disclosure modal fields. Our flags and ASA go beyond what Lifebox has.
+4. **Outputs modal:** align it with the Disclosure modal fields. Our flags and ASA go beyond what the incumbent has.
 5. **Clinician questions:**
    - Rename "Clinician only" to a **Clinical** toggle.
    - In clinician preview, render clinical items in a **right-hand column of boxes** rather than inline.

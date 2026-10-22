@@ -1,4 +1,4 @@
-// FRM-01 list, FRM-04 create, FRM-06 delete. Laid out like the Lifebox Author list.
+// FRM-01 list, FRM-04 create, FRM-06 delete. Laid out like the incumbent's questionnaire list.
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { useDebouncedValue } from "@mantine/hooks";

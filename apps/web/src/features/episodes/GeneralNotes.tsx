@@ -1,4 +1,4 @@
-// "General notes" (Lifebox POA Summary): the episode's events and clinicians' comments. An archived
+// "General notes" (incumbent POA Summary): the episode's events and clinicians' comments. An archived
 // episode's are shown without "Add comment" (S22: read-only).
 import { useState } from "react";
 import { Alert, Button, Group, Stack, Text, Textarea } from "@mantine/core";

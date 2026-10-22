@@ -1,6 +1,6 @@
 // The editor's model: a chapter's SurveyJS JSON edited as plain data (plan-redesign.md).
 // Every edit clones the chapter, changes the clone and returns it, so the editor can keep
-// earlier versions for undo. Lifebox names: a chapter is a "Question Set", outputs are
+// earlier versions for undo. Incumbent names: a chapter is a "Question Set", outputs are
 // "Disclosures".
 import { ConditionsParser } from "survey-core";
 import { newId } from "./ids";
@@ -53,7 +53,7 @@ export type ChapterJson = { pages?: PageJson[]; [key: string]: unknown };
 
 // ---------------------------------------------------------------- element kinds
 
-/** The Add content buttons, in Lifebox order. Number (DSG-01) and the SurveyJS types come after Date. */
+/** The Add content buttons, in incumbent order. Number (DSG-01) and the SurveyJS types come after Date. */
 export const KINDS = [
   "group", "section", "yesno", "selectone", "selectmany", "text", "date", "number",
   "rating", "grid", "calculation", "upload", "signature",
@@ -82,7 +82,7 @@ export const KIND_LABEL: Record<Kind, string> = {
   statement: "Statement",
 };
 
-/** What an element is, in Lifebox terms. */
+/** What an element is, in incumbent terms. */
 export function kindOf(el: ElementJson): Kind {
   switch (el.type) {
     case "panel":
@@ -141,7 +141,7 @@ export const isChoiceKind = (k: Kind) => k === "yesno" || k === "selectone" || k
 export const hasQuestionOutputs = (k: Kind) => k === "text" || k === "date" || k === "number" || k === "rating" || k === "calculation";
 /** Kinds that hold an answer (everything except groups, statements and the profile). */
 export const isAnswerKind = (k: Kind) => !["group", "section", "statement", "profile"].includes(k);
-/** BMI and Profile are fixed blocks: they can only be deleted (Lifebox "Locked"). */
+/** BMI and Profile are fixed blocks: they can only be deleted (incumbent "Locked"). */
 export const isLocked = (k: Kind) => k === "bmi" || k === "profile";
 
 /** A new element of a kind, with fresh IDs. New questions are required (QST-02). */
@@ -514,7 +514,7 @@ export function addChoice(doc: ChapterJson, name: string, text: string): Chapter
   });
 }
 
-/** Turns the exclusive "None" option (Lifebox "No to all") on with a label, or off (label undefined). */
+/** Turns the exclusive "None" option (incumbent "No to all") on with a label, or off (label undefined). */
 export function setNoneOption(doc: ChapterJson, name: string, label: string | undefined): ChapterJson {
   return edit(doc, (d) => {
     const loc = findElement(d, name);
@@ -535,7 +535,7 @@ export function setNoneOption(doc: ChapterJson, name: string, label: string | un
 
 // ---------------------------------------------------------------- conditions
 
-/** One simple condition, as Lifebox writes them (the importer and older chapters use this form). */
+/** One simple condition, as the incumbent writes them (the importer and older chapters use this form). */
 export type Condition = { question: string; isNot: boolean; option: string };
 
 const SIMPLE = /^\s*\{([A-Za-z0-9_]+)\}\s*(=|<>|!=|contains|notcontains)\s*'([^']*)'\s*$/;

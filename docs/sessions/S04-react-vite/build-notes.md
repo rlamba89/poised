@@ -4,9 +4,9 @@
 
 ## Questions asked
 
-- **Rename the UI from "Lifebox" to "Poised" in S04?** Rahul: **yes** (12 Oct). Recorded in [decisions.md](../../decisions.md) §2.
-  - **Renamed:** the browser tab title (`index.html`), the header beside the hospital picker (`HospitalLayout.tsx`), the sign-in page's heading ("Lifebox Authoring" → "Poised", `Login.tsx`) and the patient page's top bar (`PatientHQ.tsx`).
-  - **Not renamed:** code comments that cite Lifebox as layout evidence.
+- **Rename the UI from the old name to "Poised" in S04?** Rahul: **yes** (12 Oct). Recorded in [decisions.md](../../decisions.md) §2.
+  - **Renamed:** the browser tab title (`index.html`), the header beside the hospital picker (`HospitalLayout.tsx`), the sign-in page's heading (the old name → "Poised", `Login.tsx`) and the patient page's top bar (`PatientHQ.tsx`).
+  - **Not renamed:** code comments that cite the incumbent as layout evidence.
 
 ## Before starting
 

@@ -41,7 +41,7 @@ Verified on the live app: Cara undid four moves in a row on "S20 Roles" (Ready f
 - **Audit:** all four routes are wrapped in `audited` (`router.go:189–192`), with labels.
 - **A-20:** the grep finds only comments, the config and tests, as before S20.
 - **Security:** no secrets; no patient data in the new notes or logs; the patient router is unchanged except the cancelled refusal; `chapter.ForPatient` is untouched.
-- **Docs:** plan C3 status and differences, plans README, sessions README, decisions.md (21 Oct S20 section), pending.md all updated. The Lifebox org-name grep prints nothing.
+- **Docs:** plan C3 status and differences, plans README, sessions README, decisions.md (21 Oct S20 section), pending.md all updated. The incumbent-name grep prints nothing.
 
 ### Spot-checks (Claude in Chrome, "trk" profile, http://localhost:3000)
 

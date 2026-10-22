@@ -13,7 +13,7 @@
 
 **What changed in S04:**
 - **The whole web app was moved from Next.js to React + Vite + React Router.** Every screen's code was moved, so **this is a regression test of every screen**. Nothing should look or behave differently, with two exceptions:
-  - **The name:** the app now says **Poised** where it said **Lifebox** (the browser tab title, the header beside the hospital picker, the sign-in page's heading, and the patient page's dark top bar).
+  - **The name:** the app now says **Poised** where it showed the old name (the browser tab title, the header beside the hospital picker, the sign-in page's heading, and the patient page's dark top bar).
   - **The "not found" page** is the app's own: a heading **404** and the text **"This page could not be found."** Next.js showed nearly the same text.
 - **The URLs are all the same as before.** Every address in this plan should open the same screen, including after a reload or when pasted into a new tab.
 - **Gone:** the small Next.js "N" tools button and the "Issues" badge at the bottom left in development. Errors now appear only in the browser console.
@@ -71,7 +71,7 @@ Do them in order: T-04 to T-09 make the questionnaire that T-10 to T-15 use.
    - **Expected:** the heading **Poised**, the text "Development sign-in: choose a user.", and a card for each seeded user with their email address.
 4. View the page source (right-click → View Page Source, or `view-source:http://localhost:3000/login`).
    - **Expected:** a short page with `<div id="root">` and a script `/src/main.tsx`. **No** `_next` anywhere in it.
-5. Check that the word "Lifebox" appears nowhere on screen, in T-01 to T-15. (It may appear in questionnaire *content* someone wrote; that's fine.)
+5. Check that the old name appears nowhere on screen, in T-01 to T-15. (It may appear in questionnaire *content* someone wrote; that's fine.)
 
 ### T-02: sign-in and the start page
 
@@ -327,4 +327,4 @@ These re-check behaviour from earlier sessions that runs through the moved scree
 - **New features or URLs:** `/o/…` addresses (S08), Amplify and AWS (S06).
 - **The questionnaire content itself** (e.g. gaps in HJE Full HQ).
 - **Speed:** a short blank moment the first time each screen opens is expected (each screen's code is loaded when first opened). Report only a screen that stays blank.
-- **"Lifebox" in code comments** or in docs; only on-screen text counts (T-01).
+- **The old name in code comments** or in docs; only on-screen text counts (T-01).

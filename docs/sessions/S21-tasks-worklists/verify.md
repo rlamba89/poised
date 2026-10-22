@@ -48,7 +48,7 @@ Reviewed: the whole working tree against `de4da42` (30 changed files, 19 new), t
   - the logs carry episode IDs only;
   - status messages hold only the first name and the hospital, as invites do, and their `{{link}}` is the plain sign-in page, not a token;
   - the patient router is unchanged; `chapter.ForPatient` is untouched.
-- **Docs:** the plan's status and differences, the plans README, the sessions README, decisions.md (21 Oct S21 section), pending.md and `e2e/README.md` are updated. The Lifebox org-name grep prints nothing.
+- **Docs:** the plan's status and differences, the plans README, the sessions README, decisions.md (21 Oct S21 section), pending.md and `e2e/README.md` are updated. The incumbent-name grep prints nothing.
 
 ### Spot-checks (Claude in Chrome, "trk" profile, http://localhost:3000, as Cara Clinician, Hospital A1)
 

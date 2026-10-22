@@ -55,7 +55,7 @@ CREATE TABLE chapters (
 );
 CREATE INDEX chapters_version_idx ON chapters (version_id, position);
 
--- Lifebox's 13 categories keep their Lifebox UUIDs, plus "Unassigned" (note_only).
+-- The incumbent's 13 categories keep their incumbent UUIDs, plus "Unassigned" (note_only).
 CREATE TABLE categories (
     id        uuid PRIMARY KEY,
     name      text NOT NULL UNIQUE,
@@ -68,7 +68,7 @@ CREATE TABLE codes (
     code        text NOT NULL,
     description text NOT NULL,
     full_name   text NOT NULL,
-    category_id uuid REFERENCES categories,  -- some Lifebox codes have none
+    category_id uuid REFERENCES categories,  -- some incumbent codes have none
     billable    boolean NOT NULL DEFAULT false,
     status      text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'retired')),
     UNIQUE (code_set, code)

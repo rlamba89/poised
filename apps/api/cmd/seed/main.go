@@ -1,4 +1,4 @@
-// Command seed loads Lifebox's categories and codes from db/seed/lifebox/*.csv,
+// Command seed loads the incumbent's categories and codes from db/seed/codes/*.csv,
 // plus the demo trusts, hospitals and users. It is safe to run more than once.
 package main
 
@@ -112,7 +112,7 @@ func main() {
 	if dbURL == "" {
 		log.Fatal("DATABASE_URL is not set (copy .env.example to .env)")
 	}
-	dir := "db/seed/lifebox"
+	dir := "db/seed/codes"
 	if len(os.Args) > 1 {
 		dir = os.Args[1]
 	}
@@ -162,7 +162,7 @@ func seedCategories(ctx context.Context, tx pgx.Tx, dir string) error {
 	return nil
 }
 
-// seedCodes maps Lifebox columns: synonym → description, fsn → full_name,
+// seedCodes maps incumbent columns: synonym → description, fsn → full_name,
 // code_set_id → code set name. Every code is active.
 func seedCodes(ctx context.Context, tx pgx.Tx, dir string) error {
 	sets, err := readCSV(filepath.Join(dir, "code_sets.csv"))
@@ -182,7 +182,7 @@ func seedCodes(ctx context.Context, tx pgx.Tx, dir string) error {
 		if !ok {
 			return fmt.Errorf("code %s: unknown code set %s", r["code"], r["code_set_id"])
 		}
-		var category any // empty in some Lifebox rows
+		var category any // empty in some incumbent rows
 		if r["code_category_id"] != "" {
 			category = r["code_category_id"]
 		}
@@ -393,7 +393,7 @@ func readCSV(path string) ([]map[string]string, error) {
 	return rows, nil
 }
 
-// oneLine collapses line breaks and repeated spaces inside a field. One Lifebox
+// oneLine collapses line breaks and repeated spaces inside a field. One incumbent
 // row (ICD10 F17.1) has a line break in its description.
 func oneLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")

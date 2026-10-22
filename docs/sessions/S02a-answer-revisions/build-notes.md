@@ -209,14 +209,14 @@
 ```
 go vet -tags integration ./...      (no findings)
 tsc --noEmit                        (no errors)
-make test:  ok auth, chapter, episode, httpapi, lifebox;  Vitest: Test Files 14 passed (14), Tests 110 passed (110)
+make test:  ok auth, chapter, episode, httpapi, hqimport;  Vitest: Test Files 14 passed (14), Tests 110 passed (110)
 make test-integration:
 ok  	github.com/rlamba89/poised/apps/api/internal/apitest	5.601s
 ok  	github.com/rlamba89/poised/apps/api/internal/auth	0.829s
 ok  	github.com/rlamba89/poised/apps/api/internal/chapter	1.292s
 ok  	github.com/rlamba89/poised/apps/api/internal/episode	1.969s
 ok  	github.com/rlamba89/poised/apps/api/internal/httpapi	5.260s
-ok  	github.com/rlamba89/poised/apps/api/internal/lifebox	1.738s
+ok  	github.com/rlamba89/poised/apps/api/internal/hqimport	1.738s
 ```
 
 - **`make dev` must be restarted** after this session: it runs the API with `go run`, so a running one still has the old code.

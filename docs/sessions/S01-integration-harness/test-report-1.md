@@ -55,7 +55,7 @@ ok  	github.com/rlamba89/poised/apps/api/internal/chapter	0.325s
 ?   	github.com/rlamba89/poised/apps/api/internal/db	[no test files]
 ok  	github.com/rlamba89/poised/apps/api/internal/episode	1.386s
 ok  	github.com/rlamba89/poised/apps/api/internal/httpapi	3.392s
-ok  	github.com/rlamba89/poised/apps/api/internal/lifebox	0.909s
+ok  	github.com/rlamba89/poised/apps/api/internal/hqimport	0.909s
 ```
 
 My first run failed straight away with `make: docker: No such file or directory`, because my shell didn't have Docker Desktop's CLI (`/Applications/Docker.app/Contents/Resources/bin`) on its `PATH`. That's my environment, not the project. The run above added it to `PATH` and passed. Rahul's terminal clearly has `docker`, since `docker compose up -d db` worked for him.

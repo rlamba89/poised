@@ -1,4 +1,4 @@
-package lifebox
+package hqimport
 
 import (
 	"crypto/rand"
@@ -38,14 +38,14 @@ type option struct {
 type converter struct {
 	lib      Library
 	cats     map[string]string // export category id → name
-	options  map[string]option // Lifebox option id → ours
+	options  map[string]option // Incumbent option id → ours
 	taken    map[string]bool
 	warnings []string
 	set      int
 	setName  string
 }
 
-// Convert maps a Lifebox export to our model. Warnings list what could not be carried over.
+// Convert maps an incumbent export to our model. Warnings list what could not be carried over.
 func Convert(e Export, lib Library) (Questionnaire, []string) {
 	c := &converter{lib: lib, cats: map[string]string{}, options: map[string]option{}, taken: map[string]bool{}}
 	for _, cat := range e.Categories {
@@ -225,7 +225,7 @@ func (c *converter) element(n Node, names map[string]string) map[string]any {
 	if label == "" {
 		label = truncate(n.Text.String(), 50)
 	}
-	// Lifebox has renderIf and visibleIf on questions; both must hold.
+	// The incumbent has renderIf and visibleIf on questions; both must hold.
 	conds := []string{}
 	for _, raw := range []string{deref(n.RenderIf), deref(n.VisibleIf)} {
 		if expr := c.expression(raw, fmt.Sprintf("%q", label)); expr != "" {
@@ -242,7 +242,7 @@ func (c *converter) element(n Node, names map[string]string) map[string]any {
 	return el
 }
 
-// rules turns Lifebox disclosures into clinical outputs on the option, or on the question.
+// rules turns incumbent disclosures into clinical outputs on the option, or on the question.
 func (c *converter) rules(n Node, el map[string]any, label string) {
 	for _, r := range n.Rules {
 		out := c.output(r, label)
@@ -281,7 +281,7 @@ func (c *converter) output(r Rule, label string) map[string]any {
 		display, ok := c.lib.CodeDisplay(set, code.Code)
 		if !ok {
 			display = code.Synonym
-			c.warn("%q: code %s %s is not in our library; kept with its Lifebox name", label, set, code.Code)
+			c.warn("%q: code %s %s is not in our library; kept with its exported name", label, set, code.Code)
 		}
 		codes = append(codes, map[string]any{"set": set, "code": code.Code, "display": display})
 	}
@@ -317,7 +317,7 @@ var (
 	simpleRe      = regexp.MustCompile(`^\{[a-z]_[a-z]+\} (=|contains) '[a-z_]+'$`)
 )
 
-// expression translates a Lifebox condition into SurveyJS. It returns "" for none, and
+// expression translates an incumbent condition into SurveyJS. It returns "" for none, and
 // drops (with a warning) a condition that refers to something we can't find.
 func (c *converter) expression(raw, what string) string {
 	raw = strings.TrimSpace(raw)
@@ -396,7 +396,7 @@ func simplify(expr string) string {
 
 // ---------------------------------------------------------------- helpers
 
-// icon maps a Lifebox icon name to one of our Tabler icon names.
+// icon maps an incumbent icon name to one of our Tabler icon names.
 func icon(name string) string {
 	n := strings.ToLower(name)
 	for _, m := range []struct{ has, icon string }{

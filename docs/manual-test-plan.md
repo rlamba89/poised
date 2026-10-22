@@ -20,7 +20,7 @@ Work through these cases in Chrome, on the running app, the way a careful manual
   - Use made-up data only. Never type a real person's details.
   - Create your own questionnaire for testing, named `Manual test <today's date> <time>`.
   - Don't change **HJE Full HQ** or any other questionnaire you didn't create. MT-59 only opens HJE Full HQ to look.
-  - Stay on localhost:3000. Don't visit or sign in to any Lifebox site.
+  - Stay on localhost:3000. Don't visit or sign in to any incumbent site.
 - **Autosave:** the editor saves on its own. The header shows "Saving…" and then "All changes saved".
   - Wait for "All changes saved" before reloading or leaving a page.
   - Text boxes in the Settings panel save when you click out of them (on blur), not as you type.
@@ -71,7 +71,7 @@ Report the **known limits** at the end of this document only if they behave diff
 1. Open http://localhost:3000 and click **Alex Author**.
 2. Expected:
    - The questionnaire list for Hospital A opens.
-   - The header shows "Lifebox Authoring", a **Hospital** picker showing Hospital A, the user's name and **Sign out**.
+   - The header shows the old app name, a **Hospital** picker showing Hospital A, the user's name and **Sign out**.
 
 ## B. Questionnaire list
 

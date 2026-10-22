@@ -1,24 +1,24 @@
-# Redesign plan: Lifebox-style editor, clinician display, HJE Full HQ
+# Redesign plan: incumbent-style editor, clinician display, HJE Full HQ
 
-Agreed 1 Oct 2026. We copy the **layout and behaviour** of the Lifebox Author tool, not its colours or fonts. What we're copying is described in [lifebox-ui-notes.md](lifebox-ui-notes.md).
+Agreed 1 Oct 2026. We copy the **layout and behaviour** of the incumbent's authoring tool, not its colours or fonts. What we're copying is described in [incumbent-ui-notes.md](incumbent-ui-notes.md).
 
 ## Decisions
 - **Our own editor UI, no SurveyJS Creator.**
   - The editor edits the chapter's SurveyJS JSON directly as plain data, with undo kept as snapshots.
   - survey-core still runs the preview and the outputs calculation, so `packages/clinical` stays the single place for clinical rules.
   - This also removes the need for a Creator licence.
-- **Lifebox terms are used in the UI:**
+- **Incumbent terms are used in the UI:**
   - **Question Set** = our chapter.
   - **Page** = a SurveyJS page.
-  - **Disclosures** = our clinical outputs. We keep our richer output model (codes, note + category, ASA, flag) and show it in Lifebox's layout.
+  - **Disclosures** = our clinical outputs. We keep our richer output model (codes, note + category, ASA, flag) and show it in the incumbent's layout.
 - **Storage is unchanged:** one SurveyJS JSON per chapter. Page settings live in that JSON:
   - name: `p_xxxxxx`
   - title
   - `visibleIf`
   - `clinicalSummary`
-- **"Create the HQ" means importing HJE Full HQ** from a Lifebox JSON export (see `tools/export-lifebox-hq.js`) into our tool.
+- **"Create the HQ" means importing HJE Full HQ** from an incumbent JSON export (see `tools/export-hq.js`) into our tool.
 
-## Mapping Lifebox types to SurveyJS JSON
+## Mapping incumbent types to SurveyJS JSON
 | Add button | JSON |
 | --- | --- |
 | Group | `panel` |
@@ -66,13 +66,13 @@ Agreed 1 Oct 2026. We copy the **layout and behaviour** of the Lifebox Author to
    - the Add content bar, with the BMI rules
 4. **Settings panel.** **Settings | Disclosures | Logic** tabs in the left column, replacing the tree while a card is selected.
    - **Settings:** fields per type, options list, "None" special option.
-   - **Disclosures:** a row per option, with a modal in Lifebox's layout.
+   - **Disclosures:** a row per option, with a modal in the incumbent's layout.
    - **Logic:** Always / Conditionally builder, plus a Code tab.
 5. **New question types** (registered in `packages/clinical`, so the preview renders them): Medication, Admissions, BMI, Profile, Section.
 6. **Clinician display in the preview:**
    - Patient view stays one column.
    - Clinician view puts patient items on the left and clinician items on the right as boxes, plus the page's **Clinical summary** box (this page's notes and a comments field).
-7. **HJE Full HQ import.** A Go command converts the Lifebox export into questionnaire → chapters → SurveyJS JSON:
+7. **HJE Full HQ import.** A Go command converts the incumbent's export into questionnaire → chapters → SurveyJS JSON:
    - text records → strings
    - `renderIf`/`visibleIf` → our expressions
    - disclosures → outputs, matching codes in our library
@@ -83,5 +83,5 @@ Agreed 1 Oct 2026. We copy the **layout and behaviour** of the Lifebox Author to
 Steps 1–8 are built.
 - **Tests:** `make test` and `make lint` pass. The editor, preview and import were checked in a headless browser.
 - **HJE Full HQ:** imported from the screenshot transcription. That covers sets 1–4 with no disclosures.
-- **Still to do:** import the real Lifebox export, to get all 11 sets and their disclosure codes.
+- **Still to do:** import the real incumbent export, to get all 11 sets and their disclosure codes.
 - **Done since, in plan-features.md:** Sections as patient screens (STR-03), several dates, and AND/OR in the Builder (LOG-04).

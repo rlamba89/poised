@@ -7,7 +7,7 @@ export type EditorContextValue = {
   pageName: string;
   readOnly: boolean;
   selected: string | null;
-  /** The group or section new elements go into (Lifebox: a selected Section receives Add content). */
+  /** The group or section new elements go into (the incumbent: a selected Section receives Add content). */
   select: (name: string | null) => void;
   change: (edit: (doc: ChapterJson) => ChapterJson) => void;
   add: (kind: Kind, target: Target) => void;

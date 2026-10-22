@@ -1,4 +1,4 @@
-// The POA Summary's content (plan-workflow.md Step 5), laid out as Lifebox's: one section per
+// The POA Summary's content (plan-workflow.md Step 5), laid out as the incumbent's: one section per
 // Question Set shown, and in it one block per page with its disclosure notes and clinical
 // comments ("<page> Summary"), plus the Medication, Admissions and BMI answers as tables.
 // The same function builds both tabs: the validated summary (clinician answers) and the
@@ -29,7 +29,7 @@ type SetInput = { id: string; name: string; content: ChapterJson };
  * - `viewer` "clinician" with the clinician's answers gives the validated summary; "patient"
  *   with the patient's answers gives the patient's original answers.
  * - `original`, the patient's answers, marks the clinician's corrections.
- * Pages and Question Sets with nothing to show are left out, as in Lifebox. Unlike Lifebox,
+ * Pages and Question Sets with nothing to show are left out, as in the incumbent. Unlike the incumbent,
  * a page's notes are shown even when the page has no Clinical summary box, so none are lost.
  */
 export function poaSummary(

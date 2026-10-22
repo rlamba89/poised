@@ -1,4 +1,4 @@
-/* Layout copied from the Lifebox Author editor (docs/lifebox-ui-notes.md). Colours are ours. */
+/* Layout copied from the incumbent's authoring editor (docs/incumbent-ui-notes.md). Colours are ours. */
 
 .root {
   display: flex;
@@ -123,7 +123,7 @@
   background: var(--mantine-color-gray-0);
 }
 
-/* A conditional element: orange left border (Lifebox .hasVisibleIf). */
+/* A conditional element: orange left border (incumbent .hasVisibleIf). */
 .conditional {
   border-left: 4px solid var(--mantine-color-orange-6);
   padding-left: 13px;
@@ -260,7 +260,7 @@
   text-align: center;
 }
 
-/* The disclosure count chip: green outline with a link icon (Lifebox DisclosureIndicator). */
+/* The disclosure count chip: green outline with a link icon (incumbent DisclosureIndicator). */
 .chip {
   display: inline-flex;
   align-items: center;

@@ -10,10 +10,10 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/role"
 )
 
-// Statuses are Lifebox's Full HQ states (statemodel.go) with readable keys, then the ones after
+// Statuses are the incumbent's Full HQ states (statemodel.go) with readable keys, then the ones after
 // the POA (saas-requirements §5.2). `recovery` (C9) isn't built yet.
 const (
-	HQNotComplete     = "hq_not_complete"     // Lifebox "primary"
+	HQNotComplete     = "hq_not_complete"     // Incumbent "primary"
 	ReadyForReview    = "ready_for_review"    // "review": the patient has submitted (triage)
 	ReadyForPOA       = "ready_for_poa"       // "triageready": the clinician completed the HQ review
 	POAComplete       = "poa_complete"        // "pending"
@@ -30,7 +30,7 @@ const (
 var Statuses = []string{HQNotComplete, ReadyForReview, ReadyForPOA, POAComplete, OnHold, NotReady, ReadyForAdmission,
 	Admitted, Discharged, Cancelled, Archived}
 
-// Labels are the names shown to clinicians, as in Lifebox.
+// Labels are the names shown to clinicians, as in the incumbent.
 var Labels = map[string]string{
 	HQNotComplete:     "HQ not complete",
 	ReadyForReview:    "Ready for review",

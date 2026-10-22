@@ -67,7 +67,7 @@ All three are reasonable.
   - the audit rows carry no patient data;
   - the General notes hold only the procedure's name and the dates;
   - the patient home gets only the procedure's name.
-- **Docs:** the plan's Status, plans/README, sessions/README, decisions.md, CLAUDE.md and AGENTS.md are all updated. The `lifebox-health(c)are` grep prints nothing.
+- **Docs:** the plan's Status, plans/README, sessions/README, decisions.md, CLAUDE.md and AGENTS.md are all updated. The incumbent-name grep prints nothing.
 
 ### Test results (21 Oct)
 

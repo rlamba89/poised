@@ -37,14 +37,14 @@ As in verification 2: scope, tests first, tenant isolation, A-20, security and d
 
 ```
 make lint   go vet -tags integration ./...  (no findings);  tsc --noEmit (no errors)
-make test   ok auth, chapter, episode, httpapi, lifebox;  Vitest: Test Files 14 passed (14), Tests 111 passed (111)
+make test   ok auth, chapter, episode, httpapi, hqimport;  Vitest: Test Files 14 passed (14), Tests 111 passed (111)
 make test-integration
 ok  	github.com/rlamba89/poised/apps/api/internal/apitest	6.172s
 ok  	github.com/rlamba89/poised/apps/api/internal/auth	0.395s
 ok  	github.com/rlamba89/poised/apps/api/internal/chapter	0.884s
 ok  	github.com/rlamba89/poised/apps/api/internal/episode	0.738s
 ok  	github.com/rlamba89/poised/apps/api/internal/httpapi	5.811s
-ok  	github.com/rlamba89/poised/apps/api/internal/lifebox	0.253s
+ok  	github.com/rlamba89/poised/apps/api/internal/hqimport	0.253s
 EXIT 0
 ```
 
@@ -183,14 +183,14 @@ In this order. Each commit should pass `make lint test test-integration` on its 
 
 ```
 make lint   go vet -tags integration ./...  (no findings);  tsc --noEmit (no errors)
-make test   ok auth, chapter, episode, httpapi, lifebox;  Vitest: Test Files 14 passed (14), Tests 110 passed (110)
+make test   ok auth, chapter, episode, httpapi, hqimport;  Vitest: Test Files 14 passed (14), Tests 110 passed (110)
 make test-integration
 ok  	github.com/rlamba89/poised/apps/api/internal/apitest	6.175s
 ok  	github.com/rlamba89/poised/apps/api/internal/auth	4.257s
 ok  	github.com/rlamba89/poised/apps/api/internal/chapter	4.380s
 ok  	github.com/rlamba89/poised/apps/api/internal/episode	4.684s
 ok  	github.com/rlamba89/poised/apps/api/internal/httpapi	12.714s
-ok  	github.com/rlamba89/poised/apps/api/internal/lifebox	5.023s
+ok  	github.com/rlamba89/poised/apps/api/internal/hqimport	5.023s
 EXIT 0
 ```
 
@@ -320,14 +320,14 @@ Unchanged from verification 1 below, with finding 1's fix and its Vitest test in
 
 ```
 make lint   go vet -tags integration ./...   (no findings);  tsc --noEmit (no errors)
-make test   ok auth, chapter, episode, httpapi, lifebox;  Vitest: Test Files 14 passed (14), Tests 108 passed (108)
+make test   ok auth, chapter, episode, httpapi, hqimport;  Vitest: Test Files 14 passed (14), Tests 108 passed (108)
 make test-integration
 ok  	github.com/rlamba89/poised/apps/api/internal/apitest	4.697s
 ok  	github.com/rlamba89/poised/apps/api/internal/auth	1.234s
 ok  	github.com/rlamba89/poised/apps/api/internal/chapter	1.467s
 ok  	github.com/rlamba89/poised/apps/api/internal/episode	0.988s
 ok  	github.com/rlamba89/poised/apps/api/internal/httpapi	4.437s
-ok  	github.com/rlamba89/poised/apps/api/internal/lifebox	1.691s
+ok  	github.com/rlamba89/poised/apps/api/internal/hqimport	1.691s
 exit 0
 ```
 

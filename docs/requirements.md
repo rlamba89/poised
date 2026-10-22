@@ -1,22 +1,22 @@
-# Lifebox Authoring on SurveyJS — Requirements
+# Clinical Authoring on SurveyJS — Requirements
 
 Sep 30, 2026 · @Rahul Lamba
 
 ## 1. Purpose and scope
 
-We are building a new clinical questionnaire authoring tool on SurveyJS. It must do everything the current Lifebox authoring tool does, fix what it does badly, and add what a clinical authoring product needs next.
+We are building a new clinical questionnaire authoring tool on SurveyJS. It must do everything the incumbent's current authoring tool does, fix what it does badly, and add what a clinical authoring product needs next.
 
 This document states **what** the tool must do. It does not say how to build it.
 
 ### What this document is not
 
 - It is not a design. It does not prescribe a data model, database, tables, APIs, API style, frontend or backend framework, hosting or cloud services. The build team decides those.
-- It is not a copy of Lifebox's internal structure. Lifebox's node types, tables and expression grammar are not requirements. Only the behaviour users rely on is.
+- It is not a copy of the incumbent's internal structure. The incumbent's node types, tables and expression grammar are not requirements. Only the behaviour users rely on is.
 
 ### Where the requirements come from
 
-1. **Parity:** what clinical editors can do in the Lifebox authoring tool today.
-2. **Extended:** Lifebox capabilities that are half-built, restricted or broken today, and must work properly. Examples: preview, undo, ASA grade, more than one output per answer.
+1. **Parity:** what clinical editors can do in the incumbent's authoring tool today.
+2. **Extended:** Incumbent capabilities that are half-built, restricted or broken today, and must work properly. Examples: preview, undo, ASA grade, more than one output per answer.
 3. **New:** what a clinical authoring product should have, much of it cheap with SurveyJS. Examples: sign-off workflow, test cases, translations, per-hospital libraries.
 
 ### In scope
@@ -30,7 +30,7 @@ This document states **what** the tool must do. It does not say how to build it.
 
 ### Out of scope
 
-- Integration with any existing Lifebox system. The tool must still output everything a future integration would need (OUT requirements, section 11).
+- Integration with any existing incumbent system. The tool must still output everything a future integration would need (OUT requirements, section 11).
 
 ### How to read the requirement tables
 
@@ -44,7 +44,7 @@ Each requirement has a stable ID (for example, `STR-03`) for tracking and tests.
 
 ## 2. Users and roles
 
-Lifebox has one authoring permission (clinical editor) and no hospital scoping. The new tool needs separate roles so that authoring, clinical sign-off and publishing are held by different people.
+The incumbent has one authoring permission (clinical editor) and no hospital scoping. The new tool needs separate roles so that authoring, clinical sign-off and publishing are held by different people.
 
 | Role | Scope | Can do |
 | --- | --- | --- |
@@ -63,14 +63,14 @@ A person can hold different roles in different hospitals. Two groups of people u
 
 | Term | Meaning |
 | --- | --- |
-| Questionnaire | A versioned health questionnaire that a hospital assigns to a patient episode. Lifebox calls it "HQ". |
-| Chapter | A part of a questionnaire completed in one go, such as "Heart and circulation". It has a name and an icon, and is either for patients, for clinicians, or a clinician document. Lifebox calls it a "question set". |
+| Questionnaire | A versioned health questionnaire that a hospital assigns to a patient episode. The incumbent calls it "HQ". |
+| Chapter | A part of a questionnaire completed in one go, such as "Heart and circulation". It has a name and an icon, and is either for patients, for clinicians, or a clinician document. The incumbent calls it a "question set". |
 | Page | One screen of questions |
 | Group | A titled set of questions shown together on a page |
 | Repeating group | A group the respondent can add several times ("add another medication") |
 | Clinician-only | A question or text that only clinicians see and answer |
-| Clinical output | Anything an answer produces for the clinical record: codes, a clinical note, an ASA grade or a review flag. Lifebox calls this a "disclosure". |
-| Clinical note | A sentence written into the patient's notes when an answer is given, such as "Takes ramipril 5mg once daily". Lifebox calls it an "episode note". |
+| Clinical output | Anything an answer produces for the clinical record: codes, a clinical note, an ASA grade or a review flag. The incumbent calls this a "disclosure". |
+| Clinical note | A sentence written into the patient's notes when an answer is given, such as "Takes ramipril 5mg once daily". The incumbent calls it an "episode note". |
 | Note category | The heading a clinical note is filed under, such as Cardiovascular or Allergies |
 | Code | An entry from a clinical coding system: SNOMED CT, ICD-10, OPCS-4 or dm+d |
 | Code set | A coding system |
@@ -85,7 +85,7 @@ A person can hold different roles in different hospitals. Two groups of people u
 
 ## 4. What SurveyJS is expected to do
 
-SurveyJS replaces Lifebox's custom form model, form renderer and form editor. The new tool should rely on SurveyJS's own form structure and designer, not re-create Lifebox's page, section and group hierarchy.
+SurveyJS replaces the incumbent's custom form model, form renderer and form editor. The new tool should rely on SurveyJS's own form structure and designer, not re-create the incumbent's page, section and group hierarchy.
 
 We add clinical meaning on top of SurveyJS using its supported extension mechanisms. **SurveyJS itself is never modified.**
 
@@ -141,17 +141,17 @@ We add clinical meaning on top of SurveyJS using its supported extension mechani
 | FRM-05 | Authors duplicate any questionnaire as a new one under a new name | Parity | Outside | Must |
 | FRM-06 | Drafts can be deleted, after confirmation, by their creator or a hospital admin. Published versions cannot be deleted, only retired. | Parity | Outside | Must |
 | FRM-07 | A questionnaire contains ordered chapters. Authors add, rename, describe, reorder, copy and delete chapters, with confirmation before deleting. Each chapter has an icon chosen from a searchable set and an audience: patient, clinician, or clinician document. | Parity; description and audience not editable today | Extend | Must |
-| FRM-08 | Authors can copy a chapter from another questionnaire | Extended (Lifebox supports it behind the scenes, but not on screen) | Outside | Should |
+| FRM-08 | Authors can copy a chapter from another questionnaire | Extended (the incumbent supports it behind the scenes, but not on screen) | Outside | Should |
 
 ### 5.2 Lifecycle and versions (LCY)
 
 | ID | Requirement | Origin | SurveyJS | Priority |
 | --- | --- | --- | --- | --- |
 | LCY-01 | A questionnaire version is Draft, In review, Approved, Published or Retired | Parity (Draft, Published) + New | Outside | Must |
-| LCY-02 | Only drafts can be edited. Other versions open read-only, with an obvious "Create new version" action. | Extended (Lifebox opens published versions as editable, then rejects the save) | Built-in (read-only designer) | Must |
+| LCY-02 | Only drafts can be edited. Other versions open read-only, with an obvious "Create new version" action. | Extended (the incumbent opens published versions as editable, then rejects the save) | Built-in (read-only designer) | Must |
 | LCY-03 | Changes save automatically, with a visible saving and saved state. No edit is lost on refresh or network loss. | Parity | Built-in | Must |
-| LCY-04 | If two people edit the same chapter at once, the second save is refused with a clear message instead of silently overwriting the first | New (Lifebox: last save wins) | Outside | Must |
-| LCY-05 | Every edit can be undone and redone | Extended (Lifebox's undo never works) | Built-in | Must |
+| LCY-04 | If two people edit the same chapter at once, the second save is refused with a clear message instead of silently overwriting the first | New (the incumbent: last save wins) | Outside | Must |
+| LCY-05 | Every edit can be undone and redone | Extended (the incumbent's undo never works) | Built-in | Must |
 | LCY-06 | "Create new version" makes the next version number under the same name, copies all content and keeps every stable ID. There is only one draft per questionnaire at a time. | Parity | Outside | Must |
 | LCY-07 | A question or option that has been published keeps its stable ID forever. The ID cannot be edited or reused for something else. Deleting it in a later version is allowed. | Parity | Extend | Must |
 | LCY-08 | Authors can compare any two versions and see added, removed and changed items, with changes to clinical outputs highlighted | New | Outside | Should |
@@ -165,7 +165,7 @@ We add clinical meaning on top of SurveyJS using its supported extension mechani
 | SGN-01 | An author submits a draft for review with a note. A clinical reviewer approves it with a sign-off statement or returns it with comments. | New | Outside | Must |
 | SGN-02 | The approver cannot be anyone who edited that version. The tool records who approved, when and their statement. | New (clinical safety) | Outside | Must |
 | SGN-03 | Reviewers can comment on any question, option or clinical output. Comments are threaded and can be resolved. | New | Extend | Should |
-| SGN-04 | Publishing is blocked, with a list of problems that each link to the item, when: a condition refers to a missing question or a later one; a single-choice question has fewer than 2 options or a multi-choice fewer than 1; a clinical note has no category; a code is missing or retired; a published stable ID has changed; a page has more than one clinical summary; or a test case fails. | Extended (Lifebox checks some on save and none on publish) | Outside | Must |
+| SGN-04 | Publishing is blocked, with a list of problems that each link to the item, when: a condition refers to a missing question or a later one; a single-choice question has fewer than 2 options or a multi-choice fewer than 1; a clinical note has no category; a code is missing or retired; a published stable ID has changed; a page has more than one clinical summary; or a test case fails. | Extended (the incumbent checks some on save and none on publish) | Outside | Must |
 | SGN-05 | The publish confirmation names the questionnaire, the version number and the environment. Afterwards, the user is told what happens next. | Parity | Outside | Must |
 
 ## 6. Form structure, questions and answer options
@@ -180,7 +180,7 @@ We add clinical meaning on top of SurveyJS using its supported extension mechani
 | STR-04 | Authors can make any group repeatable ("add another"), with a minimum and maximum number of entries | New | Built-in | Must |
 | STR-05 | A chapter can be set to show patients one question per screen | New | Built-in | Should |
 | STR-06 | Authors reorder questions and groups by drag and drop and by move up or down, including into another group | Parity | Built-in | Must |
-| STR-07 | Copying a question or group copies all its settings, options and clinical outputs. Conditions inside the copy point to the copied questions. | Extended (Lifebox drops outputs and leaves conditions pointing at the original) | Extend | Must |
+| STR-07 | Copying a question or group copies all its settings, options and clinical outputs. Conditions inside the copy point to the copied questions. | Extended (the incumbent drops outputs and leaves conditions pointing at the original) | Extend | Must |
 | STR-08 | Deleting anything asks for confirmation. If other conditions, calculations or clinical outputs depend on it, the warning lists them. | New | Extend | Must |
 | STR-09 | The designer shows on each element: who sees it (patient or clinician), whether it is conditional and on what, how many clinical outputs it has, and whether it is locked | Parity | Extend | Must |
 | STR-10 | An outline of chapters, pages and groups lets authors jump to any part and reorder it | Parity | Built-in + Extend | Must |
@@ -202,7 +202,7 @@ We add clinical meaning on top of SurveyJS using its supported extension mechani
 | --- | --- | --- | --- | --- | --- |
 | QT-01 | Yes / No | Two options, Yes and No. Labels are editable and translatable. Each option can carry clinical outputs. | Parity; editable labels are new | Extend | Must |
 | QT-02 | Single choice | At least 2 options. Shown as buttons, or as a dropdown for long lists. | Parity | Built-in | Must |
-| QT-03 | Multiple choice | At least 1 option. Optional exclusive "None of these" option (Lifebox "No to all") with an editable label and its own clinical outputs. Optional "Select all". | Parity | Built-in | Must |
+| QT-03 | Multiple choice | At least 1 option. Optional exclusive "None of these" option (incumbent "No to all") with an editable label and its own clinical outputs. Optional "Select all". | Parity | Built-in | Must |
 | QT-04 | Text | Short (one line) or long (several lines), with optional maximum length and input format (for example, phone number) | Parity; format is new | Built-in | Must |
 | QT-05 | Date | Day, month and year; month and year; or year only. The earliest date is 01/01/1900, and the date can be restricted to past or future. Authors can allow several dates as a list. | Parity (full date, multiple); other formats and limits are Extended | Built-in | Must |
 | QT-06 | Number | Minimum, maximum, decimal places and a unit label | New | Built-in | Must |
@@ -231,14 +231,14 @@ Hospital admins can hide question types their authors should not use (New, Shoul
 
 ## 7. Conditional display and navigation (LOG)
 
-Today, Lifebox authors can show or hide a question or page only when a single earlier option is or is not chosen. The new tool must let clinical authors express real clinical conditions without developer help.
+Today, the incumbent's authors can show or hide a question or page only when a single earlier option is or is not chosen. The new tool must let clinical authors express real clinical conditions without developer help.
 
 | ID | Requirement | Origin | SurveyJS | Priority |
 | --- | --- | --- | --- | --- |
 | LOG-01 | Authors can show or hide a question, group, display text or answer option depending on earlier answers | Parity (questions); options are new | Built-in | Must |
 | LOG-02 | Authors can show or hide a whole page, and a whole chapter | Parity (page); chapter is new | Built-in + Extend | Must |
-| LOG-03 | A condition can test: an option chosen or not chosen; any or all of several options; a number compared with a value; a date before or after a value; an age; a text answer present or empty; a calculated value; the patient's age or sex; and who is viewing (patient or clinician) | Extended (Lifebox tests chosen options only) | Built-in + Extend | Must |
-| LOG-04 | Conditions can be combined with AND and OR, and grouped | Extended (Lifebox's builder allows one condition) | Built-in | Must |
+| LOG-03 | A condition can test: an option chosen or not chosen; any or all of several options; a number compared with a value; a date before or after a value; an age; a text answer present or empty; a calculated value; the patient's age or sex; and who is viewing (patient or clinician) | Extended (the incumbent tests chosen options only) | Built-in + Extend | Must |
+| LOG-04 | Conditions can be combined with AND and OR, and grouped | Extended (the incumbent's builder allows one condition) | Built-in | Must |
 | LOG-05 | Non-developers build conditions by picking a question, a comparison and a value from lists, without typing syntax | Parity | Built-in | Must |
 | LOG-06 | Each conditional element shows its condition in plain words, for example "Shown when *Do you smoke?* is *Yes*". Clicking it opens the condition. | Parity | Extend | Must |
 | LOG-07 | Advanced authors can type a condition. It is checked as they type, for syntax and for references to unknown questions. | Parity | Built-in | Must |
@@ -254,7 +254,7 @@ Today, Lifebox authors can show or hide a question or page only when a single ea
 
 Clinical outputs are what makes this a clinical tool rather than a survey tool. An output is what a given answer means for the patient's record: codes, a clinical note, an ASA grade or a review flag.
 
-In Lifebox today, an author can attach one output to each answer option, or to a text or date question. The output is a note with a category (the answer can be inserted into the note) and optionally one SNOMED CT code plus one ICD-10 code. ASA grade is shown but cannot be set. Outputs from hidden questions are not produced.
+In the incumbent today, an author can attach one output to each answer option, or to a text or date question. The output is a note with a category (the answer can be inserted into the note) and optionally one SNOMED CT code plus one ICD-10 code. ASA grade is shown but cannot be set. Outputs from hidden questions are not produced.
 
 ### 8.1 Defining outputs
 
@@ -263,8 +263,8 @@ In Lifebox today, an author can attach one output to each answer option, or to a
 | CLN-01 | Authors attach clinical outputs to any answer option of Yes/No, single-choice, multiple-choice, searchable-list and grid questions, including "None of these" and "Don't know" | Parity | Extend | Must |
 | CLN-02 | Authors attach clinical outputs to a question without options (text, number, date, clinical panels). The output is produced when the question is answered. | Parity (text, date); others Extended | Extend | Must |
 | CLN-03 | An output can be limited to a condition on the answer, for example BMI over 40, or an admission in the last 12 months | New | Extend | Should |
-| CLN-04 | Authors can define an output produced by a combination of answers across questions, for example "diabetic" and "takes insulin" | New (Lifebox planned "rule sets" but never built them) | Extend | Should |
-| CLN-05 | One option or question can have several outputs | Extended (Lifebox allows one) | Extend | Must |
+| CLN-04 | Authors can define an output produced by a combination of answers across questions, for example "diabetic" and "takes insulin" | New (the incumbent planned "rule sets" but never built them) | Extend | Should |
+| CLN-05 | One option or question can have several outputs | Extended (the incumbent allows one) | Extend | Must |
 | CLN-06 | An output contains any combination of: codes (any number, from any code set); a clinical note with a note category; an ASA grade (I to VI, optionally E); a review flag (amber or red). It needs at least a code or a note, and a note needs a category. | Parity (note, one SNOMED CT + one ICD-10 code); multiple codes, ASA and flag are Extended | Extend | Must |
 | CLN-07 | A clinical note can include the answer and other answers. Examples: the typed text, the number, a date as dd/MM/yyyy, a list of dates, the chosen option labels, or each row of a repeating group ("Ramipril 5mg once daily"). The editor shows a worked example as the author types. | Parity (inserting one text or date answer); the rest is Extended | Extend | Must |
 | CLN-08 | Clinical notes and codes are never translated. They stay as authored when the form is shown in another language. | New | Extend | Must |
@@ -327,8 +327,8 @@ Authors can attach clinical outputs to any panel (CLN-02).
 | --- | --- | --- | --- | --- |
 | VEW-01 | Patient view: clinician-only questions, text and summaries are hidden; questions come in short screens (STR-03); clinical page titles are hidden | Parity | Extend | Must |
 | VEW-02 | Clinician view: everything is visible, including clinician-only items and clinical summaries. The clinician can answer or change any answer, and sees a whole page per screen. | Parity | Extend | Must |
-| VEW-03 | Review view: a completed form, read-only, with review flags highlighted and each answer's clinical outputs shown beside it | Extended (Lifebox has a clinical review mode in its renderer, but authors cannot see it) | Built-in + Extend | Should |
-| VEW-04 | Further viewer types can be added later, for example hospital administrator, each with its own visibility rules | Parity (Lifebox has this viewer type) | Extend | Could |
+| VEW-03 | Review view: a completed form, read-only, with review flags highlighted and each answer's clinical outputs shown beside it | Extended (the incumbent has a clinical review mode in its renderer, but authors cannot see it) | Built-in + Extend | Should |
+| VEW-04 | Further viewer types can be added later, for example hospital administrator, each with its own visibility rules | Parity (the incumbent has this viewer type) | Extend | Could |
 
 ### 10.2 Respondent experience (PX)
 
@@ -346,7 +346,7 @@ Authors can attach clinical outputs to any panel (CLN-02).
 
 | ID | Requirement | Origin | SurveyJS | Priority |
 | --- | --- | --- | --- | --- |
-| LNG-01 | Every patient-facing text can be translated, starting with English, German, Spanish and French | Extended (Lifebox stores translations but has no screen for them) | Built-in | Must |
+| LNG-01 | Every patient-facing text can be translated, starting with English, German, Spanish and French | Extended (the incumbent stores translations but has no screen for them) | Built-in | Must |
 | LNG-02 | A translation screen shows all texts side by side per language, and flags missing translations. Missing text falls back to English. | New | Built-in | Must |
 | LNG-03 | Translations can be exported for a translator and imported back | New | Built-in | Should |
 | LNG-04 | Clinical notes, codes and other clinician-facing metadata are excluded from translation (CLN-08) | New | Extend | Must |
@@ -355,7 +355,7 @@ Authors can attach clinical outputs to any panel (CLN-02).
 
 | ID | Requirement | Origin | SurveyJS | Priority |
 | --- | --- | --- | --- | --- |
-| PRV-01 | Authors preview any chapter as a patient or as a clinician, switching with one control | Extended (Lifebox has the switch in code but no control) | Built-in + Extend | Must |
+| PRV-01 | Authors preview any chapter as a patient or as a clinician, switching with one control | Extended (the incumbent has the switch in code but no control) | Built-in + Extend | Must |
 | PRV-02 | Preview on phone, tablet and desktop sizes, and in any translated language | Extended | Built-in | Must |
 | PRV-03 | While previewing, a side panel shows live the codes, clinical notes, ASA grade and flags that the current answers produce | New | Extend | Must |
 | PRV-04 | Preview uses a sample patient (name, age, sex) that the author can change, so conditions on age or sex can be tried | New | Extend | Must |
@@ -370,7 +370,7 @@ Authors can attach clinical outputs to any panel (CLN-02).
 
 | ID | Requirement | Origin | SurveyJS | Priority |
 | --- | --- | --- | --- | --- |
-| TEN-01 | Every questionnaire, library item and test case belongs to one hospital or to the master library. Users see only the hospitals they belong to. | New (Lifebox authoring is shared by everyone) | Outside | Must |
+| TEN-01 | Every questionnaire, library item and test case belongs to one hospital or to the master library. Users see only the hospitals they belong to. | New (incumbent authoring is shared by everyone) | Outside | Must |
 | TEN-02 | A user in several hospitals can switch between them | New | Outside | Must |
 | TEN-03 | A hospital copies a master template and adapts it. The copy remembers which template and version it came from. | New | Outside | Should |
 | TEN-04 | When a master template publishes a new version, hospitals using it are told and shown what changed. They choose whether to adopt it. | New | Outside | Should |
@@ -385,7 +385,7 @@ Authors can attach clinical outputs to any panel (CLN-02).
 | COD-03 | Code sets at launch: SNOMED CT and ICD-10. Later: OPCS-4, dm+d medicines and local codes. | Parity + New | Outside | Must (first two); Should (others) |
 | COD-04 | Creating a code needs code, description, code category and code set, plus a billable choice. The code format is checked for its code set, for example the SNOMED CT check digit and the ICD-10 pattern. | Parity; format checks are new | Outside | Must |
 | COD-05 | A code never changes once created. A wrong code is retired, not deleted. Retired codes stay valid in published versions but cannot be added to drafts. | Parity (unchangeable) + New (retire) | Outside | Must |
-| COD-06 | Code categories and note categories are managed lists. Lifebox has 13 categories, such as Cardiovascular, Respiratory, Allergies and Anaesthetic; note categories use the same list plus "Unassigned". Only code librarians change them. | Parity | Outside | Must |
+| COD-06 | Code categories and note categories are managed lists. The incumbent has 13 categories, such as Cardiovascular, Respiratory, Allergies and Anaesthetic; note categories use the same list plus "Unassigned". Only code librarians change them. | Parity | Outside | Must |
 | COD-07 | When a code is not in the library, authors can look it up in a national terminology service and add it | New | Outside | Should |
 | COD-08 | Code librarians can bulk-import codes from a spreadsheet, seeing what will be added before confirming | New | Outside | Should |
 | COD-09 | When an author picks a SNOMED CT code, the tool suggests the matching ICD-10 code from the official map | New | Outside | Could |
@@ -406,7 +406,7 @@ Authors can attach clinical outputs to any panel (CLN-02).
 | EXP-01 | A questionnaire version can be exported as one file containing all its content and every code and category it uses, so another installation can import it | Parity | Outside | Must |
 | EXP-02 | Importing a file creates a new questionnaire and never changes existing content. Codes are matched by code set and code, and missing ones are added. | Parity | Outside | Must |
 | EXP-03 | A published version can be promoted from QA to Training to Production, or copied within an environment as a test draft named "(Test)". The source is marked "promoted", and the user sees how many chapters and codes were moved. | Parity | Outside | Should |
-| EXP-04 | Existing Lifebox questionnaires can be imported and behave the same: same questions, options, conditions and clinical outputs, with the same outputs for the same answers. Anything that cannot be converted is listed. | New (migration) | Outside | Must |
+| EXP-04 | Existing incumbent questionnaires can be imported and behave the same: same questions, options, conditions and clinical outputs, with the same outputs for the same answers. Anything that cannot be converted is listed. | New (migration) | Outside | Must |
 | EXP-05 | Developers can view and edit the form definition as JSON, with errors shown before it is applied | New | Built-in | Should |
 | EXP-06 | A form can be printed or saved as PDF with its clinical outputs, for offline clinical review | New | Built-in (add-on) or Outside | Should |
 | EXP-07 | A form can be exported in the FHIR Questionnaire standard | New | Outside | Could |
@@ -433,7 +433,7 @@ Authors can attach clinical outputs to any panel (CLN-02).
 
 | ID | Requirement | Origin | SurveyJS | Priority |
 | --- | --- | --- | --- | --- |
-| AUD-01 | Every change, status change, approval, export and import is recorded: who, when, which hospital, and what changed (before and after). Records cannot be changed or deleted. | New (Lifebox records only the last editor) | Outside | Must |
+| AUD-01 | Every change, status change, approval, export and import is recorded: who, when, which hospital, and what changed (before and after). Records cannot be changed or deleted. | New (the incumbent records only the last editor) | Outside | Must |
 | AUD-02 | Users see the change history of a questionnaire and can restore an earlier draft state as a new change | New | Outside | Should |
 
 ## 12. Non-functional requirements (NFR)
@@ -443,7 +443,7 @@ Numeric targets are proposals for the team to confirm.
 | ID | Area | Requirement | Priority |
 | --- | --- | --- | --- |
 | NFR-01 | Clinical safety | The product is developed under DCB0129, with a clinical safety officer and a hazard log. The log covers wrong code, missed output, wrong visibility and wrong translation, and traces each mitigation to requirement IDs and tests. | Must |
-| NFR-02 | Parity proof | Every Lifebox questionnaire in scope is imported, and a set of real-world answer scenarios gives the same clinical outputs as Lifebox (EXP-04) | Must |
+| NFR-02 | Parity proof | Every incumbent questionnaire in scope is imported, and a set of real-world answer scenarios gives the same clinical outputs as the incumbent (EXP-04) | Must |
 | NFR-03 | Data protection | The authoring tool holds no real patient data. It complies with UK GDPR and the NHS Data Security and Protection Toolkit. | Must |
 | NFR-04 | Access | Single sign-on with multi-factor authentication. Role and hospital rules are enforced by the system, not just hidden on screen. One hospital can never see another's content. | Must |
 | NFR-05 | Security testing | Independent penetration test before first live use and yearly after | Must |
@@ -460,11 +460,11 @@ Numeric targets are proposals for the team to confirm.
 
 ## 13. Release scope and acceptance gates
 
-Release 1 must match Lifebox before anything new ships. Proving parity on real Lifebox content is its exit gate.
+Release 1 must match the incumbent before anything new ships. Proving parity on real incumbent content is its exit gate.
 
 | Release | Contains | Accepted when |
 | --- | --- | --- |
-| Release 1: parity | Every **Must** requirement | Every Lifebox questionnaire in scope imports and gives the same outputs for the same answers (NFR-02). Every Must requirement passes its acceptance test. The clinical safety officer signs the hazard log. |
+| Release 1: parity | Every **Must** requirement | Every incumbent questionnaire in scope imports and gives the same outputs for the same answers (NFR-02). Every Must requirement passes its acceptance test. The clinical safety officer signs the hazard log. |
 | Release 2: clinical plus | Every **Should** requirement | A hospital copies a master template, adapts it, passes its test cases, gets clinical sign-off and promotes it to Production |
 | Later | **Could** requirements, chosen by hospital demand | Agreed per item |
 
@@ -472,13 +472,13 @@ A requirement is done when its behaviour is demonstrated against the wording in 
 
 ## 14. Open questions
 
-- [ ] **Patient screens.** Is each marked group exactly one patient screen, with the whole page as one clinician screen (STR-03)? Lifebox behaves this way, but the rule is not written down.
+- [ ] **Patient screens.** Is each marked group exactly one patient screen, with the whole page as one clinician screen (STR-03)? The incumbent behaves this way, but the rule is not written down.
 - [ ] **Chapters.** Are chapters always completed and submitted separately, or can a respondent move freely between them?
-- [ ] **ASA grade.** Lifebox dropped ASA from its outputs in 2024 and never let authors set it. Is it wanted? Who acts on the suggested grade (CLN-17)?
+- [ ] **ASA grade.** The incumbent dropped ASA from its outputs in 2024 and never let authors set it. Is it wanted? Who acts on the suggested grade (CLN-17)?
 - [ ] **Terminology source.** Which national source is authoritative for SNOMED CT UK edition and dm+d (COD-07)?
 - [ ] **Master templates.** Who may author them? Can hospitals change the clinical outputs of a copied template, or only its wording and branding?
-- [ ] **Migration.** Which Lifebox questionnaires must be imported? Must their past answers stay comparable with new ones?
-- [ ] **Clinician-only options.** Lifebox has no clinician-only answer options. Are they needed?
+- [ ] **Migration.** Which incumbent questionnaires must be imported? Must their past answers stay comparable with new ones?
+- [ ] **Clinician-only options.** The incumbent has no clinician-only answer options. Are they needed?
 - [ ] **Downstream use.** Who will consume the clinical outputs later, and what do they need beyond OUT-01 to OUT-05?
 - [ ] **Review flags.** Are amber and red enough, or is a third level needed?
 - [ ] **Viewer types.** Is a hospital administrator view needed in Release 1 (VEW-04)?

@@ -58,7 +58,7 @@
   - The grep prints only older comments (`apps/web/src/lib/format.ts`, `internal/patient/patient.go`). In code, the region, account and country defaults are only in `infra/countries.py`.
   - The CDK test synthesises a made-up `ca-qa` (`ca-central-1`, account `111111111111`). It finds none of `eu-west-2`, `Europe/London`, `en-GB`, `London`, `"GB"` or the UK account.
   - `test_countries.py` guards against country literals in `infra/*.py`.
-  - The Lifebox-organisation grep prints nothing.
+  - The incumbent-name grep prints nothing.
 - **Lambda safety:**
   - The router keeps no state in memory and never uses the disk (unchanged from S05).
   - `Resolve` runs once, before `lambda.Start`.

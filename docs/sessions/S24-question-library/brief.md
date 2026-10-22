@@ -26,7 +26,7 @@
 ## Build
 
 - **`library_questions`:** id, `org_id` (NULL = platform), key, the SurveyJS element JSON, tags, created_by, created_at. A key is unique per owner, and a trust item can't reuse a platform key.
-  - The platform items from answer 1 are seeded (idempotent), like the Lifebox codes.
+  - The platform items from answer 1 are seeded (idempotent), like the incumbent's codes.
   - Routes: `GET /api/o/{oid}/library-questions?q=` (platform + the trust's), `POST` and `DELETE …/{id}`, with the five integration cases.
 - **Insert from library** in the editor's Add bar: a searchable list by title and tag. Inserting **keeps the key** (and option values). It's refused if the key is already in this HQ.
 - **"Same as…"** on each question's settings:

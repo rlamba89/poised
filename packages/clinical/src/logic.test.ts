@@ -59,7 +59,7 @@ describe("formatLogic and parseLogic", () => {
     expect(builderCanShow(parseLogic(expr))).toBe(true);
   });
 
-  it("reads Lifebox's simple form and the importer's negations", () => {
+  it("reads the incumbent's simple form and the importer's negations", () => {
     expect(parseLogic("{q_a} = 'o_b'")).toEqual({ join: "and", items: [{ left: "q_a", op: "eq", value: "o_b" }] });
     expect(parseLogic("!({q_a} contains 'o_b')")).toEqual({ join: "and", items: [{ left: "q_a", op: "notcontains", value: "o_b" }] });
   });

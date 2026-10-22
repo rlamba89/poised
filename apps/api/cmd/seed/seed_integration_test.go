@@ -19,7 +19,7 @@ func TestSeedTwice(t *testing.T) {
 	c, _ := apitest.New(t)
 	ctx := context.Background()
 
-	if err := seed(ctx, c.DB, "../../db/seed/lifebox"); err != nil {
+	if err := seed(ctx, c.DB, "../../db/seed/codes"); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
 	first := counts(t, c)
@@ -41,7 +41,7 @@ func TestSeedTwice(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := seed(ctx, c.DB, "../../db/seed/lifebox"); err != nil {
+	if err := seed(ctx, c.DB, "../../db/seed/codes"); err != nil {
 		t.Fatalf("second run: %v", err)
 	}
 	second := counts(t, c)

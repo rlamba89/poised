@@ -37,7 +37,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
   const signOut = () => signOutStaff(() => navigate("/login", { replace: true }), () => api("/logout", { method: "POST" }));
   const page = here ? <HospitalContext.Provider value={here}>{children}</HospitalContext.Provider> : <NoAccess />;
-  // The questionnaire editor has its own header (Lifebox layout), so it gets the whole screen.
+  // The questionnaire editor has its own header (incumbent layout), so it gets the whole screen.
   if (/\/questionnaires\/[^/]+$/.test(pathname)) return page;
   // The preview needs the full width and height, so it gets no page padding.
   const fullBleed = pathname.includes("/preview");

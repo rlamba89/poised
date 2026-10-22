@@ -1,4 +1,4 @@
-// Text with a pencil button; editing shows an input with cancel and confirm (Lifebox EditableText).
+// Text with a pencil button; editing shows an input with cancel and confirm (incumbent EditableText).
 import { useEffect, useState } from "react";
 import { ActionIcon, Group, Text, TextInput, type TextProps } from "@mantine/core";
 import { IconCheck, IconPencil, IconX } from "@tabler/icons-react";

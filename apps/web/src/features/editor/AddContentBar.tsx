@@ -1,4 +1,4 @@
-// "Add content:" buttons (Lifebox catalogue, plus Number from DSG-01 and the SurveyJS types).
+// "Add content:" buttons (incumbent catalogue, plus Number from DSG-01 and the SurveyJS types).
 import { Button, Text } from "@mantine/core";
 import {
   IconBuildingHospital, IconCalculator, IconCalendar, IconCircleDot, IconGridDots, IconLayoutList, IconLetterT, IconMessage,
@@ -31,7 +31,7 @@ export const KIND_ICON: Record<Kind, Icon> = {
 };
 
 /**
- * Lifebox rules: a Section can't go inside a group or section; BMI must be alone on its
+ * Incumbent rules: a Section can't go inside a group or section; BMI must be alone on its
  * page, so it is offered only on an empty page and, once added, nothing else is.
  */
 export function AddContentBar({ target, pageElements, inside }: { target: Target; pageElements: ElementJson[]; inside?: ElementJson }) {

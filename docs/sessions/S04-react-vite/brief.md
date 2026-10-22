@@ -4,7 +4,7 @@
 **Depends on:** S03 verified. J1–J5 are the proof.
 
 **Ask Rahul first:**
-- Rename the UI branding from "Lifebox" to "Poised" in this session?
+- Rename the UI branding from the old name to "Poised" in this session?
   - The places are listed in decisions §5.
   - **Recommended: yes,** because the layouts are being rewritten anyway. It's the only visible change allowed.
 

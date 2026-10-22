@@ -62,7 +62,7 @@ From `/code-review high` on the fix, weighed by me:
   - `apps/web` Vitest: *Test Files 2 passed (2), Tests 41 passed (41)*.
   - `packages/clinical`: *Test Files 14 passed (14), Tests 111 passed (111)*.
   - `go vet` and both `tsc` runs are clean.
-- `make test-integration`: **pass**. `ok` for `apitest`, `auth`, `chapter`, `episode`, `httpapi` and `lifebox`. *EXIT 0.*
+- `make test-integration`: **pass**. `ok` for `apitest`, `auth`, `chapter`, `episode`, `httpapi` and `hqimport`. *EXIT 0.*
 - `make e2e`, 3 runs in a row against `make dev`: *5 passed in 23.89s*, *5 passed in 22.12s*, *5 passed in 21.52s*.
 - `npm run build -w apps/web`: **pass** (both type checks, then `vite build`).
 
@@ -171,7 +171,7 @@ The migration is done well. The brief is fully covered, every test passes, J1–
 - `make lint test`: **pass**.
   - `go vet` and `tsc` are clean, and the Go unit tests are ok.
   - Vitest: `apps/web` *Test Files 1 passed, Tests 17 passed*; `packages/clinical` *Test Files 14 passed, Tests 111 passed*.
-- `make test-integration`: **pass**. `ok` for `apitest`, `auth`, `chapter`, `episode`, `httpapi` and `lifebox`.
+- `make test-integration`: **pass**. `ok` for `apitest`, `auth`, `chapter`, `episode`, `httpapi` and `hqimport`.
   - My shell didn't have `docker` on its PATH, so I re-ran with Docker Desktop's bin added. That's an environment quirk, not a code problem.
 - `make e2e` against `make dev` (Vite), 3 runs in a row: *5 passed in 27.35s*, *5 passed in 24.30s*, *5 passed in 22.41s*.
 - `npm run build -w apps/web`: built in 0.8 s. The chunk sizes match the build notes (`index` 325 kB, SurveyJS `src` 1,506 kB).

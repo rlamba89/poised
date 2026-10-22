@@ -1,4 +1,4 @@
-/* Clinician view of the preview (Lifebox Clinician layout): patient items on the left,
+/* Clinician view of the preview (incumbent Clinician layout): patient items on the left,
    clinician items beside them on the right as tinted boxes, the Clinical summary in yellow. */
 @media (min-width: 900px) {
   .sj-clinician-layout .sd-page__content {

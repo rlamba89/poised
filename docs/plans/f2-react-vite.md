@@ -86,4 +86,4 @@ Any small pure helper written along the way gets a Vitest unit test first (TDD).
   - the hospital layout has no path of its own, so `/h/<id>` alone stays "not found";
   - pages are keyed by their URL IDs, and `<ScrollRestoration />` is added, to keep Next.js's behaviour;
   - Node 22.22+ is required (React Router 8);
-  - the UI is renamed from "Lifebox" to "Poised" (Rahul, 12 Oct).
+  - the UI is renamed from the old name to "Poised" (Rahul, 12 Oct).

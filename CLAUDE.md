@@ -32,7 +32,7 @@ The next work is turning it into a multi-trust SaaS on AWS.
 - **Keep it simple.** Look for the simpler way before adding a service, library or abstraction.
 - **Ask, with a recommendation:** for any stack or product choice, give options with a recommended one first. Don't assume. Check official docs (SurveyJS, AWS) before planning around a feature.
 - **Backend is Go; keep TypeScript to the frontend and `packages/clinical`.** Rahul reads Go, not TypeScript, so explain any TypeScript you add that he must review.
-- **Lifebox (the incumbent product) is product evidence only, never the template for technical architecture.** Give every tech choice its own reason.
+- **The incumbent product is product evidence only, never the template for technical architecture.** Give every tech choice its own reason.
 - **Testing** (full rules in [docs/plans/README.md](docs/plans/README.md#testing-rules-apply-to-every-plan)):
   - **TDD:** write the failing test first.
   - **Integration tests are preferred, and mean only API → database:** a real HTTP request goes through the real Go router into a real migrated Postgres, and the test asserts the response *and* the rows. Every route gets 5 cases: happy path, no sign-in, wrong role, another tenant's data, invalid input.
@@ -42,7 +42,7 @@ The next work is turning it into a multi-trust SaaS on AWS.
 - **Record decisions in the repo, not in Claude memory.** Claude's memory and chat history stay on one machine. Add every new decision, preference or gotcha to [docs/decisions.md](docs/decisions.md) in the same session. The project skill **`/update-wiki`** (`.claude/skills/update-wiki/`) does this: run it whenever a decision is made or a plan step finishes, and before ending a session.
 - **`spikes/ui-*.ts` and `spikes/mt/` are gitignored local scripts**, so don't rely on them existing. Committed browser tests are the journeys in `e2e/`.
 - **No real patient data** goes into this system before go-live (plan C10). Seed and test data are made up.
-- **The remote is Rahul's personal GitHub** (`github.com/rlamba89/poised`, private). Never push to a Lifebox organisation, and never put the Lifebox company's GitHub organisation name anywhere in the repo, including module paths, docs and commit messages. It was scrubbed from the history on 2 Oct.
+- **The remote is Rahul's personal GitHub** (`github.com/rlamba89/poised`, private). Never push to the incumbent's GitHub organisation, and never name the incumbent product or its company anywhere in the repo, including file names, code, module paths, docs and commit messages; say "the incumbent" (22 Oct). `TestIncumbentNameAppearsNowhere` (`apps/api/internal/repocheck`, run by `make test`) fails if the name appears. It was scrubbed from the history on 2 Oct.
 
 ## Commands
 
@@ -50,7 +50,7 @@ Requires Docker, Go 1.26+ and Node 22.22+.
 
 ```sh
 docker compose up -d db     # Postgres 17 on :5432 (user/password/db: sj)
-make migrate seed           # goose migrations, then Lifebox codes + demo hospitals/users (idempotent)
+make migrate seed           # goose migrations, then incumbent codes + demo hospitals/users (idempotent)
 make dev                    # Go API on :8080 + web (Vite) on :3000 (web proxies /api/* to the API); Ctrl-C stops both
 make patient-api            # one API function alone, as on AWS (ADDR=:8081 default); also make staff-api
 make test                   # go test ./... + Vitest in every workspace + the CDK tests (no database needed)
@@ -106,7 +106,7 @@ npm workspaces monorepo (`apps/web`, `packages/*`), plus a separate Go module in
   - Middleware: `requireUser` (a dev HS256 JWT in an httpOnly cookie), then `requireHospital` for `/api/o/{oid}/h/{hid}/…` or `requireOrg` for `/api/o/{oid}/…`. They re-read the memberships on every request and give non-members a 404. The role ladder is `internal/role` (`clinician < super_clinician < admin`, A-5).
   - `internal/chapter` holds the content rules. `chapter.ForPatient` strips clinician-only elements, `clinicalOutputs` and `testCases` before patient JSON leaves the server, and `FilterAnswers` drops non-patient answer keys.
   - `internal/patient` holds the patient-record rules (matching typed details to the trust's record, the search term, E.164 mobiles); `internal/nationalid` the identifier validators (the NHS number's Modulus 11).
-  - `internal/episode` handles episode statuses. `internal/lifebox` + `cmd/import-lifebox` import a Lifebox HQ export.
+  - `internal/episode` handles episode statuses. `internal/hqimport` + `cmd/import-hq` import an incumbent HQ export.
 - **Content model:**
   - **Tenancy (S08):** questionnaires and option lists belong to a trust (`org_id`; `hospital_id` NULL = every hospital of the trust). Patient records belong to the trust; an episode belongs to one hospital, and a hospital-scoped user sees only their hospital's episodes.
   - A questionnaire has versions (draft → published → retired), and a version has **chapters ("Question Sets")**. Each chapter is one SurveyJS JSON document (`chapters.content`), with a `revision` that is bumped on every save; a stale revision → 409.

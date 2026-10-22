@@ -1,4 +1,4 @@
-// The Lifebox question types SurveyJS doesn't have, built from its own questions so the
+// The incumbent's question types SurveyJS doesn't have, built from its own questions so the
 // preview and the patient runtime render them (plan-redesign.md, step 5).
 import { ComponentCollection, FunctionFactory, Serializer, type Question, type SurveyModel } from "survey-core";
 import { bandFor } from "./logic";
@@ -7,7 +7,7 @@ import { bandFor } from "./logic";
 export function registerQuestionTypes(): void {
   if (ComponentCollection.Instance.getCustomQuestionByName("medication")) return;
 
-  // A repeating list (Lifebox "DynamicAdd"): each row is one medicine.
+  // A repeating list (incumbent "DynamicAdd"): each row is one medicine.
   ComponentCollection.Instance.add({
     name: "medication",
     title: "Medication",

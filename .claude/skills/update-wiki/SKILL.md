@@ -33,10 +33,10 @@ The project's memory is **in the repo**, not in Claude's memory or chat history,
    - **Plans:** update the status table row (e.g. `Done 2026-10-07`) and the plan's Status section.
    - Use plain English, short bullets, and real paths and commands. Use the same terms as the existing docs.
 3. **Safety checks before saving:**
-   - Never write the Lifebox company's GitHub organisation name. Describe it, don't spell it out. (Run the grep in step 4.)
+   - Never write the incumbent product's name, or its company's GitHub organisation name, anywhere. Say "the incumbent". (`TestIncumbentNameAppearsNowhere` in `apps/api/internal/repocheck` fails if the name appears.)
    - No secrets, tokens, connection strings, or real patient data.
    - Nothing that's only true on one person's machine unless it's labelled as such (e.g. "on Rahul's Mac").
 4. **Check:**
    - `git diff -- docs CLAUDE.md` reads well;
-   - `grep -rIlE "lifebox-health(c)are" . --exclude-dir=node_modules --exclude-dir=.git` prints nothing. (The pattern finds the name without containing it.)
+   - `cd apps/api && go test ./internal/repocheck` passes (no mention of the incumbent by name).
 5. **Show the user** a short summary of what was recorded and where. **Commit only if they agree**, as `docs: record <topic>`, with the docs alone (never mixed with code changes). Push only if asked.

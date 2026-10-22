@@ -1,4 +1,4 @@
-// Paste into Chrome DevTools (Console) while on the Lifebox questionnaire page.
+// Paste into Chrome DevTools (Console) while on the incumbent's questionnaire page.
 // It downloads the questionnaire (all question sets, pages, questions, options and
 // disclosures) plus the note categories as one JSON file. Read-only: queries only.
 (async () => {
@@ -23,7 +23,7 @@
   const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), questionnaire, categories }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "lifebox-hq-" + id + ".json";
+  a.download = "hq-export-" + id + ".json";
   a.click();
   console.log("Downloaded", a.download, "-", questionnaire.questionSets.length, "question sets");
 })();

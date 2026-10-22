@@ -51,7 +51,7 @@ The review raised these:
   - Another patient's episode → 404.
   - The staff API with the patient's cookie → 401.
 - **The fix,** at phone size and on-behalf (above).
-- **The A-20 grep** finds only comments (`format.ts`, `patient.go`). **The Lifebox-org grep** prints nothing.
+- **The A-20 grep** finds only comments (`format.ts`, `patient.go`). **The incumbent-name grep** prints nothing.
 - **Test data left in the local database (made up):** the HQ "V3 Medicines 1310 145537 aa48" (published, Hospital A1), and the episodes *Sam SignoutV3* and *Sam BehalfV3*.
 
 ### Test results
@@ -133,7 +133,7 @@ All five fixes from verification 1 are in and correct. I read the code, ran the 
    - five Resends at once (one working link).
 3. **`MESSAGING` under `CONFIG_STRICT`:** strict with no `MESSAGING` fails start-up and names it, and any value other than `capture` fails. It still defaults to `capture` locally. Unit tests updated.
 4. **The on-behalf reload dependency:** `endedBy` now depends on `isPatient`, a boolean. No DOM test; test report 3 checked re-renders by hand.
-5. **A-20 placeholder:** the text is neutral now. The A-20 grep finds only comments and config, seed and test files. The Lifebox-org grep prints nothing.
+5. **A-20 placeholder:** the text is neutral now. The A-20 grep finds only comments and config, seed and test files. The incumbent-name grep prints nothing.
 
 ### Spot checks (13 Oct, against the conductor's `make dev`)
 
@@ -255,7 +255,7 @@ One finding breaks "Healthcare: nothing may break silently", and I confirmed it 
   - texts and emails carry the first name, hospital and link only (PAT-03);
   - the patient cookie is `Path=/api/p`, and the staff `Verify` refuses tokens with an audience;
   - `chapter.ForPatient` still strips clinician-only content (`TestPatientHQ`).
-- **Docs:** C2's Status, plans/README, sessions/README and decisions.md (answers 1–4) are updated. The Lifebox-org grep prints nothing.
+- **Docs:** C2's Status, plans/README, sessions/README and decisions.md (answers 1–4) are updated. The incumbent-name grep prints nothing.
 
 ### Spot checks (13 Oct, against the conductor's `make dev`)
 

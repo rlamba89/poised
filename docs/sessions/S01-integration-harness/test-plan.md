@@ -145,7 +145,7 @@ These are earlier work, checked briefly.
 ## 4. Out of scope (don't report)
 
 - The automated tests themselves: how they're written or named.
-- The header still says "Lifebox" in places. That's a known item, renamed later.
+- The header still shows the old name in places. That's a known item, renamed later.
 - Anything about episodes, the patient link or the POA Summary beyond R-03. S02 covers those.
 - Known limits listed at the end of [docs/manual-test-plan.md](../../manual-test-plan.md).
 - Leftover published test questionnaires from earlier sessions; they can't be deleted.

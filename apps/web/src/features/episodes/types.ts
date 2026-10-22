@@ -91,7 +91,7 @@ export const SEXES = [
   { value: "unknown", label: "Not known" },
 ];
 
-// Lifebox's Full HQ states with readable keys (apps/api/internal/episode).
+// The incumbent's Full HQ states with readable keys (apps/api/internal/episode).
 export const STATUS_LABELS: Record<EpisodeStatus, string> = {
   hq_not_complete: "HQ not complete",
   ready_for_review: "Ready for review",

@@ -5,7 +5,7 @@ Asked by the conductor (`/run-sessions`) on 12 Oct 2026, before the run started.
 1. **`national_id` + `national_id_type` instead of an `nhs_number` column** (proposed under A-20)?
    - **Answer: yes, the generic `national_id`** (recommended). Only the NHS-number validator is built now.
 2. **The duplicate check without an NHS number.**
-   - Rahul's note: in Lifebox, **email** has been what helps here; name + date of birth is the identifier in practice, and the NHS number is often empty. He asked for a proposal.
+   - Rahul's note: in the incumbent, **email** has been what helps here; name + date of birth is the identifier in practice, and the NHS number is often empty. He asked for a proposal.
    - **Answer (the conductor's proposal, chosen):** on Create, the server compares the new patient with the trust's records. Names are compared ignoring case and spaces, email in lower case, mobile in international format.
      - **Same first name, surname and date of birth, AND the same email or mobile** → link silently to that trust record, as with a matching NHS number. Nothing about that record is shown.
      - **Same name and date of birth, but a different or missing email/mobile** → warn "this patient may already be registered in the trust; check their NHS number or contact details", and allow **Create anyway**. Nothing about the other record is shown.

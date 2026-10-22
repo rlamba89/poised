@@ -1,6 +1,6 @@
 # Plan: SurveyJS features in our editor (phases 1 and 2)
 
-Agreed 1 Oct 2026. These are features the SurveyJS Creator offered and our Lifebox-style editor (plan-redesign.md) dropped, plus requirements still open. Everything stays plain SurveyJS JSON, and the editor shows each feature with a form, never code.
+Agreed 1 Oct 2026. These are features the SurveyJS Creator offered and our incumbent-style editor (plan-redesign.md) dropped, plus requirements still open. Everything stays plain SurveyJS JSON, and the editor shows each feature with a form, never code.
 
 ## Phase 1: open "Must" requirements
 
@@ -75,7 +75,7 @@ Agreed 1 Oct 2026. These are features the SurveyJS Creator offered and our Lifeb
     - Cases are stored in the chapter JSON under `testCases`, so they carry over to new versions. They are removed before patients get the form.
     - Blocking publishing waits for the publish workflow, which doesn't exist yet.
 
-The Lifebox importer also stops warning about "several dates" and imports them as a date list.
+The HQ importer also stops warning about "several dates" and imports them as a date list.
 
 ## Status (1 Oct 2026)
 
@@ -89,7 +89,7 @@ Both phases are built.
 
 ## Follow-ups (1 Oct 2026)
 
-- **Builder depth (LOG-04):** groups nest to any depth. A group can match All, Any, None or Not all of its items, so the `!(… or …)` conditions Lifebox imports also open in the Builder. Only arithmetic and other functions need the Code tab.
+- **Builder depth (LOG-04):** groups nest to any depth. A group can match All, Any, None or Not all of its items, so the `!(… or …)` conditions the HQ importer writes also open in the Builder. Only arithmetic and other functions need the Code tab.
 - **Question Set conditions (LOG-02):**
   - `chapterVisibleIf` in the chapter JSON tests questions in earlier Question Sets and the patient.
   - It is set on the Question Set screen and marked in the Structure tree.

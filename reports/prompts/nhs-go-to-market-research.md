@@ -27,7 +27,7 @@ Treat this as setting up a real sales function from nothing: research first, the
 - scores, an ASA suggestion and auto-triage;
 - reminders, PROMs, an audit log and multi-trust tenancy.
 
-It runs serverless on AWS London, with UK data kept in the UK, and it's built so new countries can be added later. Today it's a working local prototype: no customers, no certifications, no real patient data. The incumbent Rahul knows best is **Lifebox**. Use it as a competitor to research, never as a template.
+It runs serverless on AWS London, with UK data kept in the UK, and it's built so new countries can be added later. Today it's a working local prototype: no customers, no certifications, no real patient data. Rahul knows the incumbent product well. Treat it as a competitor to research, never as a template.
 
 ## Before you start: ask Rahul these questions
 
@@ -50,7 +50,7 @@ NHS structures and rules changed a lot in 2025–26, including the plan to aboli
 - **How pre-op assessment works in NHS trusts today:** paper forms, phone calls, EPR modules, dedicated software. Cover the national drivers too: elective recovery targets, GIRFT, CPOC and RCoA guidance, surgical hubs, the NHS App's role in the 10 Year Health Plan, and the Federated Data Platform.
 - **Market size:** the number of acute trusts and independent-sector providers, surgical volumes, and how much is already digital.
 - **Competitors:**
-  - dedicated pre-op and perioperative products (for example Lifebox, Ultramed, Synopsis, Cievert; check these and find the rest);
+  - dedicated pre-op and perioperative products (for example the incumbent Rahul knows, Ultramed, Synopsis, Cievert; check these and find the rest);
   - patient-engagement platforms with pre-op modules (for example DrDoctor, Isla, Patients Know Best);
   - EPR-native modules (Epic, Oracle Health, System C, Nervecentre and others).
 

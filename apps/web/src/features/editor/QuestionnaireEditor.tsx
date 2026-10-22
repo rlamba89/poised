@@ -1,4 +1,4 @@
-// The questionnaire editor, laid out like the Lifebox Author tool (docs/lifebox-ui-notes.md):
+// The questionnaire editor, laid out like the incumbent's authoring tool (docs/incumbent-ui-notes.md):
 // Structure tree on the left (replaced by the Settings panel while a card is selected), the
 // selected Question Set or page on the right. Every change saves automatically.
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -431,7 +431,7 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
               </div>
             </>
           )}
-          {/* Hidden, not removed, while a panel is open, so open Question Sets stay open (Lifebox). */}
+          {/* Hidden, not removed, while a panel is open, so open Question Sets stay open (the incumbent). */}
           <div style={{ display: showSettings || logicPage ? "none" : undefined }}>
             <StructurePanel chapters={data.chapters} store={store} selection={selection} readOnly={readOnly} actions={actions} />
           </div>

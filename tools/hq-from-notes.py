@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Turns docs/hje-full-hq-content.md (transcribed from screenshots) into the same JSON shape
-the Lifebox export snippet downloads, so `go run ./cmd/import-lifebox` can load it.
+the incumbent's export snippet downloads, so `go run ./cmd/import-hq` can load it.
 
 Disclosures can't be transcribed (the screenshots only show their count), so none are included.
 
@@ -159,4 +159,4 @@ def condition(src, is_not, label):
 if __name__ == "__main__":
     md = open(sys.argv[1]).read()
     sets = parse(md)
-    json.dump({"questionnaire": {"name": "HJE Full HQ", "description": "Transcribed from screenshots of the Lifebox Training system (sets 1-4).", "questionSets": sets}, "categories": []}, sys.stdout, indent=1)
+    json.dump({"questionnaire": {"name": "HJE Full HQ", "description": "Transcribed from screenshots of the incumbent's training system (sets 1-4).", "questionSets": sets}, "categories": []}, sys.stdout, indent=1)

@@ -1,7 +1,7 @@
-// Package lifebox converts a questionnaire exported from the Lifebox Author tool
-// (tools/export-lifebox-hq.js) into our questionnaire: one SurveyJS JSON per Question Set.
+// Package hqimport converts a questionnaire exported from the incumbent's authoring tool
+// (tools/export-hq.js) into our questionnaire: one SurveyJS JSON per Question Set.
 // See docs/plan-redesign.md (step 7) for the mapping.
-package lifebox
+package hqimport
 
 // Export is the file the export snippet downloads. Only the fields we use are listed;
 // encoding/json matches the camelCase names case-insensitively.
@@ -17,7 +17,7 @@ type Export struct {
 	}
 }
 
-// Text is a Lifebox text record; we keep only the English text.
+// Text is an incumbent text record; we keep only the English text.
 type Text struct {
 	Text string
 }
@@ -68,7 +68,7 @@ type Option struct {
 	Label    *Text
 }
 
-// Rule is a Lifebox disclosure: when its expression holds, it adds codes and a note.
+// Rule is an incumbent disclosure: when its expression holds, it adds codes and a note.
 type Rule struct {
 	Expression            string
 	DisclosureCodes       []Code

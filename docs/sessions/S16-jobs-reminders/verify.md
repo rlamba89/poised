@@ -41,7 +41,7 @@
   - Reminder texts use the hospital's templates (first name, hospital name, link), as the invites do.
   - The staff routes are unchanged.
 - **Hardcoding (A-20):** the grep prints only existing comments in `apps/web/src/lib/format.ts` and `internal/patient/patient.go`. Nothing new.
-- **The Lifebox grep:** prints nothing.
+- **The incumbent-name grep:** prints nothing.
 - **Docs:**
   - decisions.md (S16 section and answers 3–5), pending.md, the C2 plan Status and both READMEs are updated.
   - The `messages()` move to `settings.Effective(…, own)` is the same as S14's `hospitalOnly(own)`, because `Effective` already drops non-hospital keys.

@@ -50,7 +50,7 @@ S07's work was committed before verification (answers item 5), so I reviewed it 
   - `seed()` is just `main`'s old transaction moved into a function.
   - `TestSeedTwice` (`apps/api/cmd/seed/seed_integration_test.go`) checks that every table's count is unchanged after a second run and that a tester's edits are put back.
   - No routes were added, so the five-case rule doesn't apply.
-- **Security:** no secrets in the diff (the CI Postgres password `sj` is a throwaway container's). The Lifebox-org grep prints nothing. No app code changed apart from one line of sign-in text, so patient/staff separation and clinician-only stripping are untouched.
+- **Security:** no secrets in the diff (the CI Postgres password `sj` is a throwaway container's). The incumbent-name grep prints nothing. No app code changed apart from one line of sign-in text, so patient/staff separation and clinician-only stripping are untouched.
 - **Docs:**
   - F4 Status, `docs/plans/README.md`, `docs/sessions/README.md`, `decisions.md` (14 Oct S07 section) and `pending.md` are updated.
   - `CLAUDE.md` lists `make deploy-pipeline`.

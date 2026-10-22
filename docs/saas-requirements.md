@@ -6,7 +6,7 @@ Drafted 2 Oct 2026 with Rahul and revised the same day after his answers. Status
 - Preopsis (called Poised until 20 Oct 2026) has proven the authoring tool and one thin pass of the episode workflow: publish → the patient fills in the HQ by link → a clinician validates → POA Summary.
 - [plan-workflow.md](plan-workflow.md) describes what exists. [requirements.md](requirements.md) holds the authoring requirements; IDs like PNL-07 and CAL-02 refer to it.
 - This document covers what's needed to turn Preopsis into a multi-trust SaaS product on AWS.
-- References to Lifebox, from the repos under `~/dev/lifebox/`, are **product evidence only**: what hospitals use and expect today. **Lifebox is never the template for our technical architecture** (rule 8).
+- References to the incumbent, from its source code, are **product evidence only**: what hospitals use and expect today. **The incumbent is never the template for our technical architecture** (rule 8).
 
 ---
 
@@ -29,7 +29,7 @@ Drafted 2 Oct 2026 with Rahul and revised the same day after his answers. Status
 | A-13 | SMS / email | **AWS:** SES for email, and AWS End User Messaging (SNS) for SMS. | Agreed |
 | A-14 | Virus scanning | **None.** This is an accepted risk; the mitigations are in section 9. | Agreed |
 | A-15 | Files and messaging | Max **25 MB** per file. **No messaging** between patients and clinicians yet. | Agreed |
-| A-16 | Infrastructure and delivery | **AWS CDK in Python**, deployed by **AWS CodePipeline**. No SAM, and Lifebox's architecture isn't the reference. | Agreed |
+| A-16 | Infrastructure and delivery | **AWS CDK in Python**, deployed by **AWS CodePipeline**. No SAM, and the incumbent's architecture isn't the reference. | Agreed |
 | A-17 | MMSE | Not now. | Agreed |
 | A-18 | Licensed instruments | **Build them now** (EQ-5D-5L, Oxford Hip and Knee Scores). Licence costs are decided later and can be a paid add-on. Each is **opt-in, set when a trust or hospital is added**: a trust opts in or out, and each hospital can follow the trust or decide differently (PRM-08). Licensors aren't contacted for now. | Agreed |
 | A-19 | Data regions | **London (eu-west-2) for now.** The architecture must let a trust's **data** live in another AWS region later. Code and the control plane stay in London (section 13). Not built this session. | **Superseded 8 Oct by A-20** |
@@ -65,9 +65,9 @@ Drafted 2 Oct 2026 with Rahul and revised the same day after his answers. Status
 7. **Automation never sets a clinical value silently.**
    - The ASA and scores are *suggested*.
    - Auto-triage is the one automatic status change. It's visible, explained ("ASA 2, no red flags") and reversible. Its rules are signed off with the HQ, and every auto-triaged episode appears on a worklist.
-8. **Choose technology on its own merits, never because Lifebox uses it.** Lifebox shows what hospitals need (statuses, observation fields, assessments). It doesn't decide how we build. Every technical choice in this document has its own reason written next to it.
+8. **Choose technology on its own merits, never because the incumbent uses it.** The incumbent shows what hospitals need (statuses, observation fields, assessments). It doesn't decide how we build. Every technical choice in this document has its own reason written next to it.
 
-**Choices that came from Lifebox, checked on 2 Oct 2026:**
+**Choices that came from the incumbent, checked on 2 Oct 2026:**
 
 | Choice | Where | Verdict |
 | --- | --- | --- |
@@ -374,7 +374,7 @@ Existing requirements still apply: PX-01 (phones from 320 px), PX-02 (WCAG 2.2 A
 
 | ID | Requirement | Priority |
 | --- | --- | --- |
-| OBS-01 | Clinicians record: height (cm), weight (kg), BMI (calculated), blood pressure (several readings), heart rate, SpO₂, temperature, respiratory rate, blood glucose, peak flow, and notes for ECG and urinalysis. These are Lifebox's `hospital.observations` fields. | Must |
+| OBS-01 | Clinicians record: height (cm), weight (kg), BMI (calculated), blood pressure (several readings), heart rate, SpO₂, temperature, respiratory rate, blood glucose, peak flow, and notes for ECG and urinalysis. These are the incumbent's `hospital.observations` fields. | Must |
 | OBS-02 | Each reading has a value, when it was taken, and who entered it. Corrections keep history. | Must |
 | OBS-03 | Soft plausible-range warnings, plus hard limits. | Must |
 | OBS-04 | The POA Summary shows **hospital BMI** next to patient-reported BMI. A trust setting says whether observations take precedence in scores. | Must |
@@ -383,7 +383,7 @@ Existing requirements still apply: PX-01 (phones from 320 px), PX-02 (WCAG 2.2 A
 
 ### Assessments through the HQ
 
-In Lifebox, the eight assessments in the screenshot are hardcoded SurveyJS JSON in Go. Patients never answer them. Only STOP-Bang is calculated automatically, from HQ answers, observations and the profile.
+In the incumbent, the eight assessments in the screenshot are hardcoded SurveyJS JSON in Go. Patients never answer them. Only STOP-Bang is calculated automatically, from HQ answers, observations and the profile.
 
 **Proposed:**
 - An assessment is a clinician form from the score library, attached to the episode as an `episode_form`.
@@ -449,7 +449,7 @@ In Lifebox, the eight assessments in the screenshot are hardcoded SurveyJS JSON 
   - a **baseline before surgery** plus follow-ups at time points after it (commonly 6 weeks, 6 months and 12 months);
   - each follow-up has a reminder and a response window;
   - results are shown as change from baseline.
-- **Lifebox** has a recovery diary instead: weekly hospital-authored check-ins for 6 weeks after discharge.
+- **The incumbent** has a recovery diary instead: weekly hospital-authored check-ins for 6 weeks after discharge.
 
 ### Requirements (*Proposed*)
 
@@ -461,7 +461,7 @@ In Lifebox, the eight assessments in the screenshot are hardcoded SurveyJS JSON 
 | PRM-04 | The patient can opt out of PROMs follow-ups. | Must |
 | PRM-05 | The episode shows each instrument's score per time point and the **change from baseline**. A follow-up much worse than baseline (a drop beyond a set threshold) adds a task for clinician review. | Should |
 | PRM-06 | A per-procedure report: completion rate and average change, per hospital and consultant. CSV export. | Should |
-| PRM-07 | Instruments are **platform library items with locked wording and scoring**, and each records its owner and licence. Trusts can also author their own **recovery check-ins** (free, no licence), like Lifebox's diary. | Must |
+| PRM-07 | Instruments are **platform library items with locked wording and scoring**, and each records its owner and licence. Trusts can also author their own **recovery check-ins** (free, no licence), like the incumbent's diary. | Must |
 | PRM-08 | **Each licensed instrument is opt-in** (ORG-05). A platform admin sets it when adding a trust or hospital, or later: the trust opts in or out, and each hospital follows the trust or decides for itself. The admin can note who holds the licence and until when. A hospital that hasn't opted in can't add or send the instrument, and the opt-in can be sold as an add-on. | Must |
 
 **What we build and ship:**

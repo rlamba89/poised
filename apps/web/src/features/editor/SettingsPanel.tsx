@@ -1,4 +1,4 @@
-// The left column while a card is selected: Settings | Disclosures | Logic (Lifebox
+// The left column while a card is selected: Settings | Disclosures | Logic (incumbent
 // QuestionSettingsPanel). Text fields save when they lose focus, so typing is one undo step.
 import { ActionIcon, Button, Group, Menu, Select, Stack, Switch, Tabs, Text } from "@mantine/core";
 import { IconChevronDown, IconLink, IconPlus, IconX } from "@tabler/icons-react";

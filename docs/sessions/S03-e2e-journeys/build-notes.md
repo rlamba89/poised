@@ -78,7 +78,7 @@ E       AssertionError: Locator expected to be disabled
 E       Error: element(s) not found
 E         - Expect "to_be_disabled" get_by_role("button", name="Send my answers") with timeout 15000ms
 E       Aria snapshot:
-E       - paragraph: Lifebox
+E       - paragraph: (the old name)
 …
 journeys/test_j3_patient.py: send = patient.get_by_role("button", name="Send my answers"); expect(send).to_be_disabled()
 ```
@@ -89,14 +89,14 @@ The output names the line and the missing button, with the page's aria snapshot.
 
 ```
 make lint          go vet -tags integration ./... (no findings); tsc --noEmit (no errors)
-make test          ok auth, chapter, episode, httpapi, lifebox;  Vitest: Test Files 14 passed (14), Tests 111 passed (111)
+make test          ok auth, chapter, episode, httpapi, hqimport;  Vitest: Test Files 14 passed (14), Tests 111 passed (111)
 make test-integration
 ok  	github.com/rlamba89/poised/apps/api/internal/apitest	1.990s
 ok  	github.com/rlamba89/poised/apps/api/internal/auth	0.661s
 ok  	github.com/rlamba89/poised/apps/api/internal/chapter	1.115s
 ok  	github.com/rlamba89/poised/apps/api/internal/episode	0.890s
 ok  	github.com/rlamba89/poised/apps/api/internal/httpapi	5.546s
-ok  	github.com/rlamba89/poised/apps/api/internal/lifebox	1.342s
+ok  	github.com/rlamba89/poised/apps/api/internal/hqimport	1.342s
 ```
 
 ## Test report 1 (12 Oct): 16 passed, 0 failed, T-04 partly blocked

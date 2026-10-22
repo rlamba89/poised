@@ -115,14 +115,14 @@ Every route in the three groups has all five, except where a case can't exist:
 ```
 go vet -tags integration ./...                       (no findings)
 tsc --noEmit                                         (no errors, after removing the stale .next/dev/types)
-make test:  ok auth, chapter, episode, httpapi, lifebox;  Vitest: Test Files 13 passed (13), Tests 103 passed (103)
+make test:  ok auth, chapter, episode, httpapi, hqimport;  Vitest: Test Files 13 passed (13), Tests 103 passed (103)
 make test-integration:
 ok  	github.com/rlamba89/poised/apps/api/internal/apitest	0.675s
 ok  	github.com/rlamba89/poised/apps/api/internal/auth	0.784s
 ok  	github.com/rlamba89/poised/apps/api/internal/chapter	0.478s
 ok  	github.com/rlamba89/poised/apps/api/internal/episode	0.165s
 ok  	github.com/rlamba89/poised/apps/api/internal/httpapi	2.276s
-ok  	github.com/rlamba89/poised/apps/api/internal/lifebox	0.616s
+ok  	github.com/rlamba89/poised/apps/api/internal/hqimport	0.616s
 ```
 
 - **20 integration tests:** `TestFixtures`, `TestHealth`, and 18 route tests, each with subtests for the five cases.

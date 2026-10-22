@@ -1,6 +1,6 @@
 # Plan: the episode workflow (publish → patient → clinician → POA Summary)
 
-Agreed 1 Oct 2026. This makes Poised a Lifebox-like app, not only an authoring tool. Until now, [requirements.md](requirements.md) left episodes, patients filling in forms and clinical documents out of scope; they are now in.
+Agreed 1 Oct 2026. This makes Poised a full pre-op app like the incumbent, not only an authoring tool. Until now, [requirements.md](requirements.md) left episodes, patients filling in forms and clinical documents out of scope; they are now in.
 
 The goal is one thin, working pass through the whole workflow. Auth, hospital setup, user and patient accounts come after it ([Later](#later)).
 
@@ -16,12 +16,12 @@ The goal is one thin, working pass through the whole workflow. Auth, hospital se
 
 ## Decisions
 
-- **Answers per actor, as Lifebox does.** Each Question Set in an episode has up to two answer sets:
+- **Answers per actor, as the incumbent does.** Each Question Set in an episode has up to two answer sets:
   - the **patient's**, frozen when they submit;
   - the **clinician's**, which starts as a copy of the patient's when the clinician first opens the set.
 
-  This mirrors Lifebox's `AnswerSubmission.actorType` (PATIENT or CLINICIAN). The POA tabs are its `POA_SUMMARY_POST_VALIDATION` and `POA_SUMMARY_PRE_VALIDATION`.
-- **Validation is per Question Set.** "Validated by X on <date>" is recorded once per set, as in Lifebox (`ClinicalAnswersCompletedBy`).
+  This mirrors the incumbent's `AnswerSubmission.actorType` (PATIENT or CLINICIAN). The POA tabs are its `POA_SUMMARY_POST_VALIDATION` and `POA_SUMMARY_PRE_VALIDATION`.
+- **Validation is per Question Set.** "Validated by X on <date>" is recorded once per set, as in the incumbent (`ClinicalAnswersCompletedBy`).
 - **Triage is only a status.** The episode becomes Ready for review when the patient submits. There's no separate triage screen.
 - **Patients use a link, with no login.** `/p/<token>` opens their episode. Patient accounts come later.
 - **One-click Publish.** Review and sign-off (SGN) come later.
@@ -32,9 +32,9 @@ The goal is one thin, working pass through the whole workflow. Auth, hospital se
 
 ## Episode statuses
 
-These are Lifebox's Full HQ states (`statemodel.go`), with readable keys.
+These are the incumbent's Full HQ states (`statemodel.go`), with readable keys.
 
-| Key | Label | Lifebox state | Set by |
+| Key | Label | Incumbent state | Set by |
 | --- | --- | --- | --- |
 | `hq_not_complete` | HQ not complete | `primary` | Creating the episode |
 | `ready_for_review` | Ready for review | `review` | The patient submitting (this is "triage") |
@@ -180,7 +180,7 @@ Each step is committed on its own, with Go handler tests and Vitest tests as bef
   - It sets Ready for POA and writes the event "HQ review completed by X".
 
 ### Step 5: the POA Summary
-`/h/[hospitalId]/episodes/[eid]/poa` follows the Lifebox page in the screenshot (layout, not styling):
+`/h/[hospitalId]/episodes/[eid]/poa` follows the incumbent's page in the screenshot (layout, not styling):
 
 - **Header:**
   - the patient's name, hospital number and phone;
@@ -197,7 +197,7 @@ Each step is committed on its own, with Go handler tests and Vitest tests as bef
   - **For each page with a clinical summary**, a "`<page>` Summary" block. It shows "`<user>` on `<date>`", then the page's disclosure notes, then the clinician's clinical comments (`cs_comments_<page>`).
   - **For each Medication, Admissions and BMI answer**, a block with "Validated by …" and a table: name, dosage and frequency; hospital, anaesthetic, reason and year; height, weight and BMI.
   - **On the validated tab**, a disclosure note that comes from a corrected answer gets a "changed by clinician" marker. Hovering it shows the patient's answer.
-  - Pages and sets with nothing to show are left out, as in Lifebox.
+  - Pages and sets with nothing to show are left out, as in the incumbent.
 - **Pre-operative assessment ASA grades:** Nurse and Anaesthetist dropdowns, each with Save.
 
 **Not in this step:** Audit log, Work plan, Observations, Investigation results, Assessments, Files, Patient files, Send to EPR, the per-section Comment buttons, and hospital-reported BMI.
@@ -213,7 +213,7 @@ Steps 0–6 are built, each committed on its own. `make test` and `make lint` pa
 Differences from the plan:
 - **Routes:** publishing is `POST …/questionnaires/{qid}/publish` with `{versionId}`, not `…/versions/{vid}/publish`. Validation is one route, `PUT …/answers/{cid}` with `{data, validated}`.
 - **Read-only after review:** once the HQ review is complete, the clinician's answers can't be changed.
-- **Notes on every page:** the POA Summary shows a page's disclosure notes even when the page has no Clinical summary box, so none are lost. Lifebox shows them only in the box.
+- **Notes on every page:** the POA Summary shows a page's disclosure notes even when the page has no Clinical summary box, so none are lost. The incumbent shows them only in the box.
 - **Corrections on the POA Summary:** each page also lists the answers the clinician changed, with what the patient said.
 
 ## Later

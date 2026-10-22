@@ -17,7 +17,7 @@
 
 | Case | Result | Note |
 | --- | --- | --- |
-| T-01 New app, name Poised | Pass | The tab title is **Poised**, and `/icon.svg` is the blue tick. The page shows the heading Poised, "Development sign-in: choose a user." and 4 user cards with emails. The source is a short page (608 bytes) with `<div id="root">` and `/src/main.tsx`, and no `_next`. "Lifebox" appeared on no screen in any case. |
+| T-01 New app, name Poised | Pass | The tab title is **Poised**, and `/icon.svg` is the blue tick. The page shows the heading Poised, "Development sign-in: choose a user." and 4 user cards with emails. The source is a short page (608 bytes) with `<div id="root">` and `/src/main.tsx`, and no `_next`. The old name appeared on no screen in any case. |
 | T-02 Sign-in, start page | Pass | Alex lands on `/h/<A>/questionnaires` with the header "Poised · Hospital A · Questionnaires (highlighted) · Alex Author · Sign out" and no Episodes. `/` takes Alex back to the list. Cara lands on `/h/<A>/episodes` with Episodes highlighted. Signed-out `/` goes to `/login`, with the 401 from `/api/me` as expected. |
 | T-03 Signed-out deep link | Pass | It goes to `/login`, and no `/api/h/…` request is made on the way (I checked the network log). |
 | T-04 List, new questionnaire | Pass | Search "E2E J3" narrowed the list, and clearing it restored it. Creating it opened the full-screen editor with "v1 · draft" and a **Questionnaires** link. The link went back to the list, where the row showed DRAFT, and clicking the row reopened the editor. |

@@ -1,4 +1,4 @@
-// Step 5 of plan-workflow.md: the POA Summary, laid out like Lifebox's (layout, not styling).
+// Step 5 of plan-workflow.md: the POA Summary, laid out like the incumbent's (layout, not styling).
 // "Validated summary" is built from the clinician's answers, which are final, and marks what the
 // clinician changed; "Patient answers" is the same document from the patient's original answers.
 import { useMemo, useState } from "react";

@@ -31,7 +31,7 @@ Reviewed: the whole working tree against `9d37cf7` (49 changed files, 14 new), t
 - **Audit:** `episode.archive`, `episode.unarchive` and `account.close` are wrapped in `audited`; close writes one row per trust.
 - **A-20 grep:** only the existing comments in `format.ts` and `patient.go`.
 - **Security:** no secrets; logs carry IDs only; the close-account note has a date only; the patient router adds only `/api/p/account/close`; `chapter.ForPatient` is untouched.
-- **Docs:** plan C3 Status and differences, plans/README, sessions/README, decisions.md and pending.md updated; the Lifebox organisation grep prints nothing.
+- **Docs:** plan C3 Status and differences, plans/README, sessions/README, decisions.md and pending.md updated; the incumbent-name grep prints nothing.
 
 ### Test results (21 Oct)
 

@@ -102,20 +102,20 @@
 ```
 go vet -tags integration ./...      (no findings)
 tsc --noEmit                        (no errors)
-make test:  ok auth, chapter, episode, httpapi, lifebox;  Vitest: Test Files 13 passed (13), Tests 103 passed (103)
+make test:  ok auth, chapter, episode, httpapi, hqimport;  Vitest: Test Files 13 passed (13), Tests 103 passed (103)
 make test-integration:
 ok  	github.com/rlamba89/poised/apps/api/internal/apitest	1.160s
 ok  	github.com/rlamba89/poised/apps/api/internal/auth	0.514s
 ok  	github.com/rlamba89/poised/apps/api/internal/chapter	1.064s
 ok  	github.com/rlamba89/poised/apps/api/internal/episode	0.275s
 ok  	github.com/rlamba89/poised/apps/api/internal/httpapi	3.713s
-ok  	github.com/rlamba89/poised/apps/api/internal/lifebox	1.495s
+ok  	github.com/rlamba89/poised/apps/api/internal/hqimport	1.495s
 ```
 
 - **Names repeated between old fake-querier tests and new integration tests:**
   - `TestCreatePatient`, `TestCreateEpisode`, `TestUpdateEpisode` and `TestSavePatientAnswers` exist in both packages;
   - `-run` matches both. The old ones go when their area is next changed (testing rule 4), as S01 noted for two others.
-- **`gofmt -l` lists `internal/lifebox/convert_test.go`.** It's older than S02 and not changed here.
+- **`gofmt -l` lists `internal/hqimport/convert_test.go`.** It's older than S02 and not changed here.
 
 ## Bugs found
 
@@ -150,7 +150,7 @@ Rahul asked for a review before testing. `/code-review` gave 9 findings.
 [test-report-1.md](test-report-1.md). **No code changed after it.**
 
 - **F-1, T-07 and T-09 (Minor): "Patient answered: false" instead of "No".** The test plan was wrong, not the app.
-  - `make-test-hq.js` made its Yes / No questions as SurveyJS `boolean` questions. The app never makes that type: the editor's Yes / No question is a `radiogroup` with `yesNo: true` and Yes / No options, and the Lifebox importer doesn't make `boolean` either. `describeAnswer` describes a radiogroup answer by its option text, and `respondent.test.ts` already covers that ("Yes").
+  - `make-test-hq.js` made its Yes / No questions as SurveyJS `boolean` questions. The app never makes that type: the editor's Yes / No question is a `radiogroup` with `yesNo: true` and Yes / No options, and the HQ importer doesn't make `boolean` either. `describeAnswer` describes a radiogroup answer by its option text, and `respondent.test.ts` already covers that ("Yes").
   - **Fixed in the script:** its three Yes / No questions now use the editor's shape. The test plan says so at the top, and T-07 and T-09 give the exact text expected.
   - The integration fixture `workflow.json` still uses `boolean`. The server never reads question types, so it doesn't matter there.
 - **T-12 and R-04 wording:** the app says "You don't have access to this hospital." for another hospital's address, not "not found". The plan now expects that. Those messages are the browser's, and the API's 404 hides whether the hospital exists, so nothing leaks to the API caller.

@@ -1,4 +1,4 @@
-package lifebox
+package hqimport
 
 import (
 	"encoding/json"
@@ -22,7 +22,7 @@ func (fakeLib) CategoryName(id string) (string, bool) {
 	return "", false
 }
 
-// A Lifebox export shaped like the GraphQL response (fields as the fragments name them).
+// An incumbent export shaped like the GraphQL response (fields as the fragments name them).
 const fixture = `{
   "questionnaire": {
     "name": "HJE Full HQ", "description": "Pre-op",

@@ -19,7 +19,7 @@ CREATE TABLE patients (
 );
 CREATE INDEX patients_hospital_idx ON patients (hospital_id, last_name, first_name);
 
--- Statuses are Lifebox's Full HQ states (statemodel.go) with readable keys.
+-- Statuses are the incumbent's Full HQ states (statemodel.go) with readable keys.
 CREATE TABLE episodes (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     hospital_id          uuid NOT NULL REFERENCES hospitals ON DELETE CASCADE,
@@ -42,7 +42,7 @@ CREATE TABLE episodes (
 );
 CREATE INDEX episodes_hospital_idx ON episodes (hospital_id, created_at DESC);
 
--- One row per Question Set per actor (Lifebox AnswerSubmission.actorType). The patient row is
+-- One row per Question Set per actor (incumbent AnswerSubmission.actorType). The patient row is
 -- frozen once the episode is submitted; the clinician row starts as a copy of it and is final.
 CREATE TABLE episode_answers (
     episode_id   uuid NOT NULL REFERENCES episodes ON DELETE CASCADE,

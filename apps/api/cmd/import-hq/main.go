@@ -1,8 +1,8 @@
-// Command import-lifebox loads a questionnaire exported from the Lifebox Author tool
-// (tools/export-lifebox-hq.js) as a new draft questionnaire, one chapter per Question Set. The
+// Command import-hq loads a questionnaire exported from the incumbent's authoring tool
+// (tools/export-hq.js) as a new draft questionnaire, one chapter per Question Set. The
 // questionnaire is the trust's: every hospital of the -hospital's trust uses it.
 //
-//	go run ./cmd/import-lifebox -file ~/Downloads/lifebox-hq-<id>.json
+//	go run ./cmd/import-hq -file ~/Downloads/hq-export-<id>.json
 //
 // It prints what it could not carry over. Run it again to import another copy.
 package main
@@ -19,7 +19,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/rlamba89/poised/apps/api/internal/db"
-	"github.com/rlamba89/poised/apps/api/internal/lifebox"
+	"github.com/rlamba89/poised/apps/api/internal/hqimport"
 )
 
 func main() {
@@ -38,7 +38,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	var export lifebox.Export
+	var export hqimport.Export
 	if err := json.Unmarshal(raw, &export); err != nil {
 		log.Fatalf("read %s: %v", *file, err)
 	}
@@ -59,7 +59,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	q, warnings := lifebox.Convert(export, lib)
+	q, warnings := hqimport.Convert(export, lib)
 
 	var id uuid.UUID
 	err = pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {

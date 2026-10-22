@@ -224,7 +224,7 @@ Sets 5–11 haven't been captured yet: Lungs, Organs, Digestive health, Musculos
    - I am unable to remain still for periods of time 🔗
    - or: None of the above
 6. Statement **[P]** "Review the patient's anaesthetic history disclosures and document a concise clinical summary below if further context is required.  This entry will appear on the POA Summary."
-   - The wording is for clinicians but the badge says PATIENT. This looks like a data error in Lifebox.
+   - The wording is for clinicians but the badge says PATIENT. This looks like a data error in the incumbent.
 
 ### 3.3 Transfusion history
 1. Yes/No [P] "In the event of an emergency, would you consent to receiving a blood transfusion and/or blood products?"
@@ -310,7 +310,7 @@ Sets 5–11 haven't been captured yet: Lungs, Organs, Digestive health, Musculos
 ### 4.3 Pacemaker (page shown when 4.2 Q1 is Pacemaker)
 1. Date [P] "When was your pacemaker inserted?" 🔗
    - desc: "(Month/Year)"
-2. Statement [P] "To ensure your safety during surgery you will need to attend a pacemaker clinic review within the last year. If available, please upload your most recent pacemaker report to LifeBox."
+2. Statement [P] "To ensure your safety during surgery you will need to attend a pacemaker clinic review within the last year. If available, please upload your most recent pacemaker report to the portal."
 3. Date [P] opt "Please enter the date of your last pacemaker review?" 🔗
    - desc: "(Day/Month/Year)"
 4. Select Many [C] "Does the patient require a pacemaker review before their procedure?"
@@ -330,7 +330,7 @@ Sets 5–11 haven't been captured yet: Lungs, Organs, Digestive health, Musculos
 ### 4.5 Implantable cardioverter defibrillator (ICD) (page shown when 4.2 Q1 is Implantable cardioverter defibrillator (ICD))
 1. Date [P] "When was your Implantable cardioverter defibrillator (ICD) inserted?" 🔗
    - desc: "(Month/Year)"
-2. Statement [P] "To ensure your safety during surgery you will need to attend a review of your Implantable cardioverter defibrillator (ICD) within the last year of your procedure. If available, please upload your most recent report to LifeBox."
+2. Statement [P] "To ensure your safety during surgery you will need to attend a review of your Implantable cardioverter defibrillator (ICD) within the last year of your procedure. If available, please upload your most recent report to the portal."
 3. Date [P] opt "Please enter the date of your last ICD review?" 🔗
    - desc: "(Day/Month/Year)"
 4. Select Many [C] "Does the patient require an ICD review before their procedure?"

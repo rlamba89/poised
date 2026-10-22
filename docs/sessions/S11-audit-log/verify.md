@@ -65,7 +65,7 @@ From `/code-review high`, these were weighed and already logged:
   - IDs only in rows;
   - `/audit` isn't on the patient router;
   - `chapter.ForPatient` is untouched.
-- **The `lifebox-health(c)are` grep:** prints nothing.
+- **The incumbent-name grep:** prints nothing.
 - **Docs:** decisions.md, pending.md, the C1 plan's Status, plans/README and sessions/README are updated (by this verification, to Verified).
 
 ### Spot checks (Claude in Chrome, against `make dev`)
@@ -194,7 +194,7 @@ Both are small fixes.
   - `/audit` isn't on the patient router;
   - `chapter.ForPatient` is untouched;
   - `GetEpisodeByToken`'s new org, hospital and patient IDs aren't sent to the patient (`patientHQ` builds its JSON by hand).
-- **Docs:** decisions.md (13 Oct "S11"), pending.md, the C1 plan's Status and differences, plans/README and sessions/README are all updated. The `lifebox-health(c)are` grep prints nothing.
+- **Docs:** decisions.md (13 Oct "S11"), pending.md, the C1 plan's Status and differences, plans/README and sessions/README are all updated. The incumbent-name grep prints nothing.
 
 ### Spot checks (Claude in Chrome, against `make dev`, http://tester.localhost:3000)
 

@@ -57,7 +57,7 @@ Builder: automatic run (`/run-sessions`), 12 Oct 2026.
 4. **Times stay in the browser's time zone; only the locale comes from config.** That's today's behaviour. `GET /api/config` returns the time zone for later. Hospital time zones come in S08 (agreed 12 Oct), which can decide which zone staff screens use.
 5. **A route a router doesn't serve gets Go's plain-text `404 page not found`,** not the JSON error shape. A JSON catch-all would also turn every wrong-method 405 into a 404. No client calls these paths.
 6. **Lambda pool settings (`MaxConns=2`, short idle time) wait for S06**, with the adapter. Locally, pgx's defaults are unchanged.
-7. **`cmd/seed` and `cmd/import-lifebox` still read `DATABASE_URL` directly.** They're local tools, not functions, so moving them onto `internal/config` would only add the `TOKEN_SECRET` requirement for nothing.
+7. **`cmd/seed` and `cmd/import-hq` still read `DATABASE_URL` directly.** They're local tools, not functions, so moving them onto `internal/config` would only add the `TOKEN_SECRET` requirement for nothing.
 8. **The guard test lives in Go** (`internal/config/literals_test.go`), though it also scans the TypeScript. **Reason:** it runs in `make test` with no new tooling, next to the only package allowed the values.
 
 ## Differences from the plan

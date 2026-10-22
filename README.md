@@ -6,7 +6,7 @@ Preopsis is a pre-operative assessment platform for hospitals and their patients
 
 **New here (person or Claude)?** Read [CLAUDE.md](CLAUDE.md), then [docs/decisions.md](docs/decisions.md). The decisions doc records every decision, preference and gotcha from the project's history.
 
-What's built so far is a clinical questionnaire authoring tool and one pass of the episode workflow. Content is stored as SurveyJS JSON, and the editor is laid out like the Lifebox Author tool:
+What's built so far is a clinical questionnaire authoring tool and one pass of the episode workflow. Content is stored as SurveyJS JSON, and the editor is laid out like the incumbent's authoring tool:
 - **Editor:** a Structure tree of Question Sets and pages on the left, and the selected page's question cards on the right. Clicking a card opens its **Settings | Disclosures | Logic** panel in place of the tree. Every change saves automatically.
 - **Disclosures (clinical outputs):** codes, a note with a category, an ASA grade and a review flag. They can sit on an answer, a grid cell or a score band.
 - **Logic:** a builder with no code to type.
@@ -14,7 +14,7 @@ What's built so far is a clinical questionnaire authoring tool and one pass of t
   - Tests for options, numbers, dates, text, the patient's age and sex, who is viewing, and score bands.
   - Used for show, required and read-only, for each option, for pages, for whole Question Sets (testing earlier sets), and for skip rules.
   - Cards say each condition in plain words, and the header flags conditions that can't work.
-- **Question types:** Lifebox's, plus Rating, Grid, Calculation (score totals with bands, years since a date, BMI), File upload and Signature. A group can be made repeatable.
+- **Question types:** the incumbent's, plus Rating, Grid, Calculation (score totals with bands, years since a date, BMI), File upload and Signature. A group can be made repeatable.
 - **Settings per type:**
   - **Text:** format and maximum length.
   - **Number:** range, decimal places, unit and soft warnings.
@@ -28,15 +28,15 @@ What's built so far is a clinical questionnaire authoring tool and one pass of t
   - **Screens and languages:** phone, tablet and desktop widths, and any translated language.
   - **Outputs:** the side panel updates live as you answer.
   - **Test cases:** save the answers and the outputs they produce, then run them all again after changes.
-- **Lifebox import:** brings in a questionnaire exported from Lifebox.
+- **Incumbent import:** brings in a questionnaire exported from the incumbent.
 
 What and why:
 - [docs/requirements.md](docs/requirements.md)
 - [docs/plan.md](docs/plan.md): the first slice
-- [docs/plan-redesign.md](docs/plan-redesign.md): the Lifebox-style redesign
+- [docs/plan-redesign.md](docs/plan-redesign.md): the incumbent-style redesign
 - [docs/plan-features.md](docs/plan-features.md): the SurveyJS features added on top
 
-What we copied from Lifebox is in [docs/lifebox-ui-notes.md](docs/lifebox-ui-notes.md).
+What we copied from the incumbent is in [docs/incumbent-ui-notes.md](docs/incumbent-ui-notes.md).
 
 ## Setup
 
@@ -44,7 +44,7 @@ You need Docker, Go 1.26 or newer (older Go downloads 1.26 by itself) and Node 2
 
 ```sh
 docker compose up -d db     # Postgres 17 on localhost:5432
-make migrate seed           # schema, then Lifebox codes, 2 trusts, 3 hospitals and 8 users
+make migrate seed           # schema, then incumbent codes, 2 trusts, 3 hospitals and 8 users
 make dev                    # Go API on :8080 and the web app (Vite) on :3000; Ctrl-C stops both
 ```
 
@@ -118,10 +118,10 @@ The rules for each kind are in [docs/plans/README.md](docs/plans/README.md#testi
    - Try **Phone** and **German**.
    - Answer the form, then **Save answers** as a test case. Change a disclosure in the editor and click **Run all** in the preview: the case fails and lists the difference.
 
-## Importing a Lifebox questionnaire (HJE Full HQ)
+## Importing an incumbent questionnaire (HJE Full HQ)
 
-1. Open the questionnaire in the Lifebox Author tool in Chrome, open DevTools (⌥⌘J), paste [tools/export-lifebox-hq.js](tools/export-lifebox-hq.js) and press Enter. It only reads. It downloads `lifebox-hq-<id>.json` with every Question Set, page, question, option, condition and disclosure.
-2. Run `cd apps/api && go run ./cmd/import-lifebox -file ~/Downloads/lifebox-hq-<id>.json`. It creates a new draft in Trust A (for all its hospitals), then lists anything it couldn't carry over (for example, conditions on another Question Set, or codes missing from our library).
+1. Open the questionnaire in the incumbent's authoring tool in Chrome, open DevTools (⌥⌘J), paste [tools/export-hq.js](tools/export-hq.js) and press Enter. It only reads. It downloads `hq-export-<id>.json` with every Question Set, page, question, option, condition and disclosure.
+2. Run `cd apps/api && go run ./cmd/import-hq -file ~/Downloads/hq-export-<id>.json`. It creates a new draft in Trust A (for all its hospitals), then lists anything it couldn't carry over (for example, conditions on another Question Set, or codes missing from our library).
 
 Without an export, `python3 tools/hq-from-notes.py docs/hje-full-hq-content.md > hq.json` builds Question Sets 1–4 of HJE Full HQ from the screenshot transcription. It has no disclosures, because the screenshots don't show them. Import it the same way.
 
@@ -133,21 +133,21 @@ apps/api            Go API: net/http, pgx, sqlc, goose (as go tools)
   cmd/staff-api     staff routes only; cmd/patient-api: the patient's link only
                     (on AWS, separate Lambdas; locally `make staff-api` / `make patient-api`)
   internal/config   env settings, incl. the per-country values (A-20); GET /api/config
-  cmd/seed          loads db/seed/lifebox/*.csv plus demo hospitals and users
+  cmd/seed          loads db/seed/codes/*.csv plus demo hospitals and users
   internal/httpapi  routers (staff, patient, both), auth and hospital-scope middleware, handlers
   internal/auth     dev login token (HS256 JWT in an httpOnly cookie)
   internal/chapter  chapter content rules
   internal/db       sqlc output (do not edit)
-  cmd/import-lifebox  loads a Lifebox export (internal/lifebox converts it)
+  cmd/import-hq  loads an incumbent export (internal/hqimport converts it)
 apps/web            React + Vite + React Router + Mantine; /api/* is proxied to the Go API
   src/routes.tsx    every URL and its page (src/pages); see apps/web/AGENTS.md
-  src/features      questionnaires, editor (Lifebox layout), outputs, preview
+  src/features      questionnaires, editor (incumbent layout), outputs, preview
 packages/clinical   shared TS: editor model (doc.ts), conditions (logic.ts), per-type settings
                     (fields.ts), question types and functions, properties, stable IDs, viewer
                     rules and patient screens, clinical summary, computeOutputs, test cases,
                     translations
 e2e                 end-to-end journeys J1–J5 (Playwright + pytest); see e2e/README.md
-tools               Lifebox export snippet; HQ-from-notes converter
+tools               incumbent export snippet; HQ-from-notes converter
 spikes              step 0 spike results (throwaway; see spikes/README.md)
 ```
 
@@ -163,8 +163,8 @@ These are from the first slice. The SurveyJS Creator rows no longer apply: the C
 | "Yes / No" (type not specified) | A Select One preset with Yes and No options | Each answer gets a stable ID, outputs and an editable label with no special case. Agreed 30 Sep. |
 | IDs like `q_7f3k2p` | Letters only, e.g. `q_kfbwpx`, `o_tqmd` | The Creator numbers new options from digits in the last option's value, so digits made its placeholder read `o_u8l4` instead of "Item N". |
 | `clinicianOnly` in a "Clinical" category listed first | First setting of the **General** tab | In v3 each category is a separate tab and the first tab opens by default. A one-checkbox Clinical tab first would hide the title and description. Outputs are edited in the modal. |
-| `categories.id int` | `uuid`, keeping Lifebox's own category IDs | Keeps the Lifebox mapping for later import. |
-| `codes.category_id` required | Nullable | 21 Lifebox codes have no category, and "Unassigned" is note-only. |
+| `categories.id int` | `uuid`, keeping the incumbent's own category IDs | Keeps the incumbent's mapping for later import. |
+| `codes.category_id` required | Nullable | 21 incumbent codes have no category, and "Unassigned" is note-only. |
 | 278 codes | 276 | That's how many rows `codes.csv` holds: one quoted field spans lines, so the line count is higher. |
 | Seed with `\copy` | A Go seed command (`make seed`) | No `psql` needed on the machine; it's safe to rerun (upserts). |
 | Steps 1 and 2 committed separately | One commit | Docker Desktop was hung while step 1 was built, so both were verified together. |
@@ -173,7 +173,7 @@ These are from the first slice. The SurveyJS Creator rows no longer apply: the C
 
 ## Known limits and data notes
 
-- **Data problem to fix at source:** Lifebox ICD-10 `F17.1` reads "Mental,SYSTEM and behavioural disorders…". The seed collapses the line break but doesn't edit Lifebox's text.
+- **Data problem to fix at source:** Incumbent ICD-10 `F17.1` reads "Mental,SYSTEM and behavioural disorders…". The seed collapses the line break but doesn't edit the incumbent's text.
 - **Not built yet:** disclosures on "Other (please specify)".
 - **Saved option lists are copies.** Using a list copies its options into the question, with new IDs. Changing or deleting the list later doesn't change questions that already used it.
 - **Question Set conditions in the preview:** a one-set preview can't see earlier sets' answers. It decides a condition only when it tests just the patient, and otherwise explains it above the form.

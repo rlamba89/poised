@@ -19,7 +19,7 @@ Builder: automatic run (`/run-sessions`), 12 Oct 2026. Rahul's answers: [answers
 - **`GET /api/me`** returns `{user, platformAdmin, trusts: [{id, name, code, role, hospitals: [{id, name, timeZone, role}]}]}`.
 - **The ladder** (`internal/role`): authoring, chapters, option lists, publish, new version → super clinician; deleting someone else's draft → admin; patients and episodes → any member (everyone is at least a clinician, A-5). Messages say "Only super clinicians and admins can …".
 - Questionnaire and option-list queries show the trust's content plus that hospital's own; creating one makes it the trust's. Patients list the trust's records. Creating an episode needs a patient of the trust and a published HQ this hospital uses.
-- `cmd/import-lifebox -hospital <id>` imports into that hospital's trust.
+- `cmd/import-hq -hospital <id>` imports into that hospital's trust.
 
 ### Seed (`make seed`)
 Trust A (Hospital A1, Hospital A2), Trust B (Hospital B1); Ada Admin, Alex Author, Cara Clinician, Val Clinician (was Val Viewer), Bea Author, Max Multi (two trusts), Sam Superadmin. On a database from before S08, the seed **adopts** the migrated trust holding the old Hospital A (now A1) as Trust A, so HJE Full HQ and other local data stay. Demo users' memberships are reset on every run.
@@ -68,7 +68,7 @@ Results (12 Oct, 22:4x):
 - Migration checked on a copy of the local database (up, down, up) and on an empty one; `make seed` run twice on each.
 
 ## Suggested commits (Rahul commits after verification)
-1. **Trusts, hospitals, memberships and the role ladder (C1 / S08: data and API)**: `apps/api/db/migrations/00006_trusts.sql`, `apps/api/db/queries/*`, `apps/api/internal/db/*` (generated), `apps/api/internal/role/`, `apps/api/internal/httpapi/*` (handlers, middleware, router, tests, deleted fake tests), `apps/api/internal/apitest/*`, `apps/api/cmd/seed/main.go`, `apps/api/cmd/import-lifebox/main.go`.
+1. **Trusts, hospitals, memberships and the role ladder (C1 / S08: data and API)**: `apps/api/db/migrations/00006_trusts.sql`, `apps/api/db/queries/*`, `apps/api/internal/db/*` (generated), `apps/api/internal/role/`, `apps/api/internal/httpapi/*` (handlers, middleware, router, tests, deleted fake tests), `apps/api/internal/apitest/*`, `apps/api/cmd/seed/main.go`, `apps/api/cmd/import-hq/main.go`.
 2. **Hospital picker, trust header and All hospitals (S08: web and journeys)**: `apps/web/src/**`, `apps/web/AGENTS.md`, `e2e/**`.
    Commits 1 and 2 only work together (the API paths change in 1, the web app follows in 2); one commit for both is fine.
 3. **Docs: S08 decisions, build notes, test plan and status**: `docs/decisions.md`, `docs/plans/README.md`, `docs/plans/c1-trusts-staff.md`, `docs/sessions/README.md`, `docs/sessions/S08-trusts-permissions/*`, `README.md`, `CLAUDE.md`, plus the 12 Oct planning-doc changes per decisions.md §2.

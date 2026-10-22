@@ -72,8 +72,8 @@
 
 ```
 make lint              go vet -tags integration ./... and tsc --noEmit: no findings
-make test              ok auth, chapter, episode, httpapi, lifebox; Vitest: Test Files 14 passed (14), Tests 111 passed (111)
-make test-integration  ok apitest 10.0s, auth 1.6s, chapter 0.6s, episode 1.1s, httpapi 9.6s, lifebox 1.4s
+make test              ok auth, chapter, episode, httpapi, hqimport; Vitest: Test Files 14 passed (14), Tests 111 passed (111)
+make test-integration  ok apitest 10.0s, auth 1.6s, chapter 0.6s, episode 1.1s, httpapi 9.6s, hqimport 1.4s
 make e2e (×3)          5 passed in 23.04s / 5 passed in 17.49s / 5 passed in 18.45s
 ```
 

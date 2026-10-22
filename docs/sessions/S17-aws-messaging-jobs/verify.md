@@ -65,7 +65,7 @@ I grepped every changed and new file, outside `.claude/skills`, `reports/` and `
   - `FailEpisodeMessage` is keyed by AWS's message ID; it's a system path with no user input.
   - Integration tests cover another hospital and another trust (404).
 - **A-20:** the UK grep finds only config.go's existing defaults (config is allowed). `PHONE_COUNTRY` drives the protect configuration. `sms_sender_id` is per entry.
-- **Lifebox organisation name:** none found.
+- **Incumbent-name grep:** prints nothing.
 
 ### Findings (all minor, worst first)
 

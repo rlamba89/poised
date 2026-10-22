@@ -49,7 +49,7 @@ Also read the plan sections the brief points to.
    - **Docs:**
      - the plan's Status section, `docs/plans/README.md` and `docs/sessions/README.md` are updated;
      - decisions are recorded in `docs/decisions.md`;
-     - this check prints nothing: `grep -rIlE "lifebox-health(c)are" . --exclude-dir=node_modules --exclude-dir=.git`
+     - `cd apps/api && go test ./internal/repocheck` passes (the incumbent isn't named anywhere; `make test` runs it too).
 
 ## 3. Run it
 

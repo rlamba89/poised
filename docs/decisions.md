@@ -17,10 +17,10 @@ Related:
 - **Ask, with a recommendation.** For stack and product choices, give 2–4 options with the recommended one first, then wait. Don't decide alone. But fix routine problems yourself (e.g. "you can fix the docker yourself and then start").
 - **Check the official docs before planning** (SurveyJS, AWS, Amplify…). Several plans changed because the docs said otherwise: Amplify supports Next.js ≤ 15 only; Cognito has no native magic link; Aurora Serverless takes about 15 s to wake.
 - **He reads Go, not TypeScript.** Keep backend logic in Go, and explain TypeScript he must review.
-- **Lifebox is not the architecture reference** (2 Oct). Lifebox (the incumbent product he knows well) is evidence of what hospitals need. Never justify a tech choice with "Lifebox does it".
-- **Functionality over content fidelity.** Gaps in copied Lifebox questionnaire content aren't a priority; working features are.
+- **The incumbent is not the architecture reference** (2 Oct). The incumbent (the product he knows well) is evidence of what hospitals need. Never justify a tech choice with "the incumbent does it".
+- **Functionality over content fidelity.** Gaps in copied incumbent questionnaire content aren't a priority; working features are.
 - **Show the tests running.** He likes a visible-browser run (headed) when checking a flow.
-- **Personal account only.** The code lives in his private GitHub (`rlamba89/poised`). Nothing goes to the Lifebox org, and the Lifebox company's GitHub organisation name must never appear anywhere in the repo, its docs or its commit messages. It was scrubbed from the git history on 2 Oct, so describe it, never spell it out.
+- **Personal account only.** The code lives in his private GitHub (`rlamba89/poised`). Nothing goes to the incumbent's org. Neither the incumbent product's name nor its company's GitHub organisation name may appear anywhere in the repo: file names, code, docs or commit messages (the org name since 2 Oct, the product name since 22 Oct). Say "the incumbent".
 - **Messages he'll send on** (e.g. IT tickets) shouldn't mention Claude.
 - **Healthcare: nothing may break silently.** Hence the testing rules (§2, 2 Oct).
 - **Ready, not built** (8 Oct). Don't build for a market or feature before a customer needs it. But don't hardcode anything that would make it a rewrite later: another country must be config, not code.
@@ -29,6 +29,13 @@ Related:
 ## 2. Decision log (newest first)
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
+
+### 22 Oct 2026: the incumbent is never named
+
+- **The incumbent product's name is removed from the whole repo** (Rahul, 22 Oct): code, comments, docs, old session notes, tools and file names. Write "the incumbent" instead. **Reason:** Rahul asked that not one mention remain.
+  - **Renamed:** `internal/<name>` → `internal/hqimport`, `cmd/import-<name>` → `cmd/import-hq`, `db/seed/<name>/` → `db/seed/codes/`, `tools/export-<name>-hq.js` → `tools/export-hq.js` (it now downloads `hq-export-<id>.json`), and the UI notes → `docs/incumbent-ui-notes.md`.
+  - **Guard:** `TestIncumbentNameAppearsNowhere` (`apps/api/internal/repocheck`, in `make test`) walks every file and path in the repo, in any letter case, and fails on the name. The name is base64-encoded in the test, so the test doesn't contain it. It replaces the old org-name grep in `/update-wiki` and `/verify-session`.
+  - **Git history** was rewritten with `git filter-repo` on 22 Oct, as on 2 Oct, so no commit, file or commit message has the name. Anyone with an older clone must clone again.
 
 ### 21 Oct 2026: plan C4 split into sessions S23–S26 (Claude, for Rahul to confirm)
 
@@ -472,7 +479,7 @@ Rahul answered every "Ask Rahul first" question for S05–S16 at the start of th
   - **duplicate matching uses email and mobile too.** On Create:
     - the same first name, surname, date of birth **and** the same email or mobile → link silently to the trust's record, as with a matching NHS number;
     - the same name and date of birth with a different or missing contact → a warning plus "Create anyway". Nothing about the other record is shown.
-  - **Reason (Rahul):** in Lifebox, email is what has helped here, and the NHS number is often empty. Name + date of birth alone was rejected, because two people in a large trust can share both.
+  - **Reason (Rahul):** in the incumbent, email is what has helped here, and the NHS number is often empty. Name + date of birth alone was rejected, because two people in a large trust can share both.
 - **S14: before the date-of-birth check, the patient API returns only the hospital's name.** After the check, it returns the HQ without the date of birth or any identifier the patient didn't type. This settles the 8 Oct open item ([pending.md](pending.md) §3).
 - **S15:**
   - **patients can update their own email or mobile now (PAT-10),** verified before use. This widens the brief at Rahul's choice.
@@ -519,7 +526,7 @@ Rahul answered every "Ask Rahul first" question for S05–S16 at the start of th
 
 ### 12 Oct 2026: S04, the frontend on React + Vite
 
-- **The UI is renamed from "Lifebox" to "Poised" in S04** (Rahul, 12 Oct). This covers the browser tab title, the hospital header, the login page title ("Lifebox Authoring" becomes "Poised") and the patient page header. Code comments that cite Lifebox as layout evidence stay.
+- **The UI is renamed from the old name to "Poised" in S04** (Rahul, 12 Oct). This covers the browser tab title, the hospital header, the login page title (the old name becomes "Poised") and the patient page header. Code comments that cite the incumbent as layout evidence stay.
   - **Reason:** every layout is rewritten in S04 anyway, and it's the only visible change S04 allows.
   - **Details:** [S04 brief](sessions/S04-react-vite/brief.md).
 - **Node 22.22 or newer is required** (was 20.9; S04 builder). React Router 8 needs it.
@@ -670,7 +677,7 @@ All of these are in [saas-requirements.md](saas-requirements.md) §0 and [plans/
 - **Name: Poised** (was sj-demo). *Superseded 20 Oct: renamed Preopsis (see 20 Oct).*
   - Go module `github.com/rlamba89/poised/apps/api`; npm packages `poised`, `@poised/web`, `@poised/clinical`.
   - **Kept on purpose:** the CSS prefix `sj-`, the local Postgres user and database `sj`, and the docker volume `sj-demo_dbdata`, pinned in `docker-compose.yml` so local data survives the folder rename.
-- **Repo:** private, at `github.com/rlamba89/poised`, branch `master`. On 2 Oct the history was rewritten with `git filter-repo` to remove the Lifebox organisation name, and the GitHub repo was deleted and recreated so no old commits remain.
+- **Repo:** private, at `github.com/rlamba89/poised`, branch `master`. On 2 Oct the history was rewritten with `git filter-repo` to remove the incumbent's organisation name, and the GitHub repo was deleted and recreated so no old commits remain. On 22 Oct it was rewritten again to remove the product's name.
 - **Fresh app, no historic data:** schemas can be reshaped freely before go-live.
 - **Tenancy:** a **trust** (the tenant and data controller) has many **hospitals**. Settings resolve platform default → trust → hospital, and each setting says whether a hospital can override it.
 - **Roles:** `clinician < super_clinician < admin`, plus our platform admin. **Everyone in a hospital sees all its data**; roles only limit what people can do.
@@ -728,24 +735,24 @@ Mostly recorded in [plan-workflow.md](plan-workflow.md).
 - **Build the whole workflow thinly end to end first**; platform work (auth, hospitals, accounts) later. Reason: see the core flow working first.
 - **Answers per actor:** the patient's copy is frozen at submit, and the clinician's working copy is final. The POA Summary marks changed answers, and the patient's originals are kept for audit.
 - **Triage is only a status** (Ready for review), set on submit.
-- **The patient link `/p/<token>` needs no login, and Publish is one click.** Validation is per Question Set; statuses follow Lifebox's list. (The link is superseded by magic-link sign-in in plan C2.)
+- **The patient link `/p/<token>` needs no login, and Publish is one click.** Validation is per Question Set; statuses follow the incumbent's list. (The link is superseded by magic-link sign-in in plan C2.)
 - **Go strips clinician-only content** for patients, and disclosures are computed in the browser at view time.
 - **Clinician answers are locked** after the review is complete. There's no re-open yet (plan C3 adds it).
-- **Clinician boxes sit in the row of the patient question above them**, with no "linked to" setting. Same as Lifebox's layout.
+- **Clinician boxes sit in the row of the patient question above them**, with no "linked to" setting. Same as the incumbent's layout.
 - **Only Postgres runs in Docker.** The API and web run with `make dev`, so there's no image rebuilding.
 - **The manual test plan** ([manual-test-plan.md](manual-test-plan.md), MT-01…MT-68) was fully automated headless (63/63 passing on 1 Oct) using gitignored scripts in `spikes/mt/`. Plan F1 replaces these with committed Playwright tests.
 
-### 1 Oct 2026: Lifebox-style redesign and SurveyJS features (session 5ac0c8c2)
+### 1 Oct 2026: incumbent-style redesign and SurveyJS features (session 5ac0c8c2)
 
-Mostly recorded in [plan-redesign.md](plan-redesign.md), [plan-features.md](plan-features.md) and [lifebox-ui-notes.md](lifebox-ui-notes.md).
+Mostly recorded in [plan-redesign.md](plan-redesign.md), [plan-features.md](plan-features.md) and [incumbent-ui-notes.md](incumbent-ui-notes.md).
 
 - **Our own editor; the SurveyJS Creator is dropped.**
   - Reasons: no Creator licence is needed, and content is edited as plain JSON data. survey-core still runs the preview, runtime and outputs.
-  - **Copy Lifebox's layout and behaviour, not its styling**: the Structure tree, card canvas, Settings / Disclosures / Logic panel, and Lifebox terms (Question Set, Page, Disclosures).
-- **Our output model stays richer than Lifebox's:** review flags + ASA on disclosures. Lifebox has no flags, and its ASA is disabled.
+  - **Copy the incumbent's layout and behaviour, not its styling**: the Structure tree, card canvas, Settings / Disclosures / Logic panel, and incumbent terms (Question Set, Page, Disclosures).
+- **Our output model stays richer than the incumbent's:** review flags + ASA on disclosures. The incumbent has no flags, and its ASA is disabled.
 - **"Create the HQ" means rebuilding the HJE Full HQ content** in our tool, from screenshots ([hje-full-hq-content.md](hje-full-hq-content.md)).
   - Sets 1–4 were imported.
-  - All 11 sets + disclosures need `tools/export-lifebox-hq.js` run in the Lifebox Author tool, which hasn't been done yet.
+  - All 11 sets + disclosures need `tools/export-hq.js` run in the incumbent's authoring tool, which hasn't been done yet.
 - **The logic Builder uses SurveyJS's own `ConditionsParser`**, so the Builder and the Code tab always agree. It grew from a single Is / Is not condition to All / Any / None / Not all at any depth.
 - **Other choices:**
   - **Test cases** are stored in the chapter JSON (`testCases`) and stripped for patients.
@@ -782,7 +789,7 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
   - All answer replay (preview, test cases, outputs) runs in the browser through `packages/clinical`, and Go stores and enforces.
   - Test results are tied to the chapter revision.
   - *Partly superseded 2 Oct (D-1): patient submits are evaluated server-side.*
-- **Use real Lifebox codes; never invent codes.** Seed CSVs are in `apps/api/db/seed/lifebox/` (276 codes; 21 have no category; ICD-10 `F17.1` text is broken at source).
+- **Use real incumbent codes; never invent codes.** Seed CSVs are in `apps/api/db/seed/codes/` (276 codes; 21 have no category; ICD-10 `F17.1` text is broken at source).
 - **Stable IDs are the SurveyJS `name` / option `value`.** They're letters only (`q_kfbwpx`, `o_tqmd`) and never change once published.
 - **Content rules:** clinician-only content is stripped for patients; our own preview page; `/api/*` is proxied; Tabler icons; drafts are hard-deleted.
 - **sqlc settings** (`apps/api/db/sqlc.yaml`):
@@ -807,7 +814,7 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
 - **`setPropertyValue`** copies into an existing array, which breaks redo. Untyped custom properties default to `string`, so edits within 1 s merge into one undo step.
 - **`question.isVisible` stays true inside a hidden panel.** Use `getAllQuestions(true)`.
 - **There's no "render if"**; use visible-if, enable-if and required-if.
-- **"Is not" / `notcontains` is true when the question is unanswered.** Lifebox behaves the same way.
+- **"Is not" / `notcontains` is true when the question is unanswered.** The incumbent behaves the same way.
 - **A matrix has `choices`.** Date lists, Medication and Admissions were mistaken for choice questions, and their disclosures never fired (fixed). Branch on the question type.
 - **Dispose the old survey model** when switching view or language. Otherwise ResizeObserver throws "scrollWidth" errors (seen with Rating and File upload).
 - **Unit tests must call the custom-property registration first**, or every custom flag is reported as unknown.
@@ -833,7 +840,7 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
   - A visible run needs `HEADED=1 SLOWMO=100 HEADED_CHROME_PATH=<full Chromium>`.
   - Use an explicit browser context to open several tabs.
   - Plan F1 replaced all this with `e2e/` (S03, 12 Oct).
-- **Driving the Lifebox Training site from a script:**
+- **Driving the incumbent's training site from a script:**
   - It redirects `/author` URLs to `/hospitals` until a hospital is picked.
   - Clicking from VS Code needs "Allow JavaScript from Apple Events" in Chrome.
   - When capturing, screenshot only the Chrome window (`screencapture -l <CGWindowID>`): other apps are open.
@@ -898,14 +905,14 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
 - **Research files:** `research_notes/` and `reports/` at the repo root are untracked. Either keep them (e.g. move them to `docs/research/` and fix the links in saas-requirements §0 and §13 and in this file) or delete them.
 - **What the patient link returns:** *settled 12 Oct* (§2, S14). S14 builds it.
 - **The proposed parts of A-20** (above, 7–8 Oct): the national ID, the per-hospital time zone and the locale were agreed 12 Oct. `uk.<domain>`, one AWS account per environment and the support tooling still need Rahul's yes (the AWS phase).
-- **App branding** still says "Lifebox" in the UI (`apps/web/src/app/layout.tsx`, `h/[hospitalId]/layout.tsx`, `PatientHQ.tsx`). Rename it to Poised. *Done in S04 (12 Oct), pending verification.*
+- **App branding** still shows the old name in the UI (`apps/web/src/app/layout.tsx`, `h/[hospitalId]/layout.tsx`, `PatientHQ.tsx`). Rename it to Poised. *Done in S04 (12 Oct), pending verification.*
 - **S04's manual tests and verification found small items, none blocking:** they're in [pending.md](pending.md) §3 ("Found by the S04 manual tests" and "From S04's verification"). The worst: the POA Summary lists a clinician's change to a question that a later change hid. **Rahul to click Print once** on a POA Summary (no tester could open the real dialog).
 - **Unanswered:** should clinician-only Question Sets render full width in `ValidateSet.tsx`, rather than in an empty two-column grid?
 - **Unconfirmed:** whether saved option lists should be copied (as built) or linked.
 - **Unsaved test data:**
   - **The comprehensive test HQ is gone.** On 8 Oct the local database held only HJE Full HQ. Rebuild it from `apps/api/internal/apitest/testdata` fixtures if it's needed again.
   - **HJE Full HQ exists only in local databases.** Consider saving it as a file in the repo (§4 has the commands).
-- **Content:** HJE Full HQ sets 5–11 and their disclosures still wait on a real Lifebox export (`tools/export-lifebox-hq.js`). Low priority (functionality over content).
+- **Content:** HJE Full HQ sets 5–11 and their disclosures still wait on a real incumbent export (`tools/export-hq.js`). Low priority (functionality over content).
 - **Small issues:**
   - "Years since a date" opens with an empty list and no message.
   - The Medication, Admissions and date-list disclosure fixes have no test-plan cases.

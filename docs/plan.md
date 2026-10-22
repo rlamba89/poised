@@ -1,8 +1,8 @@
-# Lifebox Authoring on SurveyJS: Demo Slice Plan
+# Clinical Authoring on SurveyJS: Demo Slice Plan
 
 Sep 30, 2026 · @Rahul Lamba
 
-This plan turns *Lifebox Authoring on SurveyJS — Requirements* ([requirements.md](requirements.md)) into a build. **Implementers: read section 12 (handover) first.** It covers a **thin demo slice** first: a small end-to-end proof of the riskiest ideas. The full Release 1 plan comes after the slice has proved them.
+This plan turns *Clinical Authoring on SurveyJS — Requirements* ([requirements.md](requirements.md)) into a build. **Implementers: read section 12 (handover) first.** It covers a **thin demo slice** first: a small end-to-end proof of the riskiest ideas. The full Release 1 plan comes after the slice has proved them.
 
 Guiding rule: **the simplest thing that meets the requirement.** Before anything is added, ask whether SurveyJS already does it, or whether a plainer way exists.
 
@@ -46,10 +46,10 @@ An author can:
 | DB tooling | `sqlc` (typed Go from plain SQL) + `goose` (plain SQL migrations) | No ORM. Every query is readable SQL. |
 | Content storage | **One SurveyJS JSON per chapter** | Chapter icon and audience stay in tables. Edit conflicts are per chapter (LCY-04). |
 | Clinical evaluation | A shared TS package (`packages/clinical`) runs in the browser for preview | Guarantees one engine (CLN-15). No backend TS for now. |
-| Server-side replay | **None. The frontend is trusted.** All answer replay (preview, test cases, Lifebox parity scenarios) runs in the browser using `packages/clinical`. Go stores the results and enforces rules on them. No Node service, no TS on the backend. | No Go reimplementation of SurveyJS exists, and a port would quietly disagree with preview (see 2.1). Trusting the author's browser is acceptable for an internal, signed-in tool. |
+| Server-side replay | **None. The frontend is trusted.** All answer replay (preview, test cases, incumbent parity scenarios) runs in the browser using `packages/clinical`. Go stores the results and enforces rules on them. No Node service, no TS on the backend. | No Go reimplementation of SurveyJS exists, and a port would quietly disagree with preview (see 2.1). Trusting the author's browser is acceptable for an internal, signed-in tool. |
 | Output editing UI | "Outputs (n)" badge on each **question**, opening a modal that lists the question and each option with their outputs | Uses the documented adorner API. A per-option badge would need an internal SurveyJS override. |
 | Auth | Stub login: pick a seeded user. The API issues a signed token with the same shape real SSO will provide. | Hospital scoping and roles work from day one. Cognito or another IdP is swapped in later. |
-| Codes | Lifebox's own seed data: 278 SNOMED CT / ICD-10 codes + the 13 categories, from CSVs in `apps/api/db/seed/lifebox/` (see 12.3) | Real, already-curated codes. No licence or download needed. Never invent codes. |
+| Codes | The incumbent's own seed data: 278 SNOMED CT / ICD-10 codes + the 13 categories, from CSVs in `apps/api/db/seed/codes/` (see 12.3) | Real, already-curated codes. No licence or download needed. Never invent codes. |
 | Local dev | Postgres in Docker. Go API and Next.js run natively. | Fastest edit loop |
 | Hosting | Local only for now | Decide later |
 | Licence | Build on SurveyJS trial. The key goes in config later and is never committed. | Trial banner is acceptable for the demo |
@@ -60,11 +60,11 @@ An author can:
 - **No non-JS evaluator exists.** SurveyJS logic (conditions, calculated values, repeating groups, cascading visibility) is evaluated only by `survey-core`, which is JavaScript. No Go, .NET, Java or Python implementation exists.
 - **A port is large and drifts silently.** The expression engine alone is about 200 KB of TypeScript, with subtle rules: `"1" = 1` is true, `'' empty` is true, array comparison ignores order. SurveyJS releases weekly. A Go copy would drift, and preview and server would give different clinical outputs with no error.
 - **Most server checks don't need evaluation.** Missing or forward condition references, option counts, notes without a category, retired codes and changed IDs are all plain JSON reading, so they stay in Go.
-- **Answer replay runs in the browser (decided).** Test cases and Lifebox parity scenarios run there too. Three things follow:
+- **Answer replay runs in the browser (decided).** Test cases and incumbent parity scenarios run there too. Three things follow:
   - **Stale results:** each test result is saved with the chapter `revision` it ran against. Publish accepts only passing results for the latest revision of every chapter.
   - **Hazard log:** "test cases run client-side and are trusted by the server" is recorded in the DCB0129 hazard log for the clinical safety officer to accept.
   - **Downstream integration:** any future system computing outputs from real patient answers must either take them from the patient's browser (saved with the answers) or run `survey-core` itself. Go cannot derive them from the JSON alone.
-- **Possible reuse:** Lifebox's private `surveyjs` repo (Go, 2022) reads coding metadata from SurveyJS answers. It might help with Go-side JSON reading later.
+- **Possible reuse:** The incumbent's private `surveyjs` repo (Go, 2022) reads coding metadata from SurveyJS answers. It might help with Go-side JSON reading later.
 
 ---
 
@@ -164,7 +164,7 @@ chapters         (id uuid pk, version_id fk, position int, name text, descriptio
                   , revision int            -- +1 on every content save (LCY-04)
                   , updated_by fk, updated_at)
 
-categories       (id int pk, name text unique, note_only bool)  -- 13 Lifebox categories + "Unassigned" (note_only)
+categories       (id int pk, name text unique, note_only bool)  -- 13 incumbent categories + "Unassigned" (note_only)
 codes            (id uuid pk, code_set text  -- 'SNOMED'|'ICD10'
                   , code text, description text, full_name text, category_id fk,
                   billable bool, status text  -- active|retired
@@ -339,7 +339,7 @@ This is the order to confirm once the slice is accepted. It will be detailed in 
 5. **Outputs completeness** (CLN-07 full templates, CLN-12 as agreed).
 6. **Translations** (LNG-01/02/04) using the Creator's Translation tab, and **preview devices and languages** (PRV-02).
 7. **Code library screens** (COD-01–06) and **reports** (RPT-01).
-8. **Export/import and Lifebox migration** (EXP-01/02/04, NFR-02). This is the biggest unknown: it needs the Lifebox export format and a list of in-scope questionnaires. The same-answers-same-outputs proof runs as a browser page in the tool.
+8. **Export/import and incumbent migration** (EXP-01/02/04, NFR-02). This is the biggest unknown: it needs the incumbent's export format and a list of in-scope questionnaires. The same-answers-same-outputs proof runs as a browser page in the tool.
 9. **Audit** (AUD-01), **real SSO** (NFR-04), hosting, performance checks (NFR-08).
 
 ---
@@ -403,7 +403,7 @@ Docs:
 - Breaking changes: https://surveyjs.io/stay-updated/breaking-changes
 
 ### 12.3 Seed data
-`apps/api/db/seed/lifebox/` holds Lifebox's own reference data as CSV:
+`apps/api/db/seed/codes/` holds the incumbent's own reference data as CSV:
 
 | File | Contents |
 | --- | --- |
@@ -413,7 +413,7 @@ Docs:
 
 - **Load:** load the CSVs with a seed step (`make seed`, e.g. Postgres `\copy` into staging tables, then insert).
 - **Field mapping:** `synonym` → `description`, `fsn` → `full_name`, `code_set_id` → `code_set` name. All codes are `active`.
-- **"Unassigned":** add it as a `note_only` category, as Lifebox does.
+- **"Unassigned":** add it as a `note_only` category, as the incumbent does.
 - **Demo data:** also seed 2 hospitals (Hospital A, Hospital B) and 3 users (Author at A, Viewer at A, Author at B).
 
 ### 12.4 Definition of done for the slice

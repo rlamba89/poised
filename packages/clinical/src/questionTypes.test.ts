@@ -5,7 +5,7 @@ import { newElement } from "./doc";
 
 registerClinicalProperties();
 
-describe("Lifebox question types", () => {
+describe("incumbent question types", () => {
   it("loads Medication, Admissions, BMI and Profile from the editor's JSON", () => {
     const m = new Model({
       pages: [{ name: "p_a", clinicalSummary: true, elements: ["medication", "admissions", "bmi", "profile"].map((k) => newElement(k as never, new Set())) }],

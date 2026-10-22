@@ -220,6 +220,6 @@ As **Bea Author**, paste the address of your S02 test HQ (Hospital A). **Expecte
   - a review can't be reopened;
   - the POA Summary lacks Audit log, Work plan, Files and similar sections;
   - "chapter" in some user-facing messages.
-- **Branding:** the UI still says "Lifebox" in places.
+- **Branding:** the UI still shows the old name in places.
 - **Looks:** spacing, colours and wording, unless something is unreadable or overlaps at phone size.
 - **A new patient created when the episode then fails:** if T-03's first try created a patient before refusing, that's older behaviour, not S02's. Note it, but don't fail the case for it.

@@ -1,5 +1,5 @@
 // The Clinical summary box (QT-09): at most one per page, for clinicians only. It lists the
-// clinical notes this page's answers produce, above a comments box. Lifebox ClinicalPageSummary.
+// clinical notes this page's answers produce, above a comments box. Incumbent ClinicalPageSummary.
 import type { QuestionHtmlModel, SurveyModel } from "survey-core";
 import { computeOutputs } from "./outputs";
 
