@@ -26,3 +26,9 @@ Asked by the conductor (`/run-sessions S23 S26`), 22 Oct 2026.
 ## Q5. Auditing the other trust's read
 
 **Answer: yes, audit both trusts** (recommended). An `audit_log` row under the source trust as well (who: the patient; what: the source form ID).
+
+## After verification 1 (23 Oct): how another trust's answers match
+
+Verification 1 found that a key match across trusts copied an option value without checking its meaning: each trust makes its own keys, and two trusts can both have a `q_smokes` that mean different things. The builder then made other trusts' answers match by exact wording only.
+
+**Answer (Rahul): platform library keys plus wording** (recommended). For answers from another trust, a key counts only if it's a **platform library key** (`library_questions` with `org_id` NULL, the same for every trust), and even then every choice is mapped by its option **text** (no fill if a text doesn't match). Every other question must match by exact wording, with all the wording safeguards. The clinician's marker says how it matched ("by link" for a library key, "by same wording" otherwise). Asked by the conductor.
