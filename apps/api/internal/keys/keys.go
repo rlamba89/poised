@@ -38,8 +38,9 @@ type Question struct {
 	// the type itself (grid, rating, bmi, medication, signaturepad, file…).
 	Kind string
 	Unit string // a number's unit (`unit`), e.g. "kg"
-	// Format is a date's format (day, month and year; month and year; year only) or a text
-	// question's input format (any text, email address, a pattern…); "" for other kinds.
+	// Format is a date's format (day, month and year; month and year; year only), a text
+	// question's input format (any text, email address, a pattern…) or a medication block's type
+	// (prescribed medication, non-prescribed medication, recreational drugs); "" for other kinds.
 	Format string
 	Title  string // the question text in the default language; "" when it has none
 	// Options are what an answer can hold, each a stored value and its text: a choice question's
@@ -213,10 +214,23 @@ func kindOf(el obj) string {
 	}
 }
 
-// formatOf is a date's format, as the editor sets it (fields.ts dateField), or a text question's
-// input format, read from its validators as the editor writes them (fields.ts setTextFormat).
+// formatOf is a date's format, as the editor sets it (fields.ts dateField), a text question's
+// input format, read from its validators as the editor writes them (fields.ts setTextFormat), or a
+// medication block's type (S23 verification 3: pre-fill must never copy prescribed medicines into a
+// list of recreational drugs). A block without a type is prescribed, the editor's default.
 func formatOf(el obj) string {
 	switch kindOf(el) {
+	case "medication":
+		switch t := el.str("medicationType"); t {
+		case "", "prescribed":
+			return "prescribed medication"
+		case "non_prescribed":
+			return "non-prescribed medication"
+		case "recreational":
+			return "recreational drugs"
+		default:
+			return t
+		}
 	case "date":
 		switch {
 		case el.str("dateFormat") == "y":
@@ -485,11 +499,7 @@ func answerChanges(was, now Question) []string {
 	}
 	var out []string
 	if was.Format != now.Format {
-		what := "answer format"
-		if was.Kind == "date" {
-			what = "date format"
-		}
-		out = append(out, fmt.Sprintf("its %s changed from %s to %s", what, was.Format, now.Format))
+		out = append(out, fmt.Sprintf("its %s changed from %s to %s", formatNoun(was.Kind), was.Format, now.Format))
 	}
 	if was.Unit != now.Unit {
 		out = append(out, fmt.Sprintf("its unit changed from %s to %s", quoted(was.Unit), quoted(now.Unit)))
@@ -525,6 +535,17 @@ func answerChanges(was, now Question) []string {
 		}
 	}
 	return out
+}
+
+// formatNoun is what a Format is, for a kind of answer.
+func formatNoun(kind string) string {
+	switch kind {
+	case "date":
+		return "date format"
+	case "medication":
+		return "medication type"
+	}
+	return "answer format"
 }
 
 func optionNoun(q Question) string {

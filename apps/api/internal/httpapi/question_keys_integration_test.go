@@ -233,6 +233,16 @@ func TestPublishKeyChecks(t *testing.T) {
 		refusedWith(t, publish(mine, mine.VersionID), mine.VersionID,
 			"its date format changed from day, month and year to year only", "its answer format changed from any text to email address")
 	})
+	t.Run("a published medication block's type is frozen (S23 verification 3, S24)", func(t *testing.T) {
+		src := w.fx.DraftHQ(t, w.a, w.alex, "workflow.json")
+		setContent(t, w, src.Chapters[0], page(`{"type":"medication","name":"q_meds_s24","title":"Your medicines","medicationType":"prescribed"}`))
+		setContent(t, w, src.Chapters[1], page(``))
+		publish(src, src.VersionID).Want(t, http.StatusNoContent)
+
+		v2, set := newVersion(t, src)
+		setContent(t, w, set, page(`{"type":"medication","name":"q_meds_s24","title":"Your medicines","medicationType":"recreational"}`))
+		refusedWith(t, publish(src, v2), v2, "“Your medicines”: its medication type changed from prescribed medication to recreational drugs")
+	})
 	t.Run("happy path: a published chapter with plain-string grid columns doesn't stop publishing (after verification 1)", func(t *testing.T) {
 		odd := w.fx.PublishedHQ(t, w.a, w.alex, "workflow.json")
 		setContent(t, w, odd.Chapters[1], page(`{"type":"matrix","name":"q_odd","title":"Odd","rows":["A"],"columns":["Never","Sometimes"]},{"type":"matrixdynamic","name":"q_odd2","columns":["what"]}`))

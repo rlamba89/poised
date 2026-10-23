@@ -677,3 +677,51 @@ func TestDuplicatesSkipUnnamed(t *testing.T) {
 		t.Errorf("unnamed elements: %v", p)
 	}
 }
+
+// A medication question's type (prescribed, non-prescribed, recreational) is part of its answer
+// (S23 verification 3, carried into S24): a published medication key can't switch type, and two
+// medication blocks of different types never match by wording. A block without a type is
+// prescribed (the editor's default).
+func TestMedicationTypeIsPartOfTheAnswer(t *testing.T) {
+	qs, err := Walk(json.RawMessage(`{"pages":[{"name":"p","elements":[
+		{"type":"medication","name":"q_rx","medicationType":"prescribed"},
+		{"type":"medication","name":"q_default"},
+		{"type":"medication","name":"q_otc","medicationType":"non_prescribed"},
+		{"type":"medication","name":"q_rec","medicationType":"recreational"}
+	]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := byName(t, qs)
+	for name, want := range map[string]string{
+		"q_rx": "prescribed medication", "q_default": "prescribed medication",
+		"q_otc": "non-prescribed medication", "q_rec": "recreational drugs",
+	} {
+		if got := m[name].Format; got != want {
+			t.Errorf("%s format = %q, want %q", name, got, want)
+		}
+	}
+
+	was := `{"type":"medication","name":"q_k","title":"Your medicines","medicationType":"prescribed"}`
+	now := `{"type":"medication","name":"q_k","title":"Your medicines","medicationType":"recreational"}`
+	p := LockProblems(walkSets(t, set("S", now)), map[string][]Published{"q_k": {published("HQ", 1, was)}})
+	if len(p) != 1 || !strings.Contains(p[0].Message, "“Your medicines”: its medication type changed from prescribed medication to recreational drugs") {
+		t.Errorf("prescribed → recreational: %v", p)
+	}
+	if p := LockProblems(walkSets(t, set("S", `{"type":"medication","name":"q_k","title":"Your medicines"}`)), map[string][]Published{"q_k": {published("HQ", 1, was)}}); len(p) != 0 {
+		t.Errorf("prescribed → no type (prescribed): %v", p)
+	}
+
+	same := `{"type":"medication","name":"q_b","title":"Your medicines","medicationType":"prescribed"}`
+	if !SameWording(q(t, was), q(t, same)) {
+		t.Error("two prescribed blocks with the same text don't match")
+	}
+	if SameWording(q(t, was), q(t, `{"type":"medication","name":"q_b","title":"Your medicines","medicationType":"recreational"}`)) {
+		t.Error("a prescribed block matched a recreational one by wording")
+	}
+}
+
+// "Same as…" (S24 answers 3 and 4): a question may take another's key when it holds the same kind
+// of answer. Choices are compatible whatever their options (adopting copies them); other kinds need
+// the same unit, format, scale, rows and labels already, since nothing else is copied and the
+// publish lock would refuse any difference. Repeating lists are never linked this way.
