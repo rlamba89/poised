@@ -54,6 +54,33 @@ docker compose up -d --force-recreate db
 
 ## 3. Small gaps in what's built
 
+### From S24's build (22 Oct)
+
+- **QA's Neon database keeps its old Demo pre-op HQ** (q_smokes Yes/No…): the seed never changes a published demo HQ. Before demoing S25's pre-fill on QA, reset QA's demo HQs (or publish a library-based new version by hand).
+- **From S24's test report 1:** a "Same as…" candidate refused for two reasons (its ID already in this HQ, and another kind of answer) shows only the first; and the seeded Demo pre-op HQ asks "Is there any chance you could be pregnant?" of every patient, men included (no condition on sex; authors add one with Logic). Neither changed.
+- **From S24's test report 2 (Rahul to judge; no change):**
+  - **"Same as…" is offered on a question that already has a key from the library or a published HQ,** and Use this replaces that key (the question stops being linked to its old one). Allowed in a draft, as any key change is; a warning ("This question is already linked to …") could be added if authors trip over it.
+  - **A library question may have no text** (the API accepts an empty title; the row then shows its ID). Harmless; the editor's own questions always have text unless the author clears it.
+  - **The local database's HJE Full HQ description names the incumbent** (local data only, not in the repo); Rahul may want to edit it.
+  - The read-only editor still shows "Add content or drag and drop…" in an empty Group or Section (not S24).
+- ~~"Same as…" drops the question's own disclosures and doesn't map conditions on its old option values (the logic-problem button flags them).~~ *Corrected 23 Oct (S24 verification 1, finding 1): that check didn't exist. Now conditions are mapped to the new option with the same text, the logic-problem check (and Publish) flags a condition testing an answer a choice question doesn't have, and the Same as… window says what will be lost before Use this. The question's own disclosures are still dropped, by design (said in the window).*
+- **From S24's test report 3 (21 of 21 passed; cosmetic, not changed, recorded at the end of the run's test rounds):**
+  - The Same as… row's **Use this** button is squeezed to a sliver when the "In …" list of HQ names is long (e.g. a key published in ~40 HQs). Fix: `wrap="nowrap"` on the button's side / `flexShrink: 0`, and cap the list ("In Demo pre-op HQ and 39 others").
+  - The **Save to library** window reopens on "Saved." for the same question; it should start afresh each time, like the other windows (reset on opening, as `SameAsWindow` does).
+  - A condition left testing a removed answer shows the raw value on the card ("Displays when … is o_glyj"); "(a removed answer)" would read better. The logic problem already flags it.
+  - Not S24: the editor's page header says "Clinical Page" on a patient Question Set's page (`Canvas.tsx`, since 1 Oct); an expired staff session (12 hours) shows only as "Please sign in." inside the window that made the request.
+- **From S24's test report 4 (21 of 21 passed; the last round, no code changed):**
+  - **⌘Z after "Same as…" restores only the current Question Set:** another set's Question Set condition that the adoption renamed keeps the new key (e.g. `{ponv_history} = 'o_qunt'`), which is no longer in the HQ. Not silent: Publish refuses it ("…it tests something that isn't in an earlier Question Set (ponv_history)"), and the author fixes it by hand. A fix would make the editor's undo span the sets one adoption changed (one undo step across chapters), or rename them back on undo.
+  - **Save to library reopens on "Saved." for the same question** even after selecting another question and coming back (report 3 saw it reset); a reload resets it. Already noted above (report 3); the fix is to reset on opening.
+  - The "fresh if any copy is fresh" rule shows "Always ask fresh, like the original" on keys the automated tests' HQs mark fresh (e.g. `q_smokes`): as designed.
+- **From S24's verification 1 (minor, not changed):** a library repeating group keeps its row questions' own conditions (they name siblings in the group, so they still work); `keySources` repeats `publishedQuestions`' newest-version walk; Same as… walks every published version of the trust on each search (fine at today's sizes, as S23's route).
+- **From S24's verification 3 (23 Oct; minor, none silent, not changed):**
+  - **The unknown-answer checks read expressions with regexes:** `unknownAnswers` (`logic.ts`) compares case-sensitively (a hand-written `{q} = 'Yes'` against `yes` works in SurveyJS but is refused at Publish) and doesn't judge a reversed `'v' = {q}` or a double-quoted value (only the Code tab writes those); `adoptionLosses` and `rewriteReferences` have their own regexes. Move all three onto SurveyJS's `ConditionsParser`, as the rest of `logic.ts` does.
+  - **Saving a repeating group to the library checks only its own key** (`library.go` `saveToLibrary`): its row questions' keys aren't checked against the library or the trust's published questions, so the library can hold a row key twice. An HQ using it is still refused at Publish by S23's lock.
+  - **A saved question keeps its option conditions, and a repeating group its rows' conditions** (only the top-level ones are dropped). Publish refuses one that names the source HQ's questions.
+  - **`keys.Compatible` passes any choice question, but `adoptKey` copies options only from a `choices` array:** a published question with `choicesFromQuestion` would give its key without its options (refused at Publish; no such question today).
+  - Small: a Yes/No question adopting two other options stays labelled "Yes / No"; the seed doesn't check a new platform key against the trusts' own library items (only matters if `library.json` gains a key); a punctuation-only Same as… search lists every candidate; `renameIn` repeats `doc.ts`'s rewrite loop.
+
 ### From S23's test report 1 (22 Oct; all passed)
 
 - **A medication question's type isn't frozen yet** (S23 verification 3): a published medication key can switch Prescribed → Recreational and publish. **Carried into S24's brief as its first build item**, so it's fixed before S25 copies answers by key.

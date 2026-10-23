@@ -296,7 +296,7 @@ A clinical panel is one item in the toolbox with fixed wording and structure. Au
 | PNL-03 | BMI | Height in cm and weight in kg; BMI is calculated to 1 decimal place and shown. Messages: "Enter a valid height", "Enter a valid weight". New: entry in feet, inches, stones and pounds, and a warning outside a plausible range. | Parity + New | Extend | Must |
 | PNL-04 | Profile | Shows the patient's name, date of birth, email, mobile and gender from the hospital record, read-only, with a note on how to correct them. The preview uses a sample patient. | Parity | Extend | Must |
 | PNL-05 | Allergies | Rows of allergen (from a coded list), reaction and severity (mild, moderate, severe, anaphylaxis), plus "No known allergies" | New | Extend | Should |
-| PNL-06 | Library items | Template owners and hospitals save any group as a named library item. It appears in their toolbox, and inserting it adds a copy with new stable IDs. | New | Extend | Should |
+| PNL-06 | Library items | Template owners and hospitals save any group as a named library item. It appears in their toolbox, and inserting it adds a copy that **keeps its stable IDs** (its question keys and option values), so pre-fill links every HQ it's inserted into (*changed 22 Oct 2026, plan C4, [saas-requirements.md](saas-requirements.md) §6; was "with new stable IDs"*). *S24 (22 Oct) built the question library: single questions, the platform's starter set and each trust's own; saved groups are still to come.* | New | Extend | Should |
 | PNL-07 | Validated scoring tools | STOP-BANG, PHQ-9, GAD-7, Clinical Frailty Scale and Caprini, with locked wording, scoring and codes | New | Extend | Could |
 
 Authors can attach clinical outputs to any panel (CLN-02).

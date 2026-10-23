@@ -153,7 +153,7 @@ Split on 21 Oct. Local like C3, with messages captured.
 | ID | Plan | Builds | Needs from you first | Status |
 | --- | --- | --- | --- | --- |
 | [S23](S23-question-keys/brief.md) | C4 | Question keys in the editor: unique across an HQ, option values locked at publish (Go), "Always ask fresh", the "Pre-fills from N other HQs" label (PRE-05) | Answered 22 Oct ([answers.md](S23-question-keys/answers.md)) | **Verified** (22 Oct, [verification 3](S23-question-keys/verify.md); test report 5 all passed) |
-| [S24](S24-question-library/brief.md) | C4 | The question library (platform starter set + the trust's own), Insert from library keeping the key, "Same as…" with `keys.Compatible`; PNL-06 changed | Answered 22 Oct ([answers.md](S24-question-library/answers.md)) | Not started |
+| [S24](S24-question-library/brief.md) | C4 | The question library (platform starter set + the trust's own), Insert from library keeping the key, "Same as…" with `keys.Compatible`; PNL-06 changed | Answered 22 Oct ([answers.md](S24-question-library/answers.md)) | **Verified** (23 Oct, [verification 3](S24-question-library/verify.md); test report 4 all passed) |
 | [S25](S25-prefill/brief.md) | C4 | Pre-fill from the same trust's earlier HQs (PRE-01, PRE-06), the opening card with its two buttons (PRE-02), the markers (PRE-03); J16's patient half | Answered 22 Oct ([answers.md](S25-prefill/answers.md)) | Not started |
 | [S26](S26-prefill-clinician-cross-trust/brief.md) | C4 | The clinician's pre-fill markers (PRE-04), pre-fill from another trust with both settings on and the patient's agreement; J16 completed, J16b | Answered 22 Oct ([answers.md](S26-prefill-clinician-cross-trust/answers.md)) | Not started |
 

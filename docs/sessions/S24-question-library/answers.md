@@ -23,3 +23,11 @@ Re-asked after the matching change. **Answer: copy the key and the options** (re
 ## Q5. One `keys.Compatible`, in Go
 
 **Answer: Go only** (recommended). The search route returns each candidate with `compatible` and a reason.
+
+## Added to the brief after S23's verification 3 (22 Oct)
+
+S23's verifier found that a medication question's type (Prescribed / Non-prescribed / Recreational) isn't yet part of a published key's frozen answer, and added it as the first build item of this brief. **Rahul: yes, fix it in S24**, test-first, before the library work (it must be fixed before S25 copies any answers). Asked by the conductor.
+
+## After verification 1 (23 Oct): "Same as…" and Always ask fresh
+
+**Answer (Rahul): copy it when it's on** (recommended). If the chosen question has Always ask fresh on, adopting its key switches it on for the new question too. The author may switch it off afterwards. Asked by the conductor.
