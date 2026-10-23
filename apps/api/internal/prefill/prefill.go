@@ -11,6 +11,14 @@
 //   - the earlier forms are taken newest submit first, and the newest one that asked the
 //     question decides: if its answer is empty, or doesn't fit, nothing is filled (an older
 //     answer may no longer be true);
+//   - another trust's forms (S26: only with both trusts' setting on and the patient's agreement,
+//     which the caller checks) come after all of the new form's own trust's: they're tried only
+//     for questions none of its own trust's forms asked. S23's lock freezes a keyed question's
+//     options within one trust, not across trusts, so another trust's `q_smokes` may mean
+//     something else (S26 verification 1). So another trust's question matches by key only if
+//     the key is a **platform library key** (the same for every trust; Rahul, S26 answers "After
+//     verification 1"), else by wording with all its safeguards; and either way every choice is
+//     mapped by its option's text (no fill if a text doesn't match);
 //   - per Question Set of an earlier form, the clinician's validated copy is used if there is
 //     one, else the patient's answers;
 //   - never filled: clinician-only questions, "Always ask fresh" ones, the profile, statements and
@@ -19,7 +27,8 @@
 //     by key, the same value; by wording, the option with the same text, as the new question's own
 //     value. Any value that doesn't fit stops the whole answer;
 //   - a repeating group's or list's rows are copied whole, keeping only the columns the new one
-//     has, each cell fitted as a question of its own; "Other" and comment text (`<key>-Comment`)
+//     has, each cell fitted as a question of its own; a row that would lose every answer it has
+//     stops the whole answer (S26); "Other" and comment text (`<key>-Comment`)
 //     travels with its question.
 //
 // It walks the JSON only; it never evaluates SurveyJS expressions.
@@ -44,23 +53,34 @@ type Chapter struct {
 
 // Source is one of the patient's earlier submitted HQ forms: its version's Question Sets, and its
 // answers per Question Set (chapter ID → SurveyJS data). Clinician holds only validated copies.
+// Questionnaire is its questionnaire's name; OtherTrust marks a form of another trust than the new
+// form's (S26), with its Hospital's name, both for the clinician's marker (PRE-04).
 type Source struct {
-	FormID      string
-	SubmittedAt time.Time
-	Chapters    []Chapter
-	Patient     map[string]json.RawMessage
-	Clinician   map[string]json.RawMessage
+	FormID        string
+	SubmittedAt   time.Time
+	Chapters      []Chapter
+	Patient       map[string]json.RawMessage
+	Clinician     map[string]json.RawMessage
+	Questionnaire string
+	OtherTrust    bool
+	Hospital      string
 }
 
 // Entry says where a pre-filled answer came from: the form, its submit date (the date the patient
 // sees), the value copied (so a later change shows, S26), "Other" or comment text copied with it,
-// and how the question matched ("key" or "wording").
+// and how the question matched ("key" or "wording"). Questionnaire, and for another trust's form
+// OtherTrust and Hospital, are stored with it (S26) so the clinician's marker never has to read
+// another trust's records. Another trust's entry keeps no id of that trust's: no FromForm (S26
+// verification 1); its own audit log records the source episode.
 type Entry struct {
-	FromForm   string          `json:"fromForm"`
-	AnsweredAt time.Time       `json:"answeredAt"`
-	Value      json.RawMessage `json:"value"`
-	Comment    json.RawMessage `json:"comment,omitempty"`
-	MatchedBy  string          `json:"matchedBy"`
+	FromForm      string          `json:"fromForm,omitempty"` // "" for another trust's: none of its ids is kept
+	AnsweredAt    time.Time       `json:"answeredAt"`
+	Value         json.RawMessage `json:"value"`
+	Comment       json.RawMessage `json:"comment,omitempty"`
+	MatchedBy     string          `json:"matchedBy"`
+	Questionnaire string          `json:"questionnaire,omitempty"`
+	OtherTrust    bool            `json:"otherTrust,omitempty"`
+	Hospital      string          `json:"hospital,omitempty"`
 }
 
 // Filled is one Question Set's pre-filled answers (SurveyJS data) and where each came from.
@@ -72,14 +92,23 @@ type Filled struct {
 // Fill pre-fills the Question Sets named in `sets` of the new form's version (target: every set
 // of the version, in order, so texts used twice anywhere in it are known). The result holds only
 // the sets something was filled in. Only target content that isn't a form definition is an error;
-// an earlier form's odd content or answers are skipped.
-func Fill(target []Chapter, sets map[string]bool, sources []Source) (map[string]Filled, error) {
+// an earlier form's odd content or answers are skipped. library is the platform library's keys
+// (LibraryKeys): the only keys another trust's form may match by.
+func Fill(target []Chapter, sets map[string]bool, sources []Source, library map[string]bool) (map[string]Filled, error) {
 	mine, err := walk(target)
 	if err != nil {
 		return nil, err
 	}
 	sources = slices.Clone(sources)
-	slices.SortStableFunc(sources, func(a, b Source) int { return b.SubmittedAt.Compare(a.SubmittedAt) })
+	slices.SortStableFunc(sources, func(a, b Source) int {
+		if a.OtherTrust != b.OtherTrust { // the form's own trust first
+			if a.OtherTrust {
+				return 1
+			}
+			return -1
+		}
+		return b.SubmittedAt.Compare(a.SubmittedAt)
+	})
 	earlier := make([]earlierForm, 0, len(sources))
 	for _, s := range sources {
 		if f, ok := readSource(s); ok {
@@ -93,13 +122,14 @@ func Fill(target []Chapter, sets map[string]bool, sources []Source) (map[string]
 			continue
 		}
 		for _, f := range earlier {
-			s, by := f.find(q, repeated)
+			s, by := f.find(q, repeated, library)
 			if by == "" {
 				continue
 			}
 			// The newest form that asked it decides.
 			answers := f.answers[s.Set]
-			value, ok := fit(context{mine, f.questions}, q, s, answers[s.Name], by == "key")
+			// Another trust's choices always by their text: its option values aren't this trust's.
+			value, ok := fit(context{mine, f.questions}, q, s, answers[s.Name], by == "key" && !f.otherTrust)
 			if !ok {
 				break
 			}
@@ -107,7 +137,10 @@ func Fill(target []Chapter, sets map[string]bool, sources []Source) (map[string]
 			if got.Data == nil {
 				got = Filled{Data: map[string]json.RawMessage{}, Prefill: map[string]Entry{}}
 			}
-			e := Entry{FromForm: f.id, AnsweredAt: f.at, Value: mustJSON(value), MatchedBy: by}
+			e := Entry{FromForm: f.id, AnsweredAt: f.at, Value: mustJSON(value), MatchedBy: by, Questionnaire: f.questionnaire}
+			if f.otherTrust {
+				e.FromForm, e.OtherTrust, e.Hospital = "", true, f.hospital
+			}
 			got.Data[q.Name] = e.Value
 			if c, ok := answers[s.Name+"-Comment"]; ok && !empty(c) && takesComment(q, value) {
 				e.Comment = mustJSON(c)
@@ -132,11 +165,15 @@ func walk(chs []Chapter) ([]keys.Placed, error) {
 
 // earlierForm is a Source, walked and read.
 type earlierForm struct {
-	id        string
-	at        time.Time
-	questions []keys.Placed
-	repeated  map[string]bool
-	answers   map[string]map[string]any // chapter ID → its answers
+	id string
+	at time.Time
+	// questionnaire, otherTrust, hospital: as Source's
+	questionnaire string
+	otherTrust    bool
+	hospital      string
+	questions     []keys.Placed
+	repeated      map[string]bool
+	answers       map[string]map[string]any // chapter ID → its answers
 }
 
 func readSource(s Source) (earlierForm, bool) {
@@ -144,7 +181,8 @@ func readSource(s Source) (earlierForm, bool) {
 	if err != nil {
 		return earlierForm{}, false
 	}
-	f := earlierForm{id: s.FormID, at: s.SubmittedAt, questions: qs, repeated: keys.RepeatedTexts(qs), answers: map[string]map[string]any{}}
+	f := earlierForm{id: s.FormID, at: s.SubmittedAt, questionnaire: s.Questionnaire, otherTrust: s.OtherTrust, hospital: s.Hospital,
+		questions: qs, repeated: keys.RepeatedTexts(qs), answers: map[string]map[string]any{}}
 	for _, c := range s.Chapters {
 		raw, ok := s.Clinician[c.ID]
 		if !ok {
@@ -159,9 +197,11 @@ func readSource(s Source) (earlierForm, bool) {
 }
 
 // find is the earlier form's question that q matches, and how: by key, else by wording; "" for none.
-func (f earlierForm) find(q keys.Placed, repeatedHere map[string]bool) (keys.Placed, string) {
+// Another trust's form matches by key only for a platform library key: its own keys aren't held to
+// this trust's lock.
+func (f earlierForm) find(q keys.Placed, repeatedHere, library map[string]bool) (keys.Placed, string) {
 	for _, s := range f.questions {
-		if keys.TakesPart(s) && s.Name == q.Name {
+		if (!f.otherTrust || library[q.Name]) && keys.TakesPart(s) && s.Name == q.Name {
 			return s, "key"
 		}
 	}
@@ -391,7 +431,8 @@ func listColumns(q keys.Placed) []column {
 
 // fitRows fits a repeating group's or list's rows: each earlier column goes to the new column with
 // the same name (by key) or text (by wording, exactly one); columns the new one lacks are left
-// out, and each cell is fitted by cell. A cell that doesn't fit stops the whole answer.
+// out, and each cell is fitted by cell. A cell that doesn't fit stops the whole answer, and so does
+// a row whose every answer is in columns the new one lacks (it would be lost without a word).
 func fitRows(v any, byKey bool, mine, theirs []column, cell func(mine, theirs column, v any) (any, bool)) (any, bool) {
 	rows, ok := v.([]any)
 	if !ok {
@@ -427,11 +468,13 @@ func fitRows(v any, byKey bool, mine, theirs []column, cell func(mine, theirs co
 			return nil, false
 		}
 		kept := map[string]any{}
+		answered := false
 		for k, x := range row {
 			if empty(x) {
 				continue
 			}
 			base, isComment := strings.CutSuffix(k, "-Comment")
+			answered = answered || !isComment // a stale "Other" text alone isn't an answer
 			c, mapped := to[base]
 			if !mapped {
 				continue
@@ -448,8 +491,11 @@ func fitRows(v any, byKey bool, mine, theirs []column, cell func(mine, theirs co
 			}
 			kept[c.name] = y
 		}
-		if len(kept) > 0 {
+		switch {
+		case len(kept) > 0:
 			out = append(out, kept)
+		case answered:
+			return nil, false
 		}
 	}
 	return out, len(out) > 0
@@ -514,4 +560,32 @@ func mustJSON(v any) json.RawMessage {
 		panic(err)
 	}
 	return b
+}
+
+// LibraryKeys are the keys of the platform library's questions (library_questions with no trust),
+// each element's and its children's (a "yes/no + details" group keeps both, S24), for Fill.
+// An element that can't be read adds nothing.
+func LibraryKeys(elements []json.RawMessage) map[string]bool {
+	out := map[string]bool{}
+	var add func(raw json.RawMessage)
+	add = func(raw json.RawMessage) {
+		var el struct {
+			Name             string            `json:"name"`
+			Elements         []json.RawMessage `json:"elements"`
+			TemplateElements []json.RawMessage `json:"templateElements"`
+		}
+		if json.Unmarshal(raw, &el) != nil {
+			return
+		}
+		if el.Name != "" {
+			out[el.Name] = true
+		}
+		for _, c := range append(el.Elements, el.TemplateElements...) {
+			add(c)
+		}
+	}
+	for _, e := range elements {
+		add(e)
+	}
+	return out
 }

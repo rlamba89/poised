@@ -177,7 +177,7 @@ func TestFollowUpHQPrefillsFromTheDemoHQ(t *testing.T) {
 		},
 		Clinician: map[string]json.RawMessage{"demo3": json.RawMessage(`{"q_bp":"120/80"}`)},
 	}
-	got, err := prefill.Fill(followUp, map[string]bool{"fu1": true, "fu2": true, "fu3": true}, []prefill.Source{src})
+	got, err := prefill.Fill(followUp, map[string]bool{"fu1": true, "fu2": true, "fu3": true}, []prefill.Source{src}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -100,6 +100,7 @@ type EpisodeAnswer struct {
 	PrefillChoice   *string            `json:"prefillChoice"`
 	PrefillChoiceAt pgtype.Timestamptz `json:"prefillChoiceAt"`
 	PrefillChoiceBy uuid.NullUUID      `json:"prefillChoiceBy"`
+	Started         bool               `json:"started"`
 }
 
 type EpisodeEvent struct {
@@ -255,6 +256,14 @@ type PatientAccount struct {
 	CreatedAt    time.Time   `json:"createdAt"`
 	FirstNameKey string      `json:"firstNameKey"`
 	LastNameKey  string      `json:"lastNameKey"`
+}
+
+type PatientPrefillConsent struct {
+	AccountID uuid.UUID     `json:"accountId"`
+	OrgID     uuid.UUID     `json:"orgId"`
+	Agreed    bool          `json:"agreed"`
+	DecidedAt time.Time     `json:"decidedAt"`
+	EpisodeID uuid.NullUUID `json:"episodeId"`
 }
 
 type PatientSession struct {

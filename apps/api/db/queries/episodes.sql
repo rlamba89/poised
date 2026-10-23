@@ -213,11 +213,13 @@ ORDER BY position, name;
 SELECT id, audience, content FROM chapters WHERE id = $1 AND version_id = $2;
 
 -- name: ListEpisodeAnswers :many
--- One form's answers, both actors', with where the patient's pre-filled answers came from (S25).
+-- One form's answers, both actors', with where the patient's pre-filled answers came from (S25),
+-- and who pressed the pre-fill card's button when staff did it for the patient (S26).
 SELECT a.chapter_id, a.actor, a.data, a.updated_at, a.validated_at, a.revision, u.name AS updated_by_name,
-       a.prefill, a.prefill_choice, a.prefill_choice_at
+       a.prefill, a.prefill_choice, a.prefill_choice_at, cu.name AS prefill_choice_by_name
 FROM episode_answers a
 LEFT JOIN users u ON u.id = a.updated_by
+LEFT JOIN users cu ON cu.id = a.prefill_choice_by
 WHERE a.episode_form_id = $1;
 
 -- name: ListPrefillSources :many
@@ -225,12 +227,18 @@ WHERE a.episode_form_id = $1;
 -- submit first, with each of its version's Question Sets and the answers to use from it: the
 -- clinician's validated copy, and the patient's. The patient's are the records joined to their
 -- account (any episode status: answers never expire, A-9), or with no account the record only.
--- org_id is the form's own trust; only S26 asks for another, deliberately, one trust at a time.
-SELECT f.id AS form_id, f.submitted_at, e.id AS episode_id, e.patient_id, c.id AS chapter_id, c.audience, c.content,
+-- org_id is the form's own trust, or (S26) another trust the patient agreed to, after both trusts'
+-- settings were checked: one trust at a time, never more. The questionnaire's and hospital's names
+-- go into the pre-fill map, so the clinician's marker never reads the other trust's records.
+SELECT f.id AS form_id, f.submitted_at, e.id AS episode_id, e.patient_id, e.hospital_id, q.name AS questionnaire_name,
+       h.name AS hospital_name, c.id AS chapter_id, c.audience, c.content,
        pa.data AS patient_data, ca.data AS clinician_data
 FROM episode_forms f
 JOIN episodes e ON e.id = f.episode_id
 JOIN patients p ON p.id = e.patient_id
+JOIN hospitals h ON h.id = e.hospital_id
+JOIN questionnaire_versions v ON v.id = f.version_id
+JOIN questionnaires q ON q.id = v.questionnaire_id
 JOIN chapters c ON c.version_id = f.version_id
 LEFT JOIN episode_answers pa ON pa.episode_form_id = f.id AND pa.chapter_id = c.id AND pa.actor = 'patient'
 LEFT JOIN episode_answers ca ON ca.episode_form_id = f.id AND ca.chapter_id = c.id AND ca.actor = 'clinician'
@@ -241,11 +249,12 @@ WHERE e.org_id = sqlc.arg(org_id) AND p.org_id = sqlc.arg(org_id) AND f.kind = '
 ORDER BY f.submitted_at DESC, f.id, c.position, c.name;
 
 -- name: PrefillPatientAnswers :execrows
--- Stores one Question Set's pre-filled answers as the patient's, revision 0 (S25), only while the
--- form is open and only if the patient (or staff for them) has no answers there yet: nothing typed
--- is ever overwritten, and it runs once per set. No row: answers were saved there first.
+-- Stores one Question Set's pre-filled answers as the patient's (S25), only while the form is open
+-- and only if the patient (or staff for them) has no answers there yet: nothing typed is ever
+-- overwritten, and it runs once per set. No row: answers were saved there first. Revision 1, so a
+-- tab that loaded the set before it was pre-filled (it sends 0) gets the stale 409 (S26).
 INSERT INTO episode_answers (episode_form_id, chapter_id, actor, data, prefill, revision)
-SELECT f.id, sqlc.arg(chapter_id), 'patient', sqlc.arg(data), sqlc.arg(prefill), 0
+SELECT f.id, sqlc.arg(chapter_id), 'patient', sqlc.arg(data), sqlc.arg(prefill), 1
 FROM episode_forms f WHERE f.id = sqlc.arg(form_id) AND f.status = 'open'
 ON CONFLICT (episode_form_id, chapter_id, actor) DO NOTHING;
 
@@ -276,6 +285,31 @@ SET data = EXCLUDED.data, updated_at = now(), revision = episode_answers.revisio
     updated_by = coalesce(EXCLUDED.updated_by, episode_answers.updated_by)
 WHERE episode_answers.revision = sqlc.arg(revision)
 RETURNING revision;
+
+-- name: ListPrefillOffers :many
+-- The other trusts whose answers could pre-fill this person's HQ at trust org_id (S26): each
+-- active trust, other than org_id, where one of the account's records has a sent HQ, with its
+-- settings (Go checks crossTrustPrefill), the newest sent HQ's hospital and date (the question
+-- names them), and the person's answer to the question so far (NULL: not asked). Only the
+-- person's own records, and no answers: those are read one trust at a time, only after the checks
+-- (ListPrefillSources).
+SELECT DISTINCT ON (e.org_id) e.org_id, o.settings AS org_settings, h.name AS hospital_name, f.submitted_at, c.agreed
+FROM episode_forms f
+JOIN episodes e ON e.id = f.episode_id
+JOIN patients p ON p.id = e.patient_id
+JOIN orgs o ON o.id = e.org_id
+JOIN hospitals h ON h.id = e.hospital_id
+LEFT JOIN patient_prefill_consents c ON c.account_id = sqlc.arg(account_id) AND c.org_id = e.org_id
+WHERE p.account_id = sqlc.arg(account_id) AND p.org_id = e.org_id AND e.org_id <> sqlc.arg(org_id) AND o.status = 'active'
+  AND f.kind = 'hq' AND f.status = 'submitted'
+ORDER BY e.org_id, f.submitted_at DESC;
+
+-- name: DecidePrefillConsent :execrows
+-- The person's answer to "Use the answers you gave …?" for one trust (S26), asked at episode_id.
+-- No row: already answered (it can't be changed yet).
+INSERT INTO patient_prefill_consents (account_id, org_id, agreed, episode_id)
+VALUES (sqlc.arg(account_id), sqlc.arg(org_id), sqlc.arg(agreed), sqlc.arg(episode_id))
+ON CONFLICT (account_id, org_id) DO NOTHING;
 
 -- name: SubmitPatientHQ :execrows
 -- Submits the HQ form, freezing the patient's answers, and moves its episode to Ready for review.

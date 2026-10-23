@@ -99,7 +99,7 @@ var Defs = []Def{
 		Help:    "After this many years from the end of an episode, its data is deleted (EPI-06). The trust, as controller, confirms it.",
 		Default: j(8), Min: 1, Max: 100},
 	{Key: "crossTrustPrefill", Label: "Offer answers patients gave other trusts", Group: gTrust, Level: TrustOnly, Kind: Bool,
-		Help: "The patient is always asked first.", Default: j(false)},
+		Help: "Used only when the other trust has it on too, and the patient is always asked first. Never when staff fill in an HQ for the patient.", Default: j(false)},
 
 	{Key: "feature.assessments", Label: "Assessments", Group: gOptIns, Level: Hospital, Kind: Bool, OptIn: true, Default: j(true)},
 	{Key: "feature.proms", Label: "PROMs", Group: gOptIns, Level: Hospital, Kind: Bool, OptIn: true, Default: j(false)},

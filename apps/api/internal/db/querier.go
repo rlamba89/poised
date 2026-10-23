@@ -101,6 +101,9 @@ type Querier interface {
 	// Nothing is returned when the email is already taken (by an invite running at the same time).
 	CreateUserIfNew(ctx context.Context, arg CreateUserIfNewParams) ([]uuid.UUID, error)
 	CreateVersion(ctx context.Context, arg CreateVersionParams) (uuid.UUID, error)
+	// The person's answer to "Use the answers you gave …?" for one trust (S26), asked at episode_id.
+	// No row: already answered (it can't be changed yet).
+	DecidePrefillConsent(ctx context.Context, arg DecidePrefillConsentParams) (int64, error)
 	DeleteAccount(ctx context.Context, id uuid.UUID) error
 	// Its links to confirm a new contact (PAT-10).
 	DeleteAccountLinks(ctx context.Context, accountID uuid.NullUUID) error
@@ -231,7 +234,8 @@ type Querier interface {
 	ListCategories(ctx context.Context) ([]Category, error)
 	// Every chapter lookup joins up to the questionnaire, so it is scoped to the trust and hospital.
 	ListChapters(ctx context.Context, versionID uuid.UUID) ([]ListChaptersRow, error)
-	// One form's answers, both actors', with where the patient's pre-filled answers came from (S25).
+	// One form's answers, both actors', with where the patient's pre-filled answers came from (S25),
+	// and who pressed the pre-fill card's button when staff did it for the patient (S26).
 	ListEpisodeAnswers(ctx context.Context, episodeFormID uuid.UUID) ([]ListEpisodeAnswersRow, error)
 	// user_name is NULL for the patient's entries and the automatic ones.
 	ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeEventsRow, error)
@@ -272,11 +276,23 @@ type Querier interface {
 	ListOrgsForAdmin(ctx context.Context) ([]ListOrgsForAdminRow, error)
 	// A patient's episodes at this hospital only, newest first: never another hospital's.
 	ListPatientEpisodesHere(ctx context.Context, arg ListPatientEpisodesHereParams) ([]ListPatientEpisodesHereRow, error)
+	// The platform library's questions (org_id NULL, the same for every trust), for pre-fill from
+	// another trust (S26): only their keys may match another trust's question by key.
+	ListPlatformLibraryElements(ctx context.Context) ([]json.RawMessage, error)
+	// The other trusts whose answers could pre-fill this person's HQ at trust org_id (S26): each
+	// active trust, other than org_id, where one of the account's records has a sent HQ, with its
+	// settings (Go checks crossTrustPrefill), the newest sent HQ's hospital and date (the question
+	// names them), and the person's answer to the question so far (NULL: not asked). Only the
+	// person's own records, and no answers: those are read one trust at a time, only after the checks
+	// (ListPrefillSources).
+	ListPrefillOffers(ctx context.Context, arg ListPrefillOffersParams) ([]ListPrefillOffersRow, error)
 	// Pre-fill's earlier answers (S25): every submitted HQ form of the patient's in ONE trust, newest
 	// submit first, with each of its version's Question Sets and the answers to use from it: the
 	// clinician's validated copy, and the patient's. The patient's are the records joined to their
 	// account (any episode status: answers never expire, A-9), or with no account the record only.
-	// org_id is the form's own trust; only S26 asks for another, deliberately, one trust at a time.
+	// org_id is the form's own trust, or (S26) another trust the patient agreed to, after both trusts'
+	// settings were checked: one trust at a time, never more. The questionnaire's and hospital's names
+	// go into the pre-fill map, so the clinician's marker never reads the other trust's records.
 	ListPrefillSources(ctx context.Context, arg ListPrefillSourcesParams) ([]ListPrefillSourcesRow, error)
 	// The trust's procedure list (PRC-01, S19). hospital_id NULL: offered at every hospital of the
 	// trust; otherwise at that hospital only. Retired procedures stay listed for managing, and on the
@@ -379,9 +395,10 @@ type Querier interface {
 	// is this hospital's patient and its latest hospital number here: only those may be shown.
 	PatientsBornOn(ctx context.Context, arg PatientsBornOnParams) ([]PatientsBornOnRow, error)
 	Ping(ctx context.Context) (int32, error)
-	// Stores one Question Set's pre-filled answers as the patient's, revision 0 (S25), only while the
-	// form is open and only if the patient (or staff for them) has no answers there yet: nothing typed
-	// is ever overwritten, and it runs once per set. No row: answers were saved there first.
+	// Stores one Question Set's pre-filled answers as the patient's (S25), only while the form is open
+	// and only if the patient (or staff for them) has no answers there yet: nothing typed is ever
+	// overwritten, and it runs once per set. No row: answers were saved there first. Revision 1, so a
+	// tab that loaded the set before it was pre-filled (it sends 0) gets the stale 409 (S26).
 	PrefillPatientAnswers(ctx context.Context, arg PrefillPatientAnswersParams) (int64, error)
 	// Publishes the draft and retires the version published before it (LCY-01), in one statement.
 	// Returns 0 when the version is no longer a draft.

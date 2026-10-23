@@ -235,6 +235,7 @@ func (s *server) patientRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/p/episodes/{eid}/answers/{cid}", session(s.audited("link.save", s.savePatientForm)))
 	mux.HandleFunc("POST /api/p/episodes/{eid}/submit", session(s.audited("link.submit", s.submitPatientForm)))
 	mux.HandleFunc("POST /api/p/episodes/{eid}/prefill/{cid}", session(s.audited("link.prefill", s.patientPrefillChoice)))
+	mux.HandleFunc("POST /api/p/episodes/{eid}/prefill-consent", session(s.audited("link.prefill_consent", s.prefillConsent)))
 
 	// Accounts across trusts (S15): a returning patient's sign-in link (by mobile or email, then
 	// Continue and their date of birth, as an invite), their home, and changing a contact. The

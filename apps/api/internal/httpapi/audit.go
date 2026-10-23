@@ -74,6 +74,12 @@ var auditActions = map[string]string{
 	"procedure.update":   "Changed a procedure",
 	"audit.view":         "Viewed the audit log",
 	"audit.export":       "Exported the audit log",
+
+	// S26: pre-fill from another trust. prefill.read is written under the trust whose answers
+	// were read (the source), beside the request's own row under the form's trust. It's a read:
+	// the form's own trust's answers may have covered every question (S26 test report 1, found 4).
+	"link.prefill_consent": "Patient answered whether to use another trust's answers",
+	"prefill.read":         "Patient's answers read to pre-fill their HQ at another trust (they agreed)",
 }
 
 const auditKey ctxKey = 100

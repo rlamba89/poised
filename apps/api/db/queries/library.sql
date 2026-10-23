@@ -30,3 +30,8 @@ WHERE id = sqlc.arg(id) AND (org_id IS NULL OR org_id = sqlc.arg(org_id));
 -- name: DeleteLibraryQuestion :execrows
 -- Only the trust's own: the platform's are the seed's.
 DELETE FROM library_questions WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id);
+
+-- name: ListPlatformLibraryElements :many
+-- The platform library's questions (org_id NULL, the same for every trust), for pre-fill from
+-- another trust (S26): only their keys may match another trust's question by key.
+SELECT element FROM library_questions WHERE org_id IS NULL;

@@ -174,7 +174,7 @@ func (q *Queries) GetArchivePolicy(ctx context.Context, id uuid.UUID) (GetArchiv
 
 const getFollowup = `-- name: GetFollowup :one
 SELECT e.id, e.invited_at, e.reminders_sent, e.not_responding_at, f.submitted_at AS patient_submitted_at,
-       EXISTS (SELECT 1 FROM episode_answers a WHERE a.episode_form_id = f.id AND a.actor = 'patient' AND (a.revision > 0 OR a.prefill_choice IS NOT NULL))::boolean AS started,
+       EXISTS (SELECT 1 FROM episode_answers a WHERE a.episode_form_id = f.id AND a.actor = 'patient' AND a.started)::boolean AS started,
        EXISTS (SELECT 1 FROM login_links l WHERE l.episode_id = e.id AND l.kind = 'invite'
                AND l.revoked_at IS NULL AND l.locked_at IS NOT NULL)::boolean AS locked,
        (o.status = 'active' AND h.status = 'active')::boolean AS open,

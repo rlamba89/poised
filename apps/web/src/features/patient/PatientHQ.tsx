@@ -20,6 +20,11 @@
 // Such a set opens on a card ("We've filled in 23 answers…") with Check each answer and Everything
 // is still correct; the button is recorded, and until one is pressed the set isn't complete. Each
 // question still holding its pre-filled answer has a marker under it (prefill.ts has the rules).
+//
+// Answers from another trust (S26): when both trusts allow it, Go asks first, once per trust:
+// "Use the answers you gave St Mary's Hospital in March 2026?" (`prefillConsent`). The question
+// comes before the list of sets, nothing is filled until it's answered, and the answer is recorded
+// (POST …/prefill-consent); the HQ then loads again, filled from every source Go may use.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Anchor, Badge, Box, Button, Card, Center, Container, Group, Loader, Modal, Stack, Text, Title } from "@mantine/core";
 import { Link, useNavigate } from "react-router";
@@ -36,7 +41,7 @@ import { ApiError, api } from "@/lib/api";
 import { Logo } from "@/features/brand/Logo";
 import { lostWork, type Lost } from "./signedOut";
 import { showUnits } from "@/features/preview/units";
-import { formatDay } from "@/lib/format";
+import { formatDay, formatMonth } from "@/lib/format";
 import { awaitsCheck, cardText, firstUnfilled, focusQuestion, showPrefillMarkers, shownPrefilled, type PrefillChoice, type SetPrefill } from "./prefill";
 
 registerClinicalProperties();
@@ -59,7 +64,12 @@ type HQ = {
   revisions: Record<string, number>;
   /** The sets Go pre-filled, and where each answer came from (S25). */
   prefill?: Record<string, SetPrefill>;
+  /** Other trusts' answers Go asks about before the first set (S26); the patient's own form only. */
+  prefillConsent?: ConsentQuestion[];
 };
+
+/** "Use the answers you gave <hospital> in <month>?" for one other trust (S26). */
+type ConsentQuestion = { orgId: string; hospital: string; submittedAt: string };
 
 const SAVE_DELAY_MS = 600;
 
@@ -76,6 +86,8 @@ export default function PatientHQ({ path, onBehalf }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
+  // Recording the answer to another trust's consent question (S26).
+  const [answering, setAnswering] = useState(false);
   // The 409's message: the answers changed on another device (or were sent), so nothing more is
   // saved until Reload.
   const [conflict, setConflict] = useState("");
@@ -225,6 +237,24 @@ export default function PatientHQ({ path, onBehalf }: Props) {
       return false;
     }
   };
+  // Another trust's answers (S26): the patient's answer is recorded, then the HQ loads again (filled).
+  const consentQ = isPatient && !hq.submitted ? hq.prefillConsent?.[0] : undefined;
+  const answerConsent = async (agree: boolean) => {
+    if (!consentQ) return;
+    setAnswering(true);
+    let refused = "";
+    try {
+      await api(`${path}/prefill-consent`, { method: "POST", body: JSON.stringify({ orgId: consentQ.orgId, agree }) }).catch(endedBy());
+    } catch (e) {
+      refused = (e as Error).message; // e.g. answered in another tab meanwhile: the reload shows where things are
+    } finally {
+      setAnswering(false);
+    }
+    await load();
+    // After the reload, which clears the page's message, so the reason stays on screen (S26 verification 1).
+    if (refused) setError(refused);
+  };
+
   // "Everything is still correct" with nothing left to answer: the next set shown, or the list.
   const openNext = (id: string) => setOpenId(sets[sets.findIndex((s) => s.id === id) + 1]?.id ?? null);
 
@@ -267,6 +297,22 @@ export default function PatientHQ({ path, onBehalf }: Props) {
             <IconCircleCheck size={48} color="var(--mantine-color-green-6)" style={{ margin: "0 auto" }} />
             <Title order={3} mt="sm">Thank you, {hq.patient.firstName}</Title>
             <Text mt="xs">Your answers have been sent to the hospital. A member of the team will review them.</Text>
+          </Card>
+        ) : consentQ ? (
+          <Card withBorder p="lg" data-testid="prefill-consent">
+            <Group gap="xs" wrap="nowrap">
+              <IconHistory size={20} color="var(--mantine-color-brand-7)" />
+              <Title order={3}>Use your earlier answers?</Title>
+            </Group>
+            <Text mt="sm" fw={600}>Use the answers you gave {consentQ.hospital} in {formatMonth(consentQ.submittedAt)}?</Text>
+            <Text mt="xs" size="sm">
+              We&apos;ll fill in the questions you haven&apos;t answered yet. You can check and change every answer before you send them.
+              If you say no, you&apos;ll answer them yourself. We&apos;ll only ask you this once.
+            </Text>
+            <Stack mt="md" gap="sm">
+              <Button onClick={() => answerConsent(true)} loading={answering}>Yes, use them</Button>
+              <Button variant="default" onClick={() => answerConsent(false)} disabled={answering}>No, thanks</Button>
+            </Stack>
           </Card>
         ) : open ? (
           <SetForm

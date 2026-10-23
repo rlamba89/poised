@@ -3,6 +3,8 @@
 // change shows what the patient said) and fills in their own. Answers save as they go;
 // "Validate" checks required questions and stamps the set. Saves carry the set's revision, so a
 // save from a stale tab gets a 409 and the page asks for a reload instead of overwriting (S02a).
+// Pre-filled answers (S26, PRE-04) say where they came from, and which the patient changed; the set
+// says which button of its opening card the patient pressed.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { Alert, Anchor, Badge, Button, Card, Center, Group, Loader, Stack, Text, Title } from "@mantine/core";
@@ -10,11 +12,14 @@ import { IconArrowLeft, IconCircleCheck } from "@tabler/icons-react";
 import type { Model } from "survey-core";
 import { Survey } from "survey-react-ui";
 import "survey-core/survey-core.css";
-import { answerSaver, patientVariables, refreshClinicalSummaries, registerClinicalProperties, sameAnswer, type Answers } from "@poised/clinical";
+import {
+  answerSaver, patientVariables, prefillChoiceText, prefillMarks, refreshClinicalSummaries, registerClinicalProperties, sameAnswer, type Answers,
+} from "@poised/clinical";
 import { api } from "@/lib/api";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatDay } from "@/lib/format";
 import { clinicianModel } from "@/features/preview/clinicianView";
 import { showCorrections } from "./corrections";
+import { showPrefillOrigins } from "./prefillOrigins";
 import { useEpisode } from "./EpisodePage";
 import { currentAnswers, useEpisodeHQ, type EpisodeHQ, type HQSet } from "./hq";
 import { patientName, type Episode } from "./types";
@@ -49,6 +54,7 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
   const editable = episode.status === "ready_for_review";
   const row = hq.clinician[set.id];
   const patient = hq.patient[set.id];
+  const prefill = hq.prefill[set.id];
   const [status, setStatus] = useState<"saved" | "saving" | "error">("saved");
   const [error, setError] = useState("");
   // The 409's message: the answers changed somewhere else, so nothing more is saved until Reload.
@@ -63,11 +69,15 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
     m.showCompleteButton = false; // "Validate" replaces it
     m.readOnly = !editable;
     if (patient) showCorrections(m, patient);
+    if (patient && prefill) showPrefillOrigins(m, prefill, patient);
     m.data = currentAnswers(hq, set.id);
     return m;
     // Built once: answers then live in the model.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [set.id]);
+
+  // The set's pre-filled answers shown when it opened (S26), for the line above it.
+  const prefilled = useMemo(() => (patient && prefill ? prefillMarks(model, prefill.answers, patient) : []), [model, patient, prefill]);
 
   // Saves run one at a time, each with the revision the last one returned. Built once, like the model.
   const saver = useMemo(
@@ -156,6 +166,13 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
       {hq.enteredBy[set.id] && (
         <Alert color="orange" data-testid="entered-by">
           The patient&apos;s answers here were entered by {hq.enteredBy[set.id]} on the patient&apos;s behalf.
+        </Alert>
+      )}
+      {prefill && prefilled.length > 0 && (
+        <Alert color="brand" variant="light" data-testid="prefill-set">
+          {prefilled.length === 1 ? "1 answer here was" : `${prefilled.length} answers here were`} pre-filled from the patient&apos;s earlier
+          questionnaires{prefilled.some((m) => m.changed) ? `, and the patient changed ${prefilled.filter((m) => m.changed).length}` : ""}.{" "}
+          {prefillChoiceText(prefill, formatDay)}
         </Alert>
       )}
       {conflict && (

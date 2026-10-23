@@ -1,6 +1,9 @@
 // Step 5 of plan-workflow.md: the POA Summary, laid out like the incumbent's (layout, not styling).
 // "Validated summary" is built from the clinician's answers, which are final, and marks what the
 // clinician changed; "Patient answers" is the same document from the patient's original answers.
+// Both list each page's pre-filled answers shown (S26, PRE-04): where each came from, and "Changed by
+// patient" where the patient's answer differs from the pre-filled one; and the button the patient
+// pressed on the set's opening card.
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import {
@@ -8,10 +11,12 @@ import {
   Title, Tooltip,
 } from "@mantine/core";
 import { IconPrinter } from "@tabler/icons-react";
-import { ageFrom, patientVariables, poaSummary, reportedBmi, type PoaCapture, type PoaSet } from "@poised/clinical";
+import {
+  ageFrom, patientVariables, poaSummary, prefillChoiceText, prefillSourceText, reportedBmi, type PoaCapture, type PoaSet,
+} from "@poised/clinical";
 import { api } from "@/lib/api";
 import { nationalIdLabel } from "@/lib/config";
-import { formatDate, formatDateTime, formatOptionalDate } from "@/lib/format";
+import { formatDate, formatDateTime, formatDay, formatOptionalDate } from "@/lib/format";
 import { StatusBadge } from "./EpisodeList";
 import { useEpisode } from "./EpisodePage";
 import { GeneralNotes } from "./GeneralNotes";
@@ -75,9 +80,9 @@ function Summary({ tab, episode: e, events, hq, path, onChanged }: SummaryProps)
   const sets = useMemo(() => {
     if (validated) {
       const answers = Object.fromEntries(hq.chapters.map((c) => [c.id, currentAnswers(hq, c.id)]));
-      return poaSummary(hq.chapters, answers, "clinician", vars, hq.patient);
+      return poaSummary(hq.chapters, answers, "clinician", vars, hq.patient, hq.prefill);
     }
-    return poaSummary(hq.chapters.filter((c) => c.audience === "patient"), hq.patient, "patient", vars);
+    return poaSummary(hq.chapters.filter((c) => c.audience === "patient"), hq.patient, "patient", vars, undefined, hq.prefill);
   }, [validated, hq, vars]);
   const bmi = reportedBmi(sets);
 
@@ -153,8 +158,10 @@ function byLine(validated: boolean, e: Episode, hq: EpisodeHQ, setId: string): s
 }
 
 function SetSection({ set, byLine, validated }: { set: PoaSet; byLine: string; validated: boolean }) {
+  const choice = set.prefill && set.pages.some((p) => p.prefilled.length > 0) ? prefillChoiceText(set.prefill, formatDay) : "";
   return (
     <Stack gap="lg">
+      {choice && <Text size="sm" c="dimmed" data-testid="poa-prefill-choice">{choice}</Text>}
       {set.pages.map((p) => (
         <div key={p.name} data-testid={`poa-page-${p.title}`}>
           {(p.notes.length > 0 || p.comments) && (
@@ -183,6 +190,22 @@ function SetSection({ set, byLine, validated }: { set: PoaSet; byLine: string; v
               <Capture capture={c} />
             </Stack>
           ))}
+          {p.prefilled.length > 0 && (
+            <Alert color="brand" variant="light" p="xs" mt={4} title={`Pre-filled on ${p.title}`} data-testid="poa-prefilled">
+              <List size="sm">
+                {p.prefilled.map((m) => (
+                  <List.Item key={m.questionId}>
+                    {m.title} — {prefillSourceText(m.entry, formatDay)}
+                    {m.changed && (
+                      <>
+                        {" "}<Badge size="xs" color="orange" variant="light">Changed by patient</Badge> pre-filled “{m.was}”, patient answered “{m.now}”
+                      </>
+                    )}
+                  </List.Item>
+                ))}
+              </List>
+            </Alert>
+          )}
           {validated && p.changes.length > 0 && (
             <Alert color="orange" variant="light" p="xs" mt={4} title={`Changed by the clinician on ${p.title}`}>
               <List size="sm">

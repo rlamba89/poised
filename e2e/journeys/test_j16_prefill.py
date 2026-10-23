@@ -5,13 +5,16 @@ Set opens on a card saying how many answers were filled in from their earlier qu
 choose "Everything is still correct" in one set (it jumps to the first question that wasn't filled)
 and "Check each answer" in the other, see the marker under each pre-filled answer (gone once they
 change it, and nothing filled in again after a reload), answer the rest and send it. The buttons
-pressed are recorded. S26 adds the clinician's half. Needs the seed's S25 follow-up HQ."""
+pressed are recorded. Then the clinician's half (S26, PRE-04): Cara, validating the set, sees where
+each pre-filled answer came from and how it matched, the one the patient changed marked "Changed by
+patient" with the pre-filled answer, and the button the patient pressed; the POA Summary shows the
+same. Needs the seed's S25 follow-up HQ."""
 
 from datetime import datetime
 
 from playwright.sync_api import BrowserContext, Page, expect
 
-from support import choose, invite_path, unique
+from support import choose, invite_path, sign_in, unique
 
 
 def published(api, name: str) -> dict:
@@ -29,7 +32,7 @@ def with_sets(api, episode: dict) -> dict:
     return episode
 
 
-def test_a_returning_patient_confirms_their_pre_filled_answers_on_a_phone(phone: BrowserContext, as_user, patient_link):
+def test_a_returning_patient_confirms_their_pre_filled_answers_on_a_phone(phone: BrowserContext, page: Page, as_user, patient_link):
     cara = as_user("Cara Clinician")
     last_name = f"J16 {unique()}"
 
@@ -151,6 +154,36 @@ def test_a_returning_patient_confirms_their_pre_filled_answers_on_a_phone(phone:
     sources = mine[second["hq"]["chapters"]["Your health"]]["prefill"]
     assert sources["fu_diabetes"]["matchedBy"] == "wording" and sources["snoring"]["value"] == "yes"
     assert mine[second["hq"]["chapters"]["Your health"]]["data"]["ponv_history"] == "no"
+
+    # The clinician's half (S26): Cara validates Your health.
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{second['id']}/sets/{second['hq']['chapters']['Your health']}")
+    expect(page.get_by_role("heading", name="Your health")).to_be_visible()
+    line = page.get_by_test_id("prefill-set")
+    expect(line).to_contain_text("6 answers here were pre-filled from the patient's earlier questionnaires, and the patient changed 1.")
+    expect(line).to_contain_text(f"The patient chose “Everything is still correct” on {datetime.now().day} ")
+    origins = page.get_by_test_id("prefill-origin")
+    diabetes = page.locator(".sd-question", has=page.get_by_text("Do you have diabetes?", exact=True))
+    expect(diabetes.get_by_test_id("prefill-origin")).to_have_text(f"Pre-filled from Demo pre-op HQ, {day} (matched by same wording)")
+    snore = page.locator(".sd-question", has=page.get_by_text("Do you snore loudly?", exact=True))
+    expect(snore.get_by_test_id("prefill-origin")).to_have_text(f"Pre-filled from Demo pre-op HQ, {day} (matched by link)")
+    expect(origins.first).to_be_visible()
+    changed = page.get_by_test_id("prefill-changed")
+    expect(changed).to_have_count(1)
+    expect(changed).to_have_text("Changed by patient: pre-filled “Yes”")
+    sick = page.locator(".sd-question", has=page.get_by_text("Have you ever been sick, or felt very sick, after an anaesthetic?", exact=True))
+    expect(sick.get_by_test_id("prefill-changed")).to_be_visible()
+    # A question that wasn't pre-filled has no marker: pregnancy (Always ask fresh).
+    pregnancy = page.locator(".sd-question", has=page.get_by_text("Is there any chance you could be pregnant?", exact=True))
+    expect(pregnancy.get_by_test_id("prefill-origin")).to_have_count(0)
+
+    # The POA Summary shows the same.
+    page.goto(f"{base}/episodes/{second['id']}/poa")
+    health_section = page.get_by_role("region", name="Your health")
+    expect(health_section.get_by_test_id("poa-prefill-choice")).to_contain_text("The patient chose “Everything is still correct”")
+    expect(health_section.get_by_test_id("poa-prefilled").first).to_contain_text(f"Pre-filled from Demo pre-op HQ, {day}")
+    expect(health_section.get_by_text("Changed by patient")).to_have_count(1)
+    expect(health_section).to_contain_text("pre-filled “Yes”")
 
 
 def test_everything_still_correct_moves_on_when_nothing_is_left(phone: BrowserContext, as_user, patient_link):

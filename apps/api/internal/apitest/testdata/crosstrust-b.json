@@ -1,0 +1,41 @@
+{
+  "name": "Trust B HQ",
+  "description": "Trust B's HQ for S26's cross-trust pre-fill: the same keys as prefill.json, but q_smokes is worded differently and its option values mean the opposite here (Yes is o_no), as nothing locks a trust's own keys across trusts; medicines and diabetes worded as there.",
+  "chapters": [
+    {
+      "name": "About you (B)",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_b_you",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_smokes",
+                "title": "Do you smoke now?",
+                "choices": [{ "value": "o_no", "text": "Yes" }, { "value": "o_yes", "text": "No" }]
+              },
+              {
+                "type": "paneldynamic",
+                "name": "q_meds",
+                "title": "Your medicines",
+                "templateElements": [
+                  { "type": "text", "name": "q_med_name", "title": "Medicine" },
+                  { "type": "text", "name": "q_secret_dose_check", "title": "SECRET dose check", "clinicianOnly": true }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Health (B)",
+      "audience": "patient",
+      "content": {
+        "pages": [{ "name": "p_b_health", "elements": [{ "type": "boolean", "name": "q_diabetes", "title": "Do you have diabetes?" }] }]
+      }
+    }
+  ]
+}

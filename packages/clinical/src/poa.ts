@@ -7,6 +7,7 @@ import type { Question } from "survey-core";
 import { allElements, findElement, pagesOf, pageTitle, type ChapterJson } from "./doc";
 import { computeOutputs, isClinicianOnlyInTree } from "./outputs";
 import { registerClinicalProperties } from "./properties";
+import { prefillMarks, type PrefillMark, type SetPrefill } from "./prefill";
 import { describeAnswer, sameAnswer, shownSets, type Answers } from "./respondent";
 import { SUMMARY_PREFIX } from "./summary";
 import { modelFor, type SamplePatient } from "./testcases";
@@ -17,8 +18,12 @@ export type CaptureKind = "medication" | "admissions" | "bmi";
 export type PoaCapture = { questionId: string; kind: CaptureKind; title: string; rows: Answers[] };
 /** An answer the clinician changed: what the patient said, and the final answer. */
 export type PoaChange = { questionId: string; title: string; patient: string; clinician: string };
-export type PoaPage = { name: string; title: string; notes: PoaNote[]; comments: string; captures: PoaCapture[]; changes: PoaChange[] };
-export type PoaSet = { id: string; name: string; pages: PoaPage[] };
+/** prefilled: the page's pre-filled answers shown (S26, PRE-04), each saying whether the patient changed it. */
+export type PoaPage = {
+  name: string; title: string; notes: PoaNote[]; comments: string; captures: PoaCapture[]; changes: PoaChange[]; prefilled: PrefillMark[];
+};
+/** prefill: the set's pre-fill (S26), for the button the patient pressed; absent if nothing was pre-filled. */
+export type PoaSet = { id: string; name: string; pages: PoaPage[]; prefill?: SetPrefill };
 
 const CAPTURES: CaptureKind[] = ["medication", "admissions", "bmi"];
 
@@ -29,6 +34,8 @@ type SetInput = { id: string; name: string; content: ChapterJson };
  * - `viewer` "clinician" with the clinician's answers gives the validated summary; "patient"
  *   with the patient's answers gives the patient's original answers.
  * - `original`, the patient's answers, marks the clinician's corrections.
+ * - `prefill`, where the patient's pre-filled answers came from (S26), marks them, and whether the
+ *   patient changed each, comparing with the patient's answers (`original`, else `answers`).
  * Pages and Question Sets with nothing to show are left out, as in the incumbent. Unlike the incumbent,
  * a page's notes are shown even when the page has no Clinical summary box, so none are lost.
  */
@@ -38,6 +45,7 @@ export function poaSummary(
   viewer: Viewer,
   patient: SamplePatient,
   original?: Record<string, Answers | undefined>,
+  prefill?: Record<string, SetPrefill | undefined>,
 ): PoaSet[] {
   registerClinicalProperties();
   const out: PoaSet[] = [];
@@ -48,7 +56,7 @@ export function poaSummary(
     const before = original?.[set.id];
     const pages = new Map<string, PoaPage>();
     pagesOf(set.content).forEach((p, i) =>
-      pages.set(p.name, { name: p.name, title: pageTitle(p, i), notes: [], comments: "", captures: [], changes: [] }),
+      pages.set(p.name, { name: p.name, title: pageTitle(p, i), notes: [], comments: "", captures: [], changes: [], prefilled: [] }),
     );
     const pageOf = (questionId: string) => pages.get(findElement(set.content, questionId)?.page.name ?? "");
 
@@ -80,12 +88,15 @@ export function poaSummary(
       pageOf(q.name)?.captures.push({ questionId: q.name, kind, title: q.title, rows });
     }
 
+    const pre = prefill?.[set.id];
+    for (const m of prefillMarks(model, pre?.answers, before ?? data)) pageOf(m.questionId)?.prefilled.push(m);
+
     for (const page of pages.values()) {
       const comments = data[`${SUMMARY_PREFIX}comments_${page.name}`];
       if (typeof comments === "string") page.comments = comments.trim();
     }
-    const kept = [...pages.values()].filter((p) => p.notes.length || p.comments || p.captures.length || p.changes.length);
-    if (kept.length) out.push({ id: set.id, name: set.name, pages: kept });
+    const kept = [...pages.values()].filter((p) => p.notes.length || p.comments || p.captures.length || p.changes.length || p.prefilled.length);
+    if (kept.length) out.push({ id: set.id, name: set.name, pages: kept, ...(pre ? { prefill: pre } : {}) });
     model.dispose();
   }
   return out;

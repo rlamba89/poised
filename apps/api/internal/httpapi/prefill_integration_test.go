@@ -129,7 +129,7 @@ func TestPrefill(t *testing.T) {
 		if _, ok := f.Answers[clinic.String()]; ok {
 			t.Error("the clinician set was sent to the patient")
 		}
-		if f.Revisions[again.String()] != 0 || f.Revisions[healthAgain.String()] != 0 {
+		if f.Revisions[again.String()] != 1 || f.Revisions[healthAgain.String()] != 1 { // S26: a pre-filled set starts at 1
 			t.Errorf("revisions %v", f.Revisions)
 		}
 		smokes := f.Prefill[again.String()].Answers["q_smokes"]
@@ -142,8 +142,8 @@ func TestPrefill(t *testing.T) {
 		if len(f.Prefill[again.String()].Answers) != 2 || f.Prefill[again.String()].Choice != nil {
 			t.Errorf("prefill %+v", f.Prefill[again.String()])
 		}
-		// Stored as the patient's answers, revision 0, with where each came from.
-		if n := count(t, w.db, `SELECT count(*) FROM episode_answers WHERE episode_form_id = $1 AND actor = 'patient' AND revision = 0
+		// Stored as the patient's answers, revision 1 (S26), with where each came from.
+		if n := count(t, w.db, `SELECT count(*) FROM episode_answers WHERE episode_form_id = $1 AND actor = 'patient' AND revision = 1
 			AND prefill ? 'q_smokes' AND updated_by IS NULL`, later.FormID); n != 1 {
 			t.Errorf("%d pre-filled rows with q_smokes", n)
 		}
@@ -161,7 +161,7 @@ func TestPrefill(t *testing.T) {
 
 	t.Run("a second open doesn't pre-fill again, and nothing the patient typed is overwritten", func(t *testing.T) {
 		savedRevision(t, patient.Do("PUT", patientPath(later, "/answers/"+again.String()), map[string]any{
-			"data": map[string]any{"q_smokes": "o_no", "pf_new": "Nothing"}, "revision": 0}))
+			"data": map[string]any{"q_smokes": "o_no", "pf_new": "Nothing"}, "revision": 1}))
 		// Even with a newer earlier form that would fill it differently.
 		newer := w.fx.EpisodeOf(t, w.hq, w.a, first.PatientID, w.cara, "")
 		w.answered(t, newer, "o_yes")
@@ -169,7 +169,7 @@ func TestPrefill(t *testing.T) {
 		if got := answersJSON(t, f.Answers[again.String()]); got != `{"pf_new":"Nothing","q_smokes":"o_no"}` {
 			t.Errorf("About you again %s", got)
 		}
-		if f.Revisions[again.String()] != 1 {
+		if f.Revisions[again.String()] != 2 {
 			t.Errorf("revision %d", f.Revisions[again.String()])
 		}
 		// The prefill map stays as it was, so the change shows.
@@ -186,7 +186,7 @@ func TestPrefill(t *testing.T) {
 		p := w.anon.NewBrowser(t).AsPatient(t, e.Link, e.DateOfBirth)
 		// The first open's rows are written, not yet committed, when the second reads none.
 		r := meanwhile(t, w.db, `INSERT INTO episode_answers (episode_form_id, chapter_id, actor, data, prefill, revision)
-			VALUES ($1, $2, 'patient', '{"q_smokes":"o_yes"}', '{"q_smokes":{"value":"o_yes"}}', 0)`, []any{e.FormID, again},
+			VALUES ($1, $2, 'patient', '{"q_smokes":"o_yes"}', '{"q_smokes":{"value":"o_yes"}}', 1)`, []any{e.FormID, again},
 			func() *apitest.Resp { return p.Do("GET", patientPath(e, ""), nil) })
 		r.Want(t, http.StatusOK)
 		var f prefillForm
@@ -281,7 +281,7 @@ func TestPrefill(t *testing.T) {
 		if got := answersJSON(t, f.Answers[again.String()]); got != `{"q_meds":[{"q_med_name":"Aspirin"}],"q_smokes":"o_yes"}` {
 			t.Errorf("About you again %s", got)
 		}
-		if n := count(t, w.db, `SELECT count(*) FROM episode_answers WHERE episode_form_id = $1 AND updated_by IS NULL AND revision = 0`, e.FormID); n != 2 {
+		if n := count(t, w.db, `SELECT count(*) FROM episode_answers WHERE episode_form_id = $1 AND updated_by IS NULL AND revision = 1`, e.FormID); n != 2 {
 			t.Errorf("%d pre-filled rows", n)
 		}
 	})
@@ -376,8 +376,9 @@ func TestPrefillChoice(t *testing.T) {
 		if p := f.Prefill[again.String()]; p.Choice == nil || *p.Choice != "still_correct" || p.ChoiceAt == nil {
 			t.Errorf("prefill %+v", p)
 		}
-		// Recording the button isn't an answer change: the next save's revision is still 0.
-		savedRevision(t, patient.Do("PUT", patientPath(e, "/answers/"+again.String()), map[string]any{"data": map[string]any{"q_smokes": "o_yes"}, "revision": 0}))
+		// Recording the button isn't an answer change: the next save's revision is still the
+		// pre-filled row's, 1 (S26).
+		savedRevision(t, patient.Do("PUT", patientPath(e, "/answers/"+again.String()), map[string]any{"data": map[string]any{"q_smokes": "o_yes"}, "revision": 1}))
 	})
 	t.Run("happy path: staff for the patient, marked as theirs", func(t *testing.T) {
 		w.clinician.Do("POST", staffPath(healthAgain.String()), check).Want(t, http.StatusNoContent)

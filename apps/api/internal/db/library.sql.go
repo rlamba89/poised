@@ -155,3 +155,29 @@ func (q *Queries) ListLibraryQuestions(ctx context.Context, arg ListLibraryQuest
 	}
 	return items, nil
 }
+
+const listPlatformLibraryElements = `-- name: ListPlatformLibraryElements :many
+SELECT element FROM library_questions WHERE org_id IS NULL
+`
+
+// The platform library's questions (org_id NULL, the same for every trust), for pre-fill from
+// another trust (S26): only their keys may match another trust's question by key.
+func (q *Queries) ListPlatformLibraryElements(ctx context.Context) ([]json.RawMessage, error) {
+	rows, err := q.db.Query(ctx, listPlatformLibraryElements)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []json.RawMessage{}
+	for rows.Next() {
+		var element json.RawMessage
+		if err := rows.Scan(&element); err != nil {
+			return nil, err
+		}
+		items = append(items, element)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

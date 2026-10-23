@@ -358,7 +358,8 @@ type formPatient struct {
 
 // writeForm sends the HQ's patient Question Sets, stripped for patients, with the answers so far.
 // Sets with no answers yet are pre-filled from the patient's earlier HQs first (S25), and the
-// answers come with where each pre-filled one came from (`prefill`, by Question Set).
+// answers come with where each pre-filled one came from (`prefill`, by Question Set). With another
+// trust's answers to ask about (S26), nothing is filled yet, and `prefillConsent` holds the questions.
 func (s *server) writeForm(w http.ResponseWriter, r *http.Request, f form) {
 	ctx := r.Context()
 	rows, err := s.q.ListVersionChapters(ctx, f.VersionID)
@@ -371,10 +372,12 @@ func (s *server) writeForm(w http.ResponseWriter, r *http.Request, f form) {
 		serverError(w, "list answers", err)
 		return
 	}
-	if filled, err := s.prefillForm(ctx, f, auditOf(r), rows, saved); err != nil {
+	filled, questions, err := s.prefillForm(ctx, f, auditOf(r), rows, saved)
+	if err != nil {
 		serverError(w, "pre-fill", err)
 		return
-	} else if filled {
+	}
+	if filled {
 		if saved, err = s.q.ListEpisodeAnswers(ctx, f.FormID); err != nil {
 			serverError(w, "list answers", err)
 			return
@@ -414,6 +417,8 @@ func (s *server) writeForm(w http.ResponseWriter, r *http.Request, f form) {
 		"answers":           answers,
 		"revisions":         revisions,
 		"prefill":           prefilled,
+		// S26: other trusts' answers the patient is asked about before the first Question Set.
+		"prefillConsent": questions,
 	})
 }
 

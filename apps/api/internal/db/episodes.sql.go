@@ -219,6 +219,34 @@ func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (u
 	return id, err
 }
 
+const decidePrefillConsent = `-- name: DecidePrefillConsent :execrows
+INSERT INTO patient_prefill_consents (account_id, org_id, agreed, episode_id)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (account_id, org_id) DO NOTHING
+`
+
+type DecidePrefillConsentParams struct {
+	AccountID uuid.UUID     `json:"accountId"`
+	OrgID     uuid.UUID     `json:"orgId"`
+	Agreed    bool          `json:"agreed"`
+	EpisodeID uuid.NullUUID `json:"episodeId"`
+}
+
+// The person's answer to "Use the answers you gave …?" for one trust (S26), asked at episode_id.
+// No row: already answered (it can't be changed yet).
+func (q *Queries) DecidePrefillConsent(ctx context.Context, arg DecidePrefillConsentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, decidePrefillConsent,
+		arg.AccountID,
+		arg.OrgID,
+		arg.Agreed,
+		arg.EpisodeID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const finishEpisodeJobs = `-- name: FinishEpisodeJobs :exec
 UPDATE jobs SET done_at = now() WHERE episode_id = $1 AND done_at IS NULL
 `
@@ -460,26 +488,29 @@ func (q *Queries) LatestUndoable(ctx context.Context, episodeID uuid.UUID) (Late
 
 const listEpisodeAnswers = `-- name: ListEpisodeAnswers :many
 SELECT a.chapter_id, a.actor, a.data, a.updated_at, a.validated_at, a.revision, u.name AS updated_by_name,
-       a.prefill, a.prefill_choice, a.prefill_choice_at
+       a.prefill, a.prefill_choice, a.prefill_choice_at, cu.name AS prefill_choice_by_name
 FROM episode_answers a
 LEFT JOIN users u ON u.id = a.updated_by
+LEFT JOIN users cu ON cu.id = a.prefill_choice_by
 WHERE a.episode_form_id = $1
 `
 
 type ListEpisodeAnswersRow struct {
-	ChapterID       uuid.UUID          `json:"chapterId"`
-	Actor           string             `json:"actor"`
-	Data            json.RawMessage    `json:"data"`
-	UpdatedAt       time.Time          `json:"updatedAt"`
-	ValidatedAt     pgtype.Timestamptz `json:"validatedAt"`
-	Revision        int32              `json:"revision"`
-	UpdatedByName   *string            `json:"updatedByName"`
-	Prefill         json.RawMessage    `json:"prefill"`
-	PrefillChoice   *string            `json:"prefillChoice"`
-	PrefillChoiceAt pgtype.Timestamptz `json:"prefillChoiceAt"`
+	ChapterID           uuid.UUID          `json:"chapterId"`
+	Actor               string             `json:"actor"`
+	Data                json.RawMessage    `json:"data"`
+	UpdatedAt           time.Time          `json:"updatedAt"`
+	ValidatedAt         pgtype.Timestamptz `json:"validatedAt"`
+	Revision            int32              `json:"revision"`
+	UpdatedByName       *string            `json:"updatedByName"`
+	Prefill             json.RawMessage    `json:"prefill"`
+	PrefillChoice       *string            `json:"prefillChoice"`
+	PrefillChoiceAt     pgtype.Timestamptz `json:"prefillChoiceAt"`
+	PrefillChoiceByName *string            `json:"prefillChoiceByName"`
 }
 
-// One form's answers, both actors', with where the patient's pre-filled answers came from (S25).
+// One form's answers, both actors', with where the patient's pre-filled answers came from (S25),
+// and who pressed the pre-fill card's button when staff did it for the patient (S26).
 func (q *Queries) ListEpisodeAnswers(ctx context.Context, episodeFormID uuid.UUID) ([]ListEpisodeAnswersRow, error) {
 	rows, err := q.db.Query(ctx, listEpisodeAnswers, episodeFormID)
 	if err != nil {
@@ -500,6 +531,7 @@ func (q *Queries) ListEpisodeAnswers(ctx context.Context, episodeFormID uuid.UUI
 			&i.Prefill,
 			&i.PrefillChoice,
 			&i.PrefillChoiceAt,
+			&i.PrefillChoiceByName,
 		); err != nil {
 			return nil, err
 		}
@@ -664,12 +696,74 @@ func (q *Queries) ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]L
 	return items, nil
 }
 
+const listPrefillOffers = `-- name: ListPrefillOffers :many
+SELECT DISTINCT ON (e.org_id) e.org_id, o.settings AS org_settings, h.name AS hospital_name, f.submitted_at, c.agreed
+FROM episode_forms f
+JOIN episodes e ON e.id = f.episode_id
+JOIN patients p ON p.id = e.patient_id
+JOIN orgs o ON o.id = e.org_id
+JOIN hospitals h ON h.id = e.hospital_id
+LEFT JOIN patient_prefill_consents c ON c.account_id = $1 AND c.org_id = e.org_id
+WHERE p.account_id = $1 AND p.org_id = e.org_id AND e.org_id <> $2 AND o.status = 'active'
+  AND f.kind = 'hq' AND f.status = 'submitted'
+ORDER BY e.org_id, f.submitted_at DESC
+`
+
+type ListPrefillOffersParams struct {
+	AccountID uuid.UUID `json:"accountId"`
+	OrgID     uuid.UUID `json:"orgId"`
+}
+
+type ListPrefillOffersRow struct {
+	OrgID        uuid.UUID          `json:"orgId"`
+	OrgSettings  json.RawMessage    `json:"orgSettings"`
+	HospitalName string             `json:"hospitalName"`
+	SubmittedAt  pgtype.Timestamptz `json:"submittedAt"`
+	Agreed       *bool              `json:"agreed"`
+}
+
+// The other trusts whose answers could pre-fill this person's HQ at trust org_id (S26): each
+// active trust, other than org_id, where one of the account's records has a sent HQ, with its
+// settings (Go checks crossTrustPrefill), the newest sent HQ's hospital and date (the question
+// names them), and the person's answer to the question so far (NULL: not asked). Only the
+// person's own records, and no answers: those are read one trust at a time, only after the checks
+// (ListPrefillSources).
+func (q *Queries) ListPrefillOffers(ctx context.Context, arg ListPrefillOffersParams) ([]ListPrefillOffersRow, error) {
+	rows, err := q.db.Query(ctx, listPrefillOffers, arg.AccountID, arg.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPrefillOffersRow{}
+	for rows.Next() {
+		var i ListPrefillOffersRow
+		if err := rows.Scan(
+			&i.OrgID,
+			&i.OrgSettings,
+			&i.HospitalName,
+			&i.SubmittedAt,
+			&i.Agreed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPrefillSources = `-- name: ListPrefillSources :many
-SELECT f.id AS form_id, f.submitted_at, e.id AS episode_id, e.patient_id, c.id AS chapter_id, c.audience, c.content,
+SELECT f.id AS form_id, f.submitted_at, e.id AS episode_id, e.patient_id, e.hospital_id, q.name AS questionnaire_name,
+       h.name AS hospital_name, c.id AS chapter_id, c.audience, c.content,
        pa.data AS patient_data, ca.data AS clinician_data
 FROM episode_forms f
 JOIN episodes e ON e.id = f.episode_id
 JOIN patients p ON p.id = e.patient_id
+JOIN hospitals h ON h.id = e.hospital_id
+JOIN questionnaire_versions v ON v.id = f.version_id
+JOIN questionnaires q ON q.id = v.questionnaire_id
 JOIN chapters c ON c.version_id = f.version_id
 LEFT JOIN episode_answers pa ON pa.episode_form_id = f.id AND pa.chapter_id = c.id AND pa.actor = 'patient'
 LEFT JOIN episode_answers ca ON ca.episode_form_id = f.id AND ca.chapter_id = c.id AND ca.actor = 'clinician'
@@ -688,22 +782,27 @@ type ListPrefillSourcesParams struct {
 }
 
 type ListPrefillSourcesRow struct {
-	FormID        uuid.UUID          `json:"formId"`
-	SubmittedAt   pgtype.Timestamptz `json:"submittedAt"`
-	EpisodeID     uuid.UUID          `json:"episodeId"`
-	PatientID     uuid.UUID          `json:"patientId"`
-	ChapterID     uuid.UUID          `json:"chapterId"`
-	Audience      string             `json:"audience"`
-	Content       json.RawMessage    `json:"content"`
-	PatientData   json.RawMessage    `json:"patientData"`
-	ClinicianData json.RawMessage    `json:"clinicianData"`
+	FormID            uuid.UUID          `json:"formId"`
+	SubmittedAt       pgtype.Timestamptz `json:"submittedAt"`
+	EpisodeID         uuid.UUID          `json:"episodeId"`
+	PatientID         uuid.UUID          `json:"patientId"`
+	HospitalID        uuid.UUID          `json:"hospitalId"`
+	QuestionnaireName string             `json:"questionnaireName"`
+	HospitalName      string             `json:"hospitalName"`
+	ChapterID         uuid.UUID          `json:"chapterId"`
+	Audience          string             `json:"audience"`
+	Content           json.RawMessage    `json:"content"`
+	PatientData       json.RawMessage    `json:"patientData"`
+	ClinicianData     json.RawMessage    `json:"clinicianData"`
 }
 
 // Pre-fill's earlier answers (S25): every submitted HQ form of the patient's in ONE trust, newest
 // submit first, with each of its version's Question Sets and the answers to use from it: the
 // clinician's validated copy, and the patient's. The patient's are the records joined to their
 // account (any episode status: answers never expire, A-9), or with no account the record only.
-// org_id is the form's own trust; only S26 asks for another, deliberately, one trust at a time.
+// org_id is the form's own trust, or (S26) another trust the patient agreed to, after both trusts'
+// settings were checked: one trust at a time, never more. The questionnaire's and hospital's names
+// go into the pre-fill map, so the clinician's marker never reads the other trust's records.
 func (q *Queries) ListPrefillSources(ctx context.Context, arg ListPrefillSourcesParams) ([]ListPrefillSourcesRow, error) {
 	rows, err := q.db.Query(ctx, listPrefillSources,
 		arg.OrgID,
@@ -723,6 +822,9 @@ func (q *Queries) ListPrefillSources(ctx context.Context, arg ListPrefillSources
 			&i.SubmittedAt,
 			&i.EpisodeID,
 			&i.PatientID,
+			&i.HospitalID,
+			&i.QuestionnaireName,
+			&i.HospitalName,
 			&i.ChapterID,
 			&i.Audience,
 			&i.Content,
@@ -928,7 +1030,7 @@ func (q *Queries) MarkUndone(ctx context.Context, id uuid.UUID) error {
 
 const prefillPatientAnswers = `-- name: PrefillPatientAnswers :execrows
 INSERT INTO episode_answers (episode_form_id, chapter_id, actor, data, prefill, revision)
-SELECT f.id, $1, 'patient', $2, $3, 0
+SELECT f.id, $1, 'patient', $2, $3, 1
 FROM episode_forms f WHERE f.id = $4 AND f.status = 'open'
 ON CONFLICT (episode_form_id, chapter_id, actor) DO NOTHING
 `
@@ -940,9 +1042,10 @@ type PrefillPatientAnswersParams struct {
 	FormID    uuid.UUID       `json:"formId"`
 }
 
-// Stores one Question Set's pre-filled answers as the patient's, revision 0 (S25), only while the
-// form is open and only if the patient (or staff for them) has no answers there yet: nothing typed
-// is ever overwritten, and it runs once per set. No row: answers were saved there first.
+// Stores one Question Set's pre-filled answers as the patient's (S25), only while the form is open
+// and only if the patient (or staff for them) has no answers there yet: nothing typed is ever
+// overwritten, and it runs once per set. No row: answers were saved there first. Revision 1, so a
+// tab that loaded the set before it was pre-filled (it sends 0) gets the stale 409 (S26).
 func (q *Queries) PrefillPatientAnswers(ctx context.Context, arg PrefillPatientAnswersParams) (int64, error) {
 	result, err := q.db.Exec(ctx, prefillPatientAnswers,
 		arg.ChapterID,

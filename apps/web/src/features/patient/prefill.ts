@@ -10,24 +10,13 @@
 //   - whether the set waits for the card before it can count as complete (awaitsCheck);
 //   - the marker under each question that still holds its pre-filled answer (stillPrefilled).
 import type { Model, Question } from "survey-core";
-import { modelFor, sameAnswer, type Answers, type ChapterJson, type SamplePatient } from "@poised/clinical";
+import {
+  modelFor, sameAnswer, type Answers, type ChapterJson, type PrefillChoice, type PrefillEntry, type SamplePatient, type SetPrefill,
+} from "@poised/clinical";
 import { formatDay } from "@/lib/format";
 
-/** Where one pre-filled answer came from, as Go stored it (internal/prefill.Entry). */
-export type PrefillEntry = {
-  fromForm: string;
-  /** The earlier questionnaire's send date: the date the patient sees. */
-  answeredAt: string;
-  /** What was copied. The patient's answer differing from it is a change. */
-  value: unknown;
-  comment?: unknown;
-  matchedBy: "key" | "wording";
-};
-
-export type PrefillChoice = "check_each" | "still_correct";
-
-/** One pre-filled Question Set: its answers' sources, and the card's button once pressed. */
-export type SetPrefill = { answers: Record<string, PrefillEntry>; choice: PrefillChoice | null; choiceAt: string | null };
+// The shapes Go sends (SetPrefill, PrefillEntry) are in @poised/clinical, shared with the clinician's view (S26).
+export type { PrefillChoice, PrefillEntry, SetPrefill };
 
 /** Whether a question still holds the answer pre-filled into it. */
 export function stillPrefilled(entry: PrefillEntry | undefined, value: unknown): boolean {

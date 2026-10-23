@@ -19,3 +19,6 @@ export const formatShortDate = (iso: string) => new Date(iso).toLocaleDateString
 
 /** The day in the medium style, in the browser's time zone: "3 Mar 2026" in en-GB (S25's pre-fill dates). */
 export const formatDay = (iso: string) => new Intl.DateTimeFormat(locale(), { dateStyle: "medium" }).format(new Date(iso));
+
+/** The month and year, in the browser's time zone: "March 2026" in en-GB (S26's "the answers you gave … in March 2026"). */
+export const formatMonth = (iso: string) => new Intl.DateTimeFormat(locale(), { month: "long", year: "numeric" }).format(new Date(iso));

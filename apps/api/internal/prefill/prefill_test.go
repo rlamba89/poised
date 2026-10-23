@@ -34,14 +34,20 @@ func source(id string, at time.Time, sets []Chapter, patient map[string]string) 
 	return s
 }
 
-// fill pre-fills every set of target.
+// fill pre-fills every set of target, with no platform library keys.
 func fill(t *testing.T, target []Chapter, sources ...Source) map[string]Filled {
+	t.Helper()
+	return fillLib(t, nil, target, sources...)
+}
+
+// fillLib pre-fills every set of target, knowing the platform library's keys.
+func fillLib(t *testing.T, library map[string]bool, target []Chapter, sources ...Source) map[string]Filled {
 	t.Helper()
 	want := map[string]bool{}
 	for _, c := range target {
 		want[c.ID] = true
 	}
-	got, err := Fill(target, want, sources)
+	got, err := Fill(target, want, sources, library)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +159,7 @@ func TestNeverFilled(t *testing.T) {
 		}
 	})
 	t.Run("only the sets asked for", func(t *testing.T) {
-		got, err := Fill([]Chapter{set("n1", "patient", smoker), set("n2", "patient", snoring)}, map[string]bool{"n2": true}, []Source{old})
+		got, err := Fill([]Chapter{set("n1", "patient", smoker), set("n2", "patient", snoring)}, map[string]bool{"n2": true}, []Source{old}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -387,12 +393,249 @@ func TestNothingToFill(t *testing.T) {
 	if got := fill(t, []Chapter{set("n1", "patient", smoker)}, empty); len(got) != 0 {
 		t.Errorf("filled %+v", got)
 	}
-	if _, err := Fill([]Chapter{{ID: "n1", Audience: "patient", Content: json.RawMessage(`[]`)}}, map[string]bool{"n1": true}, nil); err == nil {
+	if _, err := Fill([]Chapter{{ID: "n1", Audience: "patient", Content: json.RawMessage(`[]`)}}, map[string]bool{"n1": true}, nil, nil); err == nil {
 		t.Error("bad content: no error")
 	}
 	// An earlier form's odd answers are skipped, never an error.
 	odd := source("f1", march, []Chapter{set("c1", "patient", smoker)}, map[string]string{"c1": `[1,2]`})
 	if got := fill(t, []Chapter{set("n1", "patient", smoker)}, odd); !reflect.DeepEqual(got, map[string]Filled{}) {
 		t.Errorf("filled %+v", got)
+	}
+}
+
+// Other trusts (S26): their forms are tried only for questions no form of the new form's own trust
+// asked; the entry says which questionnaire and, for another trust, which hospital it came from.
+func TestOtherTrusts(t *testing.T) {
+	target := []Chapter{set("n1", "patient", smoker, snoring)}
+	own := func(at time.Time, sets []Chapter, answers map[string]string) Source {
+		s := source("own", at, sets, answers)
+		s.Questionnaire = "Demo pre-op HQ"
+		return s
+	}
+	theirs := func(at time.Time, sets []Chapter, answers map[string]string) Source {
+		s := source("theirs", at, sets, answers)
+		s.Questionnaire, s.Hospital, s.OtherTrust = "Their HQ", "St Mary's Hospital", true
+		return s
+	}
+
+	t.Run("the form's own trust decides when one of its forms asked, even if another trust's is newer", func(t *testing.T) {
+		got := fill(t, target,
+			own(march, []Chapter{set("c1", "patient", smoker)}, map[string]string{"c1": `{"smoker":"ex"}`}),
+			theirs(june, []Chapter{set("c2", "patient", smoker, snoring)}, map[string]string{"c2": `{"smoker":"current","snoring":"no"}`}))
+		if d := data(got, "n1"); d != `{"smoker":"ex","snoring":"no"}` {
+			t.Errorf("data %s", d)
+		}
+		if e := got["n1"].Prefill["smoker"]; e.FromForm != "own" || e.Questionnaire != "Demo pre-op HQ" || e.Hospital != "" || e.OtherTrust {
+			t.Errorf("smoker %+v", e)
+		}
+		if e := got["n1"].Prefill["snoring"]; e.FromForm != "" || e.MatchedBy != "wording" || e.Questionnaire != "Their HQ" || e.Hospital != "St Mary's Hospital" || !e.OtherTrust {
+			t.Errorf("snoring %+v", e)
+		}
+	})
+	t.Run("an own-trust form that asked but has no answer: another trust's isn't used", func(t *testing.T) {
+		got := fill(t, target,
+			own(march, []Chapter{set("c1", "patient", smoker)}, map[string]string{"c1": `{}`}),
+			theirs(june, []Chapter{set("c2", "patient", smoker)}, map[string]string{"c2": `{"smoker":"current"}`}))
+		if len(got) != 0 {
+			t.Errorf("filled %+v", got)
+		}
+	})
+	t.Run("several other trusts: the newest that asked decides", func(t *testing.T) {
+		older := theirs(march, []Chapter{set("c2", "patient", smoker)}, map[string]string{"c2": `{"smoker":"current"}`})
+		newer := theirs(june, []Chapter{set("c3", "patient", smoker)}, map[string]string{"c3": `{"smoker":"never"}`})
+		newer.FormID = "newer"
+		if d := data(fill(t, target, older, newer), "n1"); d != `{"smoker":"never"}` {
+			t.Errorf("data %s", d)
+		}
+	})
+	t.Run("JSON: questionnaire always, hospital and otherTrust only for another trust's", func(t *testing.T) {
+		got := fill(t, target,
+			own(march, []Chapter{set("c1", "patient", smoker)}, map[string]string{"c1": `{"smoker":"ex"}`}),
+			theirs(june, []Chapter{set("c2", "patient", snoring)}, map[string]string{"c2": `{"snoring":"no"}`}))
+		b, _ := json.Marshal(got["n1"].Prefill["smoker"])
+		if s := string(b); !strings.Contains(s, `"questionnaire":"Demo pre-op HQ"`) || strings.Contains(s, "hospital") || strings.Contains(s, "otherTrust") {
+			t.Errorf("own %s", s)
+		}
+		b, _ = json.Marshal(got["n1"].Prefill["snoring"])
+		if s := string(b); !strings.Contains(s, `"hospital":"St Mary's Hospital"`) || !strings.Contains(s, `"otherTrust":true`) || strings.Contains(s, "fromForm") {
+			t.Errorf("theirs %s", s)
+		}
+	})
+}
+
+// A repeating list's row whose only non-empty cells are in columns the new list lacks would be
+// dropped, losing an answer: the whole answer is refused instead (S25 verify, for S26: "if in
+// doubt, don't fill"). It can't happen within one trust (S23's lock), only from another trust.
+func TestEmptiedRowRefusesTheList(t *testing.T) {
+	both := `{"type":"matrixdynamic","name":"ops","title":"Your operations","columns":[{"name":"op","title":"Operation","cellType":"text"},{"name":"year","title":"Year","cellType":"text"}]}`
+	opOnly := `{"type":"matrixdynamic","name":"ops","title":"Your operations","columns":[{"name":"op","title":"Operation","cellType":"text"}]}`
+	old := source("f1", march, []Chapter{set("c1", "patient", both)}, map[string]string{"c1": `{"ops":[{"op":"Knee","year":"2019"},{"year":"2021"}]}`})
+	if got := fill(t, []Chapter{set("n1", "patient", opOnly)}, old); len(got) != 0 {
+		t.Errorf("filled %+v", got)
+	}
+	// A row that keeps a cell is copied, without the column the new list lacks; empty rows are skipped.
+	kept := source("f1", march, []Chapter{set("c1", "patient", both)}, map[string]string{"c1": `{"ops":[{"op":"Knee","year":"2019"},{}]}`})
+	if d := data(fill(t, []Chapter{set("n1", "patient", opOnly)}, kept), "n1"); d != `{"ops":[{"op":"Knee"}]}` {
+		t.Errorf("data %s", d)
+	}
+}
+
+// Another trust's answers are never trusted by key (S26 verification 1, finding 1): S23's lock
+// freezes a keyed question's options within one trust only, so trust B's `smoker` may mean
+// something else. A question matches another trust's only by wording (the same text, kind and
+// option texts, never a text used twice), and every choice is mapped by its option's text.
+func TestOtherTrustsByWordingOnly(t *testing.T) {
+	theirs := func(sets []Chapter, answers map[string]string) Source {
+		s := source("theirs", march, sets, answers)
+		s.Questionnaire, s.Hospital, s.OtherTrust = "Their HQ", "Hospital B1", true
+		return s
+	}
+	oneOf := func(title, choices string) string {
+		return `{"type":"radiogroup","name":"smoking","title":"` + title + `","choices":` + choices + `}`
+	}
+	t.Run("the same key with its options' values swapped: mapped by text, not by value", func(t *testing.T) {
+		b := oneOf("Do you smoke?", `[{"value":"o1","text":"Current smoker"},{"value":"o2","text":"Never"}]`)
+		a := oneOf("Do you smoke?", `[{"value":"o1","text":"Never"},{"value":"o2","text":"Current smoker"}]`)
+		got := fill(t, []Chapter{set("n1", "patient", a)}, theirs([]Chapter{set("c1", "patient", b)}, map[string]string{"c1": `{"smoking":"o1"}`}))
+		if d := data(got, "n1"); d != `{"smoking":"o2"}` {
+			t.Errorf("data %s, want o2 (Current smoker)", d)
+		}
+		if e := got["n1"].Prefill["smoking"]; e.MatchedBy != "wording" {
+			t.Errorf("matched by %q: say what happened", e.MatchedBy)
+		}
+	})
+	t.Run("the same key, an option worded differently: not filled", func(t *testing.T) {
+		b := oneOf("Do you smoke?", `[{"value":"o1","text":"Yes"},{"value":"o2","text":"No"}]`)
+		a := oneOf("Do you smoke?", `[{"value":"o1","text":"Yes, every day"},{"value":"o2","text":"No"}]`)
+		if got := fill(t, []Chapter{set("n1", "patient", a)}, theirs([]Chapter{set("c1", "patient", b)}, map[string]string{"c1": `{"smoking":"o2"}`})); len(got) != 0 {
+			t.Errorf("filled %+v", got)
+		}
+	})
+	t.Run("the same key, the question worded differently: not filled", func(t *testing.T) {
+		opts := `[{"value":"o1","text":"Yes"},{"value":"o2","text":"No"}]`
+		got := fill(t, []Chapter{set("n1", "patient", oneOf("Have you smoked in the last year?", opts))},
+			theirs([]Chapter{set("c1", "patient", oneOf("Do you smoke?", opts))}, map[string]string{"c1": `{"smoking":"o1"}`}))
+		if len(got) != 0 {
+			t.Errorf("filled %+v", got)
+		}
+	})
+	t.Run("the same key, a text used twice there: not filled", func(t *testing.T) {
+		opts := `[{"value":"o1","text":"Yes"},{"value":"o2","text":"No"}]`
+		twice := `{"type":"radiogroup","name":"other","title":"Do you smoke?","choices":` + opts + `}`
+		got := fill(t, []Chapter{set("n1", "patient", oneOf("Do you smoke?", opts))},
+			theirs([]Chapter{set("c1", "patient", oneOf("Do you smoke?", opts), twice)}, map[string]string{"c1": `{"smoking":"o1","other":"o2"}`}))
+		if len(got) != 0 {
+			t.Errorf("filled %+v", got)
+		}
+	})
+	t.Run("multiple choice, mapped by text", func(t *testing.T) {
+		b := `{"type":"checkbox","name":"sym","title":"Which do you have?","choices":[{"value":"a","text":"Cough"},{"value":"b","text":"Fever"}]}`
+		a := `{"type":"checkbox","name":"sym","title":"Which do you have?","choices":[{"value":"a","text":"Fever"},{"value":"b","text":"Cough"}]}`
+		got := fill(t, []Chapter{set("n1", "patient", a)}, theirs([]Chapter{set("c1", "patient", b)}, map[string]string{"c1": `{"sym":["a"]}`}))
+		if d := data(got, "n1"); d != `{"sym":["b"]}` {
+			t.Errorf("data %s, want b (Cough)", d)
+		}
+	})
+	t.Run("a Yes/No switch whose labels are the other way round", func(t *testing.T) {
+		b := `{"type":"boolean","name":"heart","title":"Any heart problems?","labelTrue":"No","labelFalse":"Yes"}`
+		a := `{"type":"boolean","name":"heart","title":"Any heart problems?"}`
+		got := fill(t, []Chapter{set("n1", "patient", a)}, theirs([]Chapter{set("c1", "patient", b)}, map[string]string{"c1": `{"heart":true}`}))
+		if d := data(got, "n1"); d != `{"heart":false}` {
+			t.Errorf("data %s, want false (No)", d)
+		}
+	})
+	t.Run("a grid's rows and columns, by text", func(t *testing.T) {
+		b := `{"type":"matrix","name":"g","title":"How often?","rows":[{"value":"r1","text":"Run"},{"value":"r2","text":"Swim"}],"columns":[{"value":"c1","text":"Daily"},{"value":"c2","text":"Never"}]}`
+		a := `{"type":"matrix","name":"g","title":"How often?","rows":[{"value":"r1","text":"Swim"},{"value":"r2","text":"Run"}],"columns":[{"value":"c1","text":"Never"},{"value":"c2","text":"Daily"}]}`
+		got := fill(t, []Chapter{set("n1", "patient", a)}, theirs([]Chapter{set("c1", "patient", b)}, map[string]string{"c1": `{"g":{"r1":"c2"}}`}))
+		if d := data(got, "n1"); d != `{"g":{"r2":"c1"}}` {
+			t.Errorf("data %s, want Run → Never", d)
+		}
+	})
+	t.Run("a repeating list's column and its options, by text", func(t *testing.T) {
+		list := func(where string) string {
+			return `{"type":"matrixdynamic","name":"ops","title":"Your operations","columns":[{"name":"op","title":"Operation","cellType":"text"},` +
+				`{"name":"where","title":"Where","cellType":"dropdown","choices":` + where + `}]}`
+		}
+		b := list(`[{"value":"h1","text":"Here"},{"value":"h2","text":"Elsewhere"}]`)
+		a := list(`[{"value":"h1","text":"Elsewhere"},{"value":"h2","text":"Here"}]`)
+		got := fill(t, []Chapter{set("n1", "patient", a)}, theirs([]Chapter{set("c1", "patient", b)}, map[string]string{"c1": `{"ops":[{"op":"Knee","where":"h2"}]}`}))
+		if d := data(got, "n1"); d != `{"ops":[{"op":"Knee","where":"h1"}]}` {
+			t.Errorf("data %s, want h1 (Elsewhere)", d)
+		}
+	})
+	t.Run("no form id of another trust's is kept", func(t *testing.T) {
+		got := fill(t, []Chapter{set("n1", "patient", snoring)}, theirs([]Chapter{set("c1", "patient", snoring)}, map[string]string{"c1": `{"snoring":"no"}`}))
+		if e := got["n1"].Prefill["snoring"]; e.FromForm != "" || string(e.Value) != `"no"` {
+			t.Errorf("entry %+v", e)
+		}
+	})
+}
+
+// A stale "-Comment" left in a list row isn't an answer: a row holding only that is skipped, not a
+// reason to refuse the list (S26 verification 1, note).
+func TestStaleCommentInARow(t *testing.T) {
+	ops := `{"type":"matrixdynamic","name":"ops","title":"Your operations","columns":[{"name":"op","title":"Operation","cellType":"text"}]}`
+	old := source("f1", march, []Chapter{set("c1", "patient", ops)}, map[string]string{"c1": `{"ops":[{"op":"Knee"},{"op-Comment":"stale"}]}`})
+	if d := data(fill(t, []Chapter{set("n1", "patient", ops)}, old), "n1"); d != `{"ops":[{"op":"Knee"}]}` {
+		t.Errorf("data %s", d)
+	}
+}
+
+// Rahul, after verification 1 (answers.md): for another trust's answers a key counts only if it's
+// a platform library key (the same for every trust), and even then every choice is mapped by its
+// option's text, with no fill if a text doesn't match. Every other question matches by wording.
+func TestOtherTrustsPlatformLibraryKeys(t *testing.T) {
+	library := map[string]bool{"smoking": true}
+	theirs := func(el, answers string) Source {
+		s := source("theirs", march, []Chapter{set("c1", "patient", el)}, map[string]string{"c1": answers})
+		s.Questionnaire, s.Hospital, s.OtherTrust = "Their HQ", "Hospital B1", true
+		return s
+	}
+	oneOf := func(title, choices string) string {
+		return `{"type":"radiogroup","name":"smoking","title":"` + title + `","choices":` + choices + `}`
+	}
+	b := oneOf("Do you smoke?", `[{"value":"o1","text":"Current smoker"},{"value":"o2","text":"Never"}]`)
+	t.Run("a library key reworded at one trust still matches, by link, its choice mapped by text", func(t *testing.T) {
+		a := oneOf("Do you smoke at the moment?", `[{"value":"o1","text":"Never"},{"value":"o2","text":"Current smoker"}]`)
+		got := fillLib(t, library, []Chapter{set("n1", "patient", a)}, theirs(b, `{"smoking":"o1"}`))
+		if d := data(got, "n1"); d != `{"smoking":"o2"}` {
+			t.Errorf("data %s, want o2 (Current smoker)", d)
+		}
+		if e := got["n1"].Prefill["smoking"]; e.MatchedBy != "key" || e.FromForm != "" || !e.OtherTrust {
+			t.Errorf("entry %+v", e)
+		}
+	})
+	t.Run("a library key whose chosen option's text isn't in the new question: not filled", func(t *testing.T) {
+		a := oneOf("Do you smoke?", `[{"value":"o1","text":"Yes, every day"},{"value":"o2","text":"Never"}]`)
+		if got := fillLib(t, library, []Chapter{set("n1", "patient", a)}, theirs(b, `{"smoking":"o1"}`)); len(got) != 0 {
+			t.Errorf("filled %+v", got)
+		}
+	})
+	t.Run("a trust's own key that collides, reworded: never matched by key", func(t *testing.T) {
+		a := oneOf("Do you smoke at the moment?", `[{"value":"o1","text":"Never"},{"value":"o2","text":"Current smoker"}]`)
+		if got := fillLib(t, map[string]bool{"other": true}, []Chapter{set("n1", "patient", a)}, theirs(b, `{"smoking":"o1"}`)); len(got) != 0 {
+			t.Errorf("filled %+v", got)
+		}
+	})
+	t.Run("the form's own trust: every key, as before", func(t *testing.T) {
+		own := source("own", march, []Chapter{set("c1", "patient", b)}, map[string]string{"c1": `{"smoking":"o2"}`})
+		a := oneOf("Do you smoke at the moment?", `[{"value":"o1","text":"Current smoker"},{"value":"o2","text":"Never"}]`)
+		if got := fillLib(t, nil, []Chapter{set("n1", "patient", a)}, own); data(got, "n1") != `{"smoking":"o2"}` || got["n1"].Prefill["smoking"].MatchedBy != "key" {
+			t.Errorf("filled %+v", got)
+		}
+	})
+}
+
+func TestLibraryKeys(t *testing.T) {
+	got := LibraryKeys([]json.RawMessage{
+		json.RawMessage(`{"type":"radiogroup","name":"smoker"}`),
+		json.RawMessage(`{"type":"panel","name":"problems_group","elements":[{"type":"radiogroup","name":"problems"},{"type":"comment","name":"problems_details"}]}`),
+		json.RawMessage(`{"type":"paneldynamic","name":"allergies","templateElements":[{"type":"text","name":"allergies_what"}]}`),
+		json.RawMessage(`not json`),
+	})
+	want := map[string]bool{"smoker": true, "problems_group": true, "problems": true, "problems_details": true, "allergies": true, "allergies_what": true}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v", got)
 	}
 }

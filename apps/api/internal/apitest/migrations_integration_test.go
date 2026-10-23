@@ -493,3 +493,89 @@ INSERT INTO tasks (episode_id, title, team, created_by, created_at, done_by, don
 		t.Error("down: last_activity_at is still there")
 	}
 }
+
+// Migration 00026 (S26): pre-filled rows move from revision 0 to 1 (so a stale tab's 0 is refused),
+// without counting as the episode's activity; "started" is one generated column; the consents
+// table keeps one answer per account and trust. Down puts the revisions back.
+func TestPrefillConsentsMigration(t *testing.T) {
+	t.Parallel()
+	m := apitest.NewMigrations(t, 25)
+	const (
+		trust, hos, user, pat, acc = "00000000-0000-0000-0000-0000000000a0", "00000000-0000-0000-0000-0000000000a1",
+			"00000000-0000-0000-0000-0000000000c0", "00000000-0000-0000-0000-0000000000d0", "00000000-0000-0000-0000-0000000000d1"
+		q, v, ep, form = "00000000-0000-0000-0000-0000000000b0", "00000000-0000-0000-0000-0000000000b1",
+			"00000000-0000-0000-0000-0000000000e0", "00000000-0000-0000-0000-0000000000f0"
+		untouched, saved, typed = "00000000-0000-0000-0000-0000000000c1", "00000000-0000-0000-0000-0000000000c2", "00000000-0000-0000-0000-0000000000c3"
+	)
+	setup := `
+INSERT INTO orgs (id, name, code) VALUES ('` + trust + `', 'Trust A', 'MA');
+INSERT INTO hospitals (id, org_id, name) VALUES ('` + hos + `', '` + trust + `', 'A1');
+INSERT INTO users (id, name, email) VALUES ('` + user + `', 'Cara', 'cara@example.test');
+INSERT INTO patient_accounts (id, mobile, date_of_birth, first_name_key, last_name_key) VALUES ('` + acc + `', '+447700900001', '1970-01-01', 'sam', 'smith');
+INSERT INTO patients (id, org_id, first_name, last_name, date_of_birth, sex, account_id) VALUES ('` + pat + `', '` + trust + `', 'Sam', 'Smith', '1970-01-01', 'unknown', '` + acc + `');
+INSERT INTO questionnaires (id, org_id, name, description, created_by) VALUES ('` + q + `', '` + trust + `', 'HQ', '', '` + user + `');
+INSERT INTO questionnaire_versions (id, questionnaire_id, version_no, status, updated_by) VALUES ('` + v + `', '` + q + `', 1, 'published', '` + user + `');
+INSERT INTO chapters (id, version_id, position, name, updated_by) VALUES
+  ('` + untouched + `', '` + v + `', 1, 'One', '` + user + `'), ('` + saved + `', '` + v + `', 2, 'Two', '` + user + `'), ('` + typed + `', '` + v + `', 3, 'Three', '` + user + `');
+INSERT INTO episodes (id, org_id, hospital_id, patient_id, status, created_by) VALUES ('` + ep + `', '` + trust + `', '` + hos + `', '` + pat + `', 'hq_not_complete', '` + user + `');
+INSERT INTO episode_forms (id, episode_id, version_id, kind) VALUES ('` + form + `', '` + ep + `', '` + v + `', 'hq');
+INSERT INTO episode_answers (episode_form_id, chapter_id, actor, data, prefill, revision) VALUES
+  ('` + form + `', '` + untouched + `', 'patient', '{"a":1}', '{"a":{"value":1}}', 0),
+  ('` + form + `', '` + saved + `', 'patient', '{"a":2}', '{"a":{"value":1}}', 2),
+  ('` + form + `', '` + typed + `', 'patient', '{"a":3}', NULL, 1);
+UPDATE episodes SET last_activity_at = '2026-01-01T10:00:00Z' WHERE id = '` + ep + `';
+`
+	if _, err := m.DB.Exec(t.Context(), setup); err != nil {
+		t.Fatalf("old shape: %v", err)
+	}
+	m.UpTo(t, 26)
+	state := func(chapter string) (int, bool) {
+		var rev int
+		var started bool
+		if err := m.DB.QueryRow(t.Context(), `SELECT revision, started FROM episode_answers WHERE chapter_id = $1`, chapter).Scan(&rev, &started); err != nil {
+			t.Fatal(err)
+		}
+		return rev, started
+	}
+	for _, c := range []struct {
+		chapter string
+		rev     int
+		started bool
+	}{{untouched, 1, false}, {saved, 3, true}, {typed, 1, true}} {
+		if rev, started := state(c.chapter); rev != c.rev || started != c.started {
+			t.Errorf("%s: revision %d started %v, want %d %v", c.chapter, rev, started, c.rev, c.started)
+		}
+	}
+	var activity time.Time
+	if err := m.DB.QueryRow(t.Context(), `SELECT last_activity_at FROM episodes WHERE id = $1`, ep).Scan(&activity); err != nil {
+		t.Fatal(err)
+	}
+	if !activity.Equal(time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)) {
+		t.Errorf("the migration moved the episode's last activity to %s", activity)
+	}
+	if _, err := m.DB.Exec(t.Context(), `UPDATE episode_answers SET prefill_choice = 'still_correct', prefill_choice_at = now() WHERE chapter_id = $1`, untouched); err != nil {
+		t.Fatal(err)
+	}
+	if _, started := state(untouched); !started {
+		t.Error("a card answered isn't started")
+	}
+	if _, err := m.DB.Exec(t.Context(), `INSERT INTO patient_prefill_consents (account_id, org_id, agreed) VALUES ($1, $2, true)`, acc, trust); err != nil {
+		t.Fatalf("a consent: %v", err)
+	}
+	if _, err := m.DB.Exec(t.Context(), `INSERT INTO patient_prefill_consents (account_id, org_id, agreed) VALUES ($1, $2, false)`, acc, trust); err == nil {
+		t.Error("a second answer for the same trust was stored")
+	}
+	if _, err := m.DB.Exec(t.Context(), `UPDATE patients SET account_id = NULL; DELETE FROM patient_accounts`); err != nil {
+		t.Errorf("closing the account: %v", err)
+	}
+	m.DownTo(t, 25)
+	if rev, _ := func() (int, bool) {
+		var rev int
+		if err := m.DB.QueryRow(t.Context(), `SELECT revision FROM episode_answers WHERE chapter_id = $1`, saved).Scan(&rev); err != nil {
+			t.Fatal(err)
+		}
+		return rev, false
+	}(); rev != 2 {
+		t.Errorf("down: revision %d", rev)
+	}
+}

@@ -88,6 +88,22 @@
   color: var(--mantine-color-brand-9);
 }
 
+/* The clinician's pre-fill marker (S26, PRE-04): where a pre-filled answer came from. */
+.sj-prefill-origin {
+  margin: 0 calc(3 * var(--sjs-base-unit, 8px)) calc(2 * var(--sjs-base-unit, 8px));
+  padding: 4px 8px;
+  border-radius: 4px;
+  border-left: 3px solid var(--mantine-color-brand-5);
+  background: var(--mantine-color-brand-0);
+  font-size: 13px;
+  color: var(--mantine-color-brand-9);
+}
+.sj-prefill-changed {
+  margin-top: 2px;
+  font-weight: 600;
+  color: var(--mantine-color-orange-9);
+}
+
 /* POA Summary: Print shows only the summary. */
 @media print {
   .sj-no-print,
