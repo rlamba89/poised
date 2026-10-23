@@ -54,6 +54,24 @@ docker compose up -d --force-recreate db
 
 ## 3. Small gaps in what's built
 
+### From S25's verification (23 Oct; [verify.md](sessions/S25-prefill/verify.md), minor)
+
+- **For S26: a pre-filled row has revision 0, the same as "no row yet"**, so a tab loaded before a set was pre-filled can overwrite it on its first save without a 409 (`SavePatientAnswers`). The patient's typed answers win, but the `prefill` map then describes answers no longer in the row, so "changed by patient" would mislead. Give pre-filled rows their own starting revision, or refuse revision 0 against an existing row.
+- **For S26: a repeating-list row whose only non-empty cells are in columns the new list lacks is dropped** (`prefill.fitRows`). It can't happen within one trust (S23's lock, `SameWording`). For other trusts, refuse the whole answer instead ("if in doubt, don't fill").
+- **For S26: a Question Set hidden by a set condition is pre-filled too** and sent as it is; the clinician's view and the POA Summary skip hidden sets. The clinician's markers should mark only shown sets and questions.
+- **A second, different card button (another tab) returns 204** and that tab carries on as if its choice were recorded; Go keeps the first. Return the stored choice so the page follows it.
+- **Small:** `awaitsCheck` builds a second SurveyJS model per pre-filled set on each list render; the "started" rule is copied in `accounts.sql` and `jobs.sql` (one SQL function would do); `showPrefillMarkers`' clean-up is never called (harmless: the model is built once per set).
+
+### From S25's build (23 Oct)
+
+- **Before demoing pre-fill on QA:** QA's Neon database has neither the library-based Demo pre-op HQ (above) nor the seeded **Demo follow-up HQ**. The seed adds the follow-up HQ on the next `make seed` there, but it shares keys with the new Demo HQ only.
+- **Pre-fill reads every earlier submitted form's Question Sets in full on each first open** (`ListPrefillSources`), and repeats until each set has a row. Fine at today's sizes. If a patient ever has many long HQs, cache or limit to the newest few forms.
+- **`ListPrefillSources` adds one more copy of the HQ-form join** (`f.kind = 'hq'`). The `episode_hq` view idea (S18 verification, item 5) still stands for C7/C9.
+- **A hidden pre-filled answer is sent if the patient sends without finishing that section** (as a hidden typed answer is). Outputs and the POA Summary skip hidden questions, but S26's clinician markers should only mark questions shown.
+- **The patient's details box shows "Sex female" in lower case** (S25 test report 1, found 2): the profile block's template prints `{patientSex}` as stored. Older than S25; capitalise it, or map it to a label, in the template.
+- **The audit journey's tooltip check flakes** (`test_audit.py::test_a_list_row_names_ten_patients_and_counts_them_all`, seen in S25's e2e runs): the hover's tooltip sometimes doesn't appear; it passes on its own.
+- **The hazard log (OPS-04, C10)** should cover: the newest-form rule, wording matches, "Everything is still correct" skipping the patient's re-reading, and the recorded button.
+
 ### From S24's build (22 Oct)
 
 - **QA's Neon database keeps its old Demo pre-op HQ** (q_smokes Yes/No…): the seed never changes a published demo HQ. Before demoing S25's pre-fill on QA, reset QA's demo HQs (or publish a library-based new version by hand).

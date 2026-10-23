@@ -30,6 +30,17 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 23 Oct 2026: S25, pre-fill and the patient's confirmation screens (builder, automatic run; test report 1: 18 of 19, T-03 and two findings fixed; tested 23 Oct, test report 2 all passed; **verified 23 Oct, verification 1**, minor leftovers in pending.md)
+
+- **`internal/prefill` (Go) fills a new HQ form's patient Question Sets from the patient's earlier submitted HQs in the same trust**, by key, else by exact wording (S23's `keys.SameWording`), when the form is first opened, by the patient or by staff for them. It's stored as the patient's answers (revision 0) with `episode_answers.prefill` `{key: {fromForm, answeredAt, value, comment?, matchedBy}}` (migration 00025). ([build notes](sessions/S25-prefill/build-notes.md))
+- **The newest earlier form that asked a question decides; if its answer is empty or doesn't fit, nothing is filled** (no older answer). The clinician's validated copy is used whole per Question Set. A choice answer must map to the new question's options (by value for a key, by option text for wording), all or nothing; rows are copied keeping only the new columns. *Builder's defaults, "if in doubt, don't fill".*
+- **The opening card's button is stored beside the map** (`prefill_choice`, `_at`, `_by`; the first press kept), via `POST …/prefill/{cid}` (patient and on-behalf, audited). **A pre-filled set doesn't count as complete until its card is answered**, so Send waits for it. *Builder's default (safety).*
+- **"Started" is now a patient row with revision > 0, or a pre-filled set's card answered** (after test report 1, found 1: confirming is acting on it). An untouched pre-filled HQ still gets reminders and shows To do on the home.
+- **After "Everything is still correct" the page scrolls the question itself to the top and keeps it there while SurveyJS settles its phone layout** (`focusQuestion`): SurveyJS's `question.focus()` left the question's text off a phone's screen (test report 1, F1). *Gotcha for any future "jump to a question".*
+- **A set with nothing to fill gets no row**, so a later open may still fill it while the patient hasn't saved anything there. *Builder's default.*
+- **Seed: a "Demo follow-up HQ" for Trust A** shares the Demo pre-op HQ's questions (one by wording only), for seeing pre-fill. The local `sj` was migrated and seeded (not reset).
+- **Hidden answers:** SurveyJS's default `clearInvisibleValues` (`onComplete`) is kept. A pre-filled answer its condition hides is kept until the set is finished with it hidden, and isn't counted on the card.
+
 ### 22 Oct 2026: S24, the question library and "Same as…" (builder, automatic run; test report 1 all passed, two exploring items fixed; tested 22 Oct, test report 2 all passed; verification 1 needed fixes, 23 Oct; tested again 23 Oct, test report 3 all passed; verification 2 needed one fix, 23 Oct; tested again 23 Oct, test report 4 all passed; **verified 23 Oct, verification 3**, minor leftovers in pending.md)
 
 - **A medication question's type (prescribed, non-prescribed, recreational) is part of its frozen answer** and of the wording match (`keys.formatOf`; no type = prescribed). **Why:** S23's verification 3; pre-fill must never copy prescribed medicines into a recreational-drugs list. ([build notes](sessions/S24-question-library/build-notes.md))
