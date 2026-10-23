@@ -76,6 +76,18 @@
   color: var(--mantine-color-orange-9);
 }
 
+/* The patient's HQ: a question still holding the answer pre-filled from their earlier HQ (S25, PRE-03). */
+.sj-prefill-marker {
+  /* Inside the question's box, lined up with its text (SurveyJS pads a question by 3 base units). */
+  margin: 0 calc(3 * var(--sjs-base-unit, 8px)) calc(2 * var(--sjs-base-unit, 8px));
+  padding: 4px 8px;
+  border-radius: 4px;
+  border-left: 3px solid var(--mantine-color-brand-5);
+  background: var(--mantine-color-brand-0);
+  font-size: 13px;
+  color: var(--mantine-color-brand-9);
+}
+
 /* POA Summary: Print shows only the summary. */
 @media print {
   .sj-no-print,

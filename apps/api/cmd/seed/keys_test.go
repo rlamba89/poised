@@ -4,13 +4,17 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/rlamba89/poised/apps/api/internal/keys"
+	"github.com/rlamba89/poised/apps/api/internal/prefill"
 )
 
-// The seeded Demo pre-op HQ and the e2e journeys' questionnaires (e2e/data) are published into the
-// same local trusts, so they must agree on every key they share: since S23 a key published with
+// The seeded Demo pre-op HQ, the follow-up HQ (S25) and the e2e journeys' questionnaires (e2e/data)
+// are published into the same local trusts, so they must agree on every key they share: since S23 a key published with
 // different answers in one trust blocks publishing that question anywhere in it (test report 3,
 // R-05, where old test HQs had done exactly that).
 func TestSeedAndE2EQuestionnairesAgreeOnKeys(t *testing.T) {
@@ -38,7 +42,7 @@ func TestSeedAndE2EQuestionnairesAgreeOnKeys(t *testing.T) {
 		}
 		return qs
 	}
-	all := map[string][]keys.Placed{"demo-hq.json": walk("demo-hq.json", demoHQ)}
+	all := map[string][]keys.Placed{"demo-hq.json": walk("demo-hq.json", demoHQ), "demo-followup-hq.json": walk("demo-followup-hq.json", demoFollowUpHQ)}
 	for _, f := range files {
 		raw, err := os.ReadFile(f)
 		if err != nil {
@@ -141,5 +145,82 @@ func TestStarterLibrary(t *testing.T) {
 	}
 	if p := keys.Duplicates(demo); len(p) > 0 {
 		t.Errorf("demo-hq.json: %v", p)
+	}
+}
+
+// The follow-up HQ (S25) is for seeing pre-fill: a patient who sent the Demo pre-op HQ gets most of
+// its questions filled, by ID and one by wording, and never weight or pregnancy (Always ask fresh),
+// the nurse's blood pressure (a clinician set) or its new question.
+func TestFollowUpHQPrefillsFromTheDemoHQ(t *testing.T) {
+	chapters := func(raw []byte, prefix string) []prefill.Chapter {
+		var hq struct {
+			Chapters []struct {
+				Audience string
+				Content  json.RawMessage
+			}
+		}
+		if err := json.Unmarshal(raw, &hq); err != nil {
+			t.Fatal(err)
+		}
+		var out []prefill.Chapter
+		for i, c := range hq.Chapters {
+			out = append(out, prefill.Chapter{ID: prefix + string(rune('1'+i)), Audience: c.Audience, Content: c.Content})
+		}
+		return out
+	}
+	demo, followUp := chapters(demoHQ, "demo"), chapters(demoFollowUpHQ, "fu")
+	src := prefill.Source{FormID: "f1", SubmittedAt: time.Date(2026, 3, 3, 10, 0, 0, 0, time.UTC), Chapters: demo,
+		Patient: map[string]json.RawMessage{
+			"demo1": json.RawMessage(`{"smoker":"ex","alcohol_units":4,"height":172,"weight":80}`),
+			"demo2": json.RawMessage(`{"q_diabetes":"o_no","snoring":"yes","pregnant":"no","ponv_history":"no","anaesthetic_problems":"yes",` +
+				`"anaesthetic_problems_details":"Sick for a day","allergies":[{"allergies_what":"Penicillin","allergies_reaction":"Rash"}]}`),
+		},
+		Clinician: map[string]json.RawMessage{"demo3": json.RawMessage(`{"q_bp":"120/80"}`)},
+	}
+	got, err := prefill.Fill(followUp, map[string]bool{"fu1": true, "fu2": true, "fu3": true}, []prefill.Source{src})
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := func(set string) []string {
+		var out []string
+		for k := range got[set].Prefill {
+			out = append(out, k)
+		}
+		slices.Sort(out)
+		return out
+	}
+	if n := names("fu1"); !reflect.DeepEqual(n, []string{"alcohol_units", "height", "smoker"}) {
+		t.Errorf("About you: %v", n)
+	}
+	if n := names("fu2"); !reflect.DeepEqual(n, []string{"allergies", "anaesthetic_problems", "anaesthetic_problems_details", "fu_diabetes", "ponv_history", "snoring"}) {
+		t.Errorf("Your health: %v", n)
+	}
+	if e := got["fu2"].Prefill["fu_diabetes"]; e.MatchedBy != "wording" || string(e.Value) != `"n"` {
+		t.Errorf("fu_diabetes %+v", e)
+	}
+	if _, ok := got["fu3"]; ok {
+		t.Error("the nurse's set was pre-filled")
+	}
+}
+
+// Every element the patient sees in the seeded HQs has a title of its own: an untitled one shows
+// its ID ("profile", S25 test report 1, found 2).
+func TestSeededHQsHaveTitles(t *testing.T) {
+	for name, raw := range map[string][]byte{"demo-hq.json": demoHQ, "demo-followup-hq.json": demoFollowUpHQ} {
+		var hq struct{ Chapters []struct{ Content json.RawMessage } }
+		if err := json.Unmarshal(raw, &hq); err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range hq.Chapters {
+			qs, err := keys.Walk(c.Content)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, q := range qs {
+				if q.Title == "" && q.Type != "html" {
+					t.Errorf("%s: %s (%s) has no title", name, q.Name, q.Type)
+				}
+			}
+		}
 	}
 }

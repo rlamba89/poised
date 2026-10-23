@@ -357,12 +357,28 @@ type formPatient struct {
 }
 
 // writeForm sends the HQ's patient Question Sets, stripped for patients, with the answers so far.
+// Sets with no answers yet are pre-filled from the patient's earlier HQs first (S25), and the
+// answers come with where each pre-filled one came from (`prefill`, by Question Set).
 func (s *server) writeForm(w http.ResponseWriter, r *http.Request, f form) {
 	ctx := r.Context()
 	rows, err := s.q.ListVersionChapters(ctx, f.VersionID)
 	if err != nil {
 		serverError(w, "list chapters", err)
 		return
+	}
+	saved, err := s.q.ListEpisodeAnswers(ctx, f.FormID)
+	if err != nil {
+		serverError(w, "list answers", err)
+		return
+	}
+	if filled, err := s.prefillForm(ctx, f, auditOf(r), rows, saved); err != nil {
+		serverError(w, "pre-fill", err)
+		return
+	} else if filled {
+		if saved, err = s.q.ListEpisodeAnswers(ctx, f.FormID); err != nil {
+			serverError(w, "list answers", err)
+			return
+		}
 	}
 	chapters := []patientChapter{}
 	for _, c := range rows {
@@ -376,17 +392,16 @@ func (s *server) writeForm(w http.ResponseWriter, r *http.Request, f form) {
 		}
 		chapters = append(chapters, patientChapter{ID: c.ID, Name: c.Name, Description: c.Description, Icon: c.Icon, Content: content})
 	}
-	saved, err := s.q.ListEpisodeAnswers(ctx, f.FormID)
-	if err != nil {
-		serverError(w, "list answers", err)
-		return
-	}
 	answers := map[uuid.UUID]json.RawMessage{}
 	revisions := map[uuid.UUID]int32{} // what the next save of each set sends back (S02a)
+	prefilled := map[uuid.UUID]setPrefill{}
 	for _, a := range saved {
 		if a.Actor == "patient" {
 			answers[a.ChapterID] = a.Data
 			revisions[a.ChapterID] = a.Revision
+			if p, ok := prefillOf(a); ok {
+				prefilled[a.ChapterID] = p
+			}
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -398,6 +413,7 @@ func (s *server) writeForm(w http.ResponseWriter, r *http.Request, f form) {
 		"chapters":          chapters,
 		"answers":           answers,
 		"revisions":         revisions,
+		"prefill":           prefilled,
 	})
 }
 

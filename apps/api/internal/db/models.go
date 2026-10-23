@@ -88,14 +88,18 @@ type Episode struct {
 }
 
 type EpisodeAnswer struct {
-	EpisodeFormID uuid.UUID          `json:"episodeFormId"`
-	ChapterID     uuid.UUID          `json:"chapterId"`
-	Actor         string             `json:"actor"`
-	Data          json.RawMessage    `json:"data"`
-	UpdatedBy     uuid.NullUUID      `json:"updatedBy"`
-	UpdatedAt     time.Time          `json:"updatedAt"`
-	ValidatedAt   pgtype.Timestamptz `json:"validatedAt"`
-	Revision      int32              `json:"revision"`
+	EpisodeFormID   uuid.UUID          `json:"episodeFormId"`
+	ChapterID       uuid.UUID          `json:"chapterId"`
+	Actor           string             `json:"actor"`
+	Data            json.RawMessage    `json:"data"`
+	UpdatedBy       uuid.NullUUID      `json:"updatedBy"`
+	UpdatedAt       time.Time          `json:"updatedAt"`
+	ValidatedAt     pgtype.Timestamptz `json:"validatedAt"`
+	Revision        int32              `json:"revision"`
+	Prefill         json.RawMessage    `json:"prefill"`
+	PrefillChoice   *string            `json:"prefillChoice"`
+	PrefillChoiceAt pgtype.Timestamptz `json:"prefillChoiceAt"`
+	PrefillChoiceBy uuid.NullUUID      `json:"prefillChoiceBy"`
 }
 
 type EpisodeEvent struct {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig, resetConfigForTests } from "./config";
-import { formatDate, formatDateTime, formatOptionalDate, formatShortDate } from "./format";
+import { formatDate, formatDateTime, formatDay, formatOptionalDate, formatShortDate } from "./format";
 
 // The dates follow the deployment's locale from GET /api/config (A-20), not a hardcoded one.
 async function withLocale(locale: string) {
@@ -65,5 +65,14 @@ describe("formatOptionalDate (an episode's planned and POA dates, S19)", () => {
     await withLocale("en-GB");
     expect(formatOptionalDate(null)).toBe("—");
     expect(formatOptionalDate("")).toBe("—");
+  });
+});
+
+describe("formatDay (where a pre-filled answer came from, S25)", () => {
+  it("in the deployment's locale", async () => {
+    await withLocale("en-GB");
+    expect(formatDay("2026-03-03T12:00:00Z")).toBe("3 Mar 2026");
+    await withLocale("en-US");
+    expect(formatDay("2026-03-03T12:00:00Z")).toBe("Mar 3, 2026");
   });
 });

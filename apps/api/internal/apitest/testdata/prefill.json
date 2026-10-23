@@ -1,0 +1,59 @@
+{
+  "name": "Pre-fill HQ",
+  "description": "A later HQ sharing questions with workflow.json (S25): by key (q_smokes, q_meds), by wording (pf_diabetes), Always ask fresh (q_heart), questions whose earlier answers are clinician-only (q_secret_note, q_secret_bp), a new question, and a clinician set.",
+  "chapters": [
+    {
+      "name": "About you again",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_again",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_smokes",
+                "title": "Do you smoke at the moment?",
+                "choices": [{ "value": "o_yes", "text": "Yes" }, { "value": "o_no", "text": "No" }]
+              },
+              { "type": "boolean", "name": "q_heart", "title": "Any heart problems?", "alwaysFresh": true },
+              {
+                "type": "paneldynamic",
+                "name": "q_meds",
+                "title": "Your medicines",
+                "templateElements": [
+                  { "type": "text", "name": "q_med_name", "title": "Medicine" },
+                  { "type": "text", "name": "q_secret_dose_check", "title": "SECRET dose check", "clinicianOnly": true }
+                ]
+              },
+              { "type": "comment", "name": "q_secret_note", "title": "A note for the nurse" },
+              { "type": "text", "name": "pf_new", "title": "Anything else we should know?" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Health again",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_health_again",
+            "elements": [
+              { "type": "boolean", "name": "pf_diabetes", "title": "Do you have diabetes?" },
+              { "type": "text", "name": "q_secret_bp", "title": "Your blood pressure at home" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Clinic checks",
+      "audience": "clinician",
+      "content": {
+        "pages": [{ "name": "p_clinic", "elements": [{ "type": "boolean", "name": "q_diabetes", "title": "Diabetes confirmed?" }] }]
+      }
+    }
+  ]
+}

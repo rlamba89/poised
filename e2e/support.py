@@ -201,7 +201,7 @@ def choose(scope: Page | Locator, question: str, option: str) -> None:
     """Picks a SurveyJS option as a person does, by tapping its text (the real radio is hidden)."""
     group = scope.get_by_role("radiogroup", name=question)
     group.get_by_text(option, exact=True).click()
-    expect(group.get_by_role("radio", name=option)).to_be_checked()
+    expect(group.get_by_role("radio", name=option, exact=True)).to_be_checked()
 
 
 def pick(page: Page, label: str, option: str) -> None:

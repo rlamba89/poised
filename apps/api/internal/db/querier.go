@@ -163,8 +163,9 @@ type Querier interface {
 	// dates of birth locked the episode (any of its live links locked: they lock together). No row:
 	// no invite has been sent.
 	GetEpisodeInvite(ctx context.Context, episodeID uuid.NullUUID) (GetEpisodeInviteRow, error)
-	// What the follow-up decides on: the episode's state, whether the patient has started (any
-	// answers of theirs on the HQ form, or entered for them), and the hospital's zone and settings.
+	// What the follow-up decides on: the episode's state, whether the patient has started (saved
+	// any answers on the HQ form, or staff for them, or answered a pre-filled set's card; a
+	// pre-filled set untouched doesn't count, S25), and the hospital's zone and settings.
 	GetFollowup(ctx context.Context, id uuid.UUID) (GetFollowupRow, error)
 	// A hospital's stored settings and its trust's, for its effective values (the default HQ).
 	GetHospitalAndOrgSettings(ctx context.Context, arg GetHospitalAndOrgSettingsParams) (GetHospitalAndOrgSettingsRow, error)
@@ -230,7 +231,7 @@ type Querier interface {
 	ListCategories(ctx context.Context) ([]Category, error)
 	// Every chapter lookup joins up to the questionnaire, so it is scoped to the trust and hospital.
 	ListChapters(ctx context.Context, versionID uuid.UUID) ([]ListChaptersRow, error)
-	// One form's answers, both actors'.
+	// One form's answers, both actors', with where the patient's pre-filled answers came from (S25).
 	ListEpisodeAnswers(ctx context.Context, episodeFormID uuid.UUID) ([]ListEpisodeAnswersRow, error)
 	// user_name is NULL for the patient's entries and the automatic ones.
 	ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeEventsRow, error)
@@ -271,6 +272,12 @@ type Querier interface {
 	ListOrgsForAdmin(ctx context.Context) ([]ListOrgsForAdminRow, error)
 	// A patient's episodes at this hospital only, newest first: never another hospital's.
 	ListPatientEpisodesHere(ctx context.Context, arg ListPatientEpisodesHereParams) ([]ListPatientEpisodesHereRow, error)
+	// Pre-fill's earlier answers (S25): every submitted HQ form of the patient's in ONE trust, newest
+	// submit first, with each of its version's Question Sets and the answers to use from it: the
+	// clinician's validated copy, and the patient's. The patient's are the records joined to their
+	// account (any episode status: answers never expire, A-9), or with no account the record only.
+	// org_id is the form's own trust; only S26 asks for another, deliberately, one trust at a time.
+	ListPrefillSources(ctx context.Context, arg ListPrefillSourcesParams) ([]ListPrefillSourcesRow, error)
 	// The trust's procedure list (PRC-01, S19). hospital_id NULL: offered at every hospital of the
 	// trust; otherwise at that hospital only. Retired procedures stay listed for managing, and on the
 	// episodes that have them, but aren't offered for new episodes.
@@ -372,6 +379,10 @@ type Querier interface {
 	// is this hospital's patient and its latest hospital number here: only those may be shown.
 	PatientsBornOn(ctx context.Context, arg PatientsBornOnParams) ([]PatientsBornOnRow, error)
 	Ping(ctx context.Context) (int32, error)
+	// Stores one Question Set's pre-filled answers as the patient's, revision 0 (S25), only while the
+	// form is open and only if the patient (or staff for them) has no answers there yet: nothing typed
+	// is ever overwritten, and it runs once per set. No row: answers were saved there first.
+	PrefillPatientAnswers(ctx context.Context, arg PrefillPatientAnswersParams) (int64, error)
 	// Publishes the draft and retires the version published before it (LCY-01), in one statement.
 	// Returns 0 when the version is no longer a draft.
 	PublishVersion(ctx context.Context, arg PublishVersionParams) (int64, error)
@@ -381,6 +392,10 @@ type Querier interface {
 	// couldn't be sent at all.
 	// kind "status" (S21) names the status it was sent for; the others have none.
 	RecordEpisodeMessage(ctx context.Context, arg RecordEpisodeMessageParams) error
+	// The opening card's button for one pre-filled Question Set (PRE-02, S25 answers 5): the first one
+	// pressed is kept. by: staff on the patient's behalf, NULL for the patient. No row: the form was
+	// sent, the set wasn't pre-filled, or a button was already recorded.
+	RecordPrefillChoice(ctx context.Context, arg RecordPrefillChoiceParams) (int64, error)
 	// No row: it's already open.
 	ReopenTask(ctx context.Context, arg ReopenTaskParams) (int64, error)
 	// The job ran: look again at run_at.

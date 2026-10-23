@@ -219,6 +219,7 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/patient-form", hosp(s.audited("behalf.view", s.staffPatientForm)))
 	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/episodes/{eid}/patient-form/answers/{cid}", hosp(s.audited("behalf.save", s.staffSavePatientForm)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/patient-form/submit", hosp(s.audited("behalf.submit", s.staffSubmitPatientForm)))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/patient-form/prefill/{cid}", hosp(s.audited("behalf.prefill", s.staffPrefillChoice)))
 }
 
 // patientRoutes are the patient's (S14, A-4): their link's Continue and date of birth, which
@@ -233,6 +234,7 @@ func (s *server) patientRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/p/episodes/{eid}", session(s.audited("link.view", s.patientForm)))
 	mux.HandleFunc("PUT /api/p/episodes/{eid}/answers/{cid}", session(s.audited("link.save", s.savePatientForm)))
 	mux.HandleFunc("POST /api/p/episodes/{eid}/submit", session(s.audited("link.submit", s.submitPatientForm)))
+	mux.HandleFunc("POST /api/p/episodes/{eid}/prefill/{cid}", session(s.audited("link.prefill", s.patientPrefillChoice)))
 
 	// Accounts across trusts (S15): a returning patient's sign-in link (by mobile or email, then
 	// Continue and their date of birth, as an invite), their home, and changing a contact. The

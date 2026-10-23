@@ -85,6 +85,12 @@ var demoPatients = []struct{ id, first, last, dob, sex, nhs, mobile, email strin
 //go:embed demo-hq.json
 var demoHQ []byte
 
+// The demo follow-up HQ (S25), Trust A's only: it shares questions with the Demo pre-op HQ (by
+// ID, and one by wording), so a tester sees pre-fill on a patient's second episode.
+//
+//go:embed demo-followup-hq.json
+var demoFollowUpHQ []byte
+
 // The platform's starter question library (S24): seeded into every deployment, like the codes.
 //
 //go:embed library.json
@@ -125,6 +131,11 @@ func starterLibrary() ([]libraryItem, error) {
 var demoHQs = []struct{ trust, questionnaire, version, chapterBase, author string }{
 	{trustA, "00000000-0000-4000-8000-000000000101", "00000000-0000-4000-8000-000000000102", "00000000-0000-4000-8000-00000000011", "00000000-0000-4000-8000-0000000000a1"},
 	{trustB, "00000000-0000-4000-8000-000000000201", "00000000-0000-4000-8000-000000000202", "00000000-0000-4000-8000-00000000021", "00000000-0000-4000-8000-0000000000b1"},
+}
+
+// demoFollowUps are the follow-up HQ's copies (Trust A only), with fixed ids as demoHQs.
+var demoFollowUps = []struct{ trust, questionnaire, version, chapterBase, author string }{
+	{trustA, "00000000-0000-4000-8000-000000000301", "00000000-0000-4000-8000-000000000302", "00000000-0000-4000-8000-00000000031", "00000000-0000-4000-8000-0000000000a1"},
 }
 
 // demoProcedures are each trust's procedure list (S19): made-up codes, a hospital of "" is every
@@ -346,40 +357,47 @@ func seedDemo(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	fmt.Printf("trusts: %d, users: %d, patients: %d, demo HQs: %d, procedures: %d\n",
-		len(demoTrusts), len(demoUsers), len(demoPatients), len(demoHQs), len(demoProcedures))
+		len(demoTrusts), len(demoUsers), len(demoPatients), len(demoHQs)+len(demoFollowUps), len(demoProcedures))
 	return nil
 }
 
-// seedHQs adds each trust's published demo HQ the first time. Later runs leave it as it is: a
-// published version can't change, and a tester may have made a new version of it.
+// seedHQs adds each trust's published demo HQ, and Trust A's follow-up HQ, the first time. Later
+// runs leave them as they are: a published version can't change, and a tester may have made a new
+// version of one.
 func seedHQs(ctx context.Context, tx pgx.Tx, orgs map[string]string) error {
-	var hq struct {
-		Name, Description string
-		Chapters          []struct {
-			Name, Audience string
-			Content        json.RawMessage
+	for _, h := range []struct {
+		file   string
+		raw    []byte
+		copies []struct{ trust, questionnaire, version, chapterBase, author string }
+	}{{"demo-hq.json", demoHQ, demoHQs}, {"demo-followup-hq.json", demoFollowUpHQ, demoFollowUps}} {
+		var hq struct {
+			Name, Description string
+			Chapters          []struct {
+				Name, Audience string
+				Content        json.RawMessage
+			}
 		}
-	}
-	if err := json.Unmarshal(demoHQ, &hq); err != nil {
-		return fmt.Errorf("demo-hq.json: %w", err)
-	}
-	if len(hq.Chapters) > 9 {
-		return fmt.Errorf("demo-hq.json: %d Question Sets, at most 9", len(hq.Chapters))
-	}
-	for _, d := range demoHQs {
-		if _, err := tx.Exec(ctx, `INSERT INTO questionnaires (id, org_id, name, description, created_by) VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (id) DO NOTHING`, d.questionnaire, orgs[d.trust], hq.Name, hq.Description, d.author); err != nil {
-			return fmt.Errorf("demo HQ: %w", err)
+		if err := json.Unmarshal(h.raw, &hq); err != nil {
+			return fmt.Errorf("%s: %w", h.file, err)
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO questionnaire_versions (id, questionnaire_id, version_no, status, updated_by)
-			VALUES ($1, $2, 1, 'published', $3) ON CONFLICT (id) DO NOTHING`, d.version, d.questionnaire, d.author); err != nil {
-			return fmt.Errorf("demo HQ version: %w", err)
+		if len(hq.Chapters) > 9 {
+			return fmt.Errorf("%s: %d Question Sets, at most 9", h.file, len(hq.Chapters))
 		}
-		for i, ch := range hq.Chapters {
-			if _, err := tx.Exec(ctx, `INSERT INTO chapters (id, version_id, position, name, audience, content, updated_by)
-				VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING`,
-				fmt.Sprintf("%s%d", d.chapterBase, i+1), d.version, i+1, ch.Name, ch.Audience, ch.Content, d.author); err != nil {
-				return fmt.Errorf("demo HQ set %s: %w", ch.Name, err)
+		for _, d := range h.copies {
+			if _, err := tx.Exec(ctx, `INSERT INTO questionnaires (id, org_id, name, description, created_by) VALUES ($1, $2, $3, $4, $5)
+				ON CONFLICT (id) DO NOTHING`, d.questionnaire, orgs[d.trust], hq.Name, hq.Description, d.author); err != nil {
+				return fmt.Errorf("%s: %w", h.file, err)
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO questionnaire_versions (id, questionnaire_id, version_no, status, updated_by)
+				VALUES ($1, $2, 1, 'published', $3) ON CONFLICT (id) DO NOTHING`, d.version, d.questionnaire, d.author); err != nil {
+				return fmt.Errorf("%s version: %w", h.file, err)
+			}
+			for i, ch := range hq.Chapters {
+				if _, err := tx.Exec(ctx, `INSERT INTO chapters (id, version_id, position, name, audience, content, updated_by)
+					VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING`,
+					fmt.Sprintf("%s%d", d.chapterBase, i+1), d.version, i+1, ch.Name, ch.Audience, ch.Content, d.author); err != nil {
+					return fmt.Errorf("%s set %s: %w", h.file, ch.Name, err)
+				}
 			}
 		}
 	}

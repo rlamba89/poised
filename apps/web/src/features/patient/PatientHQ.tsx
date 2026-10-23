@@ -15,10 +15,15 @@
 //   - what's on screen (drafts). A set saves whenever its draft differs from what the server has.
 // A set counts as complete only when the server's answers are complete and its draft is saved
 // (isSetReadyToSend), so a change whose save failed keeps "Send my answers" disabled.
+//
+// Pre-filled answers (S25): Go fills a set from the patient's earlier HQs when it's first opened.
+// Such a set opens on a card ("We've filled in 23 answers…") with Check each answer and Everything
+// is still correct; the button is recorded, and until one is pressed the set isn't complete. Each
+// question still holding its pre-filled answer has a marker under it (prefill.ts has the rules).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Anchor, Badge, Box, Button, Card, Center, Container, Group, Loader, Modal, Stack, Text, Title } from "@mantine/core";
 import { Link, useNavigate } from "react-router";
-import { IconArrowLeft, IconCircleCheck } from "@tabler/icons-react";
+import { IconArrowLeft, IconCircleCheck, IconHistory } from "@tabler/icons-react";
 
 import { Model } from "survey-core";
 import { Survey } from "survey-react-ui";
@@ -31,6 +36,8 @@ import { ApiError, api } from "@/lib/api";
 import { Logo } from "@/features/brand/Logo";
 import { lostWork, type Lost } from "./signedOut";
 import { showUnits } from "@/features/preview/units";
+import { formatDay } from "@/lib/format";
+import { awaitsCheck, cardText, firstUnfilled, focusQuestion, showPrefillMarkers, shownPrefilled, type PrefillChoice, type SetPrefill } from "./prefill";
 
 registerClinicalProperties();
 
@@ -50,6 +57,8 @@ type HQ = {
   answers: Record<string, Answers>;
   /** Each saved set's revision, which its first save sends back. A set with no answers yet has none. */
   revisions: Record<string, number>;
+  /** The sets Go pre-filled, and where each answer came from (S25). */
+  prefill?: Record<string, SetPrefill>;
 };
 
 const SAVE_DELAY_MS = 600;
@@ -77,6 +86,8 @@ export default function PatientHQ({ path, onBehalf }: Props) {
   // One saver per set for the life of the page (until Reload): its revision and what the server
   // has confirmed survive closing and reopening the set.
   const savers = useRef(new Map<string, AnswerSaver<Answers>>());
+  // The opening cards' buttons pressed since the HQ loaded (Go has recorded them).
+  const [choices, setChoices] = useState<Record<string, PrefillChoice>>({});
 
   const [reloading, setReloading] = useState(false);
   // The open set's "save now": sends a change still waiting for its autosave (and a text box's
@@ -109,6 +120,7 @@ export default function PatientHQ({ path, onBehalf }: Props) {
       .then((h) => {
         savers.current = new Map();
         setDrafts({});
+        setChoices({});
         setHq(h);
         setConflict("");
         setError(""); // an earlier failure's message no longer applies
@@ -191,8 +203,30 @@ export default function PatientHQ({ path, onBehalf }: Props) {
 
   const sets = shownSets(hq.chapters, saved, "patient", vars);
   const open = sets.find((s) => s.id === openId);
-  // Building a survey per set is not free, so only while the list is showing.
-  const done = new Set(open || hq.submitted ? [] : sets.filter((s) => isSetReadyToSend(s.content, saved[s.id], drafts[s.id], vars)).map((s) => s.id));
+  const prefillOf = (id: string): SetPrefill | undefined => {
+    const p = hq.prefill?.[id];
+    return p && choices[id] ? { ...p, choice: choices[id] } : p;
+  };
+  // Building a survey per set is not free, so only while the list is showing. A pre-filled set
+  // waiting for its card's answer isn't complete yet.
+  const listing = !open && !hq.submitted;
+  const toCheck = new Set(listing ? sets.filter((s) => awaitsCheck(s.content, drafts[s.id] ?? saved[s.id], prefillOf(s.id), vars)).map((s) => s.id) : []);
+  const done = new Set(
+    listing ? sets.filter((s) => !toCheck.has(s.id) && isSetReadyToSend(s.content, saved[s.id], drafts[s.id], vars)).map((s) => s.id) : [],
+  );
+  // The card's button: Go records it, then the set goes on.
+  const choose = async (id: string, choice: PrefillChoice) => {
+    try {
+      await api(`${path}/prefill/${id}`, { method: "POST", body: JSON.stringify({ choice }) }).catch(endedBy());
+      setChoices((c) => ({ ...c, [id]: choice }));
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
+    }
+  };
+  // "Everything is still correct" with nothing left to answer: the next set shown, or the list.
+  const openNext = (id: string) => setOpenId(sets[sets.findIndex((s) => s.id === id) + 1]?.id ?? null);
 
   const send = async () => {
     setSending(true);
@@ -241,6 +275,10 @@ export default function PatientHQ({ path, onBehalf }: Props) {
             data={drafts[open.id] ?? saved[open.id] ?? {}}
             saver={saverFor(open.id)}
             vars={vars}
+            prefill={prefillOf(open.id)}
+            whose={onBehalf ? hq.patient.firstName : undefined}
+            onChoose={(choice) => choose(open.id, choice)}
+            onNextSet={() => openNext(open.id)}
             onChange={(data) => setDraft(open.id, data)}
             onConflict={setConflict}
             onError={setError}
@@ -269,11 +307,13 @@ export default function PatientHQ({ path, onBehalf }: Props) {
                     <Group gap="sm" wrap="nowrap">
                       {done.has(s.id) ? (
                         <Badge color="green" variant="light">Complete</Badge>
+                      ) : toCheck.has(s.id) ? (
+                        <Badge color="brand" variant="light">Please check</Badge>
                       ) : (
                         started && <Badge color="orange" variant="light">In progress</Badge>
                       )}
                       <Button variant={done.has(s.id) ? "default" : "filled"} onClick={() => setOpenId(s.id)}>
-                        {done.has(s.id) ? "Review" : started ? "Continue" : "Start"}
+                        {done.has(s.id) ? "Review" : toCheck.has(s.id) ? "Check" : started ? "Continue" : "Start"}
                       </Button>
                     </Group>
                   </Group>
@@ -373,10 +413,18 @@ type SetFormProps = {
   onClose: () => void;
   /** Set to this set's "save now" while it's open (see PatientHQ's flushRef). */
   flushRef: React.MutableRefObject<(() => Promise<boolean>) | null>;
+  /** Where the set's pre-filled answers came from, if Go pre-filled it (S25). */
+  prefill?: SetPrefill;
+  /** The patient's first name when staff fill it in for them, for the card and the markers. */
+  whose?: string;
+  /** Records the opening card's button; false if it couldn't be (the page shows why). */
+  onChoose: (choice: PrefillChoice) => Promise<boolean>;
+  /** Opens the next set shown (or the list): "Everything is still correct" with nothing left here. */
+  onNextSet: () => void;
 };
 
 /** One Question Set in the patient view. Answers save shortly after each change. */
-function SetForm({ set, data, saver, vars, onChange, onConflict, onError, onClose, flushRef }: SetFormProps) {
+function SetForm({ set, data, saver, vars, onChange, onConflict, onError, onClose, flushRef, prefill, whose, onChoose, onNextSet }: SetFormProps) {
   // "Not saved" while what's on screen differs from what the server has (e.g. after a failed save).
   const [status, setStatus] = useState<"saving" | "saved" | "unsaved">(() => (sameAnswer(data, saver.confirmed ?? {}) ? "saved" : "unsaved"));
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -393,10 +441,48 @@ function SetForm({ set, data, saver, vars, onChange, onConflict, onError, onClos
     // (Sign out, leaving the on-behalf form) always has it (S14 verification 2).
     m.textUpdateMode = "onTyping";
     m.data = data;
+    // The marker (PRE-03) under each question still holding its pre-filled answer. Added before the
+    // survey first draws, so no question is missed (as the clinician's corrections are).
+    if (prefill) showPrefillMarkers(m, prefill, whose);
     return m;
     // Built once per set: answers then live in the model.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [set]);
+
+  // The opening card (PRE-02): while pre-filled answers show and neither button has been pressed.
+  const [card, setCard] = useState(() => !prefill?.choice && shownPrefilled(model, prefill).length > 0);
+  const [choosing, setChoosing] = useState(false);
+  // The question "Everything is still correct" goes to, focused once the survey is showing.
+  const [focusOn, setFocusOn] = useState<string | null>(null);
+  const choose = async (choice: PrefillChoice) => {
+    setChoosing(true);
+    const ok = await onChoose(choice);
+    setChoosing(false);
+    if (!ok) return;
+    if (choice === "check_each") {
+      model.currentPageNo = 0;
+      setCard(false);
+      return;
+    }
+    const next = firstUnfilled(model, prefill);
+    if (!next) {
+      onNextSet();
+      return;
+    }
+    model.currentPage = next.page;
+    setFocusOn(next.name);
+    setCard(false);
+  };
+  useEffect(() => {
+    if (card || !focusOn) return;
+    let stop = () => {};
+    const t = setTimeout(() => (stop = focusQuestion(model, focusOn)));
+    return () => {
+      clearTimeout(t);
+      stop();
+    };
+  }, [card, focusOn, model]);
+
 
   /** Saves the latest answers now; whether the server has them, and whether it refused them as stale. */
   const persist = useCallback(async () => {
@@ -484,9 +570,23 @@ function SetForm({ set, data, saver, vars, onChange, onConflict, onError, onClos
         </Text>
       </Group>
       <Title order={3}>{set.name}</Title>
-      <Card withBorder padding={0}>
-        <Survey model={model} />
-      </Card>
+      {card && prefill ? (
+        <Card withBorder p="lg" data-testid="prefill-card">
+          <Group gap="xs" wrap="nowrap">
+            <IconHistory size={20} color="var(--mantine-color-brand-7)" />
+            <Text fw={700}>Your earlier answers</Text>
+          </Group>
+          <Text mt="xs">{cardText(shownPrefilled(model, prefill).map((q) => prefill.answers[q.name]), formatDay, whose)}</Text>
+          <Stack mt="md" gap="sm">
+            <Button onClick={() => choose("check_each")} loading={choosing}>Check each answer</Button>
+            <Button variant="light" onClick={() => choose("still_correct")} disabled={choosing}>Everything is still correct</Button>
+          </Stack>
+        </Card>
+      ) : (
+        <Card withBorder padding={0}>
+          <Survey model={model} />
+        </Card>
+      )}
     </Stack>
   );
 }

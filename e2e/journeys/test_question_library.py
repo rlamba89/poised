@@ -110,7 +110,7 @@ def test_library_and_same_as(page: Page, as_user):
     same = page.get_by_role("dialog", name="Same as…")
     same.get_by_label("Search").fill("pregnant")
     candidate = same.get_by_test_id("candidate-pregnant")
-    expect(candidate).to_contain_text("In Demo pre-op HQ")
+    expect(candidate).to_contain_text("Demo pre-op HQ")  # and the follow-up HQ (S25), which asks it too
     expect(candidate.get_by_test_id("candidate-fresh")).to_have_text("Always ask fresh, like the original")
     candidate.get_by_role("button", name="Use this").click()
     expect(same).to_be_hidden()

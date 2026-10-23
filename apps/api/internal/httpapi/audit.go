@@ -59,12 +59,14 @@ var auditActions = map[string]string{
 	"behalf.view":        "Opened the patient's HQ to fill in for them",
 	"behalf.save":        "Saved answers for the patient",
 	"behalf.submit":      "Sent the HQ for the patient",
-	"link.open":          "Patient opened their link", // S14: Continue
+	"behalf.prefill":     "Checked pre-filled answers with the patient", // S25: the opening card's button
+	"link.open":          "Patient opened their link",                   // S14: Continue
 	"link.dob":           "Patient entered their date of birth",
 	"link.view":          "Patient opened their questionnaire",
 	"link.save":          "Patient saved answers",
 	"link.submit":        "Patient sent their answers",
-	"home.view":          "Patient opened their home", // S15: a row per hospital it listed
+	"link.prefill":       "Patient checked pre-filled answers", // S25
+	"home.view":          "Patient opened their home",          // S15: a row per hospital it listed
 	"account.join":       "Patient's record joined their sign-in account",
 	"contact.update":     "Patient changed their contact details",
 	"account.close":      "Patient closed their account", // S22: a row per trust whose records it unlinked

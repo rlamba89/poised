@@ -213,11 +213,51 @@ ORDER BY position, name;
 SELECT id, audience, content FROM chapters WHERE id = $1 AND version_id = $2;
 
 -- name: ListEpisodeAnswers :many
--- One form's answers, both actors'.
-SELECT a.chapter_id, a.actor, a.data, a.updated_at, a.validated_at, a.revision, u.name AS updated_by_name
+-- One form's answers, both actors', with where the patient's pre-filled answers came from (S25).
+SELECT a.chapter_id, a.actor, a.data, a.updated_at, a.validated_at, a.revision, u.name AS updated_by_name,
+       a.prefill, a.prefill_choice, a.prefill_choice_at
 FROM episode_answers a
 LEFT JOIN users u ON u.id = a.updated_by
 WHERE a.episode_form_id = $1;
+
+-- name: ListPrefillSources :many
+-- Pre-fill's earlier answers (S25): every submitted HQ form of the patient's in ONE trust, newest
+-- submit first, with each of its version's Question Sets and the answers to use from it: the
+-- clinician's validated copy, and the patient's. The patient's are the records joined to their
+-- account (any episode status: answers never expire, A-9), or with no account the record only.
+-- org_id is the form's own trust; only S26 asks for another, deliberately, one trust at a time.
+SELECT f.id AS form_id, f.submitted_at, e.id AS episode_id, e.patient_id, c.id AS chapter_id, c.audience, c.content,
+       pa.data AS patient_data, ca.data AS clinician_data
+FROM episode_forms f
+JOIN episodes e ON e.id = f.episode_id
+JOIN patients p ON p.id = e.patient_id
+JOIN chapters c ON c.version_id = f.version_id
+LEFT JOIN episode_answers pa ON pa.episode_form_id = f.id AND pa.chapter_id = c.id AND pa.actor = 'patient'
+LEFT JOIN episode_answers ca ON ca.episode_form_id = f.id AND ca.chapter_id = c.id AND ca.actor = 'clinician'
+    AND ca.validated_at IS NOT NULL
+WHERE e.org_id = sqlc.arg(org_id) AND p.org_id = sqlc.arg(org_id) AND f.kind = 'hq' AND f.status = 'submitted'
+  AND f.id <> sqlc.arg(form_id)
+  AND (e.patient_id = sqlc.arg(patient_id) OR p.account_id = sqlc.narg(account_id))
+ORDER BY f.submitted_at DESC, f.id, c.position, c.name;
+
+-- name: PrefillPatientAnswers :execrows
+-- Stores one Question Set's pre-filled answers as the patient's, revision 0 (S25), only while the
+-- form is open and only if the patient (or staff for them) has no answers there yet: nothing typed
+-- is ever overwritten, and it runs once per set. No row: answers were saved there first.
+INSERT INTO episode_answers (episode_form_id, chapter_id, actor, data, prefill, revision)
+SELECT f.id, sqlc.arg(chapter_id), 'patient', sqlc.arg(data), sqlc.arg(prefill), 0
+FROM episode_forms f WHERE f.id = sqlc.arg(form_id) AND f.status = 'open'
+ON CONFLICT (episode_form_id, chapter_id, actor) DO NOTHING;
+
+-- name: RecordPrefillChoice :execrows
+-- The opening card's button for one pre-filled Question Set (PRE-02, S25 answers 5): the first one
+-- pressed is kept. by: staff on the patient's behalf, NULL for the patient. No row: the form was
+-- sent, the set wasn't pre-filled, or a button was already recorded.
+UPDATE episode_answers a SET prefill_choice = sqlc.arg(choice)::text, prefill_choice_at = now(), prefill_choice_by = sqlc.narg(by)
+FROM episode_forms f
+WHERE a.episode_form_id = sqlc.arg(form_id) AND a.chapter_id = sqlc.arg(chapter_id) AND a.actor = 'patient'
+  AND f.id = a.episode_form_id AND f.status = 'open'
+  AND a.prefill IS NOT NULL AND a.prefill <> '{}'::jsonb AND a.prefill_choice IS NULL;
 
 -- name: SavePatientAnswers :one
 -- entered_by is the staff member completing the HQ on the patient's behalf (PAT-09), NULL for the

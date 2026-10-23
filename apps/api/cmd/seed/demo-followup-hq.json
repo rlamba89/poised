@@ -1,0 +1,290 @@
+{
+  "name": "Demo follow-up HQ",
+  "description": "A shorter follow-up HQ for pre-fill (S25): it asks some of the Demo pre-op HQ's questions with the same IDs, asks “Do you have diabetes?” under an ID of its own (same wording), and adds a new question. Made-up wording.",
+  "chapters": [
+    {
+      "name": "About you",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_fu_you",
+            "elements": [
+              {
+                "type": "profile",
+                "name": "profile",
+                "title": "Your details"
+              },
+              {
+                "type": "radiogroup",
+                "name": "smoker",
+                "title": "Do you smoke?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "never",
+                    "text": "No, I have never smoked"
+                  },
+                  {
+                    "value": "ex",
+                    "text": "I used to smoke"
+                  },
+                  {
+                    "value": "current",
+                    "text": "Yes, I smoke now"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "inputType": "number",
+                "name": "alcohol_units",
+                "unit": "units a week",
+                "isRequired": true,
+                "title": "About how many units of alcohol do you drink in a week?",
+                "description": "A unit is half a pint of ordinary beer, a single measure of spirits or a small glass of wine. Enter 0 if you don't drink.",
+                "validators": [
+                  {
+                    "type": "numeric",
+                    "minValue": 0,
+                    "text": "Please enter a number at least 0."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "p_fu_size",
+            "elements": [
+              {
+                "type": "text",
+                "inputType": "number",
+                "name": "height",
+                "unit": "cm",
+                "isRequired": true,
+                "title": "How tall are you?"
+              },
+              {
+                "type": "text",
+                "inputType": "number",
+                "name": "weight",
+                "unit": "kg",
+                "isRequired": true,
+                "alwaysFresh": true,
+                "title": "What do you weigh now?"
+              },
+              {
+                "type": "radiogroup",
+                "name": "fu_stairs",
+                "title": "Can you climb two flights of stairs without stopping?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "no",
+                    "text": "No"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Your health",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_fu_health",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "fu_diabetes",
+                "title": "Do you have diabetes?",
+                "choices": [
+                  {
+                    "value": "y",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "n",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "radiogroup",
+                "yesNo": true,
+                "colCount": 0,
+                "name": "snoring",
+                "title": "Do you snore loudly?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "radiogroup",
+                "name": "pregnant",
+                "isRequired": true,
+                "alwaysFresh": true,
+                "title": "Is there any chance you could be pregnant?",
+                "choices": [
+                  {
+                    "value": "yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "no",
+                    "text": "No"
+                  },
+                  {
+                    "value": "not_sure",
+                    "text": "I'm not sure"
+                  }
+                ]
+              },
+              {
+                "type": "radiogroup",
+                "yesNo": true,
+                "colCount": 0,
+                "name": "ponv_history",
+                "isRequired": true,
+                "title": "Have you ever been sick, or felt very sick, after an anaesthetic?",
+                "choices": [
+                  {
+                    "value": "yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "panel",
+                "name": "anaesthetic_problems_group",
+                "title": "Problems with anaesthetics",
+                "elements": [
+                  {
+                    "type": "radiogroup",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "name": "anaesthetic_problems",
+                    "isRequired": true,
+                    "title": "Have you ever had a problem with an anaesthetic?",
+                    "choices": [
+                      {
+                        "value": "yes",
+                        "text": "Yes"
+                      },
+                      {
+                        "value": "no",
+                        "text": "No"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "comment",
+                    "name": "anaesthetic_problems_details",
+                    "isRequired": true,
+                    "title": "What happened with your anaesthetic?",
+                    "visibleIf": "{anaesthetic_problems} = 'yes'"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "p_fu_allergies",
+            "elements": [
+              {
+                "type": "paneldynamic",
+                "name": "allergies",
+                "title": "Your allergies",
+                "description": "Add each thing you're allergic to, such as a medicine, food, latex or plasters. Leave this empty if you have none.",
+                "minPanelCount": 0,
+                "panelCount": 0,
+                "panelAddText": "Add an allergy",
+                "panelRemoveText": "Remove",
+                "templateElements": [
+                  {
+                    "type": "text",
+                    "name": "allergies_what",
+                    "title": "What are you allergic to?",
+                    "isRequired": true
+                  },
+                  {
+                    "type": "text",
+                    "name": "allergies_reaction",
+                    "title": "What happens when you have it?"
+                  }
+                ]
+              },
+              {
+                "type": "paneldynamic",
+                "name": "regular_medicines",
+                "title": "Medicines you take regularly",
+                "description": "Include medicines from your doctor, the chemist or a shop, inhalers, creams and drops. Leave this empty if you take none.",
+                "minPanelCount": 0,
+                "panelCount": 0,
+                "panelAddText": "Add a medicine",
+                "panelRemoveText": "Remove",
+                "templateElements": [
+                  {
+                    "type": "text",
+                    "name": "regular_medicines_name",
+                    "title": "Name of the medicine",
+                    "isRequired": true
+                  },
+                  {
+                    "type": "text",
+                    "name": "regular_medicines_dose",
+                    "title": "Dose (for example 20 mg)"
+                  },
+                  {
+                    "type": "text",
+                    "name": "regular_medicines_how_often",
+                    "title": "How often you take it"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Nurse checks",
+      "audience": "clinician",
+      "content": {
+        "pages": [
+          {
+            "name": "p_fu_checks",
+            "elements": [
+              {
+                "type": "text",
+                "name": "q_bp",
+                "title": "Blood pressure",
+                "isRequired": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

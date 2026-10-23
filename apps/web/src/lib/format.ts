@@ -16,3 +16,6 @@ export const formatOptionalDate = (ymd: string | null | undefined) =>
 
 /** The day only, in the browser's time zone: "12/10/2026" in en-GB. */
 export const formatShortDate = (iso: string) => new Date(iso).toLocaleDateString(locale());
+
+/** The day in the medium style, in the browser's time zone: "3 Mar 2026" in en-GB (S25's pre-fill dates). */
+export const formatDay = (iso: string) => new Intl.DateTimeFormat(locale(), { dateStyle: "medium" }).format(new Date(iso));

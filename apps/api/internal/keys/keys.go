@@ -690,11 +690,16 @@ var oneOff = map[string]bool{"signaturepad": true, "file": true, "bmi": true}
 // OneOff reports whether a SurveyJS type's answer is never copied into another questionnaire.
 func OneOff(typ string) bool { return oneOff[typ] }
 
-// source reports whether a question takes part in pre-fill: a patient's answer at the top level
-// (a repeating group's children travel in its rows), and not a one-off answer.
-func source(q Placed) bool {
+// TakesPart reports whether a question takes part in pre-fill: a patient's answer at the top level
+// (a repeating group's children travel in its rows), and not a one-off answer. "Always ask fresh"
+// is the pre-fill's own rule (S25): such a question still matches, as the editor's label shows.
+func TakesPart(q Placed) bool {
 	return q.Answerable && !q.ClinicianOnly && q.InList == "" && !oneOff[q.Type]
 }
+
+// SameAnswer reports whether two questions' answers have the same shape, as the publish lock
+// compares them (answerChanges finds no difference): an answer to one fits the other as it is.
+func SameAnswer(a, b Question) bool { return len(answerChanges(a, b)) == 0 }
 
 // Version is one published or retired version of another of the trust's questionnaires.
 type Version struct {
@@ -723,7 +728,7 @@ func Matches(mine []Placed, others []Version) map[string][]Match {
 	byQuestion := map[string]map[string]*found{} // my key → questionnaire → match
 	out := map[string][]Match{}
 	for _, m := range mine {
-		if source(m) {
+		if TakesPart(m) {
 			out[m.Name] = []Match{}
 			byQuestion[m.Name] = map[string]*found{}
 		}
@@ -732,12 +737,12 @@ func Matches(mine []Placed, others []Version) map[string][]Match {
 		repeatedThere := RepeatedTexts(v.Questions)
 		keys := map[string]bool{}
 		for _, o := range v.Questions {
-			if source(o) {
+			if TakesPart(o) {
 				keys[o.Name] = true
 			}
 		}
 		for _, m := range mine {
-			if !source(m) {
+			if !TakesPart(m) {
 				continue
 			}
 			by := ""
@@ -745,7 +750,7 @@ func Matches(mine []Placed, others []Version) map[string][]Match {
 				by = "key"
 			} else if t := Normalize(m.Title); !repeatedHere[t] && !repeatedThere[t] {
 				for _, o := range v.Questions {
-					if source(o) && SameWording(m.Question, o.Question) {
+					if TakesPart(o) && SameWording(m.Question, o.Question) {
 						by = "wording"
 						break
 					}
@@ -839,7 +844,7 @@ const maxCandidates = 50
 
 // Candidates lists the keys question `mine` could take, from the sources, whose text (Normalize) or
 // key contains the search ("" lists all): one per key, adoptable ones first, then by text. Only a
-// patient's top-level answers take part (as pre-fill, `source`), and never mine's own key. `here`
+// patient's top-level answers take part (as pre-fill, TakesPart), and never mine's own key. `here`
 // is the questionnaire being edited, as saved: a key it already uses can't be adopted again.
 func Candidates(mine Question, here []Placed, sources []Source, search string) []Candidate {
 	setOf := map[string]string{}
@@ -858,7 +863,7 @@ func Candidates(mine Question, here []Placed, sources []Source, search string) [
 	var order []string
 	for _, s := range sources {
 		for _, p := range s.Questions {
-			if !source(p) || p.Name == "" || p.Name == mine.Name {
+			if !TakesPart(p) || p.Name == "" || p.Name == mine.Name {
 				continue
 			}
 			f := byKey[p.Name]

@@ -101,7 +101,7 @@ WHERE id = sqlc.arg(id) AND used_at IS NULL AND locked_at IS NULL AND revoked_at
 -- (ORG-03). org, hospital and patient ids are for the audit log, never sent.
 SELECT e.id, e.created_at, e.status, e.archived_from, coalesce(pr.name, '')::text AS procedure, f.submitted_at AS patient_submitted_at, e.org_id, e.hospital_id, e.patient_id,
        p.first_name, p.last_name, h.name AS hospital_name, q.name AS questionnaire_name,
-       EXISTS (SELECT 1 FROM episode_answers a WHERE a.episode_form_id = f.id AND a.actor = 'patient')::boolean AS started
+       EXISTS (SELECT 1 FROM episode_answers a WHERE a.episode_form_id = f.id AND a.actor = 'patient' AND (a.revision > 0 OR a.prefill_choice IS NOT NULL))::boolean AS started
 FROM patients p
 JOIN episodes e ON e.patient_id = p.id
 JOIN hospitals h ON h.id = e.hospital_id

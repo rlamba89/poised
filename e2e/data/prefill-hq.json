@@ -1,0 +1,70 @@
+{
+  "name": "Pre-fill HQ",
+  "description": "Two short Question Sets asking the seeded Demo pre-op HQ's smoking and snoring questions with the same IDs (J16): a returning patient finds both filled in.",
+  "chapters": [
+    {
+      "name": "Smoking",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_smoking",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "smoker",
+                "title": "Do you smoke?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "never",
+                    "text": "No, I have never smoked"
+                  },
+                  {
+                    "value": "ex",
+                    "text": "I used to smoke"
+                  },
+                  {
+                    "value": "current",
+                    "text": "Yes, I smoke now"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Sleep",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_sleep",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "yesNo": true,
+                "colCount": 0,
+                "name": "snoring",
+                "title": "Do you snore loudly?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "no",
+                    "text": "No"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
