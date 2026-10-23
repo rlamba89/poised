@@ -85,6 +85,41 @@ var demoPatients = []struct{ id, first, last, dob, sex, nhs, mobile, email strin
 //go:embed demo-hq.json
 var demoHQ []byte
 
+// The platform's starter question library (S24): seeded into every deployment, like the codes.
+//
+//go:embed library.json
+var libraryJSON []byte
+
+// libraryItem is one platform library question: its key is its element's name.
+type libraryItem struct {
+	key, title string
+	tags       []string
+	element    json.RawMessage
+}
+
+// starterLibrary reads library.json. An item's title is its element's (a group's, for "yes/no +
+// details").
+func starterLibrary() ([]libraryItem, error) {
+	var file struct {
+		Questions []struct {
+			Tags    []string
+			Element json.RawMessage
+		}
+	}
+	if err := json.Unmarshal(libraryJSON, &file); err != nil {
+		return nil, fmt.Errorf("library.json: %w", err)
+	}
+	var out []libraryItem
+	for _, q := range file.Questions {
+		var el struct{ Name, Title string }
+		if err := json.Unmarshal(q.Element, &el); err != nil || el.Name == "" {
+			return nil, fmt.Errorf("library.json: an element without a name: %s", q.Element)
+		}
+		out = append(out, libraryItem{key: el.Name, title: el.Title, tags: q.Tags, element: q.Element})
+	}
+	return out, nil
+}
+
 // demoHQs are each trust's copy: the questionnaire, its version 1, and its Question Sets' ids
 // (the third and later digits of the last group count up from chapterBase), made by its author.
 var demoHQs = []struct{ trust, questionnaire, version, chapterBase, author string }{
@@ -137,6 +172,9 @@ func seed(ctx context.Context, db interface {
 			return err
 		}
 		if err := seedCodes(ctx, tx, dir); err != nil {
+			return err
+		}
+		if err := seedLibrary(ctx, tx); err != nil {
 			return err
 		}
 		return seedDemo(ctx, tx)
@@ -198,6 +236,34 @@ func seedCodes(ctx context.Context, tx pgx.Tx, dir string) error {
 		}
 	}
 	fmt.Printf("codes: %d\n", len(rows))
+	return nil
+}
+
+// seedLibrary puts the platform's starter library back as library.json has it: each question
+// added or updated by its key, and any other platform question removed. Questionnaires it was
+// inserted into keep their copies. A trust's own library is left alone.
+func seedLibrary(ctx context.Context, tx pgx.Tx) error {
+	items, err := starterLibrary()
+	if err != nil {
+		return err
+	}
+	keys := make([]string, len(items))
+	for i, it := range items {
+		keys[i] = it.key
+		tags := it.tags
+		if tags == nil {
+			tags = []string{}
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO library_questions (key, title, element, tags) VALUES ($1, $2, $3, $4)
+			ON CONFLICT (key) WHERE org_id IS NULL DO UPDATE SET title = EXCLUDED.title, element = EXCLUDED.element, tags = EXCLUDED.tags`,
+			it.key, it.title, it.element, tags); err != nil {
+			return fmt.Errorf("library %s: %w", it.key, err)
+		}
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM library_questions WHERE org_id IS NULL AND NOT (key = ANY ($1))`, keys); err != nil {
+		return fmt.Errorf("library: %w", err)
+	}
+	fmt.Printf("library questions: %d\n", len(items))
 	return nil
 }
 

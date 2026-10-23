@@ -180,3 +180,28 @@ describe("logicProblems (LOG-08)", () => {
     expect(logicProblems(chapter())).toEqual([]);
   });
 });
+
+describe("logicProblems: answers that don't exist (S24 verification 1, finding 1)", () => {
+  const doc = (visibleIf: string): ChapterJson => ({
+    pages: [
+      {
+        name: "p_1",
+        elements: [
+          { type: "text", name: "q_t", title: "Free text" },
+          { type: "radiogroup", name: "q_a", title: "Do you smoke?", showOtherItem: true, choices: [{ value: "o_1", text: "Yes" }, "No"] },
+          { type: "checkbox", name: "q_b", title: "Which?", choices: [{ value: "o_x", text: "X" }] },
+          { type: "text", name: "q_c", title: "Details", visibleIf },
+        ],
+      },
+    ],
+  });
+  it("flags a condition comparing a choice question with a value it doesn't have", () => {
+    expect(logicProblems(doc("{q_a} = 'o_9'")).map((p) => p.message)).toEqual(["it tests an answer that no longer exists (“Do you smoke?”: o_9)"]);
+    expect(logicProblems(doc("{q_b} anyof ['o_x', 'o_gone']")).map((p) => p.message)).toEqual(["it tests an answer that no longer exists (“Which?”: o_gone)"]);
+  });
+  it("accepts its own values, plain-string options, Other, and comparisons it can't judge", () => {
+    for (const expr of ["{q_a} = 'o_1'", "{q_a} <> 'No'", "{q_a} = 'other'", "{q_b} contains 'o_x'", "{q_a} notempty", "{q_t} = 'anything'"]) {
+      expect(logicProblems(doc(expr))).toEqual([]);
+    }
+  });
+});

@@ -85,6 +85,7 @@ type Querier interface {
 	// they've gone it replaces the older ones (RevokeOlderInviteLinks); if none went, it's revoked
 	// itself (RevokeLink) and the old link carries on.
 	CreateInviteLink(ctx context.Context, arg CreateInviteLinkParams) (CreateInviteLinkRow, error)
+	CreateLibraryQuestion(ctx context.Context, arg CreateLibraryQuestionParams) (uuid.UUID, error)
 	// A new draft copied from version `from_version_id` (LCY-06/07): same chapters, same content,
 	// so stable IDs and test cases carry over. Chapters get new row ids.
 	CreateNextVersion(ctx context.Context, arg CreateNextVersionParams) (uuid.UUID, error)
@@ -105,6 +106,8 @@ type Querier interface {
 	DeleteAccountLinks(ctx context.Context, accountID uuid.NullUUID) error
 	DeleteAccountSessions(ctx context.Context, accountID uuid.UUID) error
 	DeleteChapter(ctx context.Context, id uuid.UUID) error
+	// Only the trust's own: the platform's are the seed's.
+	DeleteLibraryQuestion(ctx context.Context, arg DeleteLibraryQuestionParams) (int64, error)
 	DeleteMembership(ctx context.Context, arg DeleteMembershipParams) error
 	DeleteOptionList(ctx context.Context, arg DeleteOptionListParams) (int64, error)
 	DeleteQuestionnaire(ctx context.Context, arg DeleteQuestionnaireParams) error
@@ -170,6 +173,8 @@ type Querier interface {
 	// What an invite needs: who to send it to, the hospital's name and its trust's and own settings
 	// (for the message templates).
 	GetInviteDetails(ctx context.Context, id uuid.UUID) (GetInviteDetailsRow, error)
+	// Whose the item is (NULL: the platform's), if this trust can see it; no row otherwise.
+	GetLibraryQuestionOwner(ctx context.Context, arg GetLibraryQuestionOwnerParams) (uuid.NullUUID, error)
 	// A link that works: not replaced, not expired, its episode's patient the link's. Locked links
 	// are returned (locked_at), so the patient is told to ask for a new one.
 	GetLinkByHash(ctx context.Context, arg GetLinkByHashParams) (GetLinkByHashRow, error)
@@ -210,6 +215,8 @@ type Querier interface {
 	// The newest change that isn't an undo and hasn't been undone: what an undo would step back
 	// (episode.UndoTarget decides whether it can). No row: none.
 	LatestUndoable(ctx context.Context, episodeID uuid.UUID) (LatestUndoableRow, error)
+	// Whether the platform's library or this trust's already has the key.
+	LibraryKeyTaken(ctx context.Context, arg LibraryKeyTakenParams) (bool, error)
 	// The hospital's episodes either rule could archive (episode.ArchiveDue decides): discharged,
 	// before admission, or cancelled. unarchived_at: the latest un-archive, if any.
 	ListArchiveCandidates(ctx context.Context, hospitalID uuid.UUID) ([]ListArchiveCandidatesRow, error)
@@ -240,6 +247,10 @@ type Querier interface {
 	// trust, newest first, with the hospital's name. Suspended trusts and hospitals are left out
 	// (ORG-03). org, hospital and patient ids are for the audit log, never sent.
 	ListHome(ctx context.Context, accountID uuid.NullUUID) ([]ListHomeRow, error)
+	// The question library (S24): the platform's starter set (org_id NULL) and each trust's own.
+	// The platform's library and this trust's, matching the search (in the title or a tag, any case;
+	// '' matches everything), by title.
+	ListLibraryQuestions(ctx context.Context, arg ListLibraryQuestionsParams) ([]ListLibraryQuestionsRow, error)
 	// Every hospital the user can work in, once per membership that reaches it: a trust-wide one
 	// (hospital_id NULL) reaches every hospital of the trust, a hospital one only that hospital.
 	// GET /api/me keeps the highest role per hospital. A trust-wide membership of a trust with no

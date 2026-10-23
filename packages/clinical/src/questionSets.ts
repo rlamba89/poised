@@ -3,6 +3,7 @@
 // It may test questions in earlier Question Sets and the patient, never its own questions.
 import { ConditionRunner } from "survey-core";
 import { allElements, edit, isValidExpression, pageTitle, pagesOf, referencesIn, VARIABLES, type ChapterJson } from "./doc";
+import { unknownAnswers } from "./logic";
 
 export const chapterConditionOf = (doc: ChapterJson): string | undefined =>
   typeof doc.chapterVisibleIf === "string" && doc.chapterVisibleIf.trim() ? doc.chapterVisibleIf : undefined;
@@ -31,7 +32,10 @@ export function isChapterShown(doc: ChapterJson, values: Record<string, unknown>
   return new ConditionRunner(expr).runValues({ ...values });
 }
 
-/** Why a Question Set's condition can't work: unreadable, or testing something not in an earlier set. */
+/**
+ * Why a Question Set's condition can't work: unreadable, testing something not in an earlier set, or
+ * testing an answer an earlier choice question doesn't have.
+ */
 export function chapterConditionProblems(doc: ChapterJson, earlier: ChapterJson): string[] {
   const expr = chapterConditionOf(doc);
   if (!expr) return [];
@@ -43,6 +47,9 @@ export function chapterConditionProblems(doc: ChapterJson, earlier: ChapterJson)
   if (refs.some((r) => own.has(r))) out.push("it tests one of its own questions");
   const missing = refs.filter((r) => !known.has(r) && !own.has(r));
   if (missing.length) out.push(`it tests something that isn't in an earlier Question Set (${missing.join(", ")})`);
+  // An answer an earlier question doesn't have would hide the set from every patient (S24 verification 2).
+  const gone = unknownAnswers(earlier, expr);
+  if (gone.length) out.push(`it tests an answer that no longer exists (${gone.join("; ")})`);
   return out;
 }
 

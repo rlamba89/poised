@@ -171,6 +171,17 @@ type Job struct {
 	HospitalID uuid.NullUUID      `json:"hospitalId"`
 }
 
+type LibraryQuestion struct {
+	ID        uuid.UUID       `json:"id"`
+	OrgID     uuid.NullUUID   `json:"orgId"`
+	Key       string          `json:"key"`
+	Title     string          `json:"title"`
+	Element   json.RawMessage `json:"element"`
+	Tags      []string        `json:"tags"`
+	CreatedBy uuid.NullUUID   `json:"createdBy"`
+	CreatedAt time.Time       `json:"createdAt"`
+}
+
 type LoginLink struct {
 	ID                uuid.UUID          `json:"id"`
 	TokenHash         []byte             `json:"tokenHash"`

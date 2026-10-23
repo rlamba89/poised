@@ -190,3 +190,12 @@ describe("Always ask fresh (S23)", () => {
     expect([a.alwaysFresh, l.alwaysFresh, b.alwaysFresh]).toEqual([true, true, undefined]);
   });
 });
+
+describe("linkedFrom (S24)", () => {
+  it("survives a change of type and a SurveyJS save", () => {
+    const linkedFrom = { questionnaire: "Demo pre-op HQ", title: "Do you smoke?" };
+    const doc = one({ type: "text", name: "q_t", linkedFrom });
+    expect(el(convertKind(doc, "q_t", "number"), "q_t").linkedFrom).toEqual(linkedFrom);
+    expect(new Model(doc).toJSON().pages[0].elements[0].linkedFrom).toEqual(linkedFrom);
+  });
+});

@@ -16,6 +16,8 @@ export type EditorContextValue = {
   select: (name: string | null) => void;
   change: (edit: (doc: ChapterJson) => ChapterJson) => void;
   add: (kind: Kind, target: Target) => void;
+  /** Opens the question library to insert at the target (S24), or null: the user can't use it. */
+  openLibrary: ((target: Target) => void) | null;
   remove: (name: string) => void;
   openDisclosures: (name: string, option?: string) => void;
   openLogic: (name: string) => void;

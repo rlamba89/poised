@@ -6,8 +6,9 @@ import { Link, useNavigate } from "react-router";
 import { Alert, Anchor, Avatar, Badge, Button, Center, Group, Loader, Menu, Modal, Popover, Stack, Text } from "@mantine/core";
 import { IconAlertTriangle, IconArrowLeft, IconCopyPlus, IconEye, IconLanguage, IconLogout, IconSend } from "@tabler/icons-react";
 import {
-  addElement, addPage, chapterConditionProblems, combineChapters, copyPage, deleteElement, deletePage, dependentsOf, elementLabel,
-  findElement, findPage, logicProblems, movePage, movePageTo, pageTitle, pagesOf, type ChapterJson, type Kind, type Target,
+  addElement, addPage, adoptKey, chapterConditionProblems, combineChapters, copyPage, deleteElement, deletePage, dependentsOf, elementLabel,
+  adoptionLosses, findElement, findPage, insertFromLibrary, logicProblems, optionMapFor, renameReferences, movePage, movePageTo, pageTitle, pagesOf, takenNames, type ChapterJson,
+  type ElementJson, type Kind, type Target,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { signOut as signOutStaff } from "@/lib/signin";
@@ -16,6 +17,7 @@ import type { Chapter } from "@/features/chapters/types";
 import { PageCanvas, SetCanvas } from "./Canvas";
 import { EditorContext, type EditorContextValue } from "./context";
 import { DisclosureModal, type DisclosureTarget } from "./DisclosureModal";
+import { LibraryWindow, SameAsWindow, SaveToLibraryWindow, type Candidate, type LibraryQuestion } from "./library";
 import { PageLogic } from "./LogicEditor";
 import { PublishModal } from "./PublishModal";
 import { useQuestionKeys } from "./questionKeys";
@@ -65,6 +67,13 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
   const shownConfirm = confirm ?? lastConfirm;
   const [translating, setTranslating] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  // The question library and "Same as…" (S24): where to insert, and which question is being saved or linked.
+  const [libraryTarget, setLibraryTarget] = useState<Target | null>(null);
+  const [savingToLibrary, setSavingToLibrary] = useState<string | null>(null);
+  const [sameAs, setSameAs] = useState<string | null>(null);
+  // Whole-trust super clinicians and admins use the trust's library (S24 answers 2), as Go checks.
+  const librarian = atLeast(here.trust.role, "super_clinician");
+  const trustPath = `/o/${here.trust.id}`;
 
   // Where the trust uses each key (S23): fetched when the editor opens, and again after each save.
   const [savedCount, setSavedCount] = useState(0);
@@ -168,6 +177,7 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
       selected,
       select: selectElement,
       change,
+      openLibrary: librarian && !readOnly ? setLibraryTarget : null,
       add: (kind: Kind, target: Target) => {
         let added = "";
         change((d) => {
@@ -200,7 +210,51 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
       setDragging,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, page, readOnly, keys, chapter, selected, change, dragging]);
+  }, [doc, page, readOnly, keys, chapter, selected, change, dragging, librarian]);
+
+  // Every Question Set's JSON, for the library's "already in this HQ" check (a key is used once per HQ).
+  const allSets = () => (data?.chapters ?? []).map((c) => store.get(c.id)?.doc).filter((d): d is ChapterJson => !!d);
+  const alreadyHere = (el: ElementJson): string => {
+    const taken = takenNames(allSets(), el);
+    return taken.length
+      ? `This HQ already has a question with the ID ${taken.join(", ")}. A question can be in an HQ only once (copy it to ask it again under a new ID).`
+      : "";
+  };
+  const insertLibraryQuestion = (q: LibraryQuestion): string => {
+    if (!libraryTarget) return "";
+    if (data && !data.chapters.every((c) => store.get(c.id))) return "The questionnaire is still loading. Try again in a moment.";
+    const refused = alreadyHere(q.element);
+    if (refused) return refused;
+    let added = "";
+    change((d) => {
+      const r = insertFromLibrary(d, libraryTarget, q.element);
+      added = r.name;
+      return r.doc;
+    });
+    if (added) selectElement(added);
+    return "";
+  };
+  const adoptCandidate = (c: Candidate): string => {
+    if (!sameAs || !doc || !chapterId) return "";
+    if (data && !data.chapters.every((ch) => store.get(ch.id))) return "The questionnaire is still loading. Try again in a moment.";
+    const refused = alreadyHere({ type: "text", name: c.key });
+    if (refused) return refused;
+    const el = findElement(doc, sameAs)?.el;
+    // The chosen question's key and options, and Always ask fresh when it has it on (Rahul, 23 Oct).
+    const from = c.alwaysFresh ? { ...c.element, alwaysFresh: true } : c.element;
+    const options = new Map([[sameAs, el ? optionMapFor(el, from) : new Map<string, string>()]]);
+    change((d) => adoptKey(d, sameAs, from, { questionnaire: c.sources[0] ?? "", title: c.title }));
+    // Other Question Sets' conditions that tested it (verification 1, finding 4).
+    for (const ch of data?.chapters ?? []) {
+      const other = ch.id !== chapterId ? store.get(ch.id)?.doc : undefined;
+      if (!other) continue;
+      const renamed = renameReferences(other, new Map([[sameAs, c.key]]), options);
+      if (JSON.stringify(renamed) !== JSON.stringify(other)) withChapter(ch.id, () => renamed);
+    }
+    setSelected(c.key);
+    setSameAs(null);
+    return "";
+  };
 
   const withChapter = (id: string, edit: (d: ChapterJson) => ChapterJson) => !readOnly && store.apply(id, edit);
 
@@ -432,6 +486,8 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
               onClose={() => setSelected(null)}
               change={change}
               openDisclosures={setDisclosure}
+              onSaveToLibrary={librarian ? () => setSavingToLibrary(selected) : undefined}
+              onSameAs={!readOnly ? () => setSameAs(selected) : undefined}
             />
           )}
           {!showSettings && logicPage && doc && (
@@ -493,6 +549,24 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
         unsaved={store.overall !== "saved"}
         keyProblems={keysCurrent ? (keys?.problems ?? []) : null}
         onOpen={reloadKeys}
+      />
+
+      <LibraryWindow opened={!!libraryTarget} trustPath={trustPath} onClose={() => setLibraryTarget(null)} onInsert={insertLibraryQuestion} />
+      <SaveToLibraryWindow
+        element={savingToLibrary && doc ? (findElement(doc, savingToLibrary)?.el ?? null) : null}
+        trustPath={trustPath}
+        onClose={() => setSavingToLibrary(null)}
+      />
+      <SameAsWindow
+        element={sameAs && doc ? (findElement(doc, sameAs)?.el ?? null) : null}
+        searchPath={`${base}/questionnaires/${questionnaireId}/question-keys/search`}
+        onClose={() => setSameAs(null)}
+        onAdopt={adoptCandidate}
+        lossesFor={(c) =>
+          sameAs && doc
+            ? adoptionLosses(doc, sameAs, c.element, allSets().filter((d) => d !== doc)) // other sets' conditions too (verification 2)
+            : { disclosures: 0, conditions: 0 }
+        }
       />
 
       <Modal opened={!!confirm} onClose={() => setConfirm(null)} title={shownConfirm?.title}>

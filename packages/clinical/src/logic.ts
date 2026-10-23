@@ -2,7 +2,7 @@
 // and reads expressions with SurveyJS's own parser, so the Builder and the Code tab always agree.
 import { ArrayOperand, BinaryOperand, ConditionsParser, Const, FunctionOperand, UnaryOperand, Variable, type Operand } from "survey-core";
 import {
-  allElements, childrenOf, elementLabel, expressionsIn, isAnswerKind, isRepeating, isValidExpression, kindOf, optionsOf,
+  allElements, childrenOf, elementLabel, expressionsIn, findElement, isAnswerKind, isRepeating, isValidExpression, kindOf, optionsOf,
   pagesOf, readableExpression, textOf, unknownReferences, referencesIn, type ChapterJson, type ElementJson, type PageJson,
 } from "./doc";
 
@@ -417,6 +417,8 @@ export function logicProblems(doc: ChapterJson): LogicProblem[] {
     }
     const unknown = unknownReferences(doc, x.expr);
     if (unknown.length) out.push({ label: x.label, message: `it tests something that no longer exists (${unknown.join(", ")})`, owner: x.owner });
+    const gone = unknownAnswers(doc, x.expr);
+    if (gone.length) out.push({ label: x.label, message: `it tests an answer that no longer exists (${gone.join("; ")})`, owner: x.owner });
     if (x.key === "expression") continue;
     const refs = referencesIn(x.expr).filter((r) => order.includes(r));
     if (x.key === "trigger") {
@@ -430,6 +432,30 @@ export function logicProblems(doc: ChapterJson): LogicProblem[] {
       ? refs.filter((r) => order.indexOf(r) >= order.indexOf(x.el!.name))
       : refs.filter((r) => pageIndex.get(r)! >= pagesOf(doc).indexOf(x.page));
     if (late.length) out.push({ label: x.label, message: "it tests a question that comes later or itself", owner: x.owner });
+  }
+  return out;
+}
+
+/** A comparison of a question with one value or a list of them: `{q} = 'v'`, `{q} anyof ['a', 'b']`. */
+const COMPARISON = /\{(?:panel\.)?([A-Za-z0-9_]+)((?:\.[A-Za-z0-9_]+)?)\}\s*(?:=|==|<>|!=|contains|notcontains|anyof|allof|noneof)\s*(\[[^\]]*\]|'[^']*')/g;
+
+/**
+ * The values an expression compares a choice question with that the question doesn't have, e.g.
+ * after its options were replaced (S24 verification 1, finding 1: "Same as…"), as "“Title”: value".
+ * Only choice questions with their own options are judged (Other and None count as options).
+ */
+export function unknownAnswers(doc: ChapterJson, expr: string): string[] {
+  const out: string[] = [];
+  for (const m of expr.matchAll(COMPARISON)) {
+    if (m[2]) continue; // a grid row or another part of the answer
+    const el = findElement(doc, m[1])?.el;
+    if (!el || !Array.isArray(el.choices) || el.choicesFromQuestion || !["radiogroup", "checkbox", "dropdown", "tagbox"].includes(el.type)) continue;
+    const values = new Set(optionsOf(el).map((o) => String(o.value)));
+    if (el.showOtherItem || el.hasOther) values.add("other");
+    if (el.showNoneItem || el.hasNone) values.add("none");
+    for (const v of m[3].matchAll(/'([^']*)'/g)) {
+      if (!values.has(v[1])) out.push(`“${textOf(el.title) || el.name}”: ${v[1]}`);
+    }
   }
   return out;
 }

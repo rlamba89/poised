@@ -1,7 +1,7 @@
 // "Add content:" buttons (incumbent catalogue, plus Number from DSG-01 and the SurveyJS types).
 import { Button, Text } from "@mantine/core";
 import {
-  IconBuildingHospital, IconCalculator, IconCalendar, IconCircleDot, IconGridDots, IconLayoutList, IconLetterT, IconMessage,
+  IconBooks, IconBuildingHospital, IconCalculator, IconCalendar, IconCircleDot, IconGridDots, IconLayoutList, IconLetterT, IconMessage,
   IconNumbers, IconPill, IconScale, IconSeparatorHorizontal, IconSignature, IconSquareCheck, IconStar, IconToggleLeft, IconUpload,
   IconUser, type Icon,
 } from "@tabler/icons-react";
@@ -35,7 +35,7 @@ export const KIND_ICON: Record<Kind, Icon> = {
  * page, so it is offered only on an empty page and, once added, nothing else is.
  */
 export function AddContentBar({ target, pageElements, inside }: { target: Target; pageElements: ElementJson[]; inside?: ElementJson }) {
-  const { add, readOnly } = useEditor();
+  const { add, readOnly, openLibrary } = useEditor();
   if (readOnly) return null;
   const pageHasBmi = pageElements.some((el) => kindOf(el) === "bmi");
   const enabled = (k: Kind) => {
@@ -66,6 +66,21 @@ export function AddContentBar({ target, pageElements, inside }: { target: Target
             </Button>
           );
         })}
+        {/* The question library (S24): not inside a repeating group, whose rows are copied whole. */}
+        {openLibrary && inside?.type !== "paneldynamic" && (
+          <Button
+            size="xs"
+            variant="light"
+            leftSection={<IconBooks size={14} />}
+            disabled={pageHasBmi}
+            onClick={(e) => {
+              e.stopPropagation();
+              openLibrary(target);
+            }}
+          >
+            From library
+          </Button>
+        )}
       </div>
     </div>
   );

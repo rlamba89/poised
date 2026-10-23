@@ -1,0 +1,120 @@
+{
+  "about": "The platform's starter question library (plan C4, S24 answers 1): made-up but sensible wording, seeded into every deployment (org_id NULL). Each element keeps its key (name) and its options' values wherever it's inserted. 'yes/no + details' is a group of a Yes/No question and a details question shown on Yes.",
+  "questions": [
+    {
+      "tags": ["Lifestyle", "Smoking"],
+      "element": {
+        "type": "radiogroup", "name": "smoker", "title": "Do you smoke?", "isRequired": true,
+        "choices": [
+          { "value": "never", "text": "No, I have never smoked" },
+          { "value": "ex", "text": "I used to smoke" },
+          { "value": "current", "text": "Yes, I smoke now" }
+        ]
+      }
+    },
+    {
+      "tags": ["Lifestyle", "Alcohol"],
+      "element": {
+        "type": "text", "inputType": "number", "name": "alcohol_units", "unit": "units a week", "isRequired": true,
+        "title": "About how many units of alcohol do you drink in a week?",
+        "description": "A unit is half a pint of ordinary beer, a single measure of spirits or a small glass of wine. Enter 0 if you don't drink.",
+        "validators": [{ "type": "numeric", "minValue": 0, "text": "Please enter a number at least 0." }]
+      }
+    },
+    {
+      "tags": ["Sleep", "Airway"],
+      "element": {
+        "type": "radiogroup", "yesNo": true, "colCount": 0, "name": "snoring", "title": "Do you snore loudly?", "isRequired": true,
+        "choices": [{ "value": "yes", "text": "Yes" }, { "value": "no", "text": "No" }]
+      }
+    },
+    {
+      "tags": ["Anaesthetic"],
+      "element": {
+        "type": "radiogroup", "yesNo": true, "colCount": 0, "name": "ponv_history", "isRequired": true,
+        "title": "Have you ever been sick, or felt very sick, after an anaesthetic?",
+        "choices": [{ "value": "yes", "text": "Yes" }, { "value": "no", "text": "No" }]
+      }
+    },
+    {
+      "tags": ["Anaesthetic"],
+      "element": {
+        "type": "panel", "name": "anaesthetic_problems_group", "title": "Problems with anaesthetics",
+        "elements": [
+          {
+            "type": "radiogroup", "yesNo": true, "colCount": 0, "name": "anaesthetic_problems", "isRequired": true,
+            "title": "Have you ever had a problem with an anaesthetic?",
+            "choices": [{ "value": "yes", "text": "Yes" }, { "value": "no", "text": "No" }]
+          },
+          {
+            "type": "comment", "name": "anaesthetic_problems_details", "isRequired": true,
+            "title": "What happened with your anaesthetic?", "visibleIf": "{anaesthetic_problems} = 'yes'"
+          }
+        ]
+      }
+    },
+    {
+      "tags": ["Anaesthetic", "Family"],
+      "element": {
+        "type": "panel", "name": "family_anaesthetic_problems_group", "title": "Anaesthetics in your family",
+        "elements": [
+          {
+            "type": "radiogroup", "yesNo": true, "colCount": 0, "name": "family_anaesthetic_problems", "isRequired": true,
+            "title": "Has anyone in your family had a serious problem with an anaesthetic?",
+            "choices": [{ "value": "yes", "text": "Yes" }, { "value": "no", "text": "No" }]
+          },
+          {
+            "type": "comment", "name": "family_anaesthetic_problems_details", "isRequired": true,
+            "title": "Who was it, and what happened?", "visibleIf": "{family_anaesthetic_problems} = 'yes'"
+          }
+        ]
+      }
+    },
+    {
+      "tags": ["Measurements"],
+      "element": {
+        "type": "text", "inputType": "number", "name": "height", "unit": "cm", "isRequired": true, "title": "How tall are you?"
+      }
+    },
+    {
+      "tags": ["Measurements"],
+      "element": {
+        "type": "text", "inputType": "number", "name": "weight", "unit": "kg", "isRequired": true, "alwaysFresh": true,
+        "title": "What do you weigh now?"
+      }
+    },
+    {
+      "tags": ["Pregnancy"],
+      "element": {
+        "type": "radiogroup", "name": "pregnant", "isRequired": true, "alwaysFresh": true,
+        "title": "Is there any chance you could be pregnant?",
+        "choices": [{ "value": "yes", "text": "Yes" }, { "value": "no", "text": "No" }, { "value": "not_sure", "text": "I'm not sure" }]
+      }
+    },
+    {
+      "tags": ["Allergies"],
+      "element": {
+        "type": "paneldynamic", "name": "allergies", "title": "Your allergies",
+        "description": "Add each thing you're allergic to, such as a medicine, food, latex or plasters. Leave this empty if you have none.",
+        "minPanelCount": 0, "panelCount": 0, "panelAddText": "Add an allergy", "panelRemoveText": "Remove",
+        "templateElements": [
+          { "type": "text", "name": "allergies_what", "title": "What are you allergic to?", "isRequired": true },
+          { "type": "text", "name": "allergies_reaction", "title": "What happens when you have it?" }
+        ]
+      }
+    },
+    {
+      "tags": ["Medicines"],
+      "element": {
+        "type": "paneldynamic", "name": "regular_medicines", "title": "Medicines you take regularly",
+        "description": "Include medicines from your doctor, the chemist or a shop, inhalers, creams and drops. Leave this empty if you take none.",
+        "minPanelCount": 0, "panelCount": 0, "panelAddText": "Add a medicine", "panelRemoveText": "Remove",
+        "templateElements": [
+          { "type": "text", "name": "regular_medicines_name", "title": "Name of the medicine", "isRequired": true },
+          { "type": "text", "name": "regular_medicines_dose", "title": "Dose (for example 20 mg)" },
+          { "type": "text", "name": "regular_medicines_how_often", "title": "How often you take it" }
+        ]
+      }
+    }
+  ]
+}

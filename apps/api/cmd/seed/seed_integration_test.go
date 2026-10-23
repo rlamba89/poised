@@ -36,6 +36,13 @@ func TestSeedTwice(t *testing.T) {
 	if _, err := c.DB.Exec(ctx, `UPDATE users SET name = 'Changed' WHERE email = 'cara.clinician@hospital-a.example'`); err != nil {
 		t.Fatal(err)
 	}
+	// …changes a platform library question, and adds one the seed doesn't have (S24)…
+	if _, err := c.DB.Exec(ctx, `UPDATE library_questions SET title = 'Changed', tags = '{}' WHERE key = 'smoker' AND org_id IS NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.DB.Exec(ctx, `INSERT INTO library_questions (key, title, element) VALUES ('q_gone', 'Gone', '{"type":"text","name":"q_gone"}')`); err != nil {
+		t.Fatal(err)
+	}
 	// …and retires a demo procedure and clears its default HQ (S19).
 	if _, err := c.DB.Exec(ctx, `UPDATE procedures SET retired = true, default_questionnaire_id = NULL WHERE name = 'Total hip replacement'`); err != nil {
 		t.Fatal(err)
@@ -63,6 +70,16 @@ func TestSeedTwice(t *testing.T) {
 	}
 	if name != "Cara Clinician" {
 		t.Errorf("Cara is named %q after the second run", name)
+	}
+
+	// S24: the platform's starter library is back as seeded: the 11 questions Rahul agreed, no others.
+	var platform int
+	var smoker string
+	if err := c.DB.QueryRow(ctx, `SELECT count(*), max(title) FILTER (WHERE key = 'smoker') FROM library_questions WHERE org_id IS NULL`).Scan(&platform, &smoker); err != nil {
+		t.Fatal(err)
+	}
+	if platform != 11 || smoker != "Do you smoke?" {
+		t.Errorf("the platform library has %d questions (smoker: %q), want 11 as seeded", platform, smoker)
 	}
 
 	// S19: each trust has a published demo HQ and a few procedures, most with it as their default
@@ -94,7 +111,7 @@ func counts(t *testing.T, c *apitest.Client) map[string]int {
 	t.Helper()
 	out := map[string]int{}
 	for _, table := range []string{"categories", "codes", "orgs", "hospitals", "users", "memberships", "platform_admins", "patients",
-		"questionnaires", "questionnaire_versions", "chapters", "procedures"} {
+		"questionnaires", "questionnaire_versions", "chapters", "procedures", "library_questions"} {
 		var n int
 		if err := c.DB.QueryRow(context.Background(), "SELECT count(*) FROM "+table).Scan(&n); err != nil {
 			t.Fatalf("%s: %v", table, err)

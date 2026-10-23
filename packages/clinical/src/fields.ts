@@ -145,7 +145,7 @@ function dateField(format: DateFormat, range: DateRange): Record<string, unknown
   return { inputType: "date", min: "1900-01-01", ...limits };
 }
 
-const KEEP = ["name", "title", "description", "isRequired", "clinicianOnly", "alwaysFresh", "visibleIf", "requiredIf", "enableIf", "clinicalOutputs", "requiredErrorText", "descriptionLocation"];
+const KEEP = ["name", "title", "description", "isRequired", "clinicianOnly", "alwaysFresh", "linkedFrom", "visibleIf", "requiredIf", "enableIf", "clinicalOutputs", "requiredErrorText", "descriptionLocation"];
 
 /** Rebuilds a Date question for new settings. Several dates are a list with one date per row. */
 export function setDateSettings(doc: ChapterJson, name: string, s: DateSettings): ChapterJson {

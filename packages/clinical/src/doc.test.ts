@@ -217,7 +217,8 @@ describe("skip rules (LOG-12)", () => {
     expect(triggersOf(setTriggers(two.doc, [own]))).toEqual([own]);
     // A rule on page 1 that tests a question on page 2 is flagged.
     const q = addElement(two.doc, { page: two.name }, "yesno");
-    const late = setTriggers(q.doc, [{ type: "complete", expression: `{${q.name}} = 'x'`, page: "p_one" }]);
+    const yes = (q.doc.pages![1].elements!.find((e) => e.name === q.name)!.choices![0] as { value: string }).value;
+    const late = setTriggers(q.doc, [{ type: "complete", expression: `{${q.name}} = '${yes}'`, page: "p_one" }]);
     expect(logicProblems(late).map((p) => p.message)).toEqual(["it tests a question on a later page"]);
   });
 });

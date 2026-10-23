@@ -725,3 +725,127 @@ func TestMedicationTypeIsPartOfTheAnswer(t *testing.T) {
 // of answer. Choices are compatible whatever their options (adopting copies them); other kinds need
 // the same unit, format, scale, rows and labels already, since nothing else is copied and the
 // publish lock would refuse any difference. Repeating lists are never linked this way.
+func TestCompatible(t *testing.T) {
+	cases := []struct {
+		name, mine, theirs string
+		ok                 bool
+		reason             string
+	}{
+		{"single with single (options differ)", `{"type":"radiogroup","name":"a","choices":["Yes","No"]}`,
+			`{"type":"radiogroup","name":"b","choices":[{"value":"never","text":"Never"},{"value":"current","text":"I smoke now"}]}`, true, ""},
+		{"a dropdown with yes/no buttons", `{"type":"dropdown","name":"a","choices":["A"]}`,
+			`{"type":"radiogroup","name":"b","yesNo":true,"choices":[{"value":"yes","text":"Yes"},{"value":"no","text":"No"}]}`, true, ""},
+		{"multiple with multiple", `{"type":"checkbox","name":"a","choices":["A"]}`, `{"type":"tagbox","name":"b","choices":["B"]}`, true, ""},
+		{"single with multiple", `{"type":"radiogroup","name":"a","choices":["A"]}`, `{"type":"checkbox","name":"b","choices":["A"]}`,
+			false, "Its answer is multiple choice; this question's is single choice."},
+		{"text for a choice question", `{"type":"radiogroup","name":"a","choices":["A"]}`, `{"type":"text","name":"b"}`,
+			false, "Its answer is text; this question's is single choice."},
+		{"number with the same unit", `{"type":"text","name":"a","inputType":"number","unit":"kg"}`, `{"type":"text","name":"b","inputType":"number","unit":"kg"}`, true, ""},
+		{"number with another unit", `{"type":"text","name":"a","inputType":"number","unit":"lb"}`, `{"type":"text","name":"b","inputType":"number","unit":"kg"}`,
+			false, "Its unit is “kg”; this question's is “lb”."},
+		{"number without a unit", `{"type":"text","name":"a","inputType":"number"}`, `{"type":"text","name":"b","inputType":"number","unit":"kg"}`,
+			false, "Its unit is “kg”; this question's is none."},
+		{"date with date", `{"type":"text","name":"a","inputType":"date"}`, `{"type":"text","name":"b","inputType":"date"}`, true, ""},
+		{"a full date with a year", `{"type":"text","name":"a","inputType":"date"}`, `{"type":"text","name":"b","inputType":"number","dateFormat":"y"}`,
+			false, "Its date format is year only; this question's is day, month and year."},
+		{"text with a long answer", `{"type":"text","name":"a"}`, `{"type":"comment","name":"b"}`, true, ""},
+		{"text with an email address", `{"type":"text","name":"a"}`, `{"type":"text","name":"b","inputType":"email","validators":[{"type":"email"}]}`,
+			false, "Its answer format is email address; this question's is any text."},
+		{"a Yes/No switch with another's labels", `{"type":"boolean","name":"a"}`, `{"type":"boolean","name":"b","labelTrue":"Yes, I do"}`,
+			false, "Its answers differ from this question's: the label “Yes, I do” was reworded to “Yes”."},
+		{"prescribed with recreational", `{"type":"medication","name":"a"}`, `{"type":"medication","name":"b","medicationType":"recreational"}`,
+			false, "Its medication type is recreational drugs; this question's is prescribed medication."},
+		{"prescribed with prescribed", `{"type":"medication","name":"a","medicationType":"prescribed"}`, `{"type":"medication","name":"b"}`, true, ""},
+		{"a repeating group", `{"type":"text","name":"a"}`, `{"type":"paneldynamic","name":"b","templateElements":[{"type":"text","name":"c"}]}`,
+			false, "Repeating lists can't be linked with “Same as…”: insert them from the library instead."},
+		{"a list of dates", `{"type":"matrixdynamic","name":"a","dateList":true}`, `{"type":"matrixdynamic","name":"b","dateList":true}`,
+			false, "Repeating lists can't be linked with “Same as…”: insert them from the library instead."},
+		{"a signature", `{"type":"signaturepad","name":"a"}`, `{"type":"signaturepad","name":"b"}`,
+			false, "Signatures, file uploads and the BMI block are never pre-filled."},
+		{"a statement", `{"type":"text","name":"a"}`, `{"type":"html","name":"b"}`, false, "It holds no answer."},
+	}
+	for _, c := range cases {
+		ok, reason := Compatible(q(t, c.mine), q(t, c.theirs))
+		if ok != c.ok || reason != c.reason {
+			t.Errorf("%s: (%v, %q), want (%v, %q)", c.name, ok, reason, c.ok, c.reason)
+		}
+	}
+}
+
+// Candidates are the keys "Same as…" offers a question (S24): the trust's published questions and
+// the library's, one per key, matching the search, each with whether it may be adopted and why not.
+func TestCandidates(t *testing.T) {
+	mine := q(t, `{"type":"radiogroup","name":"q_mine","title":"Do you currently smoke?","choices":[{"value":"o_a","text":"Yes"},{"value":"o_b","text":"No"}]}`)
+	here := walkSets(t, set("About you", `{"type":"radiogroup","name":"q_mine","title":"Do you currently smoke?","choices":["Yes","No"]},
+		{"type":"text","name":"q_taken","title":"Smoking: how many a day?"}`))
+	smoker := `{"type":"radiogroup","name":"smoker","title":"Do you smoke?","choices":[{"value":"never","text":"Never"},{"value":"ex","text":"Ex-smoker"},{"value":"current","text":"Current"}]}`
+	sources := []Source{
+		{Name: "Demo pre-op HQ", Questions: walkSets(t, set("S", smoker+`,
+			{"type":"text","name":"q_smoke_note","title":"Smoking history"},
+			{"type":"text","name":"q_taken","title":"Smoking: how many a day?"},
+			{"type":"text","name":"q_mine","title":"Do you currently smoke?"},
+			{"type":"text","name":"q_nurse","title":"Smoking advice given","clinicianOnly":true},
+			{"type":"paneldynamic","name":"q_smoke_list","title":"Smoking products","templateElements":[{"type":"text","name":"q_product","title":"Smoking product"}]},
+			{"type":"text","name":"q_alcohol","title":"Alcohol units"}`))},
+		{Name: "Library", Library: true, Questions: walkSets(t, set("Library", smoker))},
+	}
+	got := Candidates(mine, here, sources, "smok")
+	keysOf := make([]string, len(got))
+	for i, c := range got {
+		keysOf[i] = c.Key
+	}
+	// Compatible first, then by title; never the question's own key, a clinician-only question, a
+	// repeating group's row question, or one the search doesn't find.
+	if want := []string{"smoker", "q_smoke_note", "q_taken", "q_smoke_list"}; !reflect.DeepEqual(keysOf, want) {
+		t.Fatalf("candidates %v, want %v", keysOf, want)
+	}
+	s := got[0]
+	if !s.Compatible || s.Reason != "" || s.InThisHQ || s.Title != "Do you smoke?" || s.Kind != "single choice" ||
+		!reflect.DeepEqual(s.Sources, []string{"Demo pre-op HQ", "Library"}) || !s.Library ||
+		!reflect.DeepEqual(s.Options, []string{"Never", "Ex-smoker", "Current"}) || !strings.Contains(string(s.Element), `"ex"`) {
+		t.Errorf("smoker = %+v", s)
+	}
+	if c := got[2]; c.Compatible || !c.InThisHQ || c.Reason != "This HQ already has a question with this ID, in “About you”." {
+		t.Errorf("q_taken = %+v, want refused: already in this HQ", c)
+	}
+	if c := got[1]; c.Compatible || c.Reason != "Its answer is text; this question's is single choice." {
+		t.Errorf("q_smoke_note = %+v", c)
+	}
+	if c := got[3]; c.Compatible || !strings.Contains(c.Reason, "Repeating lists") {
+		t.Errorf("q_smoke_list = %+v", c)
+	}
+	// The search also finds a key; an empty search finds everything.
+	if c := Candidates(mine, here, sources, "ALCOHOL"); len(c) != 1 || c[0].Key != "q_alcohol" {
+		t.Errorf("search by text: %+v", c)
+	}
+	if c := Candidates(mine, here, sources, "smoke_n"); len(c) != 1 || c[0].Key != "q_smoke_note" {
+		t.Errorf("search by key: %+v", c)
+	}
+	if c := Candidates(mine, here, sources, ""); len(c) != 5 {
+		t.Errorf("an empty search: %d candidates, want 5", len(c))
+	}
+	// A key published with answers that disagree can't be adopted.
+	odd := append(sources, Source{Name: "Old HQ", Questions: walkSets(t, set("S", `{"type":"radiogroup","name":"smoker","title":"Do you smoke?","choices":["Yes","No"]}`))})
+	if c := Candidates(mine, here, odd, "do you smoke"); len(c) != 1 || c[0].Compatible ||
+		c[0].Reason != "The trust has already published this question with different answers, so it can't be linked." {
+		t.Errorf("disagreeing shapes: %+v", c)
+	}
+}
+
+// The search keeps a key if any of its questions' texts (or the key) matches, so a published copy
+// worded differently can't be skipped and leave the library's copy looking adoptable (S24
+// verification 1, finding 3). A key with a fresh question says so (finding 2).
+func TestCandidatesSearchSeesEveryCopy(t *testing.T) {
+	mine := q(t, `{"type":"radiogroup","name":"q_mine","title":"Smoke?","choices":["Yes","No"]}`)
+	sources := []Source{
+		{Name: "Old HQ", Questions: walkSets(t, set("S", `{"type":"radiogroup","name":"smoker","title":"Smoking status","choices":["Yes","No"]}`))},
+		{Name: "Library", Library: true, Questions: walkSets(t, set("Library", `{"type":"radiogroup","name":"smoker","title":"Do you smoke?","alwaysFresh":true,"choices":[{"value":"never","text":"Never"}]}`))},
+	}
+	c := Candidates(mine, nil, sources, "do you smoke")
+	if len(c) != 1 || c[0].Compatible || !strings.Contains(c[0].Reason, "different answers") || !reflect.DeepEqual(c[0].Sources, []string{"Old HQ", "Library"}) {
+		t.Errorf("candidates = %+v, want smoker refused: published with different answers, from both", c)
+	}
+	if !c[0].AlwaysFresh {
+		t.Error("a key with an Always ask fresh question isn't marked fresh")
+	}
+}

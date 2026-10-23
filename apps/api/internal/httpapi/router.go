@@ -155,6 +155,12 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/o/{oid}/procedures", org(s.audited("procedure.create", s.createProcedure)))
 	mux.HandleFunc("PATCH /api/o/{oid}/procedures/{prid}", org(s.audited("procedure.update", s.updateProcedure)))
 
+	// The question library (S24): the platform's starter set and the trust's own, for whole-trust
+	// super clinicians and admins; no patient data (library.go).
+	mux.HandleFunc("GET /api/o/{oid}/library-questions", org(s.listLibrary))
+	mux.HandleFunc("POST /api/o/{oid}/library-questions", org(s.saveToLibrary))
+	mux.HandleFunc("DELETE /api/o/{oid}/library-questions/{lid}", org(s.removeFromLibrary))
+
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/questionnaires", hosp(s.listQuestionnaires))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires", hosp(s.createQuestionnaire))
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/questionnaires/{qid}", hosp(s.getQuestionnaire))
@@ -165,6 +171,8 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires/{qid}/versions", hosp(s.createVersion))
 	// Where the trust uses each question key (S23): the editor's pre-fill label and option lock (question_keys.go).
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/questionnaires/{qid}/question-keys", hosp(s.questionKeys))
+	// "Same as…" (S24): the keys a question could take, each with whether it's compatible (question_keys.go).
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires/{qid}/question-keys/search", hosp(s.searchQuestionKeys))
 
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/chapters/{cid}", hosp(s.getChapter))
 	mux.HandleFunc("PATCH /api/o/{oid}/h/{hid}/chapters/{cid}", hosp(s.updateChapter))

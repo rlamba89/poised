@@ -1,7 +1,7 @@
 // The left column while a card is selected: Settings | Disclosures | Logic (incumbent
 // QuestionSettingsPanel). Text fields save when they lose focus, so typing is one undo step.
 import { ActionIcon, Button, Group, Menu, Select, Stack, Switch, Tabs, Text } from "@mantine/core";
-import { IconChevronDown, IconLink, IconPlus, IconX } from "@tabler/icons-react";
+import { IconBooks, IconChevronDown, IconLink, IconLinkPlus, IconPlus, IconX } from "@tabler/icons-react";
 import {
   KIND_LABEL, bandsOf, canAskFresh, convertKind, keyPlace, convertibleKinds, findElement, hasQuestionOutputs, isAnswerKind, isChoiceKind, kindOf,
   optionsOf, plainText, textOf, textToHtml, updateElement, type ChapterJson, type ElementJson,
@@ -25,6 +25,10 @@ export function SettingsPanel(props: {
   onClose: () => void;
   change: (edit: (doc: ChapterJson) => ChapterJson) => void;
   openDisclosures: (t: DisclosureTarget) => void;
+  /** "Save to library" (S24), or undefined: the user can't save to the trust's library. */
+  onSaveToLibrary?: () => void;
+  /** "Same as…" (S24), or undefined: the user can't change this questionnaire. */
+  onSameAs?: () => void;
 }) {
   const { doc, name, tab, readOnly, onTab, onClose, change } = props;
   const el = findElement(doc, name)?.el;
@@ -38,6 +42,13 @@ export function SettingsPanel(props: {
   // "Always ask fresh" (S23): on a patient's answer that pre-fill could copy (not inside a repeating group, whose rows are copied whole).
   const place = keyPlace(doc, name);
   const askFresh = canAskFresh(el) && !props.clinicianSet && !place.clinicianOnly && !place.inList;
+  // The library (S24) takes one question that holds an answer pre-fill can copy: not a group, a
+  // statement, a calculation, the profile, a signature, an upload or the BMI block; and not a
+  // question of a repeating group, whose answer lives in the group's rows (test report 1, found 1).
+  const libraryKind = canAskFresh({ ...el, clinicianOnly: false }) && !place.inList;
+  // "Same as…" links a patient's answer pre-fill can copy; repeating lists get their keys from the library.
+  const sameAs = askFresh && el.type !== "paneldynamic" && el.type !== "matrixdynamic";
+  const linkedFrom = el.linkedFrom as { questionnaire?: string; title?: string } | undefined;
 
   return (
     <Tabs value={tab} onChange={(t) => t && onTab(t as PanelTab)} keepMounted={false}>
@@ -75,6 +86,25 @@ export function SettingsPanel(props: {
           )}
           <Text size="xs" c="dimmed" ml="auto">ID {el.name}</Text>
         </Group>
+        {((libraryKind && props.onSaveToLibrary) || (sameAs && props.onSameAs) || linkedFrom?.title) && (
+          <Group gap="xs" mb="md" mt={-8}>
+            {sameAs && props.onSameAs && (
+              <Button size="compact-xs" variant="light" leftSection={<IconLinkPlus size={12} />} onClick={props.onSameAs}>
+                Same as…
+              </Button>
+            )}
+            {libraryKind && props.onSaveToLibrary && (
+              <Button size="compact-xs" variant="light" color="gray" leftSection={<IconBooks size={12} />} onClick={props.onSaveToLibrary}>
+                Save to library
+              </Button>
+            )}
+            {linkedFrom?.title && (
+              <Text size="xs" c="dimmed" data-testid="linked-from">
+                Linked to “{linkedFrom.title}” in {linkedFrom.questionnaire === "Library" ? "the library" : linkedFrom.questionnaire}
+              </Text>
+            )}
+          </Group>
+        )}
 
         <Tabs.Panel value="settings">
           <Stack>

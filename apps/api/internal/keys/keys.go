@@ -4,8 +4,10 @@
 // an answer by key, or failing that by exactly the same wording (S23 answers), so a key must mean
 // the same thing everywhere it's used:
 //   - a key is used once in a questionnaire (Duplicates);
-//   - once published, a keyed question's options are frozen, values and wording (LockProblems);
+//   - once published, a keyed question's whole answer is frozen: kind, unit, format, medication
+//     type, options (values and wording), rows, scale, columns (LockProblems);
 //   - Matches finds the trust's other questionnaires a question would pre-fill from (PRE-05).
+//   - Compatible and Candidates are the editor's "Same as…" (S24): which keys a question may take.
 //
 // It walks the JSON only; it never evaluates SurveyJS expressions.
 package keys
@@ -57,6 +59,8 @@ type Question struct {
 	ClinicianOnly bool
 	AlwaysFresh   bool   // "Always ask fresh": never pre-filled
 	InList        string // the repeating group (dynamic panel) whose rows it's in, or ""
+	// Raw is the element's own JSON, as in the chapter: "Same as…" copies its options from it (S24).
+	Raw json.RawMessage
 }
 
 // Column is one column of a repeating list: its key, its text, its kind of answer and its options.
@@ -132,22 +136,26 @@ func Walk(content json.RawMessage) ([]Question, error) {
 	}
 	var out []Question
 	for _, p := range doc.objects("pages") {
-		walk(p.objects("elements"), p.flag("clinicianOnly"), "", &out)
+		walk(p.list("elements"), p.flag("clinicianOnly"), "", &out)
 	}
 	return out, nil
 }
 
-func walk(els []obj, clinician bool, list string, out *[]Question) {
-	for _, el := range els {
+func walk(els []json.RawMessage, clinician bool, list string, out *[]Question) {
+	for _, raw := range els {
+		var el obj
+		if json.Unmarshal(raw, &el) != nil || el == nil {
+			continue
+		}
 		clin := clinician || el.flag("clinicianOnly")
 		typ := el.str("type")
 		if typ == "panel" {
-			walk(el.objects("elements"), clin, list, out)
+			walk(el.list("elements"), clin, list, out)
 			continue
 		}
 		q := Question{
 			Name: el.str("name"), Type: typ, Kind: kindOf(el), Unit: el.str("unit"), Format: formatOf(el), Title: text(el["title"]),
-			Answerable: !notAnswered[typ], ClinicianOnly: clin, AlwaysFresh: el.flag("alwaysFresh"), InList: list,
+			Answerable: !notAnswered[typ], ClinicianOnly: clin, AlwaysFresh: el.flag("alwaysFresh"), InList: list, Raw: raw,
 		}
 		switch typ {
 		case "matrix":
@@ -179,7 +187,7 @@ func walk(els []obj, clinician bool, list string, out *[]Question) {
 		}
 		*out = append(*out, q)
 		if typ == "paneldynamic" {
-			walk(el.objects("templateElements"), clin, q.Name, out)
+			walk(el.list("templateElements"), clin, q.Name, out)
 		}
 	}
 }
@@ -679,6 +687,9 @@ func RepeatedTexts(qs []Placed) map[string]bool {
 // (and, a fixed block, it has no "Always ask fresh" switch).
 var oneOff = map[string]bool{"signaturepad": true, "file": true, "bmi": true}
 
+// OneOff reports whether a SurveyJS type's answer is never copied into another questionnaire.
+func OneOff(typ string) bool { return oneOff[typ] }
+
 // source reports whether a question takes part in pre-fill: a patient's answer at the top level
 // (a repeating group's children travel in its rows), and not a one-off answer.
 func source(q Placed) bool {
@@ -762,4 +773,165 @@ func Matches(mine []Placed, others []Version) map[string][]Match {
 		}
 	}
 	return out
+}
+
+// Compatible reports whether question `mine` may take the key of `theirs` with "Same as…" (S24
+// answers 3 and 4), and if not, why, in a sentence for the author. It needs the same kind of
+// answer: single choice with single choice (option buttons, a dropdown, Yes/No buttons), multiple
+// with multiple, a number with a number of the same unit, a date with a date, text with text.
+// Choices are compatible whatever their options, because adopting copies the key and the options;
+// for any other kind nothing else is copied, so everything the publish lock freezes must already
+// be the same (unit, date or text format, medication type, scale, rows, labels). Repeating lists
+// get their keys from the library or a new version, never from "Same as…".
+func Compatible(mine, theirs Question) (bool, string) {
+	list := func(q Question) bool { return q.Kind == "list" || q.Kind == "dates" || q.Type == "paneldynamic" }
+	switch {
+	case !mine.Answerable || !theirs.Answerable:
+		return false, "It holds no answer."
+	case list(mine) || list(theirs):
+		return false, "Repeating lists can't be linked with “Same as…”: insert them from the library instead."
+	case oneOff[mine.Type] || oneOff[theirs.Type]:
+		return false, "Signatures, file uploads and the BMI block are never pre-filled."
+	case mine.Kind != theirs.Kind:
+		return false, fmt.Sprintf("Its answer is %s; this question's is %s.", kindName(theirs.Kind), kindName(mine.Kind))
+	case mine.Kind == "single" || mine.Kind == "multiple":
+		return true, ""
+	case mine.Unit != theirs.Unit:
+		return false, fmt.Sprintf("Its unit is %s; this question's is %s.", quoted(theirs.Unit), quoted(mine.Unit))
+	case mine.Format != theirs.Format:
+		return false, fmt.Sprintf("Its %s is %s; this question's is %s.", formatNoun(mine.Kind), theirs.Format, mine.Format)
+	}
+	if c := answerChanges(theirs, mine); len(c) > 0 {
+		return false, "Its answers differ from this question's: " + c[0] + "."
+	}
+	return true, ""
+}
+
+// Source is where "Same as…" finds keys: one of the trust's published questionnaires (each key's
+// question from its newest version holding it) or the library.
+type Source struct {
+	Name      string
+	Library   bool
+	Questions []Placed
+}
+
+// Candidate is a key "Same as…" offers (S24): the question as the trust asks it, where it's asked,
+// and whether this question may take its key (Compatible, and not already used in this HQ). Element
+// is the JSON adopting copies the key and options from: the library's, else the first source's.
+type Candidate struct {
+	Key        string   `json:"key"`
+	Title      string   `json:"title"`
+	Kind       string   `json:"kind"`
+	Options    []string `json:"options"`
+	Sources    []string `json:"sources"`
+	Library    bool     `json:"library"`
+	Compatible bool     `json:"compatible"`
+	Reason     string   `json:"reason"`
+	InThisHQ   bool     `json:"inThisHQ"`
+	// AlwaysFresh: one of its questions is "Always ask fresh", so the question that adopts the key
+	// becomes so too (Rahul, 23 Oct).
+	AlwaysFresh bool            `json:"alwaysFresh"`
+	Element     json.RawMessage `json:"element"`
+}
+
+// maxCandidates is the most "Same as…" lists at once; the author narrows the search for others.
+const maxCandidates = 50
+
+// Candidates lists the keys question `mine` could take, from the sources, whose text (Normalize) or
+// key contains the search ("" lists all): one per key, adoptable ones first, then by text. Only a
+// patient's top-level answers take part (as pre-fill, `source`), and never mine's own key. `here`
+// is the questionnaire being edited, as saved: a key it already uses can't be adopted again.
+func Candidates(mine Question, here []Placed, sources []Source, search string) []Candidate {
+	setOf := map[string]string{}
+	for _, h := range here {
+		if _, ok := setOf[h.Name]; !ok {
+			setOf[h.Name] = h.Set
+		}
+	}
+	search = strings.TrimSpace(search)
+	type found struct {
+		c         Candidate
+		questions []Question
+		matches   bool // the key, or one of its questions' texts, matches the search
+	}
+	byKey := map[string]*found{}
+	var order []string
+	for _, s := range sources {
+		for _, p := range s.Questions {
+			if !source(p) || p.Name == "" || p.Name == mine.Name {
+				continue
+			}
+			f := byKey[p.Name]
+			if f == nil {
+				f = &found{c: Candidate{Key: p.Name, Title: p.Label(), Element: p.Raw}}
+				f.matches = search == "" || strings.Contains(strings.ToLower(p.Name), strings.ToLower(search))
+				byKey[p.Name] = f
+				order = append(order, p.Name)
+			}
+			// Every copy counts for the search, so none is skipped (verification 1, finding 3).
+			f.matches = f.matches || strings.Contains(Normalize(p.Title), Normalize(search))
+			f.c.AlwaysFresh = f.c.AlwaysFresh || p.AlwaysFresh
+			if !slices.Contains(f.c.Sources, s.Name) {
+				f.c.Sources = append(f.c.Sources, s.Name)
+			}
+			if s.Library && !f.c.Library {
+				f.c.Library, f.c.Title, f.c.Element = true, p.Label(), p.Raw
+			}
+			f.questions = append(f.questions, p.Question)
+		}
+	}
+	out := make([]Candidate, 0, len(order))
+	for _, k := range order {
+		f := byKey[k]
+		if !f.matches {
+			continue
+		}
+		c := f.c
+		shown := f.questions[0]
+		c.Kind = kindName(shown.Kind)
+		c.Options = []string{}
+		for _, o := range shown.Options {
+			c.Options = append(c.Options, o.Text)
+		}
+		published := make([]Published, len(f.questions))
+		for i, q := range f.questions {
+			published[i] = Published{Question: q}
+		}
+		set, inHere := setOf[k]
+		switch {
+		case len(publishedShapes(published)) > 1:
+			c.Reason = "The trust has already published this question with different answers, so it can't be linked."
+		case inHere:
+			c.InThisHQ = true
+			c.Reason = fmt.Sprintf("This HQ already has a question with this ID, in “%s”.", set)
+		default:
+			c.Compatible, c.Reason = Compatible(mine, shown)
+		}
+		out = append(out, c)
+	}
+	slices.SortStableFunc(out, func(a, b Candidate) int {
+		if a.Compatible != b.Compatible {
+			if a.Compatible {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(Normalize(a.Title), Normalize(b.Title))
+	})
+	if len(out) > maxCandidates {
+		out = out[:maxCandidates]
+	}
+	return out
+}
+
+// Element walks one element on its own (a library question, or the question "Same as…" is for),
+// as Walk would on a page: itself first, unless it's a group, then whatever it holds.
+func Element(element json.RawMessage) ([]Question, error) {
+	var el obj
+	if err := json.Unmarshal(element, &el); err != nil || el == nil {
+		return nil, ErrBadContent
+	}
+	var out []Question
+	walk([]json.RawMessage{element}, false, "", &out)
+	return out, nil
 }
