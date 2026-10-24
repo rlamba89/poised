@@ -157,4 +157,12 @@ Split on 21 Oct. Local like C3, with messages captured.
 | [S25](S25-prefill/brief.md) | C4 | Pre-fill from the same trust's earlier HQs (PRE-01, PRE-06), the opening card with its two buttons (PRE-02), the markers (PRE-03); J16's patient half | Answered 22 Oct ([answers.md](S25-prefill/answers.md)) | **Verified** (23 Oct, [verification 1](S25-prefill/verify.md); test report 2 all passed) |
 | [S26](S26-prefill-clinician-cross-trust/brief.md) | C4 | The clinician's pre-fill markers (PRE-04), pre-fill from another trust with both settings on and the patient's agreement; J16 completed, J16b | Answered 22 Oct ([answers.md](S26-prefill-clinician-cross-trust/answers.md)) | **Verified** (23 Oct, [verification 2](S26-prefill-clinician-cross-trust/verify.md); [test report 3](S26-prefill-clinician-cross-trust/test-report-3.md) all passed after verification 1's fixes and Rahul's library-key rule) |
 
+### After plan C4 (local)
+
+Rahul's 24 Oct decisions after plan C4, before plan C5.
+
+| ID | Plan | Builds | Needs from you first | Status |
+| --- | --- | --- | --- | --- |
+| [S27](S27-c4-followups/brief.md) | — | Pre-fill from other trusts without asking (no trust setting; the card names the hospital, with Start fresh), the archived read-only View and badge, neutral Cancelled wording, format names in the publish refusal, clickable answers on the POA Summary | Answered 24 Oct ([answers.md](S27-c4-followups/answers.md)) | Not started |
+
 **Why this order:** nothing needs AWS until someone outside your laptop has to use the app. Building locally first lets the automatic run go without AWS stops. The cost is that the AWS hosting setup and its near-£0 idle cost are proven later (decided 12 Oct; [decisions.md](../decisions.md)).
