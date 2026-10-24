@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChapterJson } from "./doc";
 import { poaSummary } from "./poa";
-import { prefillChoiceText, prefillMarks, prefillSourceText, type PrefillEntry, type SetPrefill } from "./prefill";
+import { prefillChoiceText, prefillMarks, prefillSourceText, prefilledAnswers, type PrefillEntry, type SetPrefill } from "./prefill";
 import { registerClinicalProperties } from "./properties";
 import { modelFor } from "./testcases";
 
@@ -95,6 +95,29 @@ describe("the clinician's words", () => {
     expect(prefillChoiceText(set("check_each"), day)).toBe("The patient chose “Check each answer” on 2026-04-01.");
     expect(prefillChoiceText(set("check_each", "Cara Clinician"), day)).toBe("Cara Clinician chose “Check each answer” with the patient on 2026-04-01.");
     expect(prefillChoiceText(set(null), day)).toBe("");
+    // S27: Start fresh, on a set holding another trust's answers.
+    expect(prefillChoiceText(set("start_fresh"), day)).toBe(
+      "The patient chose “Start fresh” on 2026-04-01, so the pre-filled answers were cleared and every answer here was given afresh.",
+    );
+    expect(prefillChoiceText(set("start_fresh", "Cara Clinician"), day)).toBe(
+      "Cara Clinician chose “Start fresh” with the patient on 2026-04-01, so the pre-filled answers were cleared and every answer here was given afresh.",
+    );
+  });
+});
+
+describe("prefilledAnswers (S27: after Start fresh, nothing here was pre-filled)", () => {
+  const answers = { snoring: entry("no", { otherTrust: true, hospital: "Hospital B1" }) };
+  it("the set's entries, unless the patient started fresh", () => {
+    expect(prefilledAnswers({ answers, choice: null, choiceAt: null })).toBe(answers);
+    expect(prefilledAnswers({ answers, choice: "check_each", choiceAt: "2026-04-01T09:00:00Z" })).toBe(answers);
+    expect(prefilledAnswers({ answers, choice: "start_fresh", choiceAt: "2026-04-01T09:00:00Z" })).toBeUndefined();
+    expect(prefilledAnswers(undefined)).toBeUndefined();
+  });
+  it("so the POA Summary marks nothing in a set started fresh, though the patient gave the same answer", () => {
+    const poa = poaSummary([{ id: "s1", name: "Your health", content: health }], { s1: { snoring: "no", problems: "yes" } }, "patient", jo, undefined, {
+      s1: { answers, choice: "start_fresh", choiceAt: "2026-04-01T09:00:00Z" },
+    });
+    expect(poa.flatMap((set) => set.pages.flatMap((page) => page.prefilled))).toEqual([]);
   });
 });
 

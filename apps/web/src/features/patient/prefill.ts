@@ -1,8 +1,10 @@
 // Pre-filled answers in the patient's HQ (S25; PRE-02, PRE-03). Go fills a Question Set from the
 // patient's earlier HQs the first time it's opened and says where each answer came from
 // (`prefill`, per set). Here:
-//   - the opening card's sentence (cardText), shown until the patient presses one of its two
-//     buttons, which Go records;
+//   - the opening card's sentence (cardText), shown until the patient presses one of its
+//     buttons, which Go records. Another trust's answers (S27: copied without asking) are named by
+//     their hospital, and the card adds Start fresh (offersStartFresh), which Go answers by
+//     clearing the set; after it, nothing in the set counts as pre-filled (prefilledAnswers);
 //   - which pre-filled answers the patient can see (shownPrefilled): only those count, so an
 //     answer to a question a condition hides is neither counted nor lost (SurveyJS keeps it, and
 //     clears it only if the set is finished with the question still hidden);
@@ -11,7 +13,8 @@
 //   - the marker under each question that still holds its pre-filled answer (stillPrefilled).
 import type { Model, Question } from "survey-core";
 import {
-  modelFor, sameAnswer, type Answers, type ChapterJson, type PrefillChoice, type PrefillEntry, type SamplePatient, type SetPrefill,
+  modelFor, prefilledAnswers, sameAnswer, type Answers, type ChapterJson, type PrefillChoice, type PrefillEntry, type SamplePatient,
+  type SetPrefill,
 } from "@poised/clinical";
 import { formatDay } from "@/lib/format";
 
@@ -28,8 +31,19 @@ const NO_ANSWER = new Set(["html", "expression", "image", "profile"]);
 
 /** The questions the patient can see now, in order, that still hold their pre-filled answer. */
 export function shownPrefilled(model: Model, prefill: SetPrefill | undefined): Question[] {
-  if (!prefill) return [];
-  return (model.getAllQuestions(true) as Question[]).filter((q) => stillPrefilled(prefill.answers[q.name], q.value));
+  const entries = prefilledAnswers(prefill);
+  if (!entries) return [];
+  return (model.getAllQuestions(true) as Question[]).filter((q) => stillPrefilled(entries[q.name], q.value));
+}
+
+/**
+ * Whether the card offers Start fresh (S27): one of the answers the card counts (`shown`, the
+ * entries of shownPrefilled, as cardText gets them) is another trust's, and no button was pressed
+ * yet. Another trust's answer on a hidden question doesn't count: that card names no hospital
+ * (verification 1, finding 3).
+ */
+export function offersStartFresh(prefill: SetPrefill | undefined, shown: PrefillEntry[]): boolean {
+  return !!prefill && !prefill.choice && shown.some((e) => e.otherTrust);
 }
 
 /**
@@ -37,9 +51,10 @@ export function shownPrefilled(model: Model, prefill: SetPrefill | undefined): Q
  * pre-filled (or no longer holds its pre-filled answer), on any page; null if there's none.
  */
 export function firstUnfilled(model: Model, prefill: SetPrefill | undefined): Question | null {
+  const entries = prefilledAnswers(prefill);
   for (const q of model.getAllQuestions(true) as Question[]) {
     if (NO_ANSWER.has(q.getType()) || q.isReadOnly) continue;
-    if (!stillPrefilled(prefill?.answers[q.name], q.value)) return q;
+    if (!stillPrefilled(entries?.[q.name], q.value)) return q;
   }
   return null;
 }
@@ -59,18 +74,28 @@ export function awaitsCheck(content: ChapterJson, data: Answers | undefined, pre
 
 /**
  * The opening card: "We've filled in 23 answers from your questionnaire on 3 Mar 2026. Please check
- * them." With answers from several dates it names the latest. `whose` is the patient's first name
- * when staff fill it in for them.
+ * them." With answers from several dates it names the latest; another trust's answers name their
+ * hospital ("…from your questionnaire at Hospital B1 on 3 Mar 2026…", S27). `whose` is the
+ * patient's first name when staff fill it in for them.
  */
 export function cardText(entries: PrefillEntry[], formatDay: (iso: string) => string, whose?: string): string {
   const days = new Set(entries.map((e) => formatDay(e.answeredAt)));
   const latest = entries.reduce((a, b) => (new Date(b.answeredAt) > new Date(a.answeredAt) ? b : a), entries[0]);
   const n = entries.length === 1 ? "1 answer" : `${entries.length} answers`;
   const your = whose ? `${whose}'s` : "your";
-  const from =
-    days.size === 1
-      ? `${your} questionnaire on ${formatDay(latest.answeredAt)}`
-      : `${your} earlier questionnaires, the latest on ${formatDay(latest.answeredAt)}`;
+  // Another trust's answers name their hospital (S27): "your questionnaire at Hospital B1 on …".
+  const hospitals = [...new Set(entries.filter((e) => e.otherTrust).map((e) => e.hospital ?? "another hospital"))];
+  // Every answer another trust's: "at Hospital B1" (or "at Hospital B1 and Hospital C1"), whether
+  // from one questionnaire or several; "including" only when some are this trust's own
+  // (verification 1, finding 2; verification 2, other finding 1).
+  const names = hospitals.length <= 1 ? hospitals.join("") : `${hospitals.slice(0, -1).join(", ")} and ${hospitals[hospitals.length - 1]}`;
+  const allOthers = hospitals.length > 0 && entries.every((e) => e.otherTrust);
+  const oneSource = days.size === 1 && (hospitals.length === 0 || (allOthers && hospitals.length === 1));
+  const at = hospitals.length === 1 ? ` at ${hospitals[0]}` : "";
+  const including = hospitals.length === 0 ? "" : allOthers ? ` at ${names}` : `, including ${hospitals.length === 1 ? "one" : "ones"} at ${names}`;
+  const from = oneSource
+    ? `${your} questionnaire${at} on ${formatDay(latest.answeredAt)}`
+    : `${your} earlier questionnaires${including}, the latest on ${formatDay(latest.answeredAt)}`;
   const check = entries.length === 1 ? "Please check it" : "Please check them";
   return `We've filled in ${n} from ${from}. ${check}${whose ? ` with ${whose}` : ""}.`;
 }
@@ -86,9 +111,10 @@ export const markerText = (day: string, whose?: string) => `From ${whose ? `${wh
  */
 export function showPrefillMarkers(model: Model, prefill: SetPrefill, whose?: string): () => void {
   const roots = new Map<string, HTMLElement>();
+  const entries = prefilledAnswers(prefill) ?? {};
   const sync = (q: Question) => {
     const root = roots.get(q.name);
-    const entry = prefill.answers[q.name];
+    const entry = entries[q.name];
     if (!root || !entry) return;
     const marker = root.querySelector(":scope > .sj-prefill-marker");
     const show = stillPrefilled(entry, q.value);

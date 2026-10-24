@@ -375,7 +375,7 @@ type homeEpisode struct {
 	QuestionnaireName string    `json:"questionnaireName"`
 	Procedure         string    `json:"procedure"`
 	CreatedAt         time.Time `json:"createdAt"`
-	State             string    `json:"state"` // to_do, in_progress, sent, cancelled (S20) or closed (S22: archived)
+	State             string    `json:"state"` // to_do, in_progress, sent, cancelled (S20) or closed (S22: archived unsent)
 }
 
 // patientHome is GET /api/p/home: every episode of every trust's record of the person, newest
@@ -403,10 +403,10 @@ func (s *server) patientHome(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case cancelled: // S20 answers 5: "Cancelled by the hospital", no form; archived since, still cancelled
 			state = "cancelled"
+		case e.PatientSubmittedAt.Valid: // archived since too (S27): Sent, with its read-only View
+			state = "sent"
 		case e.Status == episode.Archived: // S22: read-only, so "Closed by the hospital", no form
 			state = "closed"
-		case e.PatientSubmittedAt.Valid:
-			state = "sent"
 		case e.Started:
 			state = "in_progress"
 		}

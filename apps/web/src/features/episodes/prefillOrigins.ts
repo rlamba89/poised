@@ -5,12 +5,13 @@
 // answer differs, as corrections show what the patient said (corrections.ts). Rendering only; the
 // rules are prefillMark in @poised/clinical.
 import type { SurveyModel } from "survey-core";
-import { prefillMark, prefillSourceText, type Answers, type SetPrefill } from "@poised/clinical";
+import { prefillMark, prefillSourceText, type Answers, type PrefillEntry } from "@poised/clinical";
 import { formatDay } from "@/lib/format";
 
-export function showPrefillOrigins(model: SurveyModel, prefill: SetPrefill, patient: Answers): void {
+/** `entries`: the set's pre-filled answers still in use (prefilledAnswers: none after Start fresh, S27). */
+export function showPrefillOrigins(model: SurveyModel, entries: Record<string, PrefillEntry>, patient: Answers): void {
   model.onAfterRenderQuestion.add((_, o) => {
-    const mark = prefillMark(o.question, prefill.answers, patient);
+    const mark = prefillMark(o.question, entries, patient);
     o.htmlElement.querySelector(":scope > .sj-prefill-origin")?.remove();
     if (!mark) return;
     const box = document.createElement("div");

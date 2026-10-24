@@ -219,34 +219,6 @@ func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (u
 	return id, err
 }
 
-const decidePrefillConsent = `-- name: DecidePrefillConsent :execrows
-INSERT INTO patient_prefill_consents (account_id, org_id, agreed, episode_id)
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (account_id, org_id) DO NOTHING
-`
-
-type DecidePrefillConsentParams struct {
-	AccountID uuid.UUID     `json:"accountId"`
-	OrgID     uuid.UUID     `json:"orgId"`
-	Agreed    bool          `json:"agreed"`
-	EpisodeID uuid.NullUUID `json:"episodeId"`
-}
-
-// The person's answer to "Use the answers you gave …?" for one trust (S26), asked at episode_id.
-// No row: already answered (it can't be changed yet).
-func (q *Queries) DecidePrefillConsent(ctx context.Context, arg DecidePrefillConsentParams) (int64, error) {
-	result, err := q.db.Exec(ctx, decidePrefillConsent,
-		arg.AccountID,
-		arg.OrgID,
-		arg.Agreed,
-		arg.EpisodeID,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const finishEpisodeJobs = `-- name: FinishEpisodeJobs :exec
 UPDATE jobs SET done_at = now() WHERE episode_id = $1 AND done_at IS NULL
 `
@@ -696,64 +668,6 @@ func (q *Queries) ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]L
 	return items, nil
 }
 
-const listPrefillOffers = `-- name: ListPrefillOffers :many
-SELECT DISTINCT ON (e.org_id) e.org_id, o.settings AS org_settings, h.name AS hospital_name, f.submitted_at, c.agreed
-FROM episode_forms f
-JOIN episodes e ON e.id = f.episode_id
-JOIN patients p ON p.id = e.patient_id
-JOIN orgs o ON o.id = e.org_id
-JOIN hospitals h ON h.id = e.hospital_id
-LEFT JOIN patient_prefill_consents c ON c.account_id = $1 AND c.org_id = e.org_id
-WHERE p.account_id = $1 AND p.org_id = e.org_id AND e.org_id <> $2 AND o.status = 'active'
-  AND f.kind = 'hq' AND f.status = 'submitted'
-ORDER BY e.org_id, f.submitted_at DESC
-`
-
-type ListPrefillOffersParams struct {
-	AccountID uuid.UUID `json:"accountId"`
-	OrgID     uuid.UUID `json:"orgId"`
-}
-
-type ListPrefillOffersRow struct {
-	OrgID        uuid.UUID          `json:"orgId"`
-	OrgSettings  json.RawMessage    `json:"orgSettings"`
-	HospitalName string             `json:"hospitalName"`
-	SubmittedAt  pgtype.Timestamptz `json:"submittedAt"`
-	Agreed       *bool              `json:"agreed"`
-}
-
-// The other trusts whose answers could pre-fill this person's HQ at trust org_id (S26): each
-// active trust, other than org_id, where one of the account's records has a sent HQ, with its
-// settings (Go checks crossTrustPrefill), the newest sent HQ's hospital and date (the question
-// names them), and the person's answer to the question so far (NULL: not asked). Only the
-// person's own records, and no answers: those are read one trust at a time, only after the checks
-// (ListPrefillSources).
-func (q *Queries) ListPrefillOffers(ctx context.Context, arg ListPrefillOffersParams) ([]ListPrefillOffersRow, error) {
-	rows, err := q.db.Query(ctx, listPrefillOffers, arg.AccountID, arg.OrgID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListPrefillOffersRow{}
-	for rows.Next() {
-		var i ListPrefillOffersRow
-		if err := rows.Scan(
-			&i.OrgID,
-			&i.OrgSettings,
-			&i.HospitalName,
-			&i.SubmittedAt,
-			&i.Agreed,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listPrefillSources = `-- name: ListPrefillSources :many
 SELECT f.id AS form_id, f.submitted_at, e.id AS episode_id, e.patient_id, e.hospital_id, q.name AS questionnaire_name,
        h.name AS hospital_name, c.id AS chapter_id, c.audience, c.content,
@@ -800,8 +714,8 @@ type ListPrefillSourcesRow struct {
 // submit first, with each of its version's Question Sets and the answers to use from it: the
 // clinician's validated copy, and the patient's. The patient's are the records joined to their
 // account (any episode status: answers never expire, A-9), or with no account the record only.
-// org_id is the form's own trust, or (S26) another trust the patient agreed to, after both trusts'
-// settings were checked: one trust at a time, never more. The questionnaire's and hospital's names
+// org_id is the form's own trust, or (S26) another trust (ListPrefillTrusts): one trust at a time,
+// never more. The questionnaire's and hospital's names
 // go into the pre-fill map, so the clinician's marker never reads the other trust's records.
 func (q *Queries) ListPrefillSources(ctx context.Context, arg ListPrefillSourcesParams) ([]ListPrefillSourcesRow, error) {
 	rows, err := q.db.Query(ctx, listPrefillSources,
@@ -834,6 +748,47 @@ func (q *Queries) ListPrefillSources(ctx context.Context, arg ListPrefillSources
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPrefillTrusts = `-- name: ListPrefillTrusts :many
+SELECT e.org_id
+FROM episode_forms f
+JOIN episodes e ON e.id = f.episode_id
+JOIN patients p ON p.id = e.patient_id
+JOIN orgs o ON o.id = e.org_id
+WHERE p.account_id = $1 AND p.org_id = e.org_id AND e.org_id <> $2 AND o.status = 'active'
+  AND f.kind = 'hq' AND f.status = 'submitted'
+GROUP BY e.org_id
+ORDER BY max(f.submitted_at) DESC
+`
+
+type ListPrefillTrustsParams struct {
+	AccountID uuid.NullUUID `json:"accountId"`
+	OrgID     uuid.UUID     `json:"orgId"`
+}
+
+// The other trusts whose answers pre-fill this person's HQ at trust org_id (S26; S27: always,
+// with no setting and no question): each active trust, other than org_id, where one of the
+// account's records has a sent HQ, newest first. Only the person's own records, and no answers:
+// those are read one trust at a time (ListPrefillSources, with that trust's org_id).
+func (q *Queries) ListPrefillTrusts(ctx context.Context, arg ListPrefillTrustsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listPrefillTrusts, arg.AccountID, arg.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var org_id uuid.UUID
+		if err := rows.Scan(&org_id); err != nil {
+			return nil, err
+		}
+		items = append(items, org_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1224,6 +1179,36 @@ func (q *Queries) SetEpisodeStatus(ctx context.Context, arg SetEpisodeStatusPara
 		arg.ID,
 	)
 	return err
+}
+
+const startFreshPrefill = `-- name: StartFreshPrefill :execrows
+UPDATE episode_answers a SET data = '{}'::jsonb, revision = a.revision + 1, updated_at = now(),
+    prefill_choice = 'start_fresh', prefill_choice_at = now(), prefill_choice_by = $1
+FROM episode_forms f
+WHERE a.episode_form_id = $2 AND a.chapter_id = $3 AND a.actor = 'patient'
+  AND f.id = a.episode_form_id AND f.status = 'open'
+  AND a.prefill_choice IS NULL AND a.revision = 1
+  AND jsonb_path_exists(a.prefill, '$.* ? (@.otherTrust == true)')
+`
+
+type StartFreshPrefillParams struct {
+	By        uuid.NullUUID `json:"by"`
+	FormID    uuid.UUID     `json:"formId"`
+	ChapterID uuid.UUID     `json:"chapterId"`
+}
+
+// The opening card's Start fresh (S27 answers 1–2) for one Question Set holding another trust's
+// answers: its pre-filled answers are cleared, so it opens empty, and the button is recorded like
+// the other two (by: staff on the patient's behalf, NULL for the patient). The prefill map stays:
+// it's what was copied, for the clinician. Only while the form is open, no button has been
+// pressed, and the set is as Go filled it (revision 1: nothing changed since). The revision moves
+// on, so a tab still showing the answers can't save them back. No row: refused (the caller says why).
+func (q *Queries) StartFreshPrefill(ctx context.Context, arg StartFreshPrefillParams) (int64, error) {
+	result, err := q.db.Exec(ctx, startFreshPrefill, arg.By, arg.FormID, arg.ChapterID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const submitPatientHQ = `-- name: SubmitPatientHQ :execrows

@@ -129,15 +129,32 @@ def test_a_clinician_cant_see_the_audit_screen(page: Page):
 
 
 def test_another_trusts_admin_sees_nothing_of_trust_a(page: Page, as_user):
+    """Trust B's admin finds nothing of this test's own Trust A episode: not by its patient's
+    surname, and no row of Trust B's log (its CSV) names the episode or the record. It checks only
+    this test's data: since S27, Trust A staff who fill in for a patient with a Trust B history are
+    rightly in Trust B's log (its prefill.read rows), so "Cara is never in Trust B's Who list"
+    isn't true on a database where that happened (S27 verification 2)."""
     surname = f"Audit {unique()}"
     hq = as_user("Alex Author").published_hq("workflow-hq.json", f"E2E Audit {unique()}")
-    as_user("Cara Clinician").episode(hq, surname)
+    cara = as_user("Cara Clinician")
+    episode = cara.episode(hq, surname)
+    cara.call("GET", cara.h(f"/episodes/{episode['id']}/patient-form"))  # more of Trust A's own activity on it
     open_audit(page, sign_in(page.context, "Max Multi", "Hospital B1"))  # Trust B's admin
     page.get_by_label("Patient").fill(surname)
     show(page, "patient=")
     expect(page.get_by_text("Nothing matches these filters.")).to_be_visible()
-    page.get_by_role("combobox", name="Who").click()
-    expect(page.get_by_role("option", name="Cara Clinician (cara.clinician@hospital-a.example)")).to_have_count(0)
+
+    max_ = as_user("Max Multi", "Hospital B1")
+    res = max_.request.get(f"/api{max_.o('/audit')}?format=csv")
+    assert res.ok, f"GET Trust B's audit CSV: {res.status}"
+    trust_b_log = res.text()
+    assert trust_b_log.startswith("Time,Who,"), trust_b_log[:80]
+    for id_ in (episode["id"], episode["patientId"]):
+        assert id_ not in trust_b_log, f"Trust B's audit log names Trust A's {id_}"
+    # And Trust A's own log does name them (the check above isn't vacuous).
+    ada = as_user("Ada Admin")
+    trust_a_log = ada.request.get(f"/api{ada.o('/audit')}?format=csv").text()
+    assert episode["id"] in trust_a_log
 
 
 def test_bad_filters_say_so_and_never_leave_old_rows_on_screen(page: Page):

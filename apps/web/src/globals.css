@@ -114,3 +114,19 @@
     padding-top: 0 !important;
   }
 }
+
+/* Validate opened from an answer on the POA Summary (S27): that question, highlighted for a moment (jump.ts). */
+[data-jumped="true"] {
+  animation: sj-jumped 3s ease-out;
+  border-radius: 4px;
+}
+@keyframes sj-jumped {
+  0%,
+  50% {
+    box-shadow: 0 0 0 3px var(--mantine-color-yellow-5);
+    background-color: var(--mantine-color-yellow-0);
+  }
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}

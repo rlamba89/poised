@@ -7,7 +7,8 @@
 //
 // Every ORG-04 setting is defined now, though most are read only by later sessions (Rahul,
 // 12 Oct, S10 answers 2): reminders (S16), auto-archive (C3), "what happens next" and the patient
-// message templates (S14–S16), the default HQ (S13), retention (C3/C10), pre-fill (C4).
+// message templates (S14–S16), the default HQ (S13), retention (C3/C10). Pre-fill's
+// crossTrustPrefill (S10, read by S26) was removed in S27: another trust's answers are always copied.
 //
 // The opt-ins (feature switches and licensed instruments) are set by the platform admin only
 // (PRM-08: they can be sold as add-ons); trust admins see them but can't change them.
@@ -98,8 +99,6 @@ var Defs = []Def{
 	{Key: "retentionYears", Label: "Keep episode data for (years)", Group: gTrust, Level: TrustOnly, Kind: Int,
 		Help:    "After this many years from the end of an episode, its data is deleted (EPI-06). The trust, as controller, confirms it.",
 		Default: j(8), Min: 1, Max: 100},
-	{Key: "crossTrustPrefill", Label: "Offer answers patients gave other trusts", Group: gTrust, Level: TrustOnly, Kind: Bool,
-		Help: "Used only when the other trust has it on too, and the patient is always asked first. Never when staff fill in an HQ for the patient.", Default: j(false)},
 
 	{Key: "feature.assessments", Label: "Assessments", Group: gOptIns, Level: Hospital, Kind: Bool, OptIn: true, Default: j(true)},
 	{Key: "feature.proms", Label: "PROMs", Group: gOptIns, Level: Hospital, Kind: Bool, OptIn: true, Default: j(false)},
@@ -163,12 +162,12 @@ var Defs = []Def{
 		Level: Hospital, Kind: Bool, Default: j(false)},
 	{Key: "templates.cancelledSms", Label: "Cancelled text message", Group: gStatus, Level: Hospital, Kind: Template,
 		Help: statusTemplateHelp, LinkOptional: true, Max: 600,
-		Default: j("Hello {{firstName}}, {{hospital}} has cancelled your pre-operative health questionnaire, so you don't need to fill it in. Please contact the hospital if you have any questions.")},
+		Default: j("Hello {{firstName}}, {{hospital}} has cancelled your pre-operative assessment. Please contact the hospital if you have any questions.")},
 	{Key: "statusMessages.cancelledEmail", Label: "Email the patient when the episode is cancelled", Group: gStatus,
 		Level: Hospital, Kind: Bool, Default: j(false)},
 	{Key: "templates.cancelledEmail", Label: "Cancelled email", Group: gStatus, Level: Hospital, Kind: Template,
 		Help: statusTemplateHelp, LinkOptional: true, Max: 5000,
-		Default: j("Hello {{firstName}},\n\n{{hospital}} has cancelled your pre-operative health questionnaire, so you don't need to fill it in. Please contact the hospital if you have any questions.")},
+		Default: j("Hello {{firstName}},\n\n{{hospital}} has cancelled your pre-operative assessment. Please contact the hospital if you have any questions.")},
 }
 
 func j(v any) json.RawMessage {

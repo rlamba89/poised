@@ -6,7 +6,8 @@
 //     patient's);
 //   - prefillSourceText: "Pre-filled from Demo pre-op HQ, 3 Mar 2026 (matched by link)", with the
 //     hospital when it's another trust's;
-//   - prefillChoiceText: which button of the opening card the patient pressed.
+//   - prefillChoiceText: which button of the opening card the patient pressed;
+//   - prefilledAnswers: none once the patient chose Start fresh (S27).
 import type { Question, SurveyModel } from "survey-core";
 import { isClinicianOnlyInTree } from "./outputs";
 import { describeAnswer, sameAnswer, type Answers } from "./respondent";
@@ -28,7 +29,11 @@ export type PrefillEntry = {
   hospital?: string;
 };
 
-export type PrefillChoice = "check_each" | "still_correct";
+/**
+ * The opening card's button: Check each answer, Everything is still correct, or (S27, only on a
+ * card for another trust's answers) Start fresh, which cleared the set's pre-filled answers.
+ */
+export type PrefillChoice = "check_each" | "still_correct" | "start_fresh";
 
 /**
  * One pre-filled Question Set: its answers' sources, and the opening card's button once pressed,
@@ -82,12 +87,24 @@ export function prefillSourceText(e: PrefillEntry, formatDay: (iso: string) => s
   return `Pre-filled from ${from}${where}, ${formatDay(e.answeredAt)} (${how})`;
 }
 
-/** Which of the opening card's buttons was pressed (S25), for the clinician; "" if neither was. */
+/**
+ * The set's pre-filled answers that are still pre-filled: none once the patient chose Start fresh
+ * (S27), since Go cleared them and every answer there is the patient's own, even one that happens
+ * to match what was copied. Go keeps the map as the record of what was copied.
+ */
+export function prefilledAnswers(p: SetPrefill | undefined): Record<string, PrefillEntry> | undefined {
+  return p && p.choice !== "start_fresh" ? p.answers : undefined;
+}
+
+/** Which of the opening card's buttons was pressed (S25), for the clinician; "" if none was. */
 export function prefillChoiceText(p: SetPrefill, formatDay: (iso: string) => string): string {
   if (!p.choice) return "";
   const who = p.choiceByName ? `${p.choiceByName} chose` : "The patient chose";
   const withThem = p.choiceByName ? " with the patient" : "";
   const on = p.choiceAt ? ` on ${formatDay(p.choiceAt)}` : "";
+  if (p.choice === "start_fresh") {
+    return `${who} “Start fresh”${withThem}${on}, so the pre-filled answers were cleared and every answer here was given afresh.`;
+  }
   return p.choice === "still_correct"
     ? `${who} “Everything is still correct”${withThem}${on}, so these pre-filled answers weren't checked one by one.`
     : `${who} “Check each answer”${withThem}${on}.`;

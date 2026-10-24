@@ -11,8 +11,8 @@
 //   - the earlier forms are taken newest submit first, and the newest one that asked the
 //     question decides: if its answer is empty, or doesn't fit, nothing is filled (an older
 //     answer may no longer be true);
-//   - another trust's forms (S26: only with both trusts' setting on and the patient's agreement,
-//     which the caller checks) come after all of the new form's own trust's: they're tried only
+//   - another trust's forms (S26; always used since S27, without asking: the caller reads them
+//     one trust at a time) come after all of the new form's own trust's: they're tried only
 //     for questions none of its own trust's forms asked. S23's lock freezes a keyed question's
 //     options within one trust, not across trusts, so another trust's `q_smokes` may mean
 //     something else (S26 verification 1). So another trust's question matches by key only if

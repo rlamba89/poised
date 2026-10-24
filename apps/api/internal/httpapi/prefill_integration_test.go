@@ -258,22 +258,7 @@ func TestPrefill(t *testing.T) {
 		}
 	})
 
-	t.Run("another trust's answers are never used", func(t *testing.T) {
-		bHQ := w.fx.PublishedHQ(t, w.b, w.bea, "workflow.json")
-		inB := w.fx.EpisodeOf(t, bHQ, w.b, w.fx.Patient(t, w.b.Org, apitest.PatientRecord{FirstName: "Cross", LastName: "Trust", DateOfBirth: "1960-06-06"}), w.bea, "")
-		pb := w.anon.NewBrowser(t).AsPatient(t, inB.Link, inB.DateOfBirth)
-		savedRevision(t, pb.Do("PUT", patientPath(inB, "/answers/"+bHQ.Chapters[0].String()), map[string]any{"data": map[string]any{"q_smokes": "o_yes"}, "revision": 0}))
-		pb.Do("POST", patientPath(inB, "/submit"), nil).Want(t, http.StatusNoContent)
-		inA := w.fx.EpisodeOf(t, w.later, w.a, w.fx.Patient(t, w.a.Org, apitest.PatientRecord{FirstName: "Cross", LastName: "Trust", DateOfBirth: "1960-06-06"}), w.cara, "")
-		// The same person's account holds both trusts' records (S15).
-		if _, err := w.db.Exec(t.Context(), `UPDATE patients SET account_id = (SELECT account_id FROM patients WHERE id = $1) WHERE id = $2`, inB.PatientID, inA.PatientID); err != nil {
-			t.Fatal(err)
-		}
-		f := getForm(t, pb, patientPath(inA, ""))
-		if len(f.Prefill) != 0 || len(f.Answers) != 0 {
-			t.Errorf("pre-filled from trust B: %+v %+v", f.Prefill, f.Answers)
-		}
-	})
+	// Another trust's answers (S26, always copied since S27): TestPrefillCrossTrust.
 
 	t.Run("staff filling in for the patient get the same pre-fill", func(t *testing.T) {
 		e := w.fx.EpisodeOf(t, w.later, w.a, first.PatientID, w.cara, "")

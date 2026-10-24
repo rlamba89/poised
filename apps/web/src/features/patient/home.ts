@@ -1,6 +1,7 @@
 // The patient's home (S15): what each episode's state looks like, and what its button says.
 // "cancelled" (S20): the hospital cancelled the episode, so there's no form and no button.
-// "closed" (S22): the hospital archived it, so there's no form either.
+// "closed" (S22): the hospital archived it before it was sent, so there's no form either (archived
+// after it was sent, it stays "sent", with its read-only View: S27).
 export type EpisodeState = "to_do" | "in_progress" | "sent" | "cancelled" | "closed";
 
 export function stateOf(state: EpisodeState): { label: string; color: string; action: string } {

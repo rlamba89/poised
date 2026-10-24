@@ -21,10 +21,10 @@
 // is still correct; the button is recorded, and until one is pressed the set isn't complete. Each
 // question still holding its pre-filled answer has a marker under it (prefill.ts has the rules).
 //
-// Answers from another trust (S26): when both trusts allow it, Go asks first, once per trust:
-// "Use the answers you gave St Mary's Hospital in March 2026?" (`prefillConsent`). The question
-// comes before the list of sets, nothing is filled until it's answered, and the answer is recorded
-// (POST …/prefill-consent); the HQ then loads again, filled from every source Go may use.
+// Answers from another trust (S26; S27: copied without asking, Rahul 24 Oct): the set's card names
+// the hospital ("…from your questionnaire at Hospital B1 on 3 Mar 2026…") and adds Start fresh,
+// which, once confirmed, has Go clear the set's pre-filled answers; the HQ then loads again, with
+// the set empty. It's offered only until a button is pressed, and Go refuses it once the set changed.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Anchor, Badge, Box, Button, Card, Center, Container, Group, Loader, Modal, Stack, Text, Title } from "@mantine/core";
 import { Link, useNavigate } from "react-router";
@@ -41,8 +41,10 @@ import { ApiError, api } from "@/lib/api";
 import { Logo } from "@/features/brand/Logo";
 import { lostWork, type Lost } from "./signedOut";
 import { showUnits } from "@/features/preview/units";
-import { formatDay, formatMonth } from "@/lib/format";
-import { awaitsCheck, cardText, firstUnfilled, focusQuestion, showPrefillMarkers, shownPrefilled, type PrefillChoice, type SetPrefill } from "./prefill";
+import { formatDay } from "@/lib/format";
+import {
+  awaitsCheck, cardText, firstUnfilled, focusQuestion, offersStartFresh, showPrefillMarkers, shownPrefilled, type PrefillChoice, type SetPrefill,
+} from "./prefill";
 
 registerClinicalProperties();
 
@@ -64,12 +66,7 @@ type HQ = {
   revisions: Record<string, number>;
   /** The sets Go pre-filled, and where each answer came from (S25). */
   prefill?: Record<string, SetPrefill>;
-  /** Other trusts' answers Go asks about before the first set (S26); the patient's own form only. */
-  prefillConsent?: ConsentQuestion[];
 };
-
-/** "Use the answers you gave <hospital> in <month>?" for one other trust (S26). */
-type ConsentQuestion = { orgId: string; hospital: string; submittedAt: string };
 
 const SAVE_DELAY_MS = 600;
 
@@ -86,8 +83,6 @@ export default function PatientHQ({ path, onBehalf }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
-  // Recording the answer to another trust's consent question (S26).
-  const [answering, setAnswering] = useState(false);
   // The 409's message: the answers changed on another device (or were sent), so nothing more is
   // saved until Reload.
   const [conflict, setConflict] = useState("");
@@ -226,33 +221,18 @@ export default function PatientHQ({ path, onBehalf }: Props) {
   const done = new Set(
     listing ? sets.filter((s) => !toCheck.has(s.id) && isSetReadyToSend(s.content, saved[s.id], drafts[s.id], vars)).map((s) => s.id) : [],
   );
-  // The card's button: Go records it, then the set goes on.
+  // The card's button: Go records it, then the set goes on. Start fresh (S27) also has Go clear the
+  // set, so the HQ loads again and the set opens empty (its saver then starts from the new revision).
   const choose = async (id: string, choice: PrefillChoice) => {
     try {
       await api(`${path}/prefill/${id}`, { method: "POST", body: JSON.stringify({ choice }) }).catch(endedBy());
-      setChoices((c) => ({ ...c, [id]: choice }));
+      if (choice === "start_fresh") await load();
+      else setChoices((c) => ({ ...c, [id]: choice }));
       return true;
     } catch (e) {
       setError((e as Error).message);
       return false;
     }
-  };
-  // Another trust's answers (S26): the patient's answer is recorded, then the HQ loads again (filled).
-  const consentQ = isPatient && !hq.submitted ? hq.prefillConsent?.[0] : undefined;
-  const answerConsent = async (agree: boolean) => {
-    if (!consentQ) return;
-    setAnswering(true);
-    let refused = "";
-    try {
-      await api(`${path}/prefill-consent`, { method: "POST", body: JSON.stringify({ orgId: consentQ.orgId, agree }) }).catch(endedBy());
-    } catch (e) {
-      refused = (e as Error).message; // e.g. answered in another tab meanwhile: the reload shows where things are
-    } finally {
-      setAnswering(false);
-    }
-    await load();
-    // After the reload, which clears the page's message, so the reason stays on screen (S26 verification 1).
-    if (refused) setError(refused);
   };
 
   // "Everything is still correct" with nothing left to answer: the next set shown, or the list.
@@ -297,22 +277,6 @@ export default function PatientHQ({ path, onBehalf }: Props) {
             <IconCircleCheck size={48} color="var(--mantine-color-green-6)" style={{ margin: "0 auto" }} />
             <Title order={3} mt="sm">Thank you, {hq.patient.firstName}</Title>
             <Text mt="xs">Your answers have been sent to the hospital. A member of the team will review them.</Text>
-          </Card>
-        ) : consentQ ? (
-          <Card withBorder p="lg" data-testid="prefill-consent">
-            <Group gap="xs" wrap="nowrap">
-              <IconHistory size={20} color="var(--mantine-color-brand-7)" />
-              <Title order={3}>Use your earlier answers?</Title>
-            </Group>
-            <Text mt="sm" fw={600}>Use the answers you gave {consentQ.hospital} in {formatMonth(consentQ.submittedAt)}?</Text>
-            <Text mt="xs" size="sm">
-              We&apos;ll fill in the questions you haven&apos;t answered yet. You can check and change every answer before you send them.
-              If you say no, you&apos;ll answer them yourself. We&apos;ll only ask you this once.
-            </Text>
-            <Stack mt="md" gap="sm">
-              <Button onClick={() => answerConsent(true)} loading={answering}>Yes, use them</Button>
-              <Button variant="default" onClick={() => answerConsent(false)} disabled={answering}>No, thanks</Button>
-            </Stack>
           </Card>
         ) : open ? (
           <SetForm
@@ -495,16 +459,22 @@ function SetForm({ set, data, saver, vars, onChange, onConflict, onError, onClos
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [set]);
 
-  // The opening card (PRE-02): while pre-filled answers show and neither button has been pressed.
+  // The opening card (PRE-02): while pre-filled answers show and no button has been pressed.
   const [card, setCard] = useState(() => !prefill?.choice && shownPrefilled(model, prefill).length > 0);
   const [choosing, setChoosing] = useState(false);
+  // Start fresh (S27) asks first: it clears the answers, and can't be undone.
+  const [confirmFresh, setConfirmFresh] = useState(false);
   // The question "Everything is still correct" goes to, focused once the survey is showing.
   const [focusOn, setFocusOn] = useState<string | null>(null);
   const choose = async (choice: PrefillChoice) => {
     setChoosing(true);
     const ok = await onChoose(choice);
     setChoosing(false);
-    if (!ok) return;
+    if (!ok) {
+      setConfirmFresh(false); // the page shows why (e.g. changed in another tab: reload)
+      return;
+    }
+    if (choice === "start_fresh") return; // the HQ loads again, and the set with it
     if (choice === "check_each") {
       model.currentPageNo = 0;
       setCard(false);
@@ -623,10 +593,23 @@ function SetForm({ set, data, saver, vars, onChange, onConflict, onError, onClos
             <Text fw={700}>Your earlier answers</Text>
           </Group>
           <Text mt="xs">{cardText(shownPrefilled(model, prefill).map((q) => prefill.answers[q.name]), formatDay, whose)}</Text>
-          <Stack mt="md" gap="sm">
-            <Button onClick={() => choose("check_each")} loading={choosing}>Check each answer</Button>
-            <Button variant="light" onClick={() => choose("still_correct")} disabled={choosing}>Everything is still correct</Button>
-          </Stack>
+          {confirmFresh ? (
+            <Stack mt="md" gap="sm" data-testid="start-fresh-confirm">
+              <Text size="sm" fw={600}>
+                Clear these answers? You&apos;ll answer every question in this section again{whose ? ` with ${whose}` : ""}. This can&apos;t be undone.
+              </Text>
+              <Button color="red" onClick={() => choose("start_fresh")} loading={choosing}>Yes, start fresh</Button>
+              <Button variant="default" onClick={() => setConfirmFresh(false)} disabled={choosing}>Keep the answers</Button>
+            </Stack>
+          ) : (
+            <Stack mt="md" gap="sm">
+              <Button onClick={() => choose("check_each")} loading={choosing}>Check each answer</Button>
+              <Button variant="light" onClick={() => choose("still_correct")} disabled={choosing}>Everything is still correct</Button>
+              {offersStartFresh(prefill, shownPrefilled(model, prefill).map((q) => prefill.answers[q.name])) && (
+                <Button variant="subtle" onClick={() => setConfirmFresh(true)} disabled={choosing}>Start fresh</Button>
+              )}
+            </Stack>
+          )}
         </Card>
       ) : (
         <Card withBorder padding={0}>

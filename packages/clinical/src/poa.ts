@@ -7,7 +7,7 @@ import type { Question } from "survey-core";
 import { allElements, findElement, pagesOf, pageTitle, type ChapterJson } from "./doc";
 import { computeOutputs, isClinicianOnlyInTree } from "./outputs";
 import { registerClinicalProperties } from "./properties";
-import { prefillMarks, type PrefillMark, type SetPrefill } from "./prefill";
+import { prefilledAnswers, prefillMarks, type PrefillMark, type SetPrefill } from "./prefill";
 import { describeAnswer, sameAnswer, shownSets, type Answers } from "./respondent";
 import { SUMMARY_PREFIX } from "./summary";
 import { modelFor, type SamplePatient } from "./testcases";
@@ -89,7 +89,7 @@ export function poaSummary(
     }
 
     const pre = prefill?.[set.id];
-    for (const m of prefillMarks(model, pre?.answers, before ?? data)) pageOf(m.questionId)?.prefilled.push(m);
+    for (const m of prefillMarks(model, prefilledAnswers(pre), before ?? data)) pageOf(m.questionId)?.prefilled.push(m);
 
     for (const page of pages.values()) {
       const comments = data[`${SUMMARY_PREFIX}comments_${page.name}`];

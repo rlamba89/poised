@@ -185,7 +185,8 @@ func TestPatchTrustSettings(t *testing.T) {
 		if msg == "" {
 			t.Error("no message")
 		}
-		patchSettings(t, w, w.a1.ID, map[string]any{"crossTrustPrefill": true}, http.StatusBadRequest)
+		// S27: crossTrustPrefill is gone, for the trust too (another trust's answers are always copied).
+		patchSettings(t, w, nil, map[string]any{"crossTrustPrefill": true}, http.StatusBadRequest)
 	})
 	t.Run("the opt-ins are the platform admin's", func(t *testing.T) {
 		patchSettings(t, w, nil, map[string]any{"feature.proms": true}, http.StatusForbidden)

@@ -579,3 +579,66 @@ UPDATE episodes SET last_activity_at = '2026-01-01T10:00:00Z' WHERE id = '` + ep
 		t.Errorf("down: revision %d", rev)
 	}
 }
+
+// Migration 00027 (S27, Rahul 24 Oct): another trust's answers are copied without asking, so the
+// trusts' crossTrustPrefill setting and the patients' consents (S26) go; answers already copied
+// stay. The opening card gains "Start fresh" (prefill_choice start_fresh). Down puts the consents
+// table back, empty, and turns a Start fresh into Check each answer (the old choices).
+func TestPrefillWithoutAskingMigration(t *testing.T) {
+	t.Parallel()
+	m := apitest.NewMigrations(t, 26)
+	const (
+		trust, hos, user, pat, acc = "00000000-0000-0000-0000-0000000000a0", "00000000-0000-0000-0000-0000000000a1",
+			"00000000-0000-0000-0000-0000000000c0", "00000000-0000-0000-0000-0000000000d0", "00000000-0000-0000-0000-0000000000d1"
+		q, v, ep, form, set = "00000000-0000-0000-0000-0000000000b0", "00000000-0000-0000-0000-0000000000b1",
+			"00000000-0000-0000-0000-0000000000e0", "00000000-0000-0000-0000-0000000000f0", "00000000-0000-0000-0000-0000000000c1"
+	)
+	setup := `
+INSERT INTO orgs (id, name, code, settings) VALUES ('` + trust + `', 'Trust A', 'MA', '{"crossTrustPrefill": true, "retentionYears": 10}');
+INSERT INTO hospitals (id, org_id, name, settings) VALUES ('` + hos + `', '` + trust + `', 'A1', '{"crossTrustPrefill": false, "contact.phone": "0100"}');
+INSERT INTO users (id, name, email) VALUES ('` + user + `', 'Cara', 'cara@example.test');
+INSERT INTO patient_accounts (id, mobile, date_of_birth, first_name_key, last_name_key) VALUES ('` + acc + `', '+447700900001', '1970-01-01', 'sam', 'smith');
+INSERT INTO patients (id, org_id, first_name, last_name, date_of_birth, sex, account_id) VALUES ('` + pat + `', '` + trust + `', 'Sam', 'Smith', '1970-01-01', 'unknown', '` + acc + `');
+INSERT INTO questionnaires (id, org_id, name, description, created_by) VALUES ('` + q + `', '` + trust + `', 'HQ', '', '` + user + `');
+INSERT INTO questionnaire_versions (id, questionnaire_id, version_no, status, updated_by) VALUES ('` + v + `', '` + q + `', 1, 'published', '` + user + `');
+INSERT INTO chapters (id, version_id, position, name, updated_by) VALUES ('` + set + `', '` + v + `', 1, 'One', '` + user + `');
+INSERT INTO episodes (id, org_id, hospital_id, patient_id, status, created_by) VALUES ('` + ep + `', '` + trust + `', '` + hos + `', '` + pat + `', 'hq_not_complete', '` + user + `');
+INSERT INTO episode_forms (id, episode_id, version_id, kind) VALUES ('` + form + `', '` + ep + `', '` + v + `', 'hq');
+INSERT INTO episode_answers (episode_form_id, chapter_id, actor, data, prefill, revision) VALUES
+  ('` + form + `', '` + set + `', 'patient', '{"a":1}', '{"a":{"value":1,"otherTrust":true}}', 1);
+INSERT INTO patient_prefill_consents (account_id, org_id, agreed, episode_id) VALUES ('` + acc + `', '` + trust + `', true, '` + ep + `');
+`
+	if _, err := m.DB.Exec(t.Context(), setup); err != nil {
+		t.Fatalf("old shape: %v", err)
+	}
+	m.UpTo(t, 27)
+	var orgSettings, hospSettings, answers string
+	if err := m.DB.QueryRow(t.Context(), `SELECT o.settings::text, h.settings::text FROM orgs o JOIN hospitals h ON h.org_id = o.id`).Scan(&orgSettings, &hospSettings); err != nil {
+		t.Fatal(err)
+	}
+	if orgSettings != `{"retentionYears": 10}` || hospSettings != `{"contact.phone": "0100"}` {
+		t.Errorf("settings: trust %s, hospital %s; want crossTrustPrefill gone and the rest kept", orgSettings, hospSettings)
+	}
+	var consents bool
+	if err := m.DB.QueryRow(t.Context(), `SELECT to_regclass('patient_prefill_consents') IS NOT NULL`).Scan(&consents); err != nil || consents {
+		t.Errorf("patient_prefill_consents still there: %v %v", consents, err)
+	}
+	if err := m.DB.QueryRow(t.Context(), `SELECT data::text FROM episode_answers WHERE chapter_id = $1`, set).Scan(&answers); err != nil || answers != `{"a": 1}` {
+		t.Errorf("copied answers %s %v, want kept", answers, err)
+	}
+	// Start fresh is a choice now; anything else still isn't.
+	if _, err := m.DB.Exec(t.Context(), `UPDATE episode_answers SET prefill_choice = 'start_fresh', prefill_choice_at = now() WHERE chapter_id = $1`, set); err != nil {
+		t.Errorf("start_fresh refused: %v", err)
+	}
+	if _, err := m.DB.Exec(t.Context(), `UPDATE episode_answers SET prefill_choice = 'maybe' WHERE chapter_id = $1`, set); err == nil {
+		t.Error("an unknown choice was stored")
+	}
+	m.DownTo(t, 26)
+	var choice string
+	if err := m.DB.QueryRow(t.Context(), `SELECT prefill_choice FROM episode_answers WHERE chapter_id = $1`, set).Scan(&choice); err != nil || choice != "check_each" {
+		t.Errorf("down: choice %q %v, want check_each", choice, err)
+	}
+	if _, err := m.DB.Exec(t.Context(), `INSERT INTO patient_prefill_consents (account_id, org_id, agreed) VALUES ($1, $2, true)`, acc, trust); err != nil {
+		t.Errorf("down: the consents table isn't back: %v", err)
+	}
+}

@@ -16,7 +16,7 @@ import { EditProcedure } from "./EditProcedure";
 import { StatusBadge } from "./EpisodeList";
 import { GeneralNotes } from "./GeneralNotes";
 import { currentAnswers, useEpisodeHQ } from "./hq";
-import { historyWho, type StatusEvent, type StatusOption, type UndoOption } from "./status";
+import { historyWho, notResponding, type StatusEvent, type StatusOption, type UndoOption } from "./status";
 import { StatusControl, StatusHistory } from "./StatusControl";
 import { TasksPanel } from "./TasksPanel";
 import { patientName, STATUS_LABELS, type Episode, type EpisodeEvent, type EpisodeInvite } from "./types";
@@ -81,8 +81,8 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
             <Anchor component={Link} to={`${base}/patients/${e.patientId}`} inherit>{patientName(e)}</Anchor>
           </Title>
           <StatusBadge status={e.status} />
-          {e.notRespondingAt && !e.patientSubmittedAt && (
-            // EPI-02 (S16): the HQ wasn't sent by the hospital's "not responding" day. The worklist is C3's.
+          {notResponding(e) && (
+            // EPI-02 (S16): the HQ wasn't sent by the hospital's "not responding" day; hidden once archived (S27).
             <Badge color="red" variant="light" data-testid="not-responding">Not responding</Badge>
           )}
           {inviteFailed.length > 0 && !e.patientSubmittedAt && (

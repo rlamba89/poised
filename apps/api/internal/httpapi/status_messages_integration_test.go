@@ -149,6 +149,19 @@ func TestStatusMessages(t *testing.T) {
 		}
 	})
 
+	t.Run("the cancelled email's subject is neutral too, from any status (S27 test report 1, F2)", func(t *testing.T) {
+		setHospitalSettings(t, w, w.a, `{"statusMessages.cancelledEmail": true}`)
+		defer setHospitalSettings(t, w, w.a, `{}`)
+		e := statusMsgEpisode(t, w, "CancelSubject", "", "cancel.subject@example.org")
+		move(t, w, e, episode.ReadyForAdmission)
+		w.clinician.Do("POST", epPath(w.a, e, "/cancel"), map[string]any{"reason": "patient_withdrew", "revision": revisionOf(t, w, e.ID)}).
+			Want(t, http.StatusNoContent)
+		em := msgs.To("cancel.subject@example.org")
+		if len(em) != 2 || !strings.HasSuffix(em[1].Subject, ": your pre-operative assessment was cancelled") || strings.Contains(em[1].Subject, "questionnaire") {
+			t.Errorf("emails %+v", em)
+		}
+	})
+
 	t.Run("a trust's switch applies at every hospital that sets none", func(t *testing.T) {
 		setHospitalSettings(t, w, w.a, `{}`)
 		if _, err := w.db.Exec(t.Context(), `UPDATE orgs SET settings = '{"statusMessages.readyForAdmissionEmail": true}' WHERE id = $1`, w.a.Org); err != nil {

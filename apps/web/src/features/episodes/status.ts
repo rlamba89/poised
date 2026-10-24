@@ -27,6 +27,14 @@ export type StatusEvent = {
   userName: string | null;
 };
 
+/**
+ * Whether the episode shows the red Not responding badge (EPI-02, S16): flagged on the hospital's
+ * "not responding" day and the HQ still not sent. Not once archived (S27): the flag is history then.
+ */
+export function notResponding(e: { status: EpisodeStatus; notRespondingAt: string | null; patientSubmittedAt: string | null }): boolean {
+  return !!e.notRespondingAt && !e.patientSubmittedAt && e.status !== "archived";
+}
+
 /** The fixed list of cancel reasons (S20 answers 3); "Other" needs a sentence. */
 export const CANCEL_REASONS = [
   { value: "procedure_cancelled", label: "Procedure cancelled" },

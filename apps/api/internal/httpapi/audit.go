@@ -78,8 +78,10 @@ var auditActions = map[string]string{
 	// S26: pre-fill from another trust. prefill.read is written under the trust whose answers
 	// were read (the source), beside the request's own row under the form's trust. It's a read:
 	// the form's own trust's answers may have covered every question (S26 test report 1, found 4).
+	// Since S27 nobody is asked first, and staff filling in for the patient read them too (the row's
+	// actor says who). link.prefill_consent's route went in S27; its label stays for the old rows.
 	"link.prefill_consent": "Patient answered whether to use another trust's answers",
-	"prefill.read":         "Patient's answers read to pre-fill their HQ at another trust (they agreed)",
+	"prefill.read":         "Patient's answers read to pre-fill their HQ at another trust",
 }
 
 const auditKey ctxKey = 100

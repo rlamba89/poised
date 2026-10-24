@@ -328,6 +328,9 @@ func (s *server) loadForm(w http.ResponseWriter, r *http.Request) (form, bool) {
 		return f, false
 	}
 	if e.Status == episode.Archived { // S22: read-only. The patient's form is closed; staff get the 409 of every write
+		if accountOf(r) != uuid.Nil && e.PatientSubmittedAt.Valid && r.Method == http.MethodGet {
+			return f, true // S27: what the patient sent stays theirs to view, read-only, as before it was archived
+		}
 		if accountOf(r) != uuid.Nil {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": formArchived, "code": "archived"})
 		} else {
@@ -358,8 +361,8 @@ type formPatient struct {
 
 // writeForm sends the HQ's patient Question Sets, stripped for patients, with the answers so far.
 // Sets with no answers yet are pre-filled from the patient's earlier HQs first (S25), and the
-// answers come with where each pre-filled one came from (`prefill`, by Question Set). With another
-// trust's answers to ask about (S26), nothing is filled yet, and `prefillConsent` holds the questions.
+// answers come with where each pre-filled one came from (`prefill`, by Question Set), another
+// trust's included (S26; S27: always, without asking).
 func (s *server) writeForm(w http.ResponseWriter, r *http.Request, f form) {
 	ctx := r.Context()
 	rows, err := s.q.ListVersionChapters(ctx, f.VersionID)
@@ -372,7 +375,7 @@ func (s *server) writeForm(w http.ResponseWriter, r *http.Request, f form) {
 		serverError(w, "list answers", err)
 		return
 	}
-	filled, questions, err := s.prefillForm(ctx, f, auditOf(r), rows, saved)
+	filled, err := s.prefillForm(ctx, f, auditOf(r), rows, saved)
 	if err != nil {
 		serverError(w, "pre-fill", err)
 		return
@@ -417,8 +420,6 @@ func (s *server) writeForm(w http.ResponseWriter, r *http.Request, f form) {
 		"answers":           answers,
 		"revisions":         revisions,
 		"prefill":           prefilled,
-		// S26: other trusts' answers the patient is asked about before the first Question Set.
-		"prefillConsent": questions,
 	})
 }
 

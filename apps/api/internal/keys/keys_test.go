@@ -3,6 +3,8 @@ package keys
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -848,4 +850,55 @@ func TestCandidatesSearchSeesEveryCopy(t *testing.T) {
 	if !c[0].AlwaysFresh {
 		t.Error("a key with an Always ask fresh question isn't marked fresh")
 	}
+}
+
+// The editor's known text formats are named in words, not by their pattern (S27; Rahul, 24 Oct):
+// the publish refusal says "phone number", "NHS number" or "UK postcode". A custom pattern is still
+// shown as itself.
+func TestKnownTextFormatsAreNamed(t *testing.T) {
+	text := func(regex string) string {
+		return `{"type":"text","name":"q_k","title":"Contact","validators":[{"type":"regex","regex":` + strconvQuote(regex) + `}]}`
+	}
+	for regex, want := range map[string]string{
+		`^\+?[0-9 ()-]{7,20}$`:                        "phone number",
+		`^\d{3} ?\d{3} ?\d{4}$`:                       "NHS number",
+		`^[A-Za-z]{1,2}\d[A-Za-z\d]? ?\d[A-Za-z]{2}$`: "UK postcode",
+		`^[0-9]+$`: "the pattern “^[0-9]+$”",
+	} {
+		if got := byName(t, mustWalk(t, `{"pages":[{"name":"p","elements":[`+text(regex)+`]}]}`))["q_k"].Format; got != want {
+			t.Errorf("%s: format %q, want %q", regex, got, want)
+		}
+	}
+	p := LockProblems(walkSets(t, set("S", text(`^\+?[0-9 ()-]{7,20}$`))), map[string][]Published{"q_k": {published("HQ", 1, `{"type":"text","name":"q_k","title":"Contact"}`)}})
+	if len(p) != 1 || !strings.Contains(p[0].Message, "its answer format changed from any text to phone number") {
+		t.Errorf("refusal %v, want it to say phone number", p)
+	}
+}
+
+// The patterns named above are the editor's (packages/clinical/src/fields.ts TEXT_FORMATS), so a
+// change to one there can't leave Go naming a pattern the editor no longer writes.
+func TestKnownTextFormatsMatchTheEditor(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "packages", "clinical", "src", "fields.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for regex, name := range textFormatNames {
+		if !strings.Contains(string(src), "regex: "+strconvQuote(regex)) {
+			t.Errorf("fields.ts has no format with the regex %s (%s)", regex, name)
+		}
+	}
+}
+
+func strconvQuote(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+func mustWalk(t *testing.T, content string) []Question {
+	t.Helper()
+	qs, err := Walk(json.RawMessage(content))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return qs
 }

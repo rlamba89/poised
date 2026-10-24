@@ -101,9 +101,6 @@ type Querier interface {
 	// Nothing is returned when the email is already taken (by an invite running at the same time).
 	CreateUserIfNew(ctx context.Context, arg CreateUserIfNewParams) ([]uuid.UUID, error)
 	CreateVersion(ctx context.Context, arg CreateVersionParams) (uuid.UUID, error)
-	// The person's answer to "Use the answers you gave …?" for one trust (S26), asked at episode_id.
-	// No row: already answered (it can't be changed yet).
-	DecidePrefillConsent(ctx context.Context, arg DecidePrefillConsentParams) (int64, error)
 	DeleteAccount(ctx context.Context, id uuid.UUID) error
 	// Its links to confirm a new contact (PAT-10).
 	DeleteAccountLinks(ctx context.Context, accountID uuid.NullUUID) error
@@ -279,21 +276,19 @@ type Querier interface {
 	// The platform library's questions (org_id NULL, the same for every trust), for pre-fill from
 	// another trust (S26): only their keys may match another trust's question by key.
 	ListPlatformLibraryElements(ctx context.Context) ([]json.RawMessage, error)
-	// The other trusts whose answers could pre-fill this person's HQ at trust org_id (S26): each
-	// active trust, other than org_id, where one of the account's records has a sent HQ, with its
-	// settings (Go checks crossTrustPrefill), the newest sent HQ's hospital and date (the question
-	// names them), and the person's answer to the question so far (NULL: not asked). Only the
-	// person's own records, and no answers: those are read one trust at a time, only after the checks
-	// (ListPrefillSources).
-	ListPrefillOffers(ctx context.Context, arg ListPrefillOffersParams) ([]ListPrefillOffersRow, error)
 	// Pre-fill's earlier answers (S25): every submitted HQ form of the patient's in ONE trust, newest
 	// submit first, with each of its version's Question Sets and the answers to use from it: the
 	// clinician's validated copy, and the patient's. The patient's are the records joined to their
 	// account (any episode status: answers never expire, A-9), or with no account the record only.
-	// org_id is the form's own trust, or (S26) another trust the patient agreed to, after both trusts'
-	// settings were checked: one trust at a time, never more. The questionnaire's and hospital's names
+	// org_id is the form's own trust, or (S26) another trust (ListPrefillTrusts): one trust at a time,
+	// never more. The questionnaire's and hospital's names
 	// go into the pre-fill map, so the clinician's marker never reads the other trust's records.
 	ListPrefillSources(ctx context.Context, arg ListPrefillSourcesParams) ([]ListPrefillSourcesRow, error)
+	// The other trusts whose answers pre-fill this person's HQ at trust org_id (S26; S27: always,
+	// with no setting and no question): each active trust, other than org_id, where one of the
+	// account's records has a sent HQ, newest first. Only the person's own records, and no answers:
+	// those are read one trust at a time (ListPrefillSources, with that trust's org_id).
+	ListPrefillTrusts(ctx context.Context, arg ListPrefillTrustsParams) ([]uuid.UUID, error)
 	// The trust's procedure list (PRC-01, S19). hospital_id NULL: offered at every hospital of the
 	// trust; otherwise at that hospital only. Retired procedures stay listed for managing, and on the
 	// episodes that have them, but aren't offered for new episodes.
@@ -499,6 +494,13 @@ type Querier interface {
 	// The first invite that reaches the patient starts the follow-up: the reminder days count from
 	// it. Later invites (Resend) change nothing.
 	StartFollowup(ctx context.Context, arg StartFollowupParams) error
+	// The opening card's Start fresh (S27 answers 1–2) for one Question Set holding another trust's
+	// answers: its pre-filled answers are cleared, so it opens empty, and the button is recorded like
+	// the other two (by: staff on the patient's behalf, NULL for the patient). The prefill map stays:
+	// it's what was copied, for the clinician. Only while the form is open, no button has been
+	// pressed, and the set is as Go filled it (revision 1: nothing changed since). The revision moves
+	// on, so a tab still showing the answers can't save them back. No row: refused (the caller says why).
+	StartFreshPrefill(ctx context.Context, arg StartFreshPrefillParams) (int64, error)
 	// After the right date of birth: a session for the person's account (all their records), tied
 	// to the link it was opened with.
 	StartPatientSession(ctx context.Context, arg StartPatientSessionParams) (uuid.UUID, error)

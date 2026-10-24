@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -15,10 +14,12 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/db"
 )
 
-// Pre-fill from another trust (S26; §6 point 7, ORG-04's crossTrustPrefill): answers a patient
-// gave trust B are offered at trust A only when both trusts have the setting on, and used only once
-// the patient has said Yes, asked once per trust (patient_prefill_consents). Never on the patient's
-// behalf. Reading trust B's answers writes an audit row under trust B too.
+// Pre-fill from another trust (S26, changed in S27; Rahul, 24 Oct): answers a patient gave trust B
+// are always copied into their HQ at trust A, with no trust setting and no question first, by the
+// patient or by staff for them. They fill only what trust A's own forms didn't ask, match by key
+// only for a platform library key (else by exact wording), and trust A keeps no trust B id.
+// Reading trust B's answers writes an audit row under trust B too. A set holding them opens on a
+// card naming trust B's hospital, with Start fresh (TestStartFresh).
 
 // crossTrust is one person with a sent, answered HQ at trust B (crosstrust-b.json) and a record at
 // trust A joined to the same account, with an open episode on trust A's later HQ (prefill.json).
@@ -31,27 +32,23 @@ type crossTrust struct {
 // crossTrustWorld is the pre-fill world plus trust B's HQ.
 type crossTrustWorld struct {
 	*prefillWorld
-	bHQ apitest.HQ
+	bHQ       apitest.HQ
+	bHospital string // trust B's hospital's name
 }
 
 func newCrossTrustWorld(t *testing.T) *crossTrustWorld {
 	t.Helper()
 	w := &crossTrustWorld{prefillWorld: newPrefillWorld(t)}
 	w.bHQ = w.fx.PublishedHQ(t, w.b, w.bea, "crosstrust-b.json")
+	if err := w.db.QueryRow(t.Context(), `SELECT name FROM hospitals WHERE id = $1`, w.b.ID).Scan(&w.bHospital); err != nil {
+		t.Fatal(err)
+	}
 	return w
 }
 
-// setCrossTrust switches a trust's crossTrustPrefill setting.
-func (w *crossTrustWorld) setCrossTrust(t *testing.T, org uuid.UUID, on bool) {
-	t.Helper()
-	if _, err := w.db.Exec(t.Context(), `UPDATE orgs SET settings = settings || jsonb_build_object('crossTrustPrefill', $2::boolean) WHERE id = $1`, org, on); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // person makes a crossTrust: trust B's HQ answered (smoking Yes, which is o_no there; medicines;
-// diabetes) and sent; trust A's
-// record joined to the same account. A's own earlier answers, if any, are the caller's.
+// diabetes) and sent; trust A's record joined to the same account. A's own earlier answers, if
+// any, are the caller's.
 func (w *crossTrustWorld) person(t *testing.T, last string) crossTrust {
 	t.Helper()
 	rec := apitest.PatientRecord{FirstName: "Cross", LastName: last, DateOfBirth: "1960-06-06"}
@@ -69,14 +66,9 @@ func (w *crossTrustWorld) person(t *testing.T, last string) crossTrust {
 	return crossTrust{inB: inB, inA: w.fx.EpisodeOf(t, w.later, w.a, aRec, w.cara, ""), patient: p}
 }
 
-// crossForm is the patient's HQ as GET returns it, with the consent questions.
+// crossForm is the patient's HQ as GET returns it, with where each pre-filled answer came from.
 type crossForm struct {
 	prefillForm
-	PrefillConsent []struct {
-		OrgID       uuid.UUID
-		Hospital    string
-		SubmittedAt time.Time
-	}
 	Prefill map[string]struct {
 		Answers map[string]struct {
 			FromForm      uuid.UUID
@@ -86,7 +78,10 @@ type crossForm struct {
 			Hospital      string
 			Value         json.RawMessage
 		}
+		Choice *string
 	}
+	// S26's question, which S27 removed: it must never come back.
+	PrefillConsent json.RawMessage
 }
 
 func getCrossForm(t *testing.T, c *apitest.Client, path string) crossForm {
@@ -98,58 +93,25 @@ func getCrossForm(t *testing.T, c *apitest.Client, path string) crossForm {
 	return f
 }
 
-func consent(c *apitest.Client, e apitest.Episode, org uuid.UUID, agree bool) *apitest.Resp {
-	return c.Do("POST", patientPath(e, "/prefill-consent"), map[string]any{"orgId": org, "agree": agree})
+// prefillReads counts the prefill.read rows under trust B that name its source episode.
+func (w *crossTrustWorld) prefillReads(t *testing.T, x crossTrust) int {
+	t.Helper()
+	return count(t, w.db, `SELECT count(*) FROM audit_log WHERE org_id = $1 AND action = 'prefill.read' AND $2 = ANY(episode_ids)`, w.b.Org, x.inB.ID)
 }
 
 func TestPrefillCrossTrust(t *testing.T) {
 	t.Parallel()
 	w := newCrossTrustWorld(t)
 	again, healthAgain := w.later.Chapters[0], w.later.Chapters[1]
-	var bHospital string
-	if err := w.db.QueryRow(t.Context(), `SELECT name FROM hospitals WHERE id = $1`, w.b.ID).Scan(&bHospital); err != nil {
-		t.Fatal(err)
-	}
 
-	t.Run("not offered unless both trusts have the setting on", func(t *testing.T) {
-		x := w.person(t, "Settings")
-		for _, c := range []struct{ a, b bool }{{false, false}, {true, false}, {false, true}} {
-			w.setCrossTrust(t, w.a.Org, c.a)
-			w.setCrossTrust(t, w.b.Org, c.b)
-			f := getCrossForm(t, x.patient, patientPath(x.inA, ""))
-			if len(f.PrefillConsent) != 0 || len(f.Answers) != 0 {
-				t.Errorf("A %v, B %v: consent %+v, answers %v", c.a, c.b, f.PrefillConsent, f.Answers)
-			}
-		}
-		// Both on: the question names trust B's hospital and when the answers were given, and nothing
-		// is filled in until it's answered.
-		w.setCrossTrust(t, w.a.Org, true)
-		w.setCrossTrust(t, w.b.Org, true)
-		f := getCrossForm(t, x.patient, patientPath(x.inA, ""))
-		if len(f.PrefillConsent) != 1 || f.PrefillConsent[0].OrgID != w.b.Org || f.PrefillConsent[0].Hospital != bHospital || f.PrefillConsent[0].SubmittedAt.IsZero() {
-			t.Fatalf("consent %+v", f.PrefillConsent)
-		}
-		if len(f.Answers) != 0 || count(t, w.db, `SELECT count(*) FROM episode_answers WHERE episode_form_id = $1`, x.inA.FormID) != 0 {
-			t.Errorf("filled before the patient answered: %v", f.Answers)
-		}
-		// Reading the question reads no answers of trust B's: no audit row under trust B.
-		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE org_id = $1 AND action = 'prefill.read'`, w.b.Org); n != 0 {
-			t.Errorf("%d audit rows under trust B before the patient agreed", n)
-		}
-	})
-
-	t.Run("happy path: Yes fills from trust B by wording, marked as another trust's, with no trust B id; its own colliding key never matches", func(t *testing.T) {
-		w.setCrossTrust(t, w.a.Org, true)
-		w.setCrossTrust(t, w.b.Org, true)
+	t.Run("happy path: copied at the first open, with no setting and no question; by wording, marked as another trust's, with no trust B id", func(t *testing.T) {
 		x := w.person(t, "Yes")
-		getCrossForm(t, x.patient, patientPath(x.inA, ""))
-		consent(x.patient, x.inA, w.b.Org, true).Want(t, http.StatusNoContent)
 		f := getCrossForm(t, x.patient, patientPath(x.inA, ""))
-		if len(f.PrefillConsent) != 0 {
-			t.Errorf("asked again: %+v", f.PrefillConsent)
+		if f.PrefillConsent != nil {
+			t.Errorf("a consent question: %s", f.PrefillConsent)
 		}
 		// Not smoking: q_smokes is trust B's own key, not a platform library key, and it's worded
-		// differently there ("Do you smoke now?"), so it never matches (answers, after verification 1).
+		// differently there ("Do you smoke now?"), so it never matches (S26, after verification 1).
 		if got := answersJSON(t, f.Answers[again.String()]); got != `{"q_meds":[{"q_med_name":"Ibuprofen"}]}` {
 			t.Errorf("About you again %s", got)
 		}
@@ -157,10 +119,16 @@ func TestPrefillCrossTrust(t *testing.T) {
 			t.Errorf("Health again %s", got)
 		}
 		meds := f.Prefill[again.String()].Answers["q_meds"]
-		if meds.FromForm != uuid.Nil || !meds.OtherTrust || meds.Hospital != bHospital || meds.Questionnaire != w.bHQ.Name || meds.MatchedBy != "wording" {
+		if meds.FromForm != uuid.Nil || !meds.OtherTrust || meds.Hospital != w.bHospital || meds.Questionnaire != w.bHQ.Name || meds.MatchedBy != "wording" {
 			t.Errorf("q_meds %+v", meds)
 		}
-		// No trust B id in trust A's rows, nor in what trust A's staff get (verification 1, finding 2).
+		if d := f.Prefill[healthAgain.String()].Answers["pf_diabetes"]; d.MatchedBy != "wording" || !d.OtherTrust {
+			t.Errorf("pf_diabetes %+v", d)
+		}
+		if f.Revisions[again.String()] != 1 {
+			t.Errorf("revision %d, want 1 for a pre-filled set", f.Revisions[again.String()])
+		}
+		// No trust B id in trust A's rows, nor in what trust A's staff get (S26 verification 1, finding 2).
 		for _, id := range []uuid.UUID{x.inB.FormID, x.inB.ID, x.inB.PatientID, w.b.Org, w.b.ID, w.bHQ.ID, w.bHQ.VersionID} {
 			if n := count(t, w.db, `SELECT count(*) FROM episode_answers WHERE episode_form_id = $1 AND (prefill::text LIKE '%' || $2 || '%' OR data::text LIKE '%' || $2 || '%')`,
 				x.inA.FormID, id.String()); n != 0 {
@@ -170,23 +138,12 @@ func TestPrefillCrossTrust(t *testing.T) {
 				t.Errorf("trust A's staff get trust B's id %s", id)
 			}
 		}
-		if d := f.Prefill[healthAgain.String()].Answers["pf_diabetes"]; d.MatchedBy != "wording" || !d.OtherTrust {
-			t.Errorf("pf_diabetes %+v", d)
-		}
-		if f.Revisions[again.String()] != 1 {
-			t.Errorf("revision %d, want 1 for a pre-filled set", f.Revisions[again.String()])
-		}
-		if n := count(t, w.db, `SELECT count(*) FROM patient_prefill_consents c JOIN patients p ON p.account_id = c.account_id
-			WHERE p.id = $1 AND c.org_id = $2 AND c.agreed AND c.episode_id = $3`, x.inA.PatientID, w.b.Org, x.inA.ID); n != 1 {
-			t.Errorf("%d consent rows", n)
-		}
 		// Audited under trust B too: the patient, its record and the source episode, at its hospital.
 		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE org_id = $1 AND hospital_id = $2 AND action = 'prefill.read' AND actor = 'patient'
 			AND patient_ids = ARRAY[$3::uuid] AND episode_ids = ARRAY[$4::uuid]`, w.b.Org, w.b.ID, x.inB.PatientID, x.inB.ID); n != 1 {
 			t.Errorf("%d prefill.read rows under trust B", n)
 		}
-		// Trust B's admin reads it as a read, not as a use: Trust A's own answers may have covered
-		// every question (test report 1, found 4).
+		// Trust B's admin reads it as a read, with no "(they agreed)": nobody is asked now.
 		bAdmin := w.anon.NewBrowser(t).LoginAs(t, w.fx.TrustUser(t, w.b.Org, "admin"))
 		r := bAdmin.Do("GET", "/api/o/"+w.b.Org.String()+"/audit", nil)
 		r.Want(t, http.StatusOK)
@@ -198,53 +155,47 @@ func TestPrefillCrossTrust(t *testing.T) {
 		for _, row := range log.Rows {
 			labels[row.Action] = row.ActionLabel
 		}
-		if got := labels["prefill.read"]; got != "Patient's answers read to pre-fill their HQ at another trust (they agreed)" {
+		if got := labels["prefill.read"]; got != "Patient's answers read to pre-fill their HQ at another trust" {
 			t.Errorf("trust B's audit label %q", got)
 		}
 		// Trust A's own row names only trust A's records.
 		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE org_id = $1 AND ($2 = ANY(episode_ids) OR $3 = ANY(patient_ids))`, w.a.Org, x.inB.ID, x.inB.PatientID); n != 0 {
 			t.Errorf("%d trust A rows name trust B's records", n)
 		}
-		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE org_id = $1 AND action = 'link.prefill_consent' AND $2 = ANY(episode_ids)`, w.a.Org, x.inA.ID); n != 1 {
-			t.Errorf("%d consent audit rows", n)
-		}
 
 		// A second open reads trust B no more: every set has its row.
-		before := count(t, w.db, `SELECT count(*) FROM audit_log WHERE org_id = $1 AND action = 'prefill.read'`, w.b.Org)
+		before := w.prefillReads(t, x)
 		getCrossForm(t, x.patient, patientPath(x.inA, ""))
-		if after := count(t, w.db, `SELECT count(*) FROM audit_log WHERE org_id = $1 AND action = 'prefill.read'`, w.b.Org); after != before {
+		if after := w.prefillReads(t, x); after != before {
 			t.Errorf("prefill.read rows %d → %d", before, after)
 		}
-
-		// Another episode at trust A: used again without asking (asked once per trust).
+		// Another episode at trust A: copied again.
 		next := w.fx.EpisodeOf(t, w.later, w.a, x.inA.PatientID, w.cara, "")
-		f = getCrossForm(t, x.patient, patientPath(next, ""))
-		if len(f.PrefillConsent) != 0 || !f.Prefill[again.String()].Answers["q_meds"].OtherTrust {
-			t.Errorf("next episode: consent %+v prefill %+v", f.PrefillConsent, f.Prefill)
+		if f := getCrossForm(t, x.patient, patientPath(next, "")); !f.Prefill[again.String()].Answers["q_meds"].OtherTrust {
+			t.Errorf("next episode: prefill %+v", f.Prefill)
 		}
+	})
 
-		// Switching either trust's setting off stops new offers; what was copied stays.
-		w.setCrossTrust(t, w.b.Org, false)
-		third := w.fx.EpisodeOf(t, w.later, w.a, x.inA.PatientID, w.cara, "")
-		if f := getCrossForm(t, x.patient, patientPath(third, "")); len(f.Answers) != 0 || len(f.PrefillConsent) != 0 {
-			t.Errorf("trust B off: %v %+v", f.Answers, f.PrefillConsent)
+	t.Run("a trust's old crossTrustPrefill value changes nothing", func(t *testing.T) {
+		for _, org := range []uuid.UUID{w.a.Org, w.b.Org} {
+			if _, err := w.db.Exec(t.Context(), `UPDATE orgs SET settings = settings || '{"crossTrustPrefill": false}' WHERE id = $1`, org); err != nil {
+				t.Fatal(err)
+			}
+			defer w.db.Exec(t.Context(), `UPDATE orgs SET settings = settings - 'crossTrustPrefill' WHERE id = $1`, org)
 		}
-		if f := getCrossForm(t, x.patient, patientPath(x.inA, "")); answersJSON(t, f.Answers[again.String()]) != `{"q_meds":[{"q_med_name":"Ibuprofen"}]}` {
-			t.Errorf("copied answers changed: %v", f.Answers)
+		x := w.person(t, "OldSetting")
+		if f := getCrossForm(t, x.patient, patientPath(x.inA, "")); answersJSON(t, f.Answers[healthAgain.String()]) != `{"pf_diabetes":true}` {
+			t.Errorf("Health again %v", f.Answers)
 		}
-		w.setCrossTrust(t, w.b.Org, true)
 	})
 
 	t.Run("a platform library key matches across trusts though reworded, its choice mapped by option text", func(t *testing.T) {
-		w.setCrossTrust(t, w.a.Org, true)
-		w.setCrossTrust(t, w.b.Org, true)
 		if _, err := w.db.Exec(t.Context(), `INSERT INTO library_questions (org_id, key, title, element)
 			VALUES (NULL, 'q_smokes', 'Do you smoke?', '{"type":"radiogroup","name":"q_smokes","title":"Do you smoke?"}')`); err != nil {
 			t.Fatal(err)
 		}
 		defer w.db.Exec(t.Context(), `DELETE FROM library_questions WHERE org_id IS NULL AND key = 'q_smokes'`)
 		x := w.person(t, "Library")
-		consent(x.patient, x.inA, w.b.Org, true).Want(t, http.StatusNoContent)
 		f := getCrossForm(t, x.patient, patientPath(x.inA, ""))
 		// "Yes" at trust B is o_no there, and o_yes ("Yes") here: by its text, not its value.
 		if got := answersJSON(t, f.Answers[again.String()]); got != `{"q_meds":[{"q_med_name":"Ibuprofen"}],"q_smokes":"o_yes"}` {
@@ -255,41 +206,14 @@ func TestPrefillCrossTrust(t *testing.T) {
 		}
 	})
 
-	t.Run("No, thanks is remembered: nothing from trust B, and not asked again here or at another episode", func(t *testing.T) {
-		w.setCrossTrust(t, w.a.Org, true)
-		w.setCrossTrust(t, w.b.Org, true)
-		x := w.person(t, "No")
-		consent(x.patient, x.inA, w.b.Org, false).Want(t, http.StatusNoContent)
-		f := getCrossForm(t, x.patient, patientPath(x.inA, ""))
-		if len(f.PrefillConsent) != 0 || len(f.Answers) != 0 {
-			t.Errorf("after No: consent %+v answers %v", f.PrefillConsent, f.Answers)
-		}
-		next := w.fx.EpisodeOf(t, w.later, w.a, x.inA.PatientID, w.cara, "")
-		if f := getCrossForm(t, x.patient, patientPath(next, "")); len(f.PrefillConsent) != 0 || len(f.Answers) != 0 {
-			t.Errorf("another episode: consent %+v answers %v", f.PrefillConsent, f.Answers)
-		}
-		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE org_id = $1 AND action = 'prefill.read' AND $2 = ANY(episode_ids)`, w.b.Org, x.inB.ID); n != 0 {
-			t.Errorf("%d prefill.read rows after No", n)
-		}
-		// The choice can't be changed (S26 answers 3).
-		refused(t, consent(x.patient, x.inA, w.b.Org, true), http.StatusConflict)
-	})
-
 	t.Run("the form's own trust first, and nothing the patient already typed is overwritten", func(t *testing.T) {
-		w.setCrossTrust(t, w.a.Org, true)
-		w.setCrossTrust(t, w.b.Org, true)
 		x := w.person(t, "Own")
 		// An earlier sent HQ at trust A too, whose smoking answer the clinician made "No".
 		own := w.fx.EpisodeOf(t, w.hq, w.a, x.inA.PatientID, w.cara, "")
 		w.answeredBy(t, own, x.patient, "o_no")
-		f := getCrossForm(t, x.patient, patientPath(x.inA, ""))
-		if len(f.PrefillConsent) != 1 {
-			t.Fatalf("consent %+v", f.PrefillConsent)
-		}
-		// Typed (another tab) before answering the question.
+		// Typed (another tab) before the form was first opened.
 		savedRevision(t, x.patient.Do("PUT", patientPath(x.inA, "/answers/"+healthAgain.String()), map[string]any{"data": map[string]any{"pf_diabetes": false}, "revision": 0}))
-		consent(x.patient, x.inA, w.b.Org, true).Want(t, http.StatusNoContent)
-		f = getCrossForm(t, x.patient, patientPath(x.inA, ""))
+		f := getCrossForm(t, x.patient, patientPath(x.inA, ""))
 		if got := answersJSON(t, f.Answers[healthAgain.String()]); got != `{"pf_diabetes":false}` || f.Revisions[healthAgain.String()] != 1 {
 			t.Errorf("Health again %s rev %d", got, f.Revisions[healthAgain.String()])
 		}
@@ -305,40 +229,51 @@ func TestPrefillCrossTrust(t *testing.T) {
 		}
 	})
 
-	t.Run("staff filling in for the patient never use another trust's answers, even after a Yes", func(t *testing.T) {
-		w.setCrossTrust(t, w.a.Org, true)
-		w.setCrossTrust(t, w.b.Org, true)
+	t.Run("staff filling in for the patient get another trust's answers too, audited under it as them", func(t *testing.T) {
 		x := w.person(t, "Behalf")
-		consent(x.patient, x.inA, w.b.Org, true).Want(t, http.StatusNoContent)
-		e := w.fx.EpisodeOf(t, w.later, w.a, x.inA.PatientID, w.cara, "")
-		f := getCrossForm(t, w.clinician, epPath(w.a, e, "/patient-form"))
-		if len(f.Answers) != 0 || len(f.PrefillConsent) != 0 {
-			t.Errorf("on behalf: answers %v consent %+v", f.Answers, f.PrefillConsent)
+		f := getCrossForm(t, w.clinician, epPath(w.a, x.inA, "/patient-form"))
+		if got := answersJSON(t, f.Answers[healthAgain.String()]); got != `{"pf_diabetes":true}` {
+			t.Errorf("on behalf: Health again %s", got)
+		}
+		if m := f.Prefill[again.String()].Answers["q_meds"]; !m.OtherTrust || m.Hospital != w.bHospital || m.FromForm != uuid.Nil {
+			t.Errorf("on behalf: q_meds %+v", m)
+		}
+		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE org_id = $1 AND hospital_id = $2 AND action = 'prefill.read' AND actor = 'staff'
+			AND user_id = $3 AND episode_ids = ARRAY[$4::uuid]`, w.b.Org, w.b.ID, w.cara.ID, x.inB.ID); n != 1 {
+			t.Errorf("%d prefill.read rows under trust B for Cara", n)
 		}
 	})
 
-	t.Run("another trust's unreadable settings: skipped, the form still opens", func(t *testing.T) {
-		w.setCrossTrust(t, w.a.Org, true)
-		x := w.person(t, "Unreadable")
-		if _, err := w.db.Exec(t.Context(), `UPDATE orgs SET settings = '[]' WHERE id = $1`, w.b.Org); err != nil {
+	t.Run("on behalf, a record that hasn't joined the person's account finds no other trust's answers (S27 test report 1, F1)", func(t *testing.T) {
+		// Other trusts' records are found only through the account, which a record joins when the
+		// patient proves their date of birth on its link (S15): Go never matches records across
+		// trusts by typed details alone.
+		x := w.person(t, "Unjoined")
+		if _, err := w.db.Exec(t.Context(), `UPDATE patients SET account_id = NULL WHERE id = $1`, x.inA.PatientID); err != nil {
 			t.Fatal(err)
 		}
-		defer w.db.Exec(t.Context(), `UPDATE orgs SET settings = '{}' WHERE id = $1`, w.b.Org)
-		if f := getCrossForm(t, x.patient, patientPath(x.inA, "")); len(f.PrefillConsent) != 0 || len(f.Answers) != 0 {
-			t.Errorf("unreadable trust B: %+v %v", f.PrefillConsent, f.Answers)
+		f := getCrossForm(t, w.clinician, epPath(w.a, x.inA, "/patient-form"))
+		if len(f.Answers) != 0 || w.prefillReads(t, x) != 0 {
+			t.Errorf("unjoined, on behalf: %v", f.Answers)
 		}
 	})
 
-	t.Run("a suspended trust's answers aren't offered", func(t *testing.T) {
-		w.setCrossTrust(t, w.a.Org, true)
-		w.setCrossTrust(t, w.b.Org, true)
+	t.Run("a suspended trust's answers aren't used", func(t *testing.T) {
 		x := w.person(t, "Suspended")
 		if _, err := w.db.Exec(t.Context(), `UPDATE orgs SET status = 'suspended' WHERE id = $1`, w.b.Org); err != nil {
 			t.Fatal(err)
 		}
 		defer w.db.Exec(t.Context(), `UPDATE orgs SET status = 'active' WHERE id = $1`, w.b.Org)
-		if f := getCrossForm(t, x.patient, patientPath(x.inA, "")); len(f.PrefillConsent) != 0 || len(f.Answers) != 0 {
-			t.Errorf("suspended trust B: %+v %v", f.PrefillConsent, f.Answers)
+		if f := getCrossForm(t, x.patient, patientPath(x.inA, "")); len(f.Answers) != 0 || w.prefillReads(t, x) != 0 {
+			t.Errorf("suspended trust B: %v", f.Answers)
+		}
+	})
+
+	t.Run("S26's consent route is gone", func(t *testing.T) {
+		x := w.person(t, "Route")
+		r := x.patient.Do("POST", patientPath(x.inA, "/prefill-consent"), map[string]any{"orgId": w.b.Org, "agree": true})
+		if r.Code != http.StatusNotFound && r.Code != http.StatusMethodNotAllowed {
+			t.Errorf("POST …/prefill-consent: %d", r.Code)
 		}
 	})
 }
@@ -355,72 +290,151 @@ func (w *crossTrustWorld) answeredBy(t *testing.T, e apitest.Episode, p *apitest
 		"q_smokes": smokes, "q_meds": []any{map[string]any{"q_med_name": "Aspirin"}}}, "validated": true, "revision": 0}))
 }
 
-// POST /api/p/episodes/{eid}/prefill-consent {orgId, agree}: the patient's answer to "Use the
-// answers you gave …?", once per account and source trust.
-func TestPrefillConsentRoute(t *testing.T) {
+// Start fresh (S27 answers 1–2): the opening card of a Question Set holding another trust's answers
+// has a third button, which clears every pre-filled answer in that set (any trust's), so it opens
+// empty, and is recorded like the other two: POST …/prefill/{cid} {choice: start_fresh}, by the
+// patient or staff for them. Only while nothing in the set has changed, and only once.
+func TestStartFresh(t *testing.T) {
 	t.Parallel()
 	w := newCrossTrustWorld(t)
-	w.setCrossTrust(t, w.a.Org, true)
-	w.setCrossTrust(t, w.b.Org, true)
-	x := w.person(t, "Route")
-	decided := func() int {
-		return count(t, w.db, `SELECT count(*) FROM patient_prefill_consents c JOIN patients p ON p.account_id = c.account_id WHERE p.id = $1`, x.inA.PatientID)
-	}
-
-	t.Run("no sign-in", func(t *testing.T) {
-		refused(t, consent(w.anon, x.inA, w.b.Org, true), http.StatusUnauthorized)
-	})
-	t.Run("wrong role: staff have no patient session", func(t *testing.T) {
-		refused(t, consent(w.clinician, x.inA, w.b.Org, true), http.StatusUnauthorized)
-	})
-	t.Run("another patient's episode: 404", func(t *testing.T) {
-		other := w.fx.Episode(t, w.hq, w.cara)
-		someoneElse := w.anon.NewBrowser(t).AsPatient(t, other.Link, other.DateOfBirth)
-		refused(t, consent(someoneElse, x.inA, w.b.Org, true), http.StatusNotFound)
-		// Nor can the person's own session name an episode that isn't theirs.
-		refused(t, consent(x.patient, other, w.b.Org, true), http.StatusNotFound)
-		if decided() != 0 {
-			t.Error("recorded")
-		}
-	})
-	t.Run("invalid input", func(t *testing.T) {
-		path := patientPath(x.inA, "/prefill-consent")
-		refused(t, x.patient.Do("POST", path, `{"orgId":`), http.StatusBadRequest)
-		bad := x.patient.Do("POST", path, map[string]any{"orgId": "abc", "agree": true})
-		refused(t, bad, http.StatusBadRequest)
-		if !strings.Contains(bad.Message(), "reload the page") { // not "Choose Yes or No" (test report 1, found 2)
-			t.Errorf("bad orgId: %q", bad.Message())
-		}
-		none := x.patient.Do("POST", path, map[string]any{"orgId": w.b.Org}) // no answer
-		refused(t, none, http.StatusBadRequest)
-		if !strings.Contains(none.Message(), "Yes, use them") {
-			t.Errorf("no answer: %q", none.Message())
-		}
-		// Not on offer: the form's own trust, or a trust the person has no answers at.
-		refused(t, consent(x.patient, x.inA, w.a.Org, true), http.StatusConflict)
-		refused(t, consent(x.patient, x.inA, uuid.New(), true), http.StatusConflict)
-		if decided() != 0 {
-			t.Error("recorded")
-		}
-	})
-	t.Run("happy path: recorded once, audited; then neither changed nor asked again", func(t *testing.T) {
-		consent(x.patient, x.inA, w.b.Org, false).Want(t, http.StatusNoContent)
-		if n := count(t, w.db, `SELECT count(*) FROM patient_prefill_consents c JOIN patients p ON p.account_id = c.account_id
-			WHERE p.id = $1 AND c.org_id = $2 AND NOT c.agreed AND c.decided_at IS NOT NULL`, x.inA.PatientID, w.b.Org); n != 1 {
-			t.Errorf("%d consent rows", n)
-		}
-		refused(t, consent(x.patient, x.inA, w.b.Org, false), http.StatusConflict)
-		refused(t, consent(x.patient, x.inA, w.b.Org, true), http.StatusConflict)
-		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE action = 'link.prefill_consent' AND org_id = $1 AND $2 = ANY(episode_ids) AND status = 204`, w.a.Org, x.inA.ID); n != 1 {
-			t.Errorf("%d audit rows", n)
-		}
-	})
-	t.Run("once the HQ is sent: 409", func(t *testing.T) {
-		y := w.person(t, "Sent")
-		if _, err := w.db.Exec(t.Context(), `UPDATE episode_forms SET status = 'submitted', submitted_at = now() WHERE id = $1`, y.inA.FormID); err != nil {
+	again, healthAgain := w.later.Chapters[0], w.later.Chapters[1]
+	fresh := map[string]string{"choice": "start_fresh"}
+	row := func(e apitest.Episode, set uuid.UUID) (data string, revision int, choice string, by *uuid.UUID, kept bool) {
+		t.Helper()
+		var c *string
+		if err := w.db.QueryRow(t.Context(), `SELECT data::text, revision, prefill_choice, prefill_choice_by, prefill IS NOT NULL AND prefill <> '{}'
+			FROM episode_answers WHERE episode_form_id = $1 AND chapter_id = $2 AND actor = 'patient'`, e.FormID, set).Scan(&data, &revision, &c, &by, &kept); err != nil {
 			t.Fatal(err)
 		}
-		refused(t, consent(y.patient, y.inA, w.b.Org, true), http.StatusConflict)
+		if c != nil {
+			choice = *c
+		}
+		return
+	}
+	x := w.person(t, "Fresh")
+	getCrossForm(t, x.patient, patientPath(x.inA, "")) // pre-fills both sets from trust B
+	path := patientPath(x.inA, "/prefill/"+again.String())
+
+	t.Run("no sign-in", func(t *testing.T) {
+		refused(t, w.anon.Do("POST", path, fresh), http.StatusUnauthorized)
+		refused(t, w.anon.Do("POST", epPath(w.a, x.inA, "/patient-form/prefill/"+again.String()), fresh), http.StatusUnauthorized)
+	})
+	t.Run("wrong role: another patient's session, and staff at the trust's other hospital, get 404", func(t *testing.T) {
+		other := w.fx.Episode(t, w.hq, w.cara)
+		someoneElse := w.anon.NewBrowser(t).AsPatient(t, other.Link, other.DateOfBirth)
+		refused(t, someoneElse.Do("POST", path, fresh), http.StatusNotFound)
+		refused(t, w.site2.Do("POST", at(w.a2, "/episodes/"+x.inA.ID.String()+"/patient-form/prefill/"+again.String()), fresh), http.StatusNotFound)
+	})
+	t.Run("another trust: 404, trust B's staff included", func(t *testing.T) {
+		refused(t, w.otherClin.Do("POST", epPath(w.a, x.inA, "/patient-form/prefill/"+again.String()), fresh), http.StatusNotFound)
+		refused(t, w.otherClin.Do("POST", at(w.b, "/episodes/"+x.inA.ID.String()+"/patient-form/prefill/"+again.String()), fresh), http.StatusNotFound)
+	})
+	t.Run("invalid input: only for another trust's answers, only while unchanged, and not after another button", func(t *testing.T) {
+		// A set pre-filled from the form's own trust only.
+		own := w.person(t, "OwnOnly")
+		earlier := w.fx.EpisodeOf(t, w.hq, w.a, own.inA.PatientID, w.cara, "")
+		w.answeredBy(t, earlier, own.patient, "o_no")
+		getCrossForm(t, own.patient, patientPath(own.inA, ""))
+		r := own.patient.Do("POST", patientPath(own.inA, "/prefill/"+again.String()), fresh)
+		refused(t, r, http.StatusConflict)
+		if !strings.Contains(r.Message(), "another hospital") {
+			t.Errorf("same trust only: %q", r.Message())
+		}
+		// Changed since the card showed (another tab saved).
+		y := w.person(t, "Changed")
+		f := getCrossForm(t, y.patient, patientPath(y.inA, ""))
+		savedRevision(t, y.patient.Do("PUT", patientPath(y.inA, "/answers/"+healthAgain.String()), map[string]any{"data": map[string]any{"pf_diabetes": false}, "revision": f.Revisions[healthAgain.String()]}))
+		r = y.patient.Do("POST", patientPath(y.inA, "/prefill/"+healthAgain.String()), fresh)
+		refused(t, r, http.StatusConflict)
+		if !strings.Contains(r.Message(), "reload") {
+			t.Errorf("changed: %q", r.Message())
+		}
+		if data, _, choice, _, _ := row(y.inA, healthAgain); data != `{"pf_diabetes": false}` || choice != "" {
+			t.Errorf("changed set %s %q", data, choice)
+		}
+		// After Check each answer (another tab): the first button stays.
+		y.patient.Do("POST", patientPath(y.inA, "/prefill/"+again.String()), map[string]string{"choice": "check_each"}).Want(t, http.StatusNoContent)
+		refused(t, y.patient.Do("POST", patientPath(y.inA, "/prefill/"+again.String()), fresh), http.StatusConflict)
+		if data, _, choice, _, _ := row(y.inA, again); choice != "check_each" || data == "{}" {
+			t.Errorf("after Check each: %s %q", data, choice)
+		}
+		bad := x.patient.Do("POST", path, map[string]string{"choice": "start fresh"})
+		refused(t, bad, http.StatusBadRequest)
+		if !strings.Contains(bad.Message(), "Start fresh") { // every button named (verification 1, finding 4)
+			t.Errorf("unknown choice: %q", bad.Message())
+		}
+	})
+	t.Run("happy path: the patient's Start fresh empties the set, is recorded, and the set isn't filled again", func(t *testing.T) {
+		x.patient.Do("POST", path, fresh).Want(t, http.StatusNoContent)
+		data, revision, choice, by, kept := row(x.inA, again)
+		// The answers go and the revision moves on, so a tab still showing them gets the 409; the map
+		// stays (what was copied, for the clinician's line).
+		if data != "{}" || revision != 2 || choice != "start_fresh" || by != nil || !kept {
+			t.Errorf("after Start fresh: %s rev %d %q by %v map kept %v", data, revision, choice, by, kept)
+		}
+		f := getCrossForm(t, x.patient, patientPath(x.inA, ""))
+		if len(f.Answers[again.String()]) != 0 || f.Revisions[again.String()] != 2 {
+			t.Errorf("filled again: %v rev %d", f.Answers[again.String()], f.Revisions[again.String()])
+		}
+		if p := f.Prefill[again.String()]; p.Choice == nil || *p.Choice != "start_fresh" {
+			t.Errorf("prefill %+v", p)
+		}
+		// The other set keeps its answers.
+		if got := answersJSON(t, f.Answers[healthAgain.String()]); got != `{"pf_diabetes":true}` {
+			t.Errorf("Health again %s", got)
+		}
+		if got := homeState(t, x.patient, x.inA.ID); got != "in_progress" {
+			t.Errorf("home state %q", got)
+		}
+		// Pressed again (another tab): nothing more happens.
+		x.patient.Do("POST", path, fresh).Want(t, http.StatusNoContent)
+		if _, revision, _, _, _ := row(x.inA, again); revision != 2 {
+			t.Errorf("revision %d after a second press", revision)
+		}
+		// A tab that still shows the answers can't save them back.
+		refused(t, x.patient.Do("PUT", patientPath(x.inA, "/answers/"+again.String()), map[string]any{"data": map[string]any{"q_meds": []any{}}, "revision": 1}), http.StatusConflict)
+		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE action = 'link.prefill' AND $1 = ANY(episode_ids) AND status = 204`, x.inA.ID); n != 2 {
+			t.Errorf("%d link.prefill rows", n)
+		}
+	})
+	t.Run("after Start fresh, a stale card's other buttons are refused, so an empty set is never sent as checked (verification 1, finding 1)", func(t *testing.T) {
+		y := w.person(t, "FreshStale")
+		getCrossForm(t, y.patient, patientPath(y.inA, ""))
+		y.patient.Do("POST", patientPath(y.inA, "/prefill/"+again.String()), fresh).Want(t, http.StatusNoContent) // one tab
+		for _, other := range []string{"still_correct", "check_each"} { // the card still open in another tab
+			r := y.patient.Do("POST", patientPath(y.inA, "/prefill/"+again.String()), map[string]string{"choice": other})
+			refused(t, r, http.StatusConflict)
+			if !strings.Contains(r.Message(), "reload") {
+				t.Errorf("%s after Start fresh: %q", other, r.Message())
+			}
+		}
+		// Staff on the patient's behalf, with the card open after the patient started fresh.
+		z := w.person(t, "FreshStaleBehalf")
+		getCrossForm(t, w.clinician, epPath(w.a, z.inA, "/patient-form"))
+		z.patient.Do("POST", patientPath(z.inA, "/prefill/"+healthAgain.String()), fresh).Want(t, http.StatusNoContent)
+		refused(t, w.clinician.Do("POST", epPath(w.a, z.inA, "/patient-form/prefill/"+healthAgain.String()), map[string]string{"choice": "still_correct"}), http.StatusConflict)
+		if _, _, choice, _, _ := row(z.inA, healthAgain); choice != "start_fresh" {
+			t.Errorf("choice %q", choice)
+		}
+	})
+	t.Run("happy path: staff for the patient, marked as theirs", func(t *testing.T) {
+		z := w.person(t, "FreshBehalf")
+		getCrossForm(t, w.clinician, epPath(w.a, z.inA, "/patient-form"))
+		w.clinician.Do("POST", epPath(w.a, z.inA, "/patient-form/prefill/"+healthAgain.String()), fresh).Want(t, http.StatusNoContent)
+		if data, _, choice, by, _ := row(z.inA, healthAgain); data != "{}" || choice != "start_fresh" || by == nil || *by != w.cara.ID {
+			t.Errorf("on behalf: %s %q by %v", data, choice, by)
+		}
+	})
+	t.Run("once sent: 409", func(t *testing.T) {
+		z := w.person(t, "FreshSent")
+		getCrossForm(t, z.patient, patientPath(z.inA, ""))
+		if _, err := w.db.Exec(t.Context(), `UPDATE episode_forms SET status = 'submitted', submitted_at = now() WHERE id = $1`, z.inA.FormID); err != nil {
+			t.Fatal(err)
+		}
+		refused(t, z.patient.Do("POST", patientPath(z.inA, "/prefill/"+again.String()), fresh), http.StatusConflict)
+		if data, _, _, _, _ := row(z.inA, again); data == "{}" {
+			t.Error("cleared after sending")
+		}
 	})
 }
 

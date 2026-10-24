@@ -258,14 +258,6 @@ type PatientAccount struct {
 	LastNameKey  string      `json:"lastNameKey"`
 }
 
-type PatientPrefillConsent struct {
-	AccountID uuid.UUID     `json:"accountId"`
-	OrgID     uuid.UUID     `json:"orgId"`
-	Agreed    bool          `json:"agreed"`
-	DecidedAt time.Time     `json:"decidedAt"`
-	EpisodeID uuid.NullUUID `json:"episodeId"`
-}
-
 type PatientSession struct {
 	ID         uuid.UUID          `json:"id"`
 	LinkID     uuid.UUID          `json:"linkId"`

@@ -3,6 +3,7 @@
 package httpapi_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"slices"
 	"strings"
@@ -262,7 +263,8 @@ func TestUnarchive(t *testing.T) {
 }
 
 // Every write to an archived episode is refused with 409, except un-archive (S22 answers 2); it
-// can still be read, found by the search and on the patient's page; the patient's form is closed.
+// can still be read, found by the search and on the patient's page; the patient's form is closed
+// to changes (a sent one can still be viewed, S27).
 func TestArchivedEpisodeIsReadOnly(t *testing.T) {
 	t.Parallel()
 	w := newClinic(t)
@@ -311,10 +313,11 @@ func TestArchivedEpisodeIsReadOnly(t *testing.T) {
 		t.Errorf("%d answers or completed tasks written", n)
 	}
 
-	t.Run("the patient's form is closed", func(t *testing.T) {
+	t.Run("the patient's form is closed to changes", func(t *testing.T) {
 		p := w.anon.AsPatient(t, e.Link, e.DateOfBirth)
+		// It was sent (Ready for review) before it was archived, so it can still be viewed (S27).
+		p.Do("GET", patientPath(e, ""), nil).Want(t, http.StatusOK)
 		for _, r := range []*apitest.Resp{
-			p.Do("GET", patientPath(e, ""), nil),
 			p.Do("PUT", patientPath(e, "/answers/"+set), map[string]any{"data": map[string]any{}, "revision": 0}),
 			p.Do("POST", patientPath(e, "/submit"), nil),
 		} {
@@ -436,4 +439,54 @@ func TestPatientHomeShowsArchived(t *testing.T) {
 		t.Errorf("un-archived: %v", s)
 	}
 	b.Do("GET", patientPath(open, ""), nil).Want(t, http.StatusOK) // and the form opens again
+}
+
+// A questionnaire the patient sent, then archived (S27; pending.md, S22; Rahul, 24 Oct): the home
+// still says Sent with View, and the form opens read-only, as a sent one does; every write is
+// refused as before. One archived before it was sent stays "closed".
+func TestArchivedAfterSentKeepsItsView(t *testing.T) {
+	t.Parallel()
+	w := newPeople(t)
+	sam := newPerson("1981-06-18")
+	sent, unsent := w.recordIn(t, sam, w.a, w.hq, w.cara), w.recordIn(t, sam, w.a, w.hq, w.cara)
+	b := w.anon.AsPatient(t, sent.Link, sam.dob)
+	set := w.hq.Chapters[0].String()
+	savedRevision(t, b.Do("PUT", patientPath(sent, "/answers/"+set), map[string]any{"data": map[string]any{"q_smokes": "o_no"}, "revision": 0}))
+	b.Do("POST", patientPath(sent, "/submit"), nil).Want(t, http.StatusNoContent)
+	archive(t, w.clinic, sent)
+	archive(t, w.clinic, unsent)
+
+	states := map[uuid.UUID]string{}
+	for _, e := range readHome(t, b).Episodes {
+		states[e.ID] = e.State
+	}
+	if states[sent.ID] != "sent" || states[unsent.ID] != "closed" {
+		t.Errorf("home states %v, want sent and closed", states)
+	}
+	r := b.Do("GET", patientPath(sent, ""), nil)
+	r.Want(t, http.StatusOK)
+	var f struct {
+		Submitted bool
+		Answers   map[string]map[string]json.RawMessage
+	}
+	r.Decode(t, &f)
+	if !f.Submitted || string(f.Answers[set]["q_smokes"]) != `"o_no"` {
+		t.Errorf("the View: %s", r)
+	}
+	for _, r := range []*apitest.Resp{
+		b.Do("PUT", patientPath(sent, "/answers/"+set), map[string]any{"data": map[string]any{"q_smokes": "o_yes"}, "revision": 1}),
+		b.Do("POST", patientPath(sent, "/submit"), nil),
+		b.Do("POST", patientPath(sent, "/prefill/"+set), map[string]string{"choice": "check_each"}),
+		b.Do("GET", patientPath(unsent, ""), nil),
+	} {
+		refused(t, r, http.StatusForbidden)
+		if !strings.Contains(string(r.Body), `"code":"archived"`) {
+			t.Errorf("archived write: %s", r)
+		}
+	}
+	if n := count(t, w.db, `SELECT count(*) FROM episode_answers a JOIN episode_forms f ON f.id = a.episode_form_id WHERE f.episode_id = $1 AND a.data->>'q_smokes' = 'o_yes'`, sent.ID); n != 0 {
+		t.Error("an archived answer changed")
+	}
+	// Staff have the episode's own pages; the on-behalf form stays refused once archived.
+	refused(t, w.clinician.Do("GET", epPath(w.a, sent, "/patient-form"), nil), http.StatusConflict)
 }

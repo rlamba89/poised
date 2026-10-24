@@ -253,6 +253,9 @@ func formatOf(el obj) string {
 			case "email":
 				return "email address"
 			case "regex":
+				if name, ok := textFormatNames[v.str("regex")]; ok {
+					return name
+				}
 				return "the pattern “" + v.str("regex") + "”"
 			}
 		}
@@ -266,6 +269,18 @@ func formatOf(el obj) string {
 		}
 	}
 	return ""
+}
+
+// textFormatNames are the editor's known text formats by their pattern (packages/clinical/src/
+// fields.ts TEXT_FORMATS; a test keeps the two the same), so the publish refusal names a format in
+// words: "its answer format changed from any text to phone number" (S27; Rahul, 24 Oct). Any other
+// pattern is a custom one, named by itself. "NHS number" and "UK postcode" are hardcoded, as in
+// the editor: a recorded exception to A-20 (decisions.md §2, 24 Oct), to move to the per-country
+// config when a second country comes.
+var textFormatNames = map[string]string{
+	`^\+?[0-9 ()-]{7,20}$`:                        "phone number",
+	`^\d{3} ?\d{3} ?\d{4}$`:                       "NHS number",
+	`^[A-Za-z]{1,2}\d[A-Za-z\d]? ?\d[A-Za-z]{2}$`: "UK postcode",
 }
 
 // columnOf reads a dynamic matrix's column: a plain string is its name and text.

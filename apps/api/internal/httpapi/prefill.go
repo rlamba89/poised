@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,7 +12,6 @@ import (
 
 	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/prefill"
-	"github.com/rlamba89/poised/apps/api/internal/settings"
 )
 
 // Pre-fill (plan C4, session S25; PRE-01–03, PRE-06). When the HQ form is opened, by the patient or
@@ -22,22 +19,22 @@ import (
 // the patient's earlier submitted HQs in the same trust (internal/prefill has the rules), and the
 // result is stored as the patient's answers in the same request: once per set, never over anything
 // saved. Each set's opening card then asks the patient to check them, and records the button
-// pressed (prefillChoice). Other trusts' answers (S26) are used only with both trusts' setting on
-// and the patient's Yes, never on their behalf (crossTrust, prefillConsent).
+// pressed (prefillChoice). Other trusts' answers (S26) are always used since S27 (Rahul, 24 Oct),
+// by the patient and by staff for them, with no setting and no question: only for what the form's
+// own trust's forms didn't ask, read one trust per query and audited under that trust too. A set
+// holding them opens on a card naming the hospital, with Start fresh as a third button.
 
 // prefillForm fills the form's unanswered patient Question Sets (chapters: the form's version's,
 // saved: its answers so far). It reports whether it tried to store any, so the caller reads the
 // answers again: a second open at the same moment (another tab, React's double effect in
 // development) stores nothing itself, but must still send what the first one stored.
 //
-// Answers come from the form's own trust, and (S26) from other trusts the patient agreed to, only
-// when the patient opens it themselves (crossTrust). While another trust's question is still to be
-// answered, nothing is filled and the questions are returned: the patient answers them first (the
-// consent screen comes before the first Question Set), and the next open fills from every source at
-// once, so another trust's answers go only where the form's own trust has nothing.
-func (s *server) prefillForm(ctx context.Context, f form, a *auditEntry, chapters []db.ListVersionChaptersRow, saved []db.ListEpisodeAnswersRow) (bool, []consentQuestion, error) {
+// Answers come from the form's own trust, then from every other trust where the person's account
+// has a sent HQ (S27: always, for the patient and for staff on their behalf), each read with its
+// own query; another trust's go only where the form's own trust's forms asked nothing.
+func (s *server) prefillForm(ctx context.Context, f form, a *auditEntry, chapters []db.ListVersionChaptersRow, saved []db.ListEpisodeAnswersRow) (bool, error) {
 	if f.PatientSubmittedAt.Valid {
-		return false, nil, nil
+		return false, nil
 	}
 	answered := map[uuid.UUID]bool{}
 	for _, row := range saved {
@@ -54,114 +51,58 @@ func (s *server) prefillForm(ctx context.Context, f form, a *auditEntry, chapter
 		}
 	}
 	if len(fill) == 0 {
-		return false, nil, nil
-	}
-	var agreed []uuid.UUID
-	if f.enteredBy == uuid.Nil { // never on the patient's behalf (S26 answers 4)
-		questions, yes, err := s.crossTrust(ctx, f)
-		if err != nil || len(questions) > 0 {
-			return false, questions, err
-		}
-		agreed = yes
+		return false, nil
 	}
 	sources, err := s.prefillSources(ctx, f.OrgID, f, a, false)
 	if err != nil {
-		return false, nil, err
+		return false, err
 	}
-	for _, org := range agreed {
+	var others []uuid.UUID
+	if f.AccountID.Valid { // other trusts' records are found only through the person's account (S15)
+		if others, err = s.q.ListPrefillTrusts(ctx, db.ListPrefillTrustsParams{AccountID: f.AccountID, OrgID: f.OrgID}); err != nil {
+			return false, err
+		}
+	}
+	for _, org := range others {
 		// One trust per query, with its own org_id; its log gets a row of its own (S26 answers 5).
 		theirs, err := s.prefillSources(ctx, org, f, a, true)
 		if err != nil {
-			return false, nil, err
+			return false, err
 		}
 		sources = append(sources, theirs...)
 	}
 	if len(sources) == 0 {
-		return false, nil, nil
+		return false, nil
 	}
 	// Another trust's question matches by key only for a platform library key (S26 answers, after
 	// verification 1): read them only when another trust's answers are used.
 	var library map[string]bool
-	if len(agreed) > 0 {
+	if len(others) > 0 {
 		elements, err := s.q.ListPlatformLibraryElements(ctx)
 		if err != nil {
-			return false, nil, err
+			return false, err
 		}
 		library = prefill.LibraryKeys(elements)
 	}
 	filled, err := prefill.Fill(target, fill, sources, library)
 	if err != nil {
-		return false, nil, err
+		return false, err
 	}
 	for cid, got := range filled {
 		data, err := json.Marshal(got.Data)
 		if err != nil {
-			return false, nil, err
+			return false, err
 		}
 		meta, err := json.Marshal(got.Prefill)
 		if err != nil {
-			return false, nil, err
+			return false, err
 		}
 		// No row: the patient (or another open) saved this set first, and that stays.
 		if _, err := s.q.PrefillPatientAnswers(ctx, db.PrefillPatientAnswersParams{FormID: f.FormID, ChapterID: uuid.MustParse(cid), Data: data, Prefill: meta}); err != nil {
-			return false, nil, err
+			return false, err
 		}
 	}
-	return len(filled) > 0, nil, nil
-}
-
-// consentQuestion is "Use the answers you gave <hospital> in <month>?" for one other trust (S26
-// answers 3): its id (the answer names it), and the hospital and date of its newest sent HQ.
-type consentQuestion struct {
-	OrgID       uuid.UUID `json:"orgId"`
-	Hospital    string    `json:"hospital"`
-	SubmittedAt time.Time `json:"submittedAt"`
-}
-
-// crossTrust is, for the patient's own form, the other trusts whose answers could pre-fill it
-// (S26 answers 2 and 3): only if this trust's crossTrustPrefill is on, and then each active trust
-// where the person's account has a sent HQ and whose own setting is on. It returns the ones still
-// to ask about, and the ones the person said Yes to. It reads no answers.
-func (s *server) crossTrust(ctx context.Context, f form) ([]consentQuestion, []uuid.UUID, error) {
-	if !f.AccountID.Valid {
-		return nil, nil, nil
-	}
-	mine, err := s.hospitalSettings(ctx, f.OrgID, f.HospitalID)
-	if err != nil || !crossTrustOn(mine) {
-		return nil, nil, err
-	}
-	rows, err := s.q.ListPrefillOffers(ctx, db.ListPrefillOffersParams{AccountID: f.AccountID.UUID, OrgID: f.OrgID})
-	if err != nil {
-		return nil, nil, err
-	}
-	var ask []consentQuestion
-	var yes []uuid.UUID
-	for _, r := range rows {
-		theirs, err := settings.Decode(r.OrgSettings)
-		if err != nil { // that trust's problem mustn't stop this form opening: unreadable is off
-			log.Printf("cross-trust pre-fill: trust %s's settings can't be read, so it isn't offered: %v", r.OrgID, err)
-			continue
-		}
-		if !crossTrustOn(settings.Effective(settings.Platform(), theirs, nil)) {
-			continue
-		}
-		switch {
-		case r.Agreed == nil:
-			ask = append(ask, consentQuestion{OrgID: r.OrgID, Hospital: r.HospitalName, SubmittedAt: r.SubmittedAt.Time})
-		case *r.Agreed:
-			yes = append(yes, r.OrgID)
-		}
-	}
-	// The newest answers first, when several trusts are asked about (one at a time).
-	slices.SortStableFunc(ask, func(a, b consentQuestion) int { return b.SubmittedAt.Compare(a.SubmittedAt) })
-	return ask, yes, nil
-}
-
-// crossTrustOn reads a trust's crossTrustPrefill (a trust-only setting, so a hospital's effective
-// value is its trust's). Unreadable is off.
-func crossTrustOn(v settings.Values) bool {
-	var on bool
-	return settings.Get(v, "crossTrustPrefill", &on) == nil && on
+	return len(filled) > 0, nil
 }
 
 // prefillSources reads the patient's earlier submitted HQ forms in one trust, newest first, each
@@ -199,59 +140,6 @@ func (s *server) prefillSources(ctx context.Context, org uuid.UUID, f form, a *a
 	return out, nil
 }
 
-// prefillConsent records the patient's answer to "Use the answers you gave …?" for one other
-// trust: POST /api/p/episodes/{eid}/prefill-consent {orgId, agree}, from the patient's own session
-// only (staff can't agree for them, S26 answers 4). Once per account and trust: it can't be
-// changed (409), and only a trust the form is asking about can be answered (409 otherwise: the
-// question went away, e.g. a setting was switched off).
-func (s *server) prefillConsent(w http.ResponseWriter, r *http.Request) {
-	f, ok := s.loadPatientForm(w, r)
-	if !ok {
-		return
-	}
-	var in struct {
-		OrgID string `json:"orgId"`
-		Agree *bool  `json:"agree"`
-	}
-	if !readJSON(w, r, 1<<10, &in) {
-		return
-	}
-	org, err := uuid.Parse(in.OrgID)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "We couldn't tell which answers this is about. Please reload the page.")
-		return
-	}
-	if in.Agree == nil {
-		writeError(w, http.StatusBadRequest, "Choose “Yes, use them” or “No, thanks”.")
-		return
-	}
-	if f.PatientSubmittedAt.Valid {
-		writeError(w, http.StatusConflict, "These answers have already been sent.")
-		return
-	}
-	ctx := r.Context()
-	ask, _, err := s.crossTrust(ctx, f)
-	if err != nil {
-		serverError(w, "cross-trust pre-fill", err)
-		return
-	}
-	if !slices.ContainsFunc(ask, func(q consentQuestion) bool { return q.OrgID == org }) {
-		writeError(w, http.StatusConflict, "This question has already been answered, or no longer applies. Please reload the page.")
-		return
-	}
-	n, err := s.q.DecidePrefillConsent(ctx, db.DecidePrefillConsentParams{AccountID: f.AccountID.UUID, OrgID: org, Agreed: *in.Agree,
-		EpisodeID: uuid.NullUUID{UUID: f.ID, Valid: true}})
-	if err != nil {
-		serverError(w, "record consent", err)
-		return
-	}
-	if n == 0 { // answered at the same moment in another tab
-		writeError(w, http.StatusConflict, "This question has already been answered. Please reload the page.")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // setPrefill is what the form sends about one pre-filled Question Set: where each answer came from
 // (prefill.Entry by key) and the opening card's button, once pressed.
 type setPrefill struct {
@@ -273,12 +161,15 @@ func prefillOf(row db.ListEpisodeAnswersRow) (setPrefill, bool) {
 	return p, true
 }
 
-// The opening card's buttons (PRE-02, S25 answers 5).
-var prefillChoices = map[string]bool{"check_each": true, "still_correct": true}
+// The opening card's buttons (PRE-02, S25 answers 5), and Start fresh on a card for another
+// trust's answers (S27).
+var prefillChoices = map[string]bool{"check_each": true, "still_correct": true, "start_fresh": true}
 
 // prefillChoice records the opening card's button for one pre-filled Question Set: POST
-// …/prefill/{cid} {choice: check_each | still_correct}, by the patient or staff for them. The first
-// button pressed is kept; pressing again (another tab) changes nothing.
+// …/prefill/{cid} {choice: check_each | still_correct | start_fresh}, by the patient or staff for
+// them. The first button pressed is kept; pressing it again (another tab) changes nothing. Start
+// fresh also clears the set's answers (startFresh), so it's refused once another button was
+// pressed: the patient would think the answers had gone.
 func (s *server) prefillChoice(w http.ResponseWriter, r *http.Request, f form) {
 	cid, ok := pathID(w, r, "cid", chapterNotFound)
 	if !ok {
@@ -300,13 +191,16 @@ func (s *server) prefillChoice(w http.ResponseWriter, r *http.Request, f form) {
 		return
 	}
 	if !prefillChoices[in.Choice] {
-		writeError(w, http.StatusBadRequest, "Choose “Check each answer” or “Everything is still correct”.")
+		writeError(w, http.StatusBadRequest, "Choose “Check each answer”, “Everything is still correct” or “Start fresh”.")
 		return
 	}
 	ctx := r.Context()
-	n, err := s.q.RecordPrefillChoice(ctx, db.RecordPrefillChoiceParams{
-		Choice: in.Choice, By: uuid.NullUUID{UUID: f.enteredBy, Valid: f.enteredBy != uuid.Nil}, FormID: f.FormID, ChapterID: cid,
-	})
+	by := uuid.NullUUID{UUID: f.enteredBy, Valid: f.enteredBy != uuid.Nil}
+	if in.Choice == "start_fresh" {
+		s.startFresh(w, r, f, cid, by)
+		return
+	}
+	n, err := s.q.RecordPrefillChoice(ctx, db.RecordPrefillChoiceParams{Choice: in.Choice, By: by, FormID: f.FormID, ChapterID: cid})
 	if err != nil {
 		serverError(w, "record choice", err)
 		return
@@ -323,6 +217,13 @@ func (s *server) prefillChoice(w http.ResponseWriter, r *http.Request, f form) {
 		}
 		for _, row := range rows {
 			if p, ok := prefillOf(row); ok && row.Actor == "patient" && row.ChapterID == cid && p.Choice != nil {
+				if *p.Choice == "start_fresh" {
+					// Start fresh emptied the set elsewhere (another tab, or the patient while staff
+					// had the card open): this card's answers are gone, so it mustn't go on as if
+					// they'd been checked (S27 verification 1, finding 1).
+					writeError(w, http.StatusConflict, startedFreshMsg)
+					return
+				}
 				w.WriteHeader(http.StatusNoContent) // already recorded: the first button stays
 				return
 			}
@@ -331,6 +232,67 @@ func (s *server) prefillChoice(w http.ResponseWriter, r *http.Request, f form) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// startFresh is the card's Start fresh for one Question Set (S27 answers 1–2): its pre-filled
+// answers, from any trust, are cleared and the button recorded, only while the set holds another
+// trust's answers and is as Go filled it. A second press of Start fresh changes nothing (204).
+func (s *server) startFresh(w http.ResponseWriter, r *http.Request, f form, cid uuid.UUID, by uuid.NullUUID) {
+	ctx := r.Context()
+	n, err := s.q.StartFreshPrefill(ctx, db.StartFreshPrefillParams{By: by, FormID: f.FormID, ChapterID: cid})
+	if err != nil {
+		serverError(w, "start fresh", err)
+		return
+	}
+	if n > 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if f.PatientSubmittedAt.Valid {
+		writeError(w, http.StatusConflict, "These answers have already been sent.")
+		return
+	}
+	rows, err := s.q.ListEpisodeAnswers(ctx, f.FormID)
+	if err != nil {
+		serverError(w, "list answers", err)
+		return
+	}
+	for _, row := range rows {
+		if row.Actor != "patient" || row.ChapterID != cid {
+			continue
+		}
+		p, ok := prefillOf(row)
+		switch {
+		case !ok:
+		case p.Choice != nil && *p.Choice == "start_fresh":
+			w.WriteHeader(http.StatusNoContent) // already done (another tab)
+			return
+		case !fromOtherTrust(p.Answers):
+			writeError(w, http.StatusConflict, "Start fresh is only for answers copied from another hospital's questionnaire.")
+			return
+		default: // another button was pressed, or the answers were changed since
+			writeError(w, http.StatusConflict, "The answers in this section have changed since you opened it, so they weren't cleared. Please reload the page.")
+			return
+		}
+	}
+	writeError(w, http.StatusConflict, "Nothing in this section was filled in from earlier answers.")
+}
+
+// startedFreshMsg refuses a card's other button once Start fresh has cleared the set elsewhere.
+const startedFreshMsg = "The answers in this section were cleared with “Start fresh” somewhere else, so there's nothing here to check. Please reload the page."
+
+// fromOtherTrust reports whether a set's pre-fill map holds another trust's answer.
+func fromOtherTrust(entries json.RawMessage) bool {
+	var m map[string]prefill.Entry
+	if json.Unmarshal(entries, &m) != nil {
+		return false
+	}
+	for _, e := range m {
+		if e.OtherTrust {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *server) patientPrefillChoice(w http.ResponseWriter, r *http.Request) {

@@ -4,8 +4,10 @@
 // Both list each page's pre-filled answers shown (S26, PRE-04): where each came from, and "Changed by
 // patient" where the patient's answer differs from the pre-filled one; and the button the patient
 // pressed on the set's opening card.
-import { useMemo, useState } from "react";
-import { Link } from "react-router";
+// Every answer and disclosure on either tab is a link (S27): it opens Validate for its Question Set
+// at that question, and Back returns here, to the same tab and the same place (jump.ts).
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigationType, useSearchParams } from "react-router";
 import {
   Accordion, Alert, Anchor, Badge, Breadcrumbs, Button, Card, Center, Group, List, Loader, Select, SimpleGrid, Stack, Table, Tabs, Text,
   Title, Tooltip,
@@ -21,6 +23,8 @@ import { StatusBadge } from "./EpisodeList";
 import { useEpisode } from "./EpisodePage";
 import { GeneralNotes } from "./GeneralNotes";
 import { currentAnswers, useEpisodeHQ, type EpisodeHQ } from "./hq";
+import { restoreSpot, saveSpot, takeSpot, validateAt } from "./jump";
+import { sessionStore } from "@/lib/chunkError";
 import { SaveError, isStale, StatusControl } from "./StatusControl";
 import { patientName, type Episode, type EpisodeEvent } from "./types";
 
@@ -29,7 +33,18 @@ type Tab = "validated" | "patient";
 export default function PoaSummary({ base, episodeId }: { base: string; episodeId: string }) {
   const { data, error, reload } = useEpisode(base, episodeId);
   const { hq, error: hqError } = useEpisodeHQ(base, episodeId);
-  const [tab, setTab] = useState<Tab>("validated");
+  // The tab is in the address (?tab=patient), so Back from Validate and a reload keep it (S27).
+  const [params, setParams] = useSearchParams();
+  const tab: Tab = params.get("tab") === "patient" ? "patient" : "validated";
+  const setTab = (t: Tab) => setParams(t === "patient" ? { tab: t } : {}, { replace: true });
+  // Back from Validate: the answer clicked goes back where it was on the screen, once everything is drawn.
+  const navigation = useNavigationType();
+  const loaded = !!data && !!hq;
+  useEffect(() => {
+    if (!loaded) return;
+    const spot = takeSpot(sessionStore(), episodeId);
+    if (spot && navigation === "POP") restoreSpot(spot);
+  }, [loaded, navigation, episodeId]);
   if (error || hqError) return <Alert color="red">{error || hqError}</Alert>;
   if (!data || !hq) return <Center h="40vh"><Loader /></Center>;
   const e = data.episode;
@@ -65,16 +80,16 @@ export default function PoaSummary({ base, episodeId }: { base: string; episodeI
               <Tabs.Tab value="patient">Patient answers</Tabs.Tab>
             </Tabs.List>
           </Tabs>
-          <Summary key={tab} tab={tab} episode={e} events={data.events} hq={hq} path={path} onChanged={reload} />
+          <Summary key={tab} tab={tab} episode={e} events={data.events} hq={hq} path={path} onChanged={reload} episodeId={episodeId} />
         </Stack>
       </Card>
     </Stack>
   );
 }
 
-type SummaryProps = { tab: Tab; episode: Episode; events: EpisodeEvent[]; hq: EpisodeHQ; path: string; onChanged: () => void };
+type SummaryProps = { tab: Tab; episode: Episode; events: EpisodeEvent[]; hq: EpisodeHQ; path: string; onChanged: () => void; episodeId: string };
 
-function Summary({ tab, episode: e, events, hq, path, onChanged }: SummaryProps) {
+function Summary({ tab, episode: e, events, hq, path, onChanged, episodeId }: SummaryProps) {
   const vars = useMemo(() => patientVariables(e), [e]);
   const validated = tab === "validated";
   const sets = useMemo(() => {
@@ -127,7 +142,7 @@ function Summary({ tab, episode: e, events, hq, path, onChanged }: SummaryProps)
           <Accordion.Item key={s.id} value={s.id} data-testid={`poa-set-${s.name}`}>
             <Accordion.Control><Title order={4} c="blue.9">{s.name}</Title></Accordion.Control>
             <Accordion.Panel>
-              <SetSection set={s} byLine={byLine(validated, e, hq, s.id)} validated={validated} />
+              <SetSection set={s} byLine={byLine(validated, e, hq, s.id)} validated={validated} answerLink={answerLink(path, episodeId, s.id)} />
             </Accordion.Panel>
           </Accordion.Item>
         ))}
@@ -157,7 +172,33 @@ function byLine(validated: boolean, e: Episode, hq: EpisodeHQ, setId: string): s
   return e.patientSubmittedAt ? `${who} on ${formatDateTime(e.patientSubmittedAt)}` : `${who}, not sent yet`;
 }
 
-function SetSection({ set, byLine, validated }: { set: PoaSet; byLine: string; validated: boolean }) {
+/**
+ * An answer or disclosure as a link to Validate at its question (S27). `kind` tells apart the
+ * links to one question (its note, its pre-fill line, its change), for the way back.
+ */
+type AnswerLink = (questionId: string, kind: string, children: React.ReactNode) => React.ReactNode;
+
+const answerLink = (path: string, episodeId: string, setId: string): AnswerLink =>
+  function AnswerLinkTo(questionId, kind, children) {
+    const anchor = `${setId}:${kind}:${questionId}`;
+    return (
+      <Anchor
+        component={Link}
+        to={validateAt(path, setId, questionId)}
+        state={{ from: "poa" }}
+        inherit
+        data-poa-anchor={anchor}
+        data-testid="poa-answer-link"
+        onClick={(ev: React.MouseEvent<HTMLAnchorElement>) =>
+          saveSpot(sessionStore(), episodeId, { anchor, top: ev.currentTarget.getBoundingClientRect().top })
+        }
+      >
+        {children}
+      </Anchor>
+    );
+  };
+
+function SetSection({ set, byLine, validated, answerLink }: { set: PoaSet; byLine: string; validated: boolean; answerLink: AnswerLink }) {
   const choice = set.prefill && set.pages.some((p) => p.prefilled.length > 0) ? prefillChoiceText(set.prefill, formatDay) : "";
   return (
     <Stack gap="lg">
@@ -170,7 +211,7 @@ function SetSection({ set, byLine, validated }: { set: PoaSet; byLine: string; v
               <Text size="xs" c="dimmed">{byLine}</Text>
               {p.notes.map((n) => (
                 <Group key={n.text} gap={6}>
-                  <Text size="sm" c="blue.8" td="underline">{n.text}</Text>
+                  <Text size="sm" c="blue.8" td="underline">{answerLink(n.questionId, `note-${n.text}`, n.text)}</Text>
                   {validated && n.corrected && (
                     <Tooltip label={changeText(p.changes.find((c) => c.questionId === n.questionId))}>
                       <Badge size="xs" color="orange" variant="light">Changed by clinician</Badge>
@@ -185,7 +226,7 @@ function SetSection({ set, byLine, validated }: { set: PoaSet; byLine: string; v
           )}
           {p.captures.map((c) => (
             <Stack key={c.questionId} gap={4} mb="sm">
-              <Text fw={700} c="blue.9">{c.title}</Text>
+              <Text fw={700} c="blue.9">{answerLink(c.questionId, "capture", c.title)}</Text>
               <Text size="xs" c="dimmed">{byLine}</Text>
               <Capture capture={c} />
             </Stack>
@@ -195,7 +236,7 @@ function SetSection({ set, byLine, validated }: { set: PoaSet; byLine: string; v
               <List size="sm">
                 {p.prefilled.map((m) => (
                   <List.Item key={m.questionId}>
-                    {m.title} — {prefillSourceText(m.entry, formatDay)}
+                    {answerLink(m.questionId, "prefill", m.title)} — {prefillSourceText(m.entry, formatDay)}
                     {m.changed && (
                       <>
                         {" "}<Badge size="xs" color="orange" variant="light">Changed by patient</Badge> pre-filled “{m.was}”, patient answered “{m.now}”
@@ -210,7 +251,7 @@ function SetSection({ set, byLine, validated }: { set: PoaSet; byLine: string; v
             <Alert color="orange" variant="light" p="xs" mt={4} title={`Changed by the clinician on ${p.title}`}>
               <List size="sm">
                 {p.changes.map((c) => (
-                  <List.Item key={c.questionId}>{c.title} {changeText(c)}</List.Item>
+                  <List.Item key={c.questionId}>{answerLink(c.questionId, "change", <>{c.title} {changeText(c)}</>)}</List.Item>
                 ))}
               </List>
             </Alert>

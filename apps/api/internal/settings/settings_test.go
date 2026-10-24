@@ -26,7 +26,7 @@ func TestEveryKeyHasAValidDefault(t *testing.T) {
 		}
 	}
 	// ORG-04's list, by level.
-	for _, k := range []string{"retentionYears", "crossTrustPrefill"} {
+	for _, k := range []string{"retentionYears"} {
 		if d, ok := Lookup(k); !ok || d.Level != TrustOnly {
 			t.Errorf("%s should be trust-only", k)
 		}
@@ -64,10 +64,10 @@ func TestEffective(t *testing.T) {
 		}
 	})
 	t.Run("a hospital overrides only what it may", func(t *testing.T) {
-		org := Values{"retentionYears": raw("10"), "contact.phone": raw(`"0100"`), "crossTrustPrefill": raw("true")}
-		hosp := Values{"retentionYears": raw("2"), "crossTrustPrefill": raw("false"), "contact.phone": raw(`"0200"`)}
+		org := Values{"retentionYears": raw("10"), "contact.phone": raw(`"0100"`)}
+		hosp := Values{"retentionYears": raw("2"), "contact.phone": raw(`"0200"`)}
 		got := Effective(platform, org, hosp)
-		if string(got["retentionYears"]) != "10" || string(got["crossTrustPrefill"]) != "true" {
+		if string(got["retentionYears"]) != "10" {
 			t.Errorf("trust-only settings must come from the trust: %v", got)
 		}
 		if string(got["contact.phone"]) != `"0200"` {
@@ -115,7 +115,6 @@ func TestEffective(t *testing.T) {
 func TestValidate(t *testing.T) {
 	ok := []struct{ key, in, want string }{
 		{"retentionYears", "8", "8"},
-		{"crossTrustPrefill", "true", "true"},
 		{"feature.proms", "false", "false"},
 		{"branding.logoUrl", `" https://cdn.example/logo.png "`, `"https://cdn.example/logo.png"`},
 		{"branding.logoUrl", `""`, `""`},
@@ -149,7 +148,7 @@ func TestValidate(t *testing.T) {
 		{"retentionYears", "101"},
 		{"retentionYears", "2.5"},
 		{"retentionYears", `"8"`},
-		{"crossTrustPrefill", `"yes"`},
+		{"crossTrustPrefill", "true"}, // S27: removed (another trust's answers are always copied)
 		{"feature.proms", "1"},
 		{"branding.logoUrl", `"javascript:alert(1)"`},
 		{"branding.logoUrl", `"logo.png"`},
@@ -201,6 +200,14 @@ func TestStatusMessagesAreOffByDefault(t *testing.T) {
 			if !ok || tmpl.Kind != Template || !strings.Contains(tmpl.Help, "optional") || tmpl.Group != sw.Group {
 				t.Errorf("templates.%s%s = %+v, want a template beside its switch, with {{link}} optional", stem, ch, tmpl)
 			}
+		}
+	}
+	// S27 (pending.md, S21): Cancel is allowed from any status, so the default wording doesn't
+	// assume a questionnaire still to fill in.
+	for _, ch := range []string{"Sms", "Email"} {
+		d, _ := Lookup("templates.cancelled" + ch)
+		if s := string(d.Default); !strings.Contains(s, "has cancelled your pre-operative assessment") || strings.Contains(s, "fill it in") || strings.Contains(s, "questionnaire") {
+			t.Errorf("templates.cancelled%s default %s, want neutral wording", ch, s)
 		}
 	}
 	if d, _ := Lookup("worklists.soonDays"); string(d.Default) != "14" {

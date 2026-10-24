@@ -302,7 +302,8 @@ func (s Sender) SendStatus(ctx context.Context, episodeID uuid.UUID, stem, statu
 		}
 		subject := d.HospitalName + ": ready for your operation"
 		if status != "ready_for_admission" {
-			subject = d.HospitalName + ": your health questionnaire was cancelled"
+			// Neutral, as the body is (S27): Cancel is allowed from any status, long after the HQ was sent.
+			subject = d.HospitalName + ": your pre-operative assessment was cancelled"
 		}
 		id, err := s.Email.SendEmail(ctx, d.Email, subject, body)
 		if err != nil {

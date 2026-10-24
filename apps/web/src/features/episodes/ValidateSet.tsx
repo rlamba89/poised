@@ -4,22 +4,26 @@
 // "Validate" checks required questions and stamps the set. Saves carry the set's revision, so a
 // save from a stale tab gets a 409 and the page asks for a reload instead of overwriting (S02a).
 // Pre-filled answers (S26, PRE-04) say where they came from, and which the patient changed; the set
-// says which button of its opening card the patient pressed.
+// says which button of its opening card the patient pressed (S27: or that they started fresh).
+// Opened from an answer on the POA Summary (S27, `?q=<question>`), it shows that question
+// highlighted, with a link back to the POA Summary where the clinician was (jump.ts).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { Alert, Anchor, Badge, Button, Card, Center, Group, Loader, Stack, Text, Title } from "@mantine/core";
 import { IconArrowLeft, IconCircleCheck } from "@tabler/icons-react";
 import type { Model } from "survey-core";
 import { Survey } from "survey-react-ui";
 import "survey-core/survey-core.css";
 import {
-  answerSaver, patientVariables, prefillChoiceText, prefillMarks, refreshClinicalSummaries, registerClinicalProperties, sameAnswer, type Answers,
+  answerSaver, patientVariables, prefillChoiceText, prefilledAnswers, prefillMarks, refreshClinicalSummaries, registerClinicalProperties, sameAnswer,
+  type Answers,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { formatDateTime, formatDay } from "@/lib/format";
 import { clinicianModel } from "@/features/preview/clinicianView";
 import { showCorrections } from "./corrections";
 import { showPrefillOrigins } from "./prefillOrigins";
+import { highlightQuestion, questionOf } from "./jump";
 import { useEpisode } from "./EpisodePage";
 import { currentAnswers, useEpisodeHQ, type EpisodeHQ, type HQSet } from "./hq";
 import { patientName, type Episode } from "./types";
@@ -49,6 +53,10 @@ type ValidateProps = { base: string; episode: Episode; hq: EpisodeHQ; set: HQSet
 
 function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Opened from the POA Summary (S27): its answer's question, and the way back.
+  const jumpTo = questionOf(location.search);
+  const fromPoa = (location.state as { from?: string } | null)?.from === "poa";
   const back = `${base}/episodes/${episode.id}`;
   const path = `${base}/episodes/${episode.id}/answers/${set.id}`;
   const editable = episode.status === "ready_for_review";
@@ -69,7 +77,8 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
     m.showCompleteButton = false; // "Validate" replaces it
     m.readOnly = !editable;
     if (patient) showCorrections(m, patient);
-    if (patient && prefill) showPrefillOrigins(m, prefill, patient);
+    const entries = prefilledAnswers(prefill); // none once the patient started fresh (S27)
+    if (patient && entries) showPrefillOrigins(m, entries, patient);
     m.data = currentAnswers(hq, set.id);
     return m;
     // Built once: answers then live in the model.
@@ -77,7 +86,10 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
   }, [set.id]);
 
   // The set's pre-filled answers shown when it opened (S26), for the line above it.
-  const prefilled = useMemo(() => (patient && prefill ? prefillMarks(model, prefill.answers, patient) : []), [model, patient, prefill]);
+  const prefilled = useMemo(() => (patient ? prefillMarks(model, prefilledAnswers(prefill), patient) : []), [model, patient, prefill]);
+
+  // The question the POA Summary's link named, shown and highlighted once the survey is drawn.
+  useEffect(() => (jumpTo ? highlightQuestion(model, jumpTo) : undefined), [model, jumpTo]);
 
   // Saves run one at a time, each with the revision the last one returned. Built once, like the model.
   const saver = useMemo(
@@ -137,9 +149,17 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
 
   return (
     <Stack>
-      <Anchor component={Link} to={back} size="sm">
-        <Group gap={4}><IconArrowLeft size={14} /> {patientName(episode)}</Group>
-      </Anchor>
+      <Group gap="lg">
+        <Anchor component={Link} to={back} size="sm">
+          <Group gap={4}><IconArrowLeft size={14} /> {patientName(episode)}</Group>
+        </Anchor>
+        {fromPoa && (
+          // Back to the POA Summary where the clinician was: the same as the browser's Back.
+          <Anchor component="button" type="button" size="sm" onClick={() => navigate(-1)} data-testid="back-to-poa">
+            <Group gap={4}><IconArrowLeft size={14} /> POA Summary</Group>
+          </Anchor>
+        )}
+      </Group>
       <Group justify="space-between">
         <Group gap="sm">
           <Title order={3}>{set.name}</Title>
@@ -166,6 +186,11 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
       {hq.enteredBy[set.id] && (
         <Alert color="orange" data-testid="entered-by">
           The patient&apos;s answers here were entered by {hq.enteredBy[set.id]} on the patient&apos;s behalf.
+        </Alert>
+      )}
+      {prefill?.choice === "start_fresh" && (
+        <Alert color="brand" variant="light" data-testid="prefill-set">
+          Answers were pre-filled here from the patient&apos;s earlier questionnaires. {prefillChoiceText(prefill, formatDay)}
         </Alert>
       )}
       {prefill && prefilled.length > 0 && (
