@@ -163,6 +163,6 @@ Rahul's 24 Oct decisions after plan C4, before plan C5.
 
 | ID | Plan | Builds | Needs from you first | Status |
 | --- | --- | --- | --- | --- |
-| [S27](S27-c4-followups/brief.md) | — | Pre-fill from other trusts without asking (no trust setting; the card names the hospital, with Start fresh), the archived read-only View and badge, neutral Cancelled wording, format names in the publish refusal, clickable answers on the POA Summary | Answered 24 Oct ([answers.md](S27-c4-followups/answers.md)) | Not started |
+| [S27](S27-c4-followups/brief.md) | — | Pre-fill from other trusts without asking (no trust setting; the card names the hospital, with Start fresh), the archived read-only View and badge, neutral Cancelled wording, format names in the publish refusal, clickable answers on the POA Summary | Answered 24 Oct ([answers.md](S27-c4-followups/answers.md)) | **Verified** (24 Oct, [verification 3](S27-c4-followups/verify.md)) |
 
 **Why this order:** nothing needs AWS until someone outside your laptop has to use the app. Building locally first lets the automatic run go without AWS stops. The cost is that the AWS hosting setup and its near-£0 idle cost are proven later (decided 12 Oct; [decisions.md](../decisions.md)).

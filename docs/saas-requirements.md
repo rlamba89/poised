@@ -113,7 +113,7 @@ This replaces today's `viewer / author / reviewer / publisher / hospital_admin /
 | ORG-02 | **Creating a trust** takes its name, short code, contact details, logo and the first trust admin's email (they get an invite). **Creating a hospital** takes the trust, name, address, patient-facing phone and email, and an optional logo. | Must |
 | ORG-06 | **Countries.** Each country runs as its own deployment at its own web address (A-20). A trust is created in its country's deployment, and all its data stays there. Moving a trust to another country is a planned migration. Adding a country needs config and the runbook, never a code change. Only the UK runs for now. *(Changed 8 Oct; it was a per-trust data region, A-19.)* | Must |
 | ORG-03 | A trust or hospital can be suspended (no logins, data kept) and re-activated. | Must |
-| ORG-04 | **Settings**, by level:<ul><li>**trust-only:** retention period, cross-trust pre-fill allowed;</li><li>**hospital can override:** feature switches and opt-ins (ORG-05), branding, contact details, default HQ, reminder schedule, auto-archive periods, the "what happens next" text and patient message templates.</li></ul> | Must |
+| ORG-04 | **Settings**, by level:<ul><li>**trust-only:** retention period (*cross-trust pre-fill allowed: removed 24 Oct, S27; another trust's answers are always copied*);</li><li>**hospital can override:** feature switches and opt-ins (ORG-05), branding, contact details, default HQ, reminder schedule, auto-archive periods, the "what happens next" text and patient message templates.</li></ul> | Must |
 | ORG-05 | **Feature switches and opt-ins:** assessments, PROMs, files, observations, and **each licensed instrument** (PRM-08). They're set when a trust or hospital is added, and can be changed later. The trust sets the default, and each hospital either follows it or opts in or out on its own, so some hospitals in a trust can have a feature and others not. | Must |
 | STF-01 | An admin invites staff by email, chooses the **scope** (the whole trust or one hospital) and the **role**. The invite expires after 7 days. | Must |
 | STF-02 | One staff account can belong to several trusts and hospitals, with a role in each. Inviting an existing email adds a membership; it doesn't create a second account. | Must |
@@ -278,14 +278,14 @@ This replaces today's `viewer / author / reviewer / publisher / hospital_admin /
    - **Answers never expire** (agreed). Every pre-filled answer shows its date, and anything that changes over time is marked "Always ask fresh" (point 5).
    - This is a plain JSON lookup, so Go still never evaluates SurveyJS.
    - Repeating panels (medicines, admissions) are copied row by row.
-7. **Other trusts:** answers from another trust are offered only if the trust allows it (ORG-04) **and** the patient agrees on screen: "Use the answers you gave St Mary's in March?" *Changed 24 Oct (Rahul): no trust setting and no question; another trust's answers are always copied, and the patient sees a message with a way to start fresh. IG/DPO sign-off before go-live ([decisions.md](decisions.md) §2, 24 Oct).*
+7. **Other trusts:** answers from another trust are offered only if the trust allows it (ORG-04) **and** the patient agrees on screen: "Use the answers you gave St Mary's in March?" *Changed 24 Oct (Rahul): no trust setting and no question; another trust's answers are always copied, and the patient sees a message with a way to start fresh. IG/DPO sign-off before go-live ([decisions.md](decisions.md) §2, 24 Oct). Built in S27, for the patient and for staff on their behalf (PRE-02).*
 
 ### Requirements
 
 | ID | Requirement | Priority |
 | --- | --- | --- |
 | PRE-01 | Questions in a new HQ whose keys the patient answered before are pre-filled, using the rules above. | Must |
-| PRE-02 | Each Question Set with pre-filled answers opens with: "We've filled in 23 answers from your questionnaire on 3 Mar 2026. Please check them." There are two buttons: **Check each answer** and **Everything is still correct**. The second skips to the questions that weren't pre-filled. | Must |
+| PRE-02 | Each Question Set with pre-filled answers opens with: "We've filled in 23 answers from your questionnaire on 3 Mar 2026. Please check them." There are two buttons: **Check each answer** and **Everything is still correct**. The second skips to the questions that weren't pre-filled. *Changed 24 Oct (S27): when some of the set's answers come from another trust, the card names its hospital ("…from your questionnaire at Hospital B1 on 3 Mar 2026…") and adds **Start fresh**, which clears the set's pre-filled answers (any trust's), is recorded like the other two, and is offered only until the set changes.* | Must |
 | PRE-03 | Pre-filled answers show a small "From your answers on 3 Mar 2026" marker in the patient view. | Must |
 | PRE-04 | The clinician sees which answers were pre-filled, where from, and whether the patient changed them. | Must |
 | PRE-05 | The editor shows on each question "Pre-fills from N other HQs" or "New question", and offers "Same as…" and "Always ask fresh". | Must |
