@@ -10,6 +10,7 @@
 - **Editor:** a simple list (add, remove, reorder, options per block), **not** a free-form designer.
 - **Renderer:** reuses the POA Summary components.
 - **PDF:** the browser prints to PDF (D-3), and the page shows the template name, the date and who generated it. A server-side PDF is later.
+- **The POA Summary's own print-designed PDF** (Rahul, 24 Oct): a report laid out for paper, which an anaesthetist can print and carry. Today's Print prints the web page, with its tabs and web elements; that isn't good enough. Build it with the document renderer above.
 
 ## PROMs
 

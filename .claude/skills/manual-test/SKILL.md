@@ -22,6 +22,7 @@ The `/run-sessions` conductor started you as an agent, and it's running the app 
 - **If the app isn't up,** don't ask Rahul. End with `STATUS: BLOCKED app not running`.
 - **Never trigger a browser alert or confirm dialog.** Mark a case that needs one as **Blocked: needs a browser dialog, hand check for Rahul**.
 - **A case your tools can't do** (e.g. blocking a network request, or the real print dialog) is **Blocked: hand check for Rahul**, not Failed. List these together in the report under "Hand checks for Rahul".
+- **Downloads and printing aren't hand checks** (Rahul, 24 Oct). A downloaded file (e.g. Export CSV) lands in `~/Downloads`: find it, read it and check its contents. For Print, render the page's print layout to a PDF (e.g. Playwright `page.pdf()` or Chrome headless `--print-to-pdf` against the local app) and inspect it. Suspending and re-activating a trust locally is allowed in a test; put it back as you found it.
 - **Don't tell Rahul what to do next.** End with one status line, then the report's path:
   - `STATUS: ALL_PASSED`: no failures. Blocked cases are listed as hand checks.
   - `STATUS: FAILURES <n>`.

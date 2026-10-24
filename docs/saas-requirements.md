@@ -278,7 +278,7 @@ This replaces today's `viewer / author / reviewer / publisher / hospital_admin /
    - **Answers never expire** (agreed). Every pre-filled answer shows its date, and anything that changes over time is marked "Always ask fresh" (point 5).
    - This is a plain JSON lookup, so Go still never evaluates SurveyJS.
    - Repeating panels (medicines, admissions) are copied row by row.
-7. **Other trusts:** answers from another trust are offered only if the trust allows it (ORG-04) **and** the patient agrees on screen: "Use the answers you gave St Mary's in March?"
+7. **Other trusts:** answers from another trust are offered only if the trust allows it (ORG-04) **and** the patient agrees on screen: "Use the answers you gave St Mary's in March?" *Changed 24 Oct (Rahul): no trust setting and no question; another trust's answers are always copied, and the patient sees a message with a way to start fresh. IG/DPO sign-off before go-live ([decisions.md](decisions.md) §2, 24 Oct).*
 
 ### Requirements
 
