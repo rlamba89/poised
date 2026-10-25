@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/rlamba89/poised/apps/api/internal/apitest"
+	"github.com/rlamba89/poised/apps/api/internal/content"
 )
 
 func TestMain(m *testing.M) { os.Exit(apitest.Main(m)) }
@@ -41,6 +42,16 @@ func TestSeedTwice(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := c.DB.Exec(ctx, `INSERT INTO library_questions (key, title, element) VALUES ('q_gone', 'Gone', '{"type":"text","name":"q_gone"}')`); err != nil {
+		t.Fatal(err)
+	}
+	// …retires a starter question and an example video, and renames another (S33)…
+	if _, err := c.DB.Exec(ctx, `UPDATE library_questions SET retired = true WHERE key = 'smoker' AND org_id IS NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.DB.Exec(ctx, `UPDATE content_items SET status = 'retired' WHERE id = $1`, exampleVideos[0].id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.DB.Exec(ctx, `UPDATE content_items SET title = 'Changed' WHERE id = $1`, exampleVideos[1].id); err != nil {
 		t.Fatal(err)
 	}
 	// …and retires a demo procedure and clears its default HQ (S19).
@@ -82,6 +93,32 @@ func TestSeedTwice(t *testing.T) {
 		t.Errorf("the platform library has %d questions (smoker: %q), want 11 as seeded", platform, smoker)
 	}
 
+	// S33: a retired starter question stays retired: the seed adds new ones, but a platform admin's
+	// retirement is a real decision, not test data.
+	var smokerRetired bool
+	if err := c.DB.QueryRow(ctx, `SELECT retired FROM library_questions WHERE key = 'smoker' AND org_id IS NULL`).Scan(&smokerRetired); err != nil {
+		t.Fatal(err)
+	}
+	if !smokerRetired {
+		t.Error("the seed brought back a retired starter question")
+	}
+	// S33: the example videos are back as seeded: Preopsis's, active, YouTube or Vimeo links,
+	// titled "Example: …", each with a length and a checklist tag.
+	var examples, active, named int
+	if err := c.DB.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE status = 'active' AND org_id IS NULL AND kind = 'video' AND length_seconds > 0),
+			count(*) FILTER (WHERE title LIKE 'Example: %')
+		FROM content_items`).Scan(&examples, &active, &named); err != nil {
+		t.Fatal(err)
+	}
+	if examples != len(exampleVideos) || active != examples || named != examples || examples < 2 {
+		t.Errorf("content items: %d, %d active platform videos, %d titled as examples; want the %d examples", examples, active, named, len(exampleVideos))
+	}
+	for _, v := range exampleVideos {
+		if _, ok := content.CheckVideo(v.url); !ok {
+			t.Errorf("example %q: %s isn't a YouTube or Vimeo link", v.title, v.url)
+		}
+	}
+
 	// S19: each trust has a published demo HQ and a few procedures, most with it as their default
 	// HQ, one for Hospital A1 only, none retired.
 	var trustWide, a1Only, withDefault, retired, ofOtherTrust int
@@ -111,7 +148,7 @@ func counts(t *testing.T, c *apitest.Client) map[string]int {
 	t.Helper()
 	out := map[string]int{}
 	for _, table := range []string{"categories", "codes", "orgs", "hospitals", "users", "memberships", "platform_admins", "patients",
-		"questionnaires", "questionnaire_versions", "chapters", "procedures", "library_questions"} {
+		"questionnaires", "questionnaire_versions", "chapters", "procedures", "library_questions", "content_items"} {
 		var n int
 		if err := c.DB.QueryRow(context.Background(), "SELECT count(*) FROM "+table).Scan(&n); err != nil {
 			t.Fatalf("%s: %v", table, err)

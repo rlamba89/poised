@@ -188,6 +188,9 @@ func seed(ctx context.Context, db interface {
 		if err := seedLibrary(ctx, tx); err != nil {
 			return err
 		}
+		if err := seedContent(ctx, tx); err != nil {
+			return err
+		}
 		return seedDemo(ctx, tx)
 	})
 }
@@ -252,7 +255,8 @@ func seedCodes(ctx context.Context, tx pgx.Tx, dir string) error {
 
 // seedLibrary puts the platform's starter library back as library.json has it: each question
 // added or updated by its key, and any other platform question removed. Questionnaires it was
-// inserted into keep their copies. A trust's own library is left alone.
+// inserted into keep their copies. A trust's own library is left alone, and so is a starter
+// question a platform admin retired (S33): that's a decision, not test data.
 func seedLibrary(ctx context.Context, tx pgx.Tx) error {
 	items, err := starterLibrary()
 	if err != nil {
@@ -275,6 +279,37 @@ func seedLibrary(ctx context.Context, tx pgx.Tx) error {
 		return fmt.Errorf("library: %w", err)
 	}
 	fmt.Printf("library questions: %d\n", len(items))
+	return nil
+}
+
+// exampleVideos are the content library's made-up examples (S33 answers 1): Preopsis's, so every
+// trust sees them, all pointing to one public test film (the Blender Foundation's "Big Buck
+// Bunny"), so the video picker (S34) can be tried. Real ones replace them before go-live. Each run
+// puts them back as seeded; other items are left alone.
+var exampleVideos = []struct {
+	id, title, url string
+	seconds        int
+	tags           []string
+}{
+	{"00000000-0000-4000-8000-000000000501", "Example: Your anaesthetic explained", exampleVideoURL, 635, []string{"The anaesthetic", "Example"}},
+	{"00000000-0000-4000-8000-000000000502", "Example: Fasting before your operation", exampleVideoURL, 635, []string{"Fasting", "Example"}},
+	{"00000000-0000-4000-8000-000000000503", "Example: Getting ready for a knee replacement", exampleVideoURL, 635, []string{"Knee replacement", "Prehab", "Example"}},
+}
+
+const exampleVideoURL = "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
+
+// seedContent puts the example videos back as seeded.
+func seedContent(ctx context.Context, tx pgx.Tx) error {
+	for _, v := range exampleVideos {
+		if _, err := tx.Exec(ctx, `INSERT INTO content_items (id, org_id, kind, title, url, length_seconds, tags)
+			VALUES ($1, NULL, 'video', $2, $3, $4, $5)
+			ON CONFLICT (id) DO UPDATE SET org_id = NULL, kind = 'video', title = EXCLUDED.title, url = EXCLUDED.url,
+				length_seconds = EXCLUDED.length_seconds, tags = EXCLUDED.tags, status = 'active', updated_at = now()`,
+			v.id, v.title, v.url, v.seconds, v.tags); err != nil {
+			return fmt.Errorf("example video %s: %w", v.title, err)
+		}
+	}
+	fmt.Printf("example videos: %d\n", len(exampleVideos))
 	return nil
 }
 
