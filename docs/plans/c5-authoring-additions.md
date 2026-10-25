@@ -51,10 +51,10 @@
 
 ## Status
 
-**Split into sessions on 25 Oct 2026; in progress: S32 verified (25 Oct, [verification 1](../sessions/S32-summary-element/verify.md)).** The briefs are in [docs/sessions/](../sessions/README.md). Rahul answered every question on 25 Oct (each session's `answers.md`; decisions.md §2), and **dropped S31**: capture blocks (CAP-01/02) are deferred, since a Clinician Question Set already does the job. J10 starts in S32 without a capture block.
+**Split into sessions on 25 Oct 2026; in progress: S32 verified (25 Oct, [verification 1](../sessions/S32-summary-element/verify.md)); S33 verified (25 Oct, [verification 2](../sessions/S33-content-library/verify.md)).** The briefs are in [docs/sessions/](../sessions/README.md). Rahul answered every question on 25 Oct (each session's `answers.md`; decisions.md §2), and **dropped S31**: capture blocks (CAP-01/02) are deferred, since a Clinician Question Set already does the job. J10 starts in S32 without a capture block.
 - ~~**S31:** clinician capture blocks on Groups and Sections (CAP-01/02); J10 starts;~~ *dropped 25 Oct*
 - **S32:** the Clinical Summary element, replacing the page switch (SUM-01); SGN-04 changed; *verified 25 Oct* ([build notes](../sessions/S32-summary-element/build-notes.md): differences from this plan are the builder's choices listed there, e.g. the summary is stored as one small element expanded only for clinicians);
-- **S33:** the content library, platform and trust (INF-05, PX-13), with the superadmin list of the starter questions promised in S24's answers;
+- **S33:** the content library, platform and trust (INF-05, PX-13), with the superadmin list of the starter questions promised in S24's answers; *verified 25 Oct (verification 2, after verification 1's fixes and test report 4)* ([build notes](../sessions/S33-content-library/build-notes.md): a video's length is required; a leaflet is any https link; retiring is reversible; the video link cases are a file S34's check must also run);
 - **S34:** the Video element and its library picker (INF-01/02); J10 completed;
 - **S35:** the Information element, with the plan's Tiptap-or-Markdown choice (INF-03);
 - **S36:** the patient's Information per episode (INF-04, from the procedure's `info_content`) and the estimated time (PX-10).

@@ -139,6 +139,21 @@ docker compose up -d --force-recreate db
 - ~~**J8 is flaky on a long-lived database:** its mobile is one of 1,000 (`+447700900NNN`), so `captured(mobile)` can find another run's texts. Widen the range or filter by episode.~~ *Rahul, 25 Oct: fix it. Fixed in S30 (tested 25 Oct): J8 counts only texts carrying a link this episode's emails carry.*
 - `EpisodeList.tsx` uses `openTaskCount` only as a truthiness check and renders `e.openTasks` directly (tidy-up).
 
+### From S33's test reports (25 Oct; test report 3 all passed; none blocking)
+
+- **At tablet width (768px) the content library's Retire / Bring back column is reached by scrolling the table sideways** (the items table is 820px in a 736px box; Edit shows without scrolling). Nothing is clipped. If every button should show at tablet width, narrow the table (e.g. the link under the title only, or actions in one column).
+- **The PLATFORM ADMIN badge shows in the console's top bar on its refusal page** for someone who isn't a platform admin (S10 behaviour, seen again in S33).
+- **A platform admin on a hospital URL gets "You don't have access to this hospital" with no top bar or Sign out** (S08 behaviour).
+- **S34 must run `apps/api/internal/content/testdata/video_links.json` in its TypeScript video check** (the brief's "a test keeps the two lists in step").
+- **From S33's test report 4 (Minor, usability): a failed Retire or Bring back low on a long list shows its red message at the top of the page, off-screen** (`ContentLibrary.tsx`: the page scrolls to the top for a success `notice`, not for an `error`), so the admin sees nothing happen. Scroll to the message on an error too, or show the failure beside the row. Procedures' page (S19) behaves the same.
+- **From S33's verification 1, for S34:** `GET /api/o/{oid}/content/search` refuses a super clinician of one hospital only (as the trust's questionnaires are changed only by whole-trust staff, decisions 12 Oct). If a hospital-only super clinician may ever edit their hospital's own questionnaire, the picker's role check must follow `canChange`.
+- **From S33's verification 2 (none blocking; [verify.md](sessions/S33-content-library/verify.md)):**
+  - **For Rahul: a retired starter question's key is still offered by "Same as…" through the trust's own questionnaires that already hold a copy** (`question_keys.go`: only the Library source drops it). Reading: a copy already in a trust's questionnaire is the trust's own question, so linking to it is still allowed; the library entry itself is no longer offered. If retiring should stop the key being adopted anywhere, filter retired keys from every source.
+  - **The checklist's "+ topic" buttons ignore the 10-tag limit** (`ContentLibrary.tsx`): with 9 tags typed, three topic clicks make 12, and Go answers "Too many tags (10 at most)." on Add. Disable the buttons at 10.
+  - **A length the form can't read ("1:2:3", "0:00", "10m") gets "Enter the video's length."** (`content.ts` `parseLength` sends null): say "Type the length as m:ss" instead.
+  - **A trust's PATCH of a Preopsis item locks that platform row (`FOR UPDATE`) before its 403** (`GetContentItem`); harmless at today's scale, but checking ownership before locking would avoid it.
+- **From S33's verification 1, optional tidy-ups:** the row → `contentItem` mapping is written three times (`httpapi/content.go`); `canSeeContent`/`canManageContent` could alias `canManageProcedures`/`canManageStaff`; "Same as…" walks `keySources` twice per search (offered and linked); `changeContent` takes its row lock before reading the body. The example videos are put back as active on every seed, unlike starter questions (deliberate: demo data).
+
 ### From S32's verification 1 (25 Oct; none blocking; [verify.md](sessions/S32-summary-element/verify.md))
 
 - **Rahul to decide: a summary with a condition** (`summary.ts`, `walk`): a hidden summary still takes its scope's notes, so Validate shows neither them nor its comments box, while the POA Summary prints them under its title. Options: the notes fall back to the next visible summary, or (simpler, recommended) the editor offers no Logic on a summary.
