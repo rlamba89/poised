@@ -49,3 +49,8 @@ export function taskHistory(t: Task): string[] {
 export function openFirst(tasks: Task[]): Task[] {
   return [...tasks.filter((t) => !t.doneAt), ...tasks.filter((t) => t.doneAt)];
 }
+
+/** How many open tasks to show (S21), or null for none: an archived episode shows no count (S29). */
+export function openTaskCount(status: string, open: number): number | null {
+  return status === "archived" ? null : open;
+}

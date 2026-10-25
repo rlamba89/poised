@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatDateTime } from "@/lib/format";
-import { openFirst, taskHistory, teamLabel, type Task } from "./tasks";
+import { openFirst, openTaskCount, taskHistory, teamLabel, type Task } from "./tasks";
 
 const task = (over: Partial<Task>): Task => ({
   id: "t1", title: "Book anaesthetic review", team: "anaesthetist", createdAt: "2026-10-21T09:00:00Z",
@@ -36,5 +36,18 @@ describe("openFirst and teamLabel", () => {
   });
   it("names the teams", () => {
     expect([teamLabel("nurse"), teamLabel("anaesthetist"), teamLabel("admin")]).toEqual(["Nurse", "Anaesthetist", "Admin"]);
+  });
+});
+
+// S29 (Rahul, 25 Oct): an archived episode's tasks can't be changed, so no count reads as work
+// outstanding; the tasks themselves stay listed.
+describe("openTaskCount", () => {
+  it("counts the open tasks", () => {
+    expect(openTaskCount("ready_for_review", 2)).toBe(2);
+    expect(openTaskCount("cancelled", 1)).toBe(1);
+    expect(openTaskCount("on_hold", 0)).toBe(0);
+  });
+  it("is null once archived", () => {
+    expect(openTaskCount("archived", 3)).toBeNull();
   });
 });

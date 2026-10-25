@@ -11,7 +11,7 @@ import { Badge, Button, Card, Group, NativeSelect, Stack, Text, TextInput, Title
 import { api } from "@/lib/api";
 import type { Episode } from "./types";
 import { SaveError, isStale } from "./StatusControl";
-import { MAX_TASK_TITLE, TEAMS, openFirst, taskHistory, teamLabel, type Task, type Team } from "./tasks";
+import { MAX_TASK_TITLE, TEAMS, openFirst, openTaskCount, taskHistory, teamLabel, type Task, type Team } from "./tasks";
 
 export function TasksPanel({ path, episode, onChanged }: { path: string; episode: Episode; onChanged: () => void }) {
   const [tasks, setTasks] = useState<Task[] | null>(null);
@@ -74,11 +74,11 @@ export function TasksPanel({ path, episode, onChanged }: { path: string; episode
     }
   };
 
-  const open = tasks?.filter((t) => !t.doneAt).length ?? 0;
+  const open = openTaskCount(episode.status, tasks?.filter((t) => !t.doneAt).length ?? 0); // none once archived (S29)
   return (
     <Card withBorder data-testid="tasks">
       <Group justify="space-between" mb="xs">
-        <Title order={4}>Tasks {tasks && tasks.length > 0 && <Text span size="sm" c="dimmed">({open} open)</Text>}</Title>
+        <Title order={4}>Tasks {tasks && tasks.length > 0 && open !== null && <Text span size="sm" c="dimmed">({open} open)</Text>}</Title>
         {!readOnly && !adding && (
           <Button size="xs" onClick={() => { setAdding(true); setError(""); setStale(false); }}>Add task</Button>
         )}

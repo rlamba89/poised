@@ -17,6 +17,7 @@ import { IconPlus } from "@tabler/icons-react";
 import { api } from "@/lib/api";
 import { hospitalBase, useHospital } from "@/lib/auth";
 import { formatDateTime, formatOptionalDate } from "@/lib/format";
+import { openTaskCount } from "./tasks";
 import { patientName, STATUS_COLORS, STATUS_LABELS, type EpisodeRow, type EpisodeStatus } from "./types";
 
 /** openTasks: how many of its tasks are open (S21). */
@@ -137,7 +138,7 @@ export function EpisodeList({ base }: { base: string }) {
                 <Table.Td>{e.questionnaireName} v{e.versionNo}</Table.Td>
                 <Table.Td>
                   <StatusBadge status={e.status} />
-                  {e.openTasks > 0 && (
+                  {!!openTaskCount(e.status, e.openTasks) && (
                     <Text size="xs" c="dimmed" mt={2}>{e.openTasks === 1 ? "1 open task" : `${e.openTasks} open tasks`}</Text>
                   )}
                 </Table.Td>
