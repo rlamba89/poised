@@ -1,0 +1,46 @@
+{
+  "description": "Made-up HQ for J10 (S32): a page with a question of its own and a Group, each to get a Clinical Summary in the editor.",
+  "chapters": [
+    {
+      "name": "About you",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_heart",
+            "title": "Heart",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_angina",
+                "title": "Do you get chest pain (angina)?",
+                "isRequired": true,
+                "choices": [
+                  { "value": "o_yes", "text": "Yes", "clinicalOutputs": [{ "id": "out_angina", "note": { "text": "Angina" } }] },
+                  { "value": "o_no", "text": "No" }
+                ]
+              },
+              {
+                "type": "panel",
+                "name": "g_breath",
+                "title": "Breathing",
+                "elements": [
+                  {
+                    "type": "radiogroup",
+                    "name": "q_asthma",
+                    "title": "Do you have asthma?",
+                    "isRequired": true,
+                    "choices": [
+                      { "value": "o_yes", "text": "Yes", "clinicalOutputs": [{ "id": "out_asthma", "note": { "text": "Asthma" } }] },
+                      { "value": "o_no", "text": "No" }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
