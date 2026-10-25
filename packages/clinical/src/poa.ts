@@ -114,16 +114,26 @@ const WEIGHT = "weight";
  * order, whose answers give a height and a weight, either a BMI question's or the library's height
  * and weight questions. `answersOf` says whose answers each set's are: the patient's until the set is
  * validated, then the clinician's. Rounded to one decimal place, as the BMI question shows it.
+ *
+ * Only answers that are shown count (S29; Rahul, 25 Oct): a set, page, group or question a condition
+ * hides, for the answers in use, is skipped, though its answer is still held (as for disclosures).
+ * The clinician's view of each set decides what is shown, as on the validated summary.
  */
-export function reportedBmi(sets: SetInput[], answersOf: (setId: string) => Answers | undefined): number | undefined {
-  for (const set of sets) {
-    const answers = answersOf(set.id) ?? {};
+export function reportedBmi(sets: SetInput[], answersOf: (setId: string) => Answers | undefined, patient: SamplePatient): number | undefined {
+  registerClinicalProperties();
+  const answers = Object.fromEntries(sets.map((s) => [s.id, answersOf(s.id)]));
+  for (const set of shownSets(sets, answers, "clinician", patient)) {
+    const data = answers[set.id] ?? {};
+    const model = modelFor(set.content, "clinician", patient);
+    model.data = data;
+    const shown = new Set((model.getAllQuestions(true) as Question[]).map((q) => q.name)); // skips hidden pages and groups too
+    model.dispose();
     const pairs: [unknown, unknown][] = [];
     for (const { el } of allElements(set.content)) {
-      const v = answers[el.name];
-      if (el.type === "bmi" && v && typeof v === "object") pairs.push([(v as Answers).height, (v as Answers).weight]);
+      const v = data[el.name];
+      if (el.type === "bmi" && shown.has(el.name) && v && typeof v === "object") pairs.push([(v as Answers).height, (v as Answers).weight]);
     }
-    pairs.push([answers[HEIGHT], answers[WEIGHT]]);
+    pairs.push([shown.has(HEIGHT) ? data[HEIGHT] : undefined, shown.has(WEIGHT) ? data[WEIGHT] : undefined]);
     for (const [h, w] of pairs) {
       const cm = Number(h);
       const kg = Number(w);

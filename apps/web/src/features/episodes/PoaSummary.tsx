@@ -99,8 +99,12 @@ function Summary({ tab, episode: e, events, hq, path, onChanged, episodeId }: Su
     }
     return poaSummary(hq.chapters.filter((c) => c.audience === "patient"), hq.patient, "patient", vars, undefined, hq.prefill);
   }, [validated, hq, vars]);
-  // The patient's own height and weight until their set is validated, then the validated ones (S28), on both tabs.
-  const bmi = useMemo(() => reportedBmi(hq.chapters, (id) => (hq.clinician[id]?.validatedAt ? hq.clinician[id].data : hq.patient[id])), [hq]);
+  // The patient's own height and weight until their set is validated, then the validated ones (S28), on both tabs;
+  // only answers that are shown (S29).
+  const bmi = useMemo(
+    () => reportedBmi(hq.chapters, (id) => (hq.clinician[id]?.validatedAt ? hq.clinician[id].data : hq.patient[id]), vars),
+    [hq, vars],
+  );
 
   return (
     <Stack>

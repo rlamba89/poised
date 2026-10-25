@@ -75,23 +75,73 @@ describe("reportedBmi", () => {
     ] }],
   };
   it("from a BMI question's height and weight", () => {
-    expect(reportedBmi(sets, (id) => (patient as Record<string, Answers | undefined>)[id])).toBe(27.2);
+    expect(reportedBmi(sets, (id) => (patient as Record<string, Answers | undefined>)[id], jo)).toBe(27.2);
   });
   it("from the library's height and weight questions", () => {
-    expect(reportedBmi([{ id: "s1", name: "About you", content: sized }], () => ({ height: 170, weight: 80 }))).toBe(27.7);
+    expect(reportedBmi([{ id: "s1", name: "About you", content: sized }], () => ({ height: 170, weight: 80 }), jo)).toBe(27.7);
   });
   it("the answers it's given: the patient's before validation, the validated ones after", () => {
     const set = [{ id: "s1", name: "About you", content: sized }];
     const patientsOwn = { s1: { height: 170, weight: 80 } };
     const validated = { s1: { height: 170, weight: 90 } };
-    expect(reportedBmi(set, (id) => patientsOwn[id as "s1"])).toBe(27.7);
-    expect(reportedBmi(set, (id) => validated[id as "s1"])).toBe(31.1);
+    expect(reportedBmi(set, (id) => patientsOwn[id as "s1"], jo)).toBe(27.7);
+    expect(reportedBmi(set, (id) => validated[id as "s1"], jo)).toBe(31.1);
   });
   it("nothing without both a height and a weight", () => {
     const set = [{ id: "s1", name: "About you", content: sized }];
-    expect(reportedBmi(set, () => ({ height: 170 }))).toBeUndefined();
-    expect(reportedBmi(set, () => ({ height: 0, weight: 80 }))).toBeUndefined();
-    expect(reportedBmi(set, () => undefined)).toBeUndefined();
+    expect(reportedBmi(set, () => ({ height: 170 }), jo)).toBeUndefined();
+    expect(reportedBmi(set, () => ({ height: 0, weight: 80 }), jo)).toBeUndefined();
+    expect(reportedBmi(set, () => undefined, jo)).toBeUndefined();
+  });
+
+  // S29 (Rahul, 25 Oct): a hidden answer never feeds a clinical number, as with disclosures.
+  describe("uses only answers that are shown", () => {
+    const gated = (extra: Record<string, unknown> = {}): ChapterJson => ({
+      pages: [{ name: "p_size", title: "Height and weight", elements: [
+        yesNo("q_measured", "Do you know your height and weight?"),
+        { type: "text", inputType: "number", name: "height", title: "How tall are you?", visibleIf: "{q_measured} = 'q_measured_y'", ...extra },
+        { type: "text", inputType: "number", name: "weight", title: "What do you weigh now?" },
+      ] }],
+    });
+    const held = { height: 170, weight: 80 };
+    it("skips a height its condition hides, before validation and after", () => {
+      const set = [{ id: "s1", name: "About you", content: gated() }];
+      const patientsOwn = { s1: { ...held, q_measured: "q_measured_n" } };
+      const validated = { s1: { ...held, weight: 90, q_measured: "q_measured_n" } };
+      expect(reportedBmi(set, (id) => patientsOwn[id as "s1"], jo)).toBeUndefined();
+      expect(reportedBmi(set, (id) => validated[id as "s1"], jo)).toBeUndefined();
+      expect(reportedBmi(set, () => ({ ...held, q_measured: "q_measured_y" }), jo)).toBe(27.7); // shown again
+    });
+    it("skips a BMI question, page or group a condition hides", () => {
+      const bmiHidden: ChapterJson = { pages: [{ name: "p", elements: [
+        yesNo("q_ask", "Ask?"), { type: "bmi", name: "q_bmi", title: "BMI", visibleIf: "{q_ask} = 'q_ask_y'" },
+      ] }] };
+      const pageHidden: ChapterJson = { pages: [
+        { name: "p1", elements: [yesNo("q_ask", "Ask?")] },
+        { name: "p2", visibleIf: "{q_ask} = 'q_ask_y'", elements: [{ type: "text", inputType: "number", name: "height" }, { type: "text", inputType: "number", name: "weight" }] },
+      ] };
+      const groupHidden: ChapterJson = { pages: [{ name: "p", elements: [
+        yesNo("q_ask", "Ask?"),
+        { type: "panel", name: "g_size", visibleIf: "{q_ask} = 'q_ask_y'", elements: [{ type: "text", inputType: "number", name: "height" }, { type: "text", inputType: "number", name: "weight" }] },
+      ] }] };
+      const one = (content: ChapterJson) => [{ id: "s1", name: "S", content }];
+      expect(reportedBmi(one(bmiHidden), () => ({ q_ask: "q_ask_n", q_bmi: { height: 170, weight: 80 } }), jo)).toBeUndefined();
+      expect(reportedBmi(one(pageHidden), () => ({ q_ask: "q_ask_n", ...held }), jo)).toBeUndefined();
+      expect(reportedBmi(one(groupHidden), () => ({ q_ask: "q_ask_n", ...held }), jo)).toBeUndefined();
+      expect(reportedBmi(one(groupHidden), () => ({ q_ask: "q_ask_y", ...held }), jo)).toBe(27.7);
+    });
+    it("skips a Question Set its condition hides, and goes on to the next one shown", () => {
+      const sized: ChapterJson = { pages: [{ name: "p", elements: [
+        { type: "text", inputType: "number", name: "height" }, { type: "text", inputType: "number", name: "weight" },
+      ] }] };
+      const asked = [
+        { id: "s0", name: "First", content: { pages: [{ name: "p0", elements: [yesNo("q_ask", "Ask?")] }] } },
+        { id: "s1", name: "Hidden", content: { ...sized, chapterVisibleIf: "{q_ask} = 'q_ask_y'" } },
+        { id: "s2", name: "Shown", content: sized },
+      ];
+      const answers: Record<string, Answers> = { s0: { q_ask: "q_ask_n" }, s1: { height: 170, weight: 80 }, s2: { height: 170, weight: 90 } };
+      expect(reportedBmi(asked, (id) => answers[id], jo)).toBe(31.1);
+    });
   });
 });
 
