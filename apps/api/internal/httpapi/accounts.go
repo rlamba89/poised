@@ -101,6 +101,46 @@ func (s *server) joinAccount(r *http.Request, patientID uuid.UUID, dob pgtype.Da
 	return account, tx.Commit(ctx)
 }
 
+// joinOnBehalf joins the form's patient record to an existing account when staff fill in for
+// the patient (S28 answers 1–2): the account whose date of birth, mobile or email, first name and
+// surname all match the record's (FindAccountForRecord, S15's rule). Unlike the patient's own
+// join, it never makes an account, never joins the person's other records, and copies no contact
+// either way, so this trust's staff never see a contact only another trust holds. The join is in
+// this trust's log as the staff member's (account.join). No match: no join (uuid.NullUUID{}).
+func (s *server) joinOnBehalf(r *http.Request, f form) (uuid.NullUUID, error) {
+	ctx := context.WithoutCancel(r.Context())
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return uuid.NullUUID{}, err
+	}
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	if err := q.LockBirthDate(ctx, f.DateOfBirth); err != nil { // the same order as joinAccount
+		return uuid.NullUUID{}, err
+	}
+	rec, err := q.LockPatientForAccount(ctx, f.PatientID)
+	if err != nil || rec.AccountID.Valid { // joined meanwhile (the patient's link)
+		return rec.AccountID, err
+	}
+	account, err := q.FindAccountForRecord(ctx, db.FindAccountForRecordParams{
+		DateOfBirth: rec.DateOfBirth, FirstName: rec.FirstName, LastName: rec.LastName, Mobile: rec.Mobile, Email: rec.Email})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.NullUUID{}, nil
+	}
+	if err != nil {
+		return uuid.NullUUID{}, err
+	}
+	joined := uuid.NullUUID{UUID: account, Valid: true}
+	if err := q.JoinAccount(ctx, db.JoinAccountParams{ID: rec.ID, AccountID: joined}); err != nil {
+		return uuid.NullUUID{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.NullUUID{}, err
+	}
+	auditOf(r).also("account.join", rec.OrgID, uuid.Nil).touched(rec.ID, uuid.Nil)
+	return joined, nil
+}
+
 // joinMatching joins the person's records not yet in an account that have their date of birth,
 // their first name and surname, and one of contacts (those that just reached them). Each joined record takes
 // the account's contacts it lacks, and is in its trust's log.
@@ -376,6 +416,7 @@ type homeEpisode struct {
 	Procedure         string    `json:"procedure"`
 	CreatedAt         time.Time `json:"createdAt"`
 	State             string    `json:"state"` // to_do, in_progress, sent, cancelled (S20) or closed (S22: archived unsent)
+	Sent              bool      `json:"sent"`  // the patient sent it (S28: a cancelled one they'd sent says so)
 }
 
 // patientHome is GET /api/p/home: every episode of every trust's record of the person, newest
@@ -411,7 +452,7 @@ func (s *server) patientHome(w http.ResponseWriter, r *http.Request) {
 			state = "in_progress"
 		}
 		episodes = append(episodes, homeEpisode{ID: e.ID, PatientName: strings.TrimSpace(e.FirstName) + " " + strings.TrimSpace(e.LastName), Hospital: e.HospitalName, QuestionnaireName: e.QuestionnaireName,
-			Procedure: e.Procedure, CreatedAt: e.CreatedAt, State: state})
+			Procedure: e.Procedure, CreatedAt: e.CreatedAt, State: state, Sent: e.PatientSubmittedAt.Valid})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"firstName": firstName,

@@ -202,7 +202,8 @@ type Querier interface {
 	// one for each, at its next 02:00.
 	HospitalsWithoutAutoArchive(ctx context.Context) ([]HospitalsWithoutAutoArchiveRow, error)
 	// The audit log (plan C1, session S11; STF-06). Rows are only ever inserted (00009_audit_log.sql).
-	// at is the server's clock (Deps.Clock), so tests can place rows in time.
+	// at is the server's clock (Deps.Clock), so tests can place rows in time. actor_org_id: staff of
+	// another trust, named only by their trust (S28), with no user_id.
 	InsertAudit(ctx context.Context, arg InsertAuditParams) error
 	// MESSAGING=capture: a message stored instead of sent.
 	InsertSentMessage(ctx context.Context, arg InsertSentMessageParams) (int64, error)
@@ -221,10 +222,13 @@ type Querier interface {
 	// The hospital's episodes either rule could archive (episode.ArchiveDue decides): discharged,
 	// before admission, or cancelled. unarchived_at: the latest un-archive, if any.
 	ListArchiveCandidates(ctx context.Context, hospitalID uuid.UUID) ([]ListArchiveCandidatesRow, error)
-	// One trust's log, newest first, with the filters that are set: someone (a staff member, or
-	// patients_only for the patient's link), a time range [from_at, to_at), and patients (any of
-	// patient_ids, when by_patient).
+	// One trust's log, newest first, with the filters that are set: someone (a staff member, staff of
+	// another trust (actor_org_id, S28), or patients_only for the patient's link), a time range
+	// [from_at, to_at), and patients (any of patient_ids, when by_patient).
 	ListAudit(ctx context.Context, arg ListAuditParams) ([]ListAuditRow, error)
+	// The other trusts whose staff appear in a trust's log, named only by the trust (S28), for the
+	// "Who" filter.
+	ListAuditTrusts(ctx context.Context, orgID uuid.UUID) ([]ListAuditTrustsRow, error)
 	// The staff who appear in a trust's log, for the "Who" filter. People removed from the trust
 	// are still listed: their past actions stay (STF-04).
 	ListAuditUsers(ctx context.Context, orgID uuid.UUID) ([]ListAuditUsersRow, error)
@@ -345,6 +349,10 @@ type Querier interface {
 	// The hospital's time zone is for the dates' "not in the future". archived_from is un-archive's
 	// target (S22); the cancel reason is kept when a cancelled episode is archived.
 	LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpisodeStatusRow, error)
+	// The form, locked while its first open pre-fills it (S28 answers 3: once per form), so a second
+	// open at the same moment waits and then finds it done. NO KEY UPDATE: saves of other sets
+	// (their answer rows' foreign key) don't wait.
+	LockFormPrefill(ctx context.Context, id uuid.UUID) (bool, error)
 	// One hospital of the trust, locked until the transaction ends.
 	LockHospitalForAdmin(ctx context.Context, arg LockHospitalForAdminParams) (LockHospitalForAdminRow, error)
 	// A hospital of the trust and its stored settings, locked until the transaction ends.
@@ -366,6 +374,7 @@ type Querier interface {
 	LockRateKey(ctx context.Context, key string) error
 	// MESSAGING=capture only: the testers' "run as of" runs every hospital's auto-archive (S22).
 	MakeAutoArchivesDue(ctx context.Context, asOf time.Time) error
+	MarkFormPrefilled(ctx context.Context, id uuid.UUID) error
 	// No row: already marked, the HQ has been sent, or the episode was cancelled.
 	MarkNotResponding(ctx context.Context, arg MarkNotRespondingParams) (int64, error)
 	MarkUndone(ctx context.Context, id uuid.UUID) error

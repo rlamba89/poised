@@ -190,7 +190,7 @@ ORDER BY ev.created_at, ev.seq; -- seq: notes written at the same time, in the o
 -- name: GetEpisodeForm :one
 -- An episode's HQ form as the patient fills it in: for the patient's session (the handler checks
 -- the episode is theirs) or staff completing it on their behalf (it checks the hospital).
-SELECT e.id, e.status, f.submitted_at AS patient_submitted_at, f.version_id, f.id AS form_id,
+SELECT e.id, e.status, f.submitted_at AS patient_submitted_at, f.version_id, f.id AS form_id, f.prefilled_at,
        e.org_id, e.hospital_id, e.patient_id, p.account_id, -- for the checks and the audit log, never sent to the patient
        p.first_name, p.last_name, p.date_of_birth, p.sex,
        q.name AS questionnaire_name, h.name AS hospital_name, h.timezone,
@@ -247,6 +247,15 @@ WHERE e.org_id = sqlc.arg(org_id) AND p.org_id = sqlc.arg(org_id) AND f.kind = '
   AND f.id <> sqlc.arg(form_id)
   AND (e.patient_id = sqlc.arg(patient_id) OR p.account_id = sqlc.narg(account_id))
 ORDER BY f.submitted_at DESC, f.id, c.position, c.name;
+
+-- name: LockFormPrefill :one
+-- The form, locked while its first open pre-fills it (S28 answers 3: once per form), so a second
+-- open at the same moment waits and then finds it done. NO KEY UPDATE: saves of other sets
+-- (their answer rows' foreign key) don't wait.
+SELECT (prefilled_at IS NOT NULL)::boolean AS done FROM episode_forms WHERE id = $1 FOR NO KEY UPDATE;
+
+-- name: MarkFormPrefilled :exec
+UPDATE episode_forms SET prefilled_at = now() WHERE id = $1 AND prefilled_at IS NULL;
 
 -- name: PrefillPatientAnswers :execrows
 -- Stores one Question Set's pre-filled answers as the patient's (S25), only while the form is open

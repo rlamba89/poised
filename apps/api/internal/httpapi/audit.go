@@ -84,6 +84,12 @@ var auditActions = map[string]string{
 	"prefill.read":         "Patient's answers read to pre-fill their HQ at another trust",
 }
 
+// The "Who" filter's value for staff of another trust (?user=trust:<id>), and how a row names them
+// (S28): the trust only, never the person.
+const auditTrustPrefix = "trust:"
+
+func staffAt(trust string) string { return "Staff at " + trust }
+
 const auditKey ctxKey = 100
 
 // auditEntry is what a request's row will say. audited starts it; the handler adds the records
@@ -195,6 +201,11 @@ func (s *server) writeAudit(r *http.Request, e *auditEntry, status int) error {
 	}
 	if u := currentUser(r); u.ID != uuid.Nil {
 		arg.Actor, arg.UserID = "staff", uuid.NullUUID{UUID: u.ID, Valid: true}
+		// A row in another trust's log (prefill.read when staff fill in for the patient) names only
+		// the staff member's trust (S28; Rahul, 24 Oct). Their own trust's row names them.
+		if own := here(r).Org; own != uuid.Nil && e.org != own {
+			arg.UserID, arg.ActorOrgID = uuid.NullUUID{}, uuid.NullUUID{UUID: own, Valid: true}
+		}
 	}
 	// Written even if the caller has gone: a change they asked for may already be saved.
 	return s.q.InsertAudit(context.WithoutCancel(r.Context()), arg)
@@ -276,6 +287,14 @@ func (s *server) parseAuditFilter(r *http.Request) (auditFilter, string) {
 	case "patient":
 		f.params.PatientsOnly = true
 	default:
+		if trust, ok := strings.CutPrefix(user, auditTrustPrefix); ok {
+			id, err := uuid.Parse(trust)
+			if err != nil {
+				return f, "Choose someone from the list."
+			}
+			f.params.ActorOrgID = uuid.NullUUID{UUID: id, Valid: true}
+			break
+		}
 		id, err := uuid.Parse(user)
 		if err != nil {
 			return f, "Choose someone from the list."
@@ -330,8 +349,9 @@ type auditListRow struct {
 	At           time.Time      `json:"at"`
 	Actor        string         `json:"actor"` // staff or patient
 	UserID       uuid.NullUUID  `json:"userId"`
-	UserName     string         `json:"userName"`
-	UserEmail    string         `json:"userEmail"`
+	UserName     string         `json:"userName"`   // staff of another trust: "Staff at <trust>" (S28)
+	UserEmail    string         `json:"userEmail"`  // "" for staff of another trust
+	ActorTrust   string         `json:"actorTrust"` // staff of another trust: its name, else ""
 	HospitalID   uuid.NullUUID  `json:"hospitalId"`
 	HospitalName string         `json:"hospitalName"` // "" on a trust route
 	Action       string         `json:"action"`
@@ -401,10 +421,27 @@ func (s *server) listAudit(w http.ResponseWriter, r *http.Request) {
 		s.writeAuditCSV(w, r, list, f.zone)
 		return
 	}
-	users, err := s.q.ListAuditUsers(ctx, orgID(r))
+	people, err := s.q.ListAuditUsers(ctx, orgID(r))
 	if err != nil {
 		serverError(w, "audit users", err)
 		return
+	}
+	trusts, err := s.q.ListAuditTrusts(ctx, orgID(r))
+	if err != nil {
+		serverError(w, "audit trusts", err)
+		return
+	}
+	type who struct {
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+	users := make([]who, 0, len(people)+len(trusts))
+	for _, u := range people {
+		users = append(users, who{ID: u.ID.String(), Name: u.Name, Email: u.Email})
+	}
+	for _, t := range trusts { // after the people: "Staff at Trust A", with no name or email (S28)
+		users = append(users, who{ID: auditTrustPrefix + t.ID.String(), Name: staffAt(t.Name)})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"rows": list, "more": more, "limit": auditPageSize, "users": users})
 }
@@ -450,6 +487,9 @@ func (s *server) auditListRows(ctx context.Context, org uuid.UUID, rows []db.Lis
 		}
 		if row.UserName != nil {
 			l.UserName, l.UserEmail = *row.UserName, *row.UserEmail
+		}
+		if row.ActorOrgName != nil {
+			l.ActorTrust, l.UserName = *row.ActorOrgName, staffAt(*row.ActorOrgName)
 		}
 		if row.HospitalName != nil {
 			l.HospitalName = *row.HospitalName

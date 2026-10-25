@@ -467,10 +467,11 @@ func TestArchivedAfterSentKeepsItsView(t *testing.T) {
 	r.Want(t, http.StatusOK)
 	var f struct {
 		Submitted bool
+		Archived  bool // S28: the View no longer says the team will review them
 		Answers   map[string]map[string]json.RawMessage
 	}
 	r.Decode(t, &f)
-	if !f.Submitted || string(f.Answers[set]["q_smokes"]) != `"o_no"` {
+	if !f.Submitted || !f.Archived || string(f.Answers[set]["q_smokes"]) != `"o_no"` {
 		t.Errorf("the View: %s", r)
 	}
 	for _, r := range []*apitest.Resp{
@@ -489,4 +490,33 @@ func TestArchivedAfterSentKeepsItsView(t *testing.T) {
 	}
 	// Staff have the episode's own pages; the on-behalf form stays refused once archived.
 	refused(t, w.clinician.Do("GET", epPath(w.a, sent, "/patient-form"), nil), http.StatusConflict)
+}
+
+// A cancelled questionnaire on the patient's home says whether they'd sent it (S28; Rahul, 24 Oct),
+// so the page can say "Please contact them…" rather than "nothing to fill in"; archived since, too.
+func TestCancelledHomeSaysWhetherSent(t *testing.T) {
+	t.Parallel()
+	w := newPeople(t)
+	sam := newPerson("1982-07-19")
+	sent, unsent, archived := w.recordIn(t, sam, w.a, w.hq, w.cara), w.recordIn(t, sam, w.a, w.hq, w.cara), w.recordIn(t, sam, w.a, w.hq, w.cara)
+	b := w.anon.AsPatient(t, sent.Link, sam.dob)
+	set := w.hq.Chapters[0].String()
+	for _, e := range []apitest.Episode{sent, archived} {
+		savedRevision(t, b.Do("PUT", patientPath(e, "/answers/"+set), map[string]any{"data": map[string]any{"q_smokes": "o_no"}, "revision": 0}))
+		b.Do("POST", patientPath(e, "/submit"), nil).Want(t, http.StatusNoContent)
+	}
+	for _, e := range []apitest.Episode{sent, unsent, archived} {
+		w.clinician.Do("POST", epPath(w.a, e, "/cancel"), withRevision(t, w.clinic, e.ID, map[string]any{"reason": "patient_withdrew"})).Want(t, http.StatusNoContent)
+	}
+	archive(t, w.clinic, archived)
+	open := w.recordIn(t, sam, w.a, w.hq, w.cara) // cancelling ended the sessions from those links
+	got := map[uuid.UUID]homeEpisode{}
+	for _, e := range readHome(t, w.anon.NewBrowser(t).AsPatient(t, open.Link, sam.dob)).Episodes {
+		got[e.ID] = e
+	}
+	for e, want := range map[uuid.UUID]bool{sent.ID: true, unsent.ID: false, archived.ID: true} {
+		if got[e].State != "cancelled" || got[e].Sent != want {
+			t.Errorf("episode %v: %+v, want cancelled, sent %v", e, got[e], want)
+		}
+	}
 }

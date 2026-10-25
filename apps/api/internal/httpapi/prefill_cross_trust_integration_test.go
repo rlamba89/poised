@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -52,18 +53,25 @@ func newCrossTrustWorld(t *testing.T) *crossTrustWorld {
 func (w *crossTrustWorld) person(t *testing.T, last string) crossTrust {
 	t.Helper()
 	rec := apitest.PatientRecord{FirstName: "Cross", LastName: last, DateOfBirth: "1960-06-06"}
-	inB := w.fx.EpisodeOf(t, w.bHQ, w.b, w.fx.Patient(t, w.b.Org, rec), w.bea, "")
+	x := w.unjoined(t, rec, rec)
+	if _, err := w.db.Exec(t.Context(), `UPDATE patients SET account_id = (SELECT account_id FROM patients WHERE id = $1) WHERE id = $2`, x.inB.PatientID, x.inA.PatientID); err != nil {
+		t.Fatal(err)
+	}
+	return x
+}
+
+// unjoined makes a crossTrust whose trust A record (a) hasn't joined any account: trust B's record
+// (b) is answered and sent through its link, which makes the person's account from b (S15).
+func (w *crossTrustWorld) unjoined(t *testing.T, b, a apitest.PatientRecord) crossTrust {
+	t.Helper()
+	inB := w.fx.EpisodeOf(t, w.bHQ, w.b, w.fx.Patient(t, w.b.Org, b), w.bea, "")
 	p := w.anon.NewBrowser(t).AsPatient(t, inB.Link, inB.DateOfBirth)
 	savedRevision(t, p.Do("PUT", patientPath(inB, "/answers/"+w.bHQ.Chapters[0].String()), map[string]any{
 		"data": map[string]any{"q_smokes": "o_no", "q_meds": []any{map[string]any{"q_med_name": "Ibuprofen"}}}, "revision": 0}))
 	savedRevision(t, p.Do("PUT", patientPath(inB, "/answers/"+w.bHQ.Chapters[1].String()), map[string]any{
 		"data": map[string]any{"q_diabetes": true}, "revision": 0}))
 	p.Do("POST", patientPath(inB, "/submit"), nil).Want(t, http.StatusNoContent)
-	aRec := w.fx.Patient(t, w.a.Org, rec)
-	if _, err := w.db.Exec(t.Context(), `UPDATE patients SET account_id = (SELECT account_id FROM patients WHERE id = $1) WHERE id = $2`, inB.PatientID, aRec); err != nil {
-		t.Fatal(err)
-	}
-	return crossTrust{inB: inB, inA: w.fx.EpisodeOf(t, w.later, w.a, aRec, w.cara, ""), patient: p}
+	return crossTrust{inB: inB, inA: w.fx.EpisodeOf(t, w.later, w.a, w.fx.Patient(t, w.a.Org, a), w.cara, ""), patient: p}
 }
 
 // crossForm is the patient's HQ as GET returns it, with where each pre-filled answer came from.
@@ -229,7 +237,7 @@ func TestPrefillCrossTrust(t *testing.T) {
 		}
 	})
 
-	t.Run("staff filling in for the patient get another trust's answers too, audited under it as them", func(t *testing.T) {
+	t.Run("staff filling in for the patient get another trust's answers too; trust B's log names only trust A (S28)", func(t *testing.T) {
 		x := w.person(t, "Behalf")
 		f := getCrossForm(t, w.clinician, epPath(w.a, x.inA, "/patient-form"))
 		if got := answersJSON(t, f.Answers[healthAgain.String()]); got != `{"pf_diabetes":true}` {
@@ -238,23 +246,127 @@ func TestPrefillCrossTrust(t *testing.T) {
 		if m := f.Prefill[again.String()].Answers["q_meds"]; !m.OtherTrust || m.Hospital != w.bHospital || m.FromForm != uuid.Nil {
 			t.Errorf("on behalf: q_meds %+v", m)
 		}
+		// Trust B's row: staff, at trust A, with no user (S28; Rahul, 24 Oct).
 		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE org_id = $1 AND hospital_id = $2 AND action = 'prefill.read' AND actor = 'staff'
-			AND user_id = $3 AND episode_ids = ARRAY[$4::uuid]`, w.b.Org, w.b.ID, w.cara.ID, x.inB.ID); n != 1 {
-			t.Errorf("%d prefill.read rows under trust B for Cara", n)
+			AND user_id IS NULL AND actor_org_id = $3 AND episode_ids = ARRAY[$4::uuid]`, w.b.Org, w.b.ID, w.a.Org, x.inB.ID); n != 1 {
+			t.Errorf("%d prefill.read rows under trust B as staff at trust A", n)
+		}
+		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE org_id = $1 AND user_id = $2`, w.b.Org, w.cara.ID); n != 0 {
+			t.Errorf("%d trust B rows name Cara", n)
+		}
+		// Trust A's own row for the same request still names her.
+		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE org_id = $1 AND action = 'behalf.view' AND user_id = $2 AND actor_org_id IS NULL
+			AND $3 = ANY(episode_ids)`, w.a.Org, w.cara.ID, x.inA.ID); n != 1 {
+			t.Errorf("%d behalf.view rows under trust A naming Cara", n)
+		}
+
+		// Trust B's admin: the screen, the "Who" filter and the CSV say "Staff at <trust A>", with no name or email.
+		var trustA string
+		if err := w.db.QueryRow(t.Context(), `SELECT name FROM orgs WHERE id = $1`, w.a.Org).Scan(&trustA); err != nil {
+			t.Fatal(err)
+		}
+		bAdmin := w.anon.NewBrowser(t).LoginAs(t, w.fx.TrustUser(t, w.b.Org, "admin"))
+		logPath := "/api/o/" + w.b.Org.String() + "/audit"
+		type auditPage struct {
+			Rows []struct {
+				Action, UserName, UserEmail, ActorTrust string
+				UserID                                  *uuid.UUID
+				EpisodeIDs                              []uuid.UUID
+			}
+			Users []struct{ ID, Name, Email string }
+		}
+		r := bAdmin.Do("GET", logPath, nil)
+		r.Want(t, http.StatusOK)
+		var page auditPage
+		r.Decode(t, &page)
+		found := false
+		for _, row := range page.Rows {
+			if row.Action == "prefill.read" && len(row.EpisodeIDs) == 1 && row.EpisodeIDs[0] == x.inB.ID {
+				found = row.UserName == "Staff at "+trustA && row.UserEmail == "" && row.UserID == nil && row.ActorTrust == trustA
+			}
+		}
+		if !found {
+			t.Errorf("trust B's log: no row for staff at %s: %+v", trustA, page.Rows)
+		}
+		if body := string(r.Body); strings.Contains(body, w.cara.ID.String()) || strings.Contains(body, w.cara.Name) {
+			t.Errorf("trust B's log names Cara: %s", body)
+		}
+		var who string
+		for _, u := range page.Users {
+			if u.Name == "Staff at "+trustA && u.Email == "" {
+				who = u.ID
+			}
+		}
+		if who != "trust:"+w.a.Org.String() {
+			t.Fatalf("Who filter %+v", page.Users)
+		}
+		r = bAdmin.Do("GET", logPath+"?user="+who, nil)
+		r.Want(t, http.StatusOK)
+		var only auditPage
+		r.Decode(t, &only)
+		if len(only.Rows) == 0 {
+			t.Error("filtered by staff at trust A: nothing")
+		}
+		for _, row := range only.Rows {
+			if row.ActorTrust != trustA {
+				t.Errorf("filtered by staff at trust A: %+v", row)
+			}
+		}
+		refused(t, bAdmin.Do("GET", logPath+"?user=trust:abc", nil), http.StatusBadRequest)
+		csv := bAdmin.Do("GET", logPath+"?format=csv&user="+who, nil)
+		csv.Want(t, http.StatusOK)
+		if body := string(csv.Body); !strings.Contains(body, ",Staff at "+trustA+",,") || strings.Contains(body, w.cara.Name) || strings.Contains(body, w.cara.ID.String()) {
+			t.Errorf("CSV %s", body)
 		}
 	})
 
-	t.Run("on behalf, a record that hasn't joined the person's account finds no other trust's answers (S27 test report 1, F1)", func(t *testing.T) {
-		// Other trusts' records are found only through the account, which a record joins when the
-		// patient proves their date of birth on its link (S15): Go never matches records across
-		// trusts by typed details alone.
-		x := w.person(t, "Unjoined")
-		if _, err := w.db.Exec(t.Context(), `UPDATE patients SET account_id = NULL WHERE id = $1`, x.inA.PatientID); err != nil {
+	t.Run("a form is pre-filled on its first open only: a trust readable later is read no more (S28 answers 3)", func(t *testing.T) {
+		x := w.person(t, "FirstOpen")
+		if _, err := w.db.Exec(t.Context(), `UPDATE orgs SET status = 'suspended' WHERE id = $1`, w.b.Org); err != nil {
 			t.Fatal(err)
 		}
-		f := getCrossForm(t, w.clinician, epPath(w.a, x.inA, "/patient-form"))
-		if len(f.Answers) != 0 || w.prefillReads(t, x) != 0 {
-			t.Errorf("unjoined, on behalf: %v", f.Answers)
+		f := getCrossForm(t, x.patient, patientPath(x.inA, "")) // trust B suspended: nothing from it
+		if _, err := w.db.Exec(t.Context(), `UPDATE orgs SET status = 'active' WHERE id = $1`, w.b.Org); err != nil {
+			t.Fatal(err)
+		}
+		if len(f.Answers) != 0 {
+			t.Fatalf("first open: %v", f.Answers)
+		}
+		// Trust B is back and every set is still empty, but later opens, the patient's or staff's, don't read it.
+		if f := getCrossForm(t, x.patient, patientPath(x.inA, "")); len(f.Answers) != 0 {
+			t.Errorf("the patient's later open: %v", f.Answers)
+		}
+		if f := getCrossForm(t, w.clinician, epPath(w.a, x.inA, "/patient-form")); len(f.Answers) != 0 {
+			t.Errorf("staff's later open: %v", f.Answers)
+		}
+		if n := w.prefillReads(t, x); n != 0 {
+			t.Errorf("%d prefill.read rows after the first open", n)
+		}
+	})
+
+	t.Run("two first opens at the same moment read trust B once, and both send the answers", func(t *testing.T) {
+		x := w.person(t, "SameMoment")
+		var wg sync.WaitGroup
+		forms := make([]crossForm, 4)
+		for i := range forms {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				c, path := x.patient, patientPath(x.inA, "")
+				if i%2 == 1 {
+					c, path = w.clinician, epPath(w.a, x.inA, "/patient-form")
+				}
+				forms[i] = getCrossForm(t, c, path)
+			}()
+		}
+		wg.Wait()
+		for i, f := range forms {
+			if got := answersJSON(t, f.Answers[healthAgain.String()]); got != `{"pf_diabetes":true}` {
+				t.Errorf("open %d: Health again %s", i, got)
+			}
+		}
+		if n := w.prefillReads(t, x); n != 1 {
+			t.Errorf("%d prefill.read rows, want 1", n)
 		}
 	})
 
@@ -401,7 +513,7 @@ func TestStartFresh(t *testing.T) {
 		y := w.person(t, "FreshStale")
 		getCrossForm(t, y.patient, patientPath(y.inA, ""))
 		y.patient.Do("POST", patientPath(y.inA, "/prefill/"+again.String()), fresh).Want(t, http.StatusNoContent) // one tab
-		for _, other := range []string{"still_correct", "check_each"} { // the card still open in another tab
+		for _, other := range []string{"still_correct", "check_each"} {                                           // the card still open in another tab
 			r := y.patient.Do("POST", patientPath(y.inA, "/prefill/"+again.String()), map[string]string{"choice": other})
 			refused(t, r, http.StatusConflict)
 			if !strings.Contains(r.Message(), "reload") {
@@ -438,37 +550,54 @@ func TestStartFresh(t *testing.T) {
 	})
 }
 
-// A pre-filled set starts at revision 1, so a tab that loaded the set before it was pre-filled
-// (it sends 0, "no row yet") gets the stale 409 instead of overwriting it, and the prefill map keeps
-// describing the row (S25 verify, for S26). It still isn't "started" until the patient saves.
+// A pre-filled set starts at revision 1, so a save that says "no row yet" (0) gets the stale 409
+// instead of overwriting it, and the prefill map keeps describing the row (S25 verify, for S26).
+// It still isn't "started" until the patient saves. The pre-fill runs on the form's first open
+// only (S28 answers 3): an earlier HQ sent after it doesn't fill the form.
 func TestPrefillRevision(t *testing.T) {
 	t.Parallel()
 	w := newPrefillWorld(t)
 	again := w.later.Chapters[0]
-	e := w.fx.EpisodeOf(t, w.later, w.a, w.ep.PatientID, w.cara, "")
-	stale := w.anon.NewBrowser(t).AsPatient(t, e.Link, e.DateOfBirth)
-	f := getForm(t, stale, patientPath(e, "")) // nothing to fill yet: no row
-	if len(f.Answers) != 0 {
-		t.Fatalf("answers %v", f.Answers)
-	}
-	// An earlier HQ is sent meanwhile; another open pre-fills.
-	w.answered(t, w.ep, "o_yes")
-	fresh := w.anon.NewBrowser(t).AsPatient(t, e.Link, e.DateOfBirth)
-	f = getForm(t, fresh, patientPath(e, ""))
-	if f.Revisions[again.String()] != 1 {
-		t.Fatalf("pre-filled revision %d, want 1", f.Revisions[again.String()])
-	}
-	if got, err := db.New(w.db).GetFollowup(t.Context(), e.ID); err != nil || got.Started {
-		t.Errorf("untouched pre-fill counts as started: %v %v", got.Started, err)
-	}
-	refused(t, stale.Do("PUT", patientPath(e, "/answers/"+again.String()), map[string]any{"data": map[string]any{"q_smokes": "o_no"}, "revision": 0}), http.StatusConflict)
-	if got := answersJSON(t, getForm(t, fresh, patientPath(e, "")).Answers[again.String()]); got != `{"q_meds":[{"q_med_name":"Aspirin"}],"q_smokes":"o_yes"}` {
-		t.Errorf("overwritten: %s", got)
-	}
-	if rev := savedRevision(t, fresh.Do("PUT", patientPath(e, "/answers/"+again.String()), map[string]any{"data": map[string]any{"q_smokes": "o_no"}, "revision": 1})); rev != 2 {
-		t.Errorf("revision %d after the first save", rev)
-	}
-	if got, err := db.New(w.db).GetFollowup(t.Context(), e.ID); err != nil || !got.Started {
-		t.Errorf("saved pre-fill not started: %v %v", got.Started, err)
-	}
+
+	t.Run("first open only: an HQ sent after it fills nothing", func(t *testing.T) {
+		rec := w.fx.Patient(t, w.a.Org, apitest.PatientRecord{FirstName: "First", LastName: "Open", DateOfBirth: "1970-07-07"})
+		e := w.fx.EpisodeOf(t, w.later, w.a, rec, w.cara, "")
+		p := w.anon.NewBrowser(t).AsPatient(t, e.Link, e.DateOfBirth)
+		if f := getForm(t, p, patientPath(e, "")); len(f.Answers) != 0 { // nothing to fill yet
+			t.Fatalf("answers %v", f.Answers)
+		}
+		earlier := w.fx.EpisodeOf(t, w.hq, w.a, rec, w.cara, "")
+		w.answered(t, earlier, "o_yes") // sent after the first open
+		for _, c := range []*apitest.Client{p, w.anon.NewBrowser(t).AsPatient(t, e.Link, e.DateOfBirth)} {
+			if f := getForm(t, c, patientPath(e, "")); len(f.Answers) != 0 || len(f.Prefill) != 0 {
+				t.Errorf("filled at a later open: %v", f.Answers)
+			}
+		}
+		if f := getForm(t, w.clinician, epPath(w.a, e, "/patient-form")); len(f.Answers) != 0 {
+			t.Errorf("filled at staff's later open: %v", f.Answers)
+		}
+	})
+
+	t.Run("revision 1, not started, and a save from 0 is stale", func(t *testing.T) {
+		e := w.fx.EpisodeOf(t, w.later, w.a, w.ep.PatientID, w.cara, "")
+		w.answered(t, w.ep, "o_yes") // the earlier HQ, sent before the first open
+		fresh := w.anon.NewBrowser(t).AsPatient(t, e.Link, e.DateOfBirth)
+		f := getForm(t, fresh, patientPath(e, ""))
+		if f.Revisions[again.String()] != 1 {
+			t.Fatalf("pre-filled revision %d, want 1", f.Revisions[again.String()])
+		}
+		if got, err := db.New(w.db).GetFollowup(t.Context(), e.ID); err != nil || got.Started {
+			t.Errorf("untouched pre-fill counts as started: %v %v", got.Started, err)
+		}
+		refused(t, fresh.Do("PUT", patientPath(e, "/answers/"+again.String()), map[string]any{"data": map[string]any{"q_smokes": "o_no"}, "revision": 0}), http.StatusConflict)
+		if got := answersJSON(t, getForm(t, fresh, patientPath(e, "")).Answers[again.String()]); got != `{"q_meds":[{"q_med_name":"Aspirin"}],"q_smokes":"o_yes"}` {
+			t.Errorf("overwritten: %s", got)
+		}
+		if rev := savedRevision(t, fresh.Do("PUT", patientPath(e, "/answers/"+again.String()), map[string]any{"data": map[string]any{"q_smokes": "o_no"}, "revision": 1})); rev != 2 {
+			t.Errorf("revision %d after the first save", rev)
+		}
+		if got, err := db.New(w.db).GetFollowup(t.Context(), e.ID); err != nil || !got.Started {
+			t.Errorf("saved pre-fill not started: %v %v", got.Started, err)
+		}
+	})
 }

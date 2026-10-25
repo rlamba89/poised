@@ -112,6 +112,7 @@ type homeEpisode struct {
 	QuestionnaireName string
 	Procedure         string
 	State             string
+	Sent              bool
 }
 
 type home struct {

@@ -360,7 +360,8 @@ type formPatient struct {
 }
 
 // writeForm sends the HQ's patient Question Sets, stripped for patients, with the answers so far.
-// Sets with no answers yet are pre-filled from the patient's earlier HQs first (S25), and the
+// On the form's first open, sets with no answers yet are pre-filled from the patient's earlier HQs
+// (S25; S28: the first open only), and the
 // answers come with where each pre-filled one came from (`prefill`, by Question Set), another
 // trust's included (S26; S27: always, without asking).
 func (s *server) writeForm(w http.ResponseWriter, r *http.Request, f form) {
@@ -370,21 +371,14 @@ func (s *server) writeForm(w http.ResponseWriter, r *http.Request, f form) {
 		serverError(w, "list chapters", err)
 		return
 	}
+	if err := s.prefillForm(ctx, f, auditOf(r), rows); err != nil {
+		serverError(w, "pre-fill", err)
+		return
+	}
 	saved, err := s.q.ListEpisodeAnswers(ctx, f.FormID)
 	if err != nil {
 		serverError(w, "list answers", err)
 		return
-	}
-	filled, err := s.prefillForm(ctx, f, auditOf(r), rows, saved)
-	if err != nil {
-		serverError(w, "pre-fill", err)
-		return
-	}
-	if filled {
-		if saved, err = s.q.ListEpisodeAnswers(ctx, f.FormID); err != nil {
-			serverError(w, "list answers", err)
-			return
-		}
 	}
 	chapters := []patientChapter{}
 	for _, c := range rows {
@@ -416,6 +410,7 @@ func (s *server) writeForm(w http.ResponseWriter, r *http.Request, f form) {
 		"hospital":          f.HospitalName,
 		"questionnaireName": f.QuestionnaireName,
 		"submitted":         f.PatientSubmittedAt.Valid,
+		"archived":          f.Status == episode.Archived, // S28: the read-only View of a sent HQ says no more about a review
 		"chapters":          chapters,
 		"answers":           answers,
 		"revisions":         revisions,
@@ -577,10 +572,24 @@ func (s *server) submitPatientForm(w http.ResponseWriter, r *http.Request) {
 // Staff completing the HQ on the patient's behalf (PAT-09), e.g. on the phone: the same form, on
 // …/episodes/{eid}/patient-form. The answers are the patient's, marked "entered by" the staff member.
 
+// staffPatientForm is the form for staff to fill in. Before its first pre-fill, a record that
+// hasn't joined a sign-in account joins the one that matches it on all four fields (S28): its
+// date of birth, mobile or email, first name and surname. Then other trusts' answers fill it in
+// as they do for the patient (patients filled in for often can't open a link: Rahul, 24 Oct).
 func (s *server) staffPatientForm(w http.ResponseWriter, r *http.Request) {
-	if f, ok := s.loadStaffForm(w, r); ok {
-		s.writeForm(w, r, f)
+	f, ok := s.loadStaffForm(w, r)
+	if !ok {
+		return
 	}
+	if !f.AccountID.Valid && !f.PatientSubmittedAt.Valid && !f.PrefilledAt.Valid {
+		account, err := s.joinOnBehalf(r, f)
+		if err != nil {
+			serverError(w, "join account", err)
+			return
+		}
+		f.AccountID = account
+	}
+	s.writeForm(w, r, f)
 }
 
 func (s *server) staffSavePatientForm(w http.ResponseWriter, r *http.Request) {

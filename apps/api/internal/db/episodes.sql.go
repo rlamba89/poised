@@ -345,7 +345,7 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 
 const getEpisodeForm = `-- name: GetEpisodeForm :one
 
-SELECT e.id, e.status, f.submitted_at AS patient_submitted_at, f.version_id, f.id AS form_id,
+SELECT e.id, e.status, f.submitted_at AS patient_submitted_at, f.version_id, f.id AS form_id, f.prefilled_at,
        e.org_id, e.hospital_id, e.patient_id, p.account_id, -- for the checks and the audit log, never sent to the patient
        p.first_name, p.last_name, p.date_of_birth, p.sex,
        q.name AS questionnaire_name, h.name AS hospital_name, h.timezone,
@@ -366,6 +366,7 @@ type GetEpisodeFormRow struct {
 	PatientSubmittedAt pgtype.Timestamptz `json:"patientSubmittedAt"`
 	VersionID          uuid.UUID          `json:"versionId"`
 	FormID             uuid.UUID          `json:"formId"`
+	PrefilledAt        pgtype.Timestamptz `json:"prefilledAt"`
 	OrgID              uuid.UUID          `json:"orgId"`
 	HospitalID         uuid.UUID          `json:"hospitalId"`
 	PatientID          uuid.UUID          `json:"patientId"`
@@ -392,6 +393,7 @@ func (q *Queries) GetEpisodeForm(ctx context.Context, id uuid.UUID) (GetEpisodeF
 		&i.PatientSubmittedAt,
 		&i.VersionID,
 		&i.FormID,
+		&i.PrefilledAt,
 		&i.OrgID,
 		&i.HospitalID,
 		&i.PatientID,
@@ -972,6 +974,29 @@ func (q *Queries) LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpis
 		&i.Timezone,
 	)
 	return i, err
+}
+
+const lockFormPrefill = `-- name: LockFormPrefill :one
+SELECT (prefilled_at IS NOT NULL)::boolean AS done FROM episode_forms WHERE id = $1 FOR NO KEY UPDATE
+`
+
+// The form, locked while its first open pre-fills it (S28 answers 3: once per form), so a second
+// open at the same moment waits and then finds it done. NO KEY UPDATE: saves of other sets
+// (their answer rows' foreign key) don't wait.
+func (q *Queries) LockFormPrefill(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, lockFormPrefill, id)
+	var done bool
+	err := row.Scan(&done)
+	return done, err
+}
+
+const markFormPrefilled = `-- name: MarkFormPrefilled :exec
+UPDATE episode_forms SET prefilled_at = now() WHERE id = $1 AND prefilled_at IS NULL
+`
+
+func (q *Queries) MarkFormPrefilled(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markFormPrefilled, id)
+	return err
 }
 
 const markUndone = `-- name: MarkUndone :exec

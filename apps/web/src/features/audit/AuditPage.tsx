@@ -20,8 +20,9 @@ type Row = {
   at: string;
   actor: "staff" | "patient";
   userId: string | null;
-  userName: string;
+  userName: string; // staff of another trust: "Staff at <trust>", with no email (S28)
   userEmail: string;
+  actorTrust: string; // staff of another trust: its name; "" otherwise
   hospitalId: string | null;
   hospitalName: string; // "" for a trust route ("All hospitals", the audit log itself)
   action: string;
@@ -126,7 +127,8 @@ export function AuditPage() {
   })}`;
   const people = [
     { value: PATIENT, label: "Patients (their own link)" },
-    ...users.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
+    // Staff of another trust come as "Staff at <trust>" with no email (id "trust:<id>", S28).
+    ...users.map((u) => ({ value: u.id, label: u.email ? `${u.name} (${u.email})` : u.name })),
   ];
   // A filter for someone no longer in the list (e.g. a deep link) still shows as chosen.
   if (applied.user && !people.some((p) => p.value === applied.user)) people.push({ value: applied.user, label: "Someone else" });
@@ -210,7 +212,7 @@ export function AuditPage() {
                   ) : (
                     <>
                       <Text size="sm">{r.userName}</Text>
-                      <Text size="xs" c="dimmed">{r.userEmail}</Text>
+                      {r.userEmail && <Text size="xs" c="dimmed">{r.userEmail}</Text>}
                     </>
                   )}
                 </Table.Td>

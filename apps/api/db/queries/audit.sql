@@ -1,21 +1,26 @@
 -- The audit log (plan C1, session S11; STF-06). Rows are only ever inserted (00009_audit_log.sql).
 
 -- name: InsertAudit :exec
--- at is the server's clock (Deps.Clock), so tests can place rows in time.
-INSERT INTO audit_log (at, org_id, hospital_id, actor, user_id, action, route, status, patient_ids, episode_ids)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, sqlc.arg(patient_ids)::uuid[], sqlc.arg(episode_ids)::uuid[]);
+-- at is the server's clock (Deps.Clock), so tests can place rows in time. actor_org_id: staff of
+-- another trust, named only by their trust (S28), with no user_id.
+INSERT INTO audit_log (at, org_id, hospital_id, actor, user_id, actor_org_id, action, route, status, patient_ids, episode_ids)
+VALUES (sqlc.arg(at), sqlc.arg(org_id), sqlc.narg(hospital_id), sqlc.arg(actor), sqlc.narg(user_id), sqlc.narg(actor_org_id),
+        sqlc.arg(action), sqlc.arg(route), sqlc.arg(status), sqlc.arg(patient_ids)::uuid[], sqlc.arg(episode_ids)::uuid[]);
 
 -- name: ListAudit :many
--- One trust's log, newest first, with the filters that are set: someone (a staff member, or
--- patients_only for the patient's link), a time range [from_at, to_at), and patients (any of
--- patient_ids, when by_patient).
+-- One trust's log, newest first, with the filters that are set: someone (a staff member, staff of
+-- another trust (actor_org_id, S28), or patients_only for the patient's link), a time range
+-- [from_at, to_at), and patients (any of patient_ids, when by_patient).
 SELECT a.id, a.at, a.hospital_id, h.name AS hospital_name, a.actor, a.user_id,
-       u.name AS user_name, u.email AS user_email, a.action, a.route, a.status, a.patient_ids, a.episode_ids
+       u.name AS user_name, u.email AS user_email, a.actor_org_id, o.name AS actor_org_name,
+       a.action, a.route, a.status, a.patient_ids, a.episode_ids
 FROM audit_log a
 LEFT JOIN hospitals h ON h.id = a.hospital_id
 LEFT JOIN users u ON u.id = a.user_id
+LEFT JOIN orgs o ON o.id = a.actor_org_id
 WHERE a.org_id = sqlc.arg(org_id)
   AND (sqlc.narg(user_id)::uuid IS NULL OR a.user_id = sqlc.narg(user_id))
+  AND (sqlc.narg(actor_org_id)::uuid IS NULL OR a.actor_org_id = sqlc.narg(actor_org_id))
   AND (NOT sqlc.arg(patients_only)::boolean OR a.actor = 'patient')
   AND (sqlc.narg(from_at)::timestamptz IS NULL OR a.at >= sqlc.narg(from_at))
   AND (sqlc.narg(to_at)::timestamptz IS NULL OR a.at < sqlc.narg(to_at))
@@ -31,6 +36,15 @@ FROM audit_log a
 JOIN users u ON u.id = a.user_id
 WHERE a.org_id = $1
 ORDER BY u.name, u.email;
+
+-- name: ListAuditTrusts :many
+-- The other trusts whose staff appear in a trust's log, named only by the trust (S28), for the
+-- "Who" filter.
+SELECT DISTINCT o.id, o.name
+FROM audit_log a
+JOIN orgs o ON o.id = a.actor_org_id
+WHERE a.org_id = $1
+ORDER BY o.name, o.id;
 
 -- name: MatchAuditPatients :many
 -- The trust's patients that a "Patient" filter names: part of their name ("Jane Smith" or

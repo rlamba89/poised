@@ -58,8 +58,9 @@ func (q *Queries) AuditPatientNames(ctx context.Context, arg AuditPatientNamesPa
 
 const insertAudit = `-- name: InsertAudit :exec
 
-INSERT INTO audit_log (at, org_id, hospital_id, actor, user_id, action, route, status, patient_ids, episode_ids)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::uuid[], $10::uuid[])
+INSERT INTO audit_log (at, org_id, hospital_id, actor, user_id, actor_org_id, action, route, status, patient_ids, episode_ids)
+VALUES ($1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10::uuid[], $11::uuid[])
 `
 
 type InsertAuditParams struct {
@@ -68,6 +69,7 @@ type InsertAuditParams struct {
 	HospitalID uuid.NullUUID `json:"hospitalId"`
 	Actor      string        `json:"actor"`
 	UserID     uuid.NullUUID `json:"userId"`
+	ActorOrgID uuid.NullUUID `json:"actorOrgId"`
 	Action     string        `json:"action"`
 	Route      string        `json:"route"`
 	Status     int16         `json:"status"`
@@ -76,7 +78,8 @@ type InsertAuditParams struct {
 }
 
 // The audit log (plan C1, session S11; STF-06). Rows are only ever inserted (00009_audit_log.sql).
-// at is the server's clock (Deps.Clock), so tests can place rows in time.
+// at is the server's clock (Deps.Clock), so tests can place rows in time. actor_org_id: staff of
+// another trust, named only by their trust (S28), with no user_id.
 func (q *Queries) InsertAudit(ctx context.Context, arg InsertAuditParams) error {
 	_, err := q.db.Exec(ctx, insertAudit,
 		arg.At,
@@ -84,6 +87,7 @@ func (q *Queries) InsertAudit(ctx context.Context, arg InsertAuditParams) error 
 		arg.HospitalID,
 		arg.Actor,
 		arg.UserID,
+		arg.ActorOrgID,
 		arg.Action,
 		arg.Route,
 		arg.Status,
@@ -95,23 +99,27 @@ func (q *Queries) InsertAudit(ctx context.Context, arg InsertAuditParams) error 
 
 const listAudit = `-- name: ListAudit :many
 SELECT a.id, a.at, a.hospital_id, h.name AS hospital_name, a.actor, a.user_id,
-       u.name AS user_name, u.email AS user_email, a.action, a.route, a.status, a.patient_ids, a.episode_ids
+       u.name AS user_name, u.email AS user_email, a.actor_org_id, o.name AS actor_org_name,
+       a.action, a.route, a.status, a.patient_ids, a.episode_ids
 FROM audit_log a
 LEFT JOIN hospitals h ON h.id = a.hospital_id
 LEFT JOIN users u ON u.id = a.user_id
+LEFT JOIN orgs o ON o.id = a.actor_org_id
 WHERE a.org_id = $1
   AND ($2::uuid IS NULL OR a.user_id = $2)
-  AND (NOT $3::boolean OR a.actor = 'patient')
-  AND ($4::timestamptz IS NULL OR a.at >= $4)
-  AND ($5::timestamptz IS NULL OR a.at < $5)
-  AND (NOT $6::boolean OR a.patient_ids && $7::uuid[])
+  AND ($3::uuid IS NULL OR a.actor_org_id = $3)
+  AND (NOT $4::boolean OR a.actor = 'patient')
+  AND ($5::timestamptz IS NULL OR a.at >= $5)
+  AND ($6::timestamptz IS NULL OR a.at < $6)
+  AND (NOT $7::boolean OR a.patient_ids && $8::uuid[])
 ORDER BY a.at DESC, a.id DESC
-LIMIT $8
+LIMIT $9
 `
 
 type ListAuditParams struct {
 	OrgID        uuid.UUID          `json:"orgId"`
 	UserID       uuid.NullUUID      `json:"userId"`
+	ActorOrgID   uuid.NullUUID      `json:"actorOrgId"`
 	PatientsOnly bool               `json:"patientsOnly"`
 	FromAt       pgtype.Timestamptz `json:"fromAt"`
 	ToAt         pgtype.Timestamptz `json:"toAt"`
@@ -129,6 +137,8 @@ type ListAuditRow struct {
 	UserID       uuid.NullUUID `json:"userId"`
 	UserName     *string       `json:"userName"`
 	UserEmail    *string       `json:"userEmail"`
+	ActorOrgID   uuid.NullUUID `json:"actorOrgId"`
+	ActorOrgName *string       `json:"actorOrgName"`
 	Action       string        `json:"action"`
 	Route        string        `json:"route"`
 	Status       int16         `json:"status"`
@@ -136,13 +146,14 @@ type ListAuditRow struct {
 	EpisodeIds   []uuid.UUID   `json:"episodeIds"`
 }
 
-// One trust's log, newest first, with the filters that are set: someone (a staff member, or
-// patients_only for the patient's link), a time range [from_at, to_at), and patients (any of
-// patient_ids, when by_patient).
+// One trust's log, newest first, with the filters that are set: someone (a staff member, staff of
+// another trust (actor_org_id, S28), or patients_only for the patient's link), a time range
+// [from_at, to_at), and patients (any of patient_ids, when by_patient).
 func (q *Queries) ListAudit(ctx context.Context, arg ListAuditParams) ([]ListAuditRow, error) {
 	rows, err := q.db.Query(ctx, listAudit,
 		arg.OrgID,
 		arg.UserID,
+		arg.ActorOrgID,
 		arg.PatientsOnly,
 		arg.FromAt,
 		arg.ToAt,
@@ -166,12 +177,49 @@ func (q *Queries) ListAudit(ctx context.Context, arg ListAuditParams) ([]ListAud
 			&i.UserID,
 			&i.UserName,
 			&i.UserEmail,
+			&i.ActorOrgID,
+			&i.ActorOrgName,
 			&i.Action,
 			&i.Route,
 			&i.Status,
 			&i.PatientIds,
 			&i.EpisodeIds,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAuditTrusts = `-- name: ListAuditTrusts :many
+SELECT DISTINCT o.id, o.name
+FROM audit_log a
+JOIN orgs o ON o.id = a.actor_org_id
+WHERE a.org_id = $1
+ORDER BY o.name, o.id
+`
+
+type ListAuditTrustsRow struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// The other trusts whose staff appear in a trust's log, named only by the trust (S28), for the
+// "Who" filter.
+func (q *Queries) ListAuditTrusts(ctx context.Context, orgID uuid.UUID) ([]ListAuditTrustsRow, error) {
+	rows, err := q.db.Query(ctx, listAuditTrusts, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAuditTrustsRow{}
+	for rows.Next() {
+		var i ListAuditTrustsRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

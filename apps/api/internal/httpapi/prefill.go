@@ -24,17 +24,44 @@ import (
 // own trust's forms didn't ask, read one trust per query and audited under that trust too. A set
 // holding them opens on a card naming the hospital, with Start fresh as a third button.
 
-// prefillForm fills the form's unanswered patient Question Sets (chapters: the form's version's,
-// saved: its answers so far). It reports whether it tried to store any, so the caller reads the
-// answers again: a second open at the same moment (another tab, React's double effect in
-// development) stores nothing itself, but must still send what the first one stored.
+// prefillForm fills the form's unanswered patient Question Sets (chapters: the form's version's)
+// on its first open only (S28 answers 3): the whole pre-fill, this trust's answers and other
+// trusts', runs once per form, and the form records it (episode_forms.prefilled_at), so later
+// opens never read earlier HQs again and each source trust gets one prefill.read row per form. The
+// form is locked while it runs: a second open at the same moment (another tab, React's double
+// effect in development) waits, then finds it done. The caller reads the answers afterwards.
 //
 // Answers come from the form's own trust, then from every other trust where the person's account
 // has a sent HQ (S27: always, for the patient and for staff on their behalf), each read with its
 // own query; another trust's go only where the form's own trust's forms asked nothing.
-func (s *server) prefillForm(ctx context.Context, f form, a *auditEntry, chapters []db.ListVersionChaptersRow, saved []db.ListEpisodeAnswersRow) (bool, error) {
-	if f.PatientSubmittedAt.Valid {
-		return false, nil
+func (s *server) prefillForm(ctx context.Context, f form, a *auditEntry, chapters []db.ListVersionChaptersRow) error {
+	if f.PatientSubmittedAt.Valid || f.PrefilledAt.Valid {
+		return nil
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	done, err := q.LockFormPrefill(ctx, f.FormID)
+	if err != nil || done {
+		return err
+	}
+	if err := s.fillForm(ctx, q, f, a, chapters); err != nil {
+		return err
+	}
+	if err := q.MarkFormPrefilled(ctx, f.FormID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// fillForm is prefillForm's work, inside its transaction (q).
+func (s *server) fillForm(ctx context.Context, q *db.Queries, f form, a *auditEntry, chapters []db.ListVersionChaptersRow) error {
+	saved, err := q.ListEpisodeAnswers(ctx, f.FormID)
+	if err != nil {
+		return err
 	}
 	answered := map[uuid.UUID]bool{}
 	for _, row := range saved {
@@ -51,66 +78,66 @@ func (s *server) prefillForm(ctx context.Context, f form, a *auditEntry, chapter
 		}
 	}
 	if len(fill) == 0 {
-		return false, nil
+		return nil
 	}
-	sources, err := s.prefillSources(ctx, f.OrgID, f, a, false)
+	sources, err := prefillSources(ctx, q, f.OrgID, f, a, false)
 	if err != nil {
-		return false, err
+		return err
 	}
 	var others []uuid.UUID
 	if f.AccountID.Valid { // other trusts' records are found only through the person's account (S15)
-		if others, err = s.q.ListPrefillTrusts(ctx, db.ListPrefillTrustsParams{AccountID: f.AccountID, OrgID: f.OrgID}); err != nil {
-			return false, err
+		if others, err = q.ListPrefillTrusts(ctx, db.ListPrefillTrustsParams{AccountID: f.AccountID, OrgID: f.OrgID}); err != nil {
+			return err
 		}
 	}
 	for _, org := range others {
 		// One trust per query, with its own org_id; its log gets a row of its own (S26 answers 5).
-		theirs, err := s.prefillSources(ctx, org, f, a, true)
+		theirs, err := prefillSources(ctx, q, org, f, a, true)
 		if err != nil {
-			return false, err
+			return err
 		}
 		sources = append(sources, theirs...)
 	}
 	if len(sources) == 0 {
-		return false, nil
+		return nil
 	}
 	// Another trust's question matches by key only for a platform library key (S26 answers, after
 	// verification 1): read them only when another trust's answers are used.
 	var library map[string]bool
 	if len(others) > 0 {
-		elements, err := s.q.ListPlatformLibraryElements(ctx)
+		elements, err := q.ListPlatformLibraryElements(ctx)
 		if err != nil {
-			return false, err
+			return err
 		}
 		library = prefill.LibraryKeys(elements)
 	}
 	filled, err := prefill.Fill(target, fill, sources, library)
 	if err != nil {
-		return false, err
+		return err
 	}
 	for cid, got := range filled {
 		data, err := json.Marshal(got.Data)
 		if err != nil {
-			return false, err
+			return err
 		}
 		meta, err := json.Marshal(got.Prefill)
 		if err != nil {
-			return false, err
+			return err
 		}
-		// No row: the patient (or another open) saved this set first, and that stays.
-		if _, err := s.q.PrefillPatientAnswers(ctx, db.PrefillPatientAnswersParams{FormID: f.FormID, ChapterID: uuid.MustParse(cid), Data: data, Prefill: meta}); err != nil {
-			return false, err
+		// No row: the patient saved this set first (in another tab), and that stays.
+		if _, err := q.PrefillPatientAnswers(ctx, db.PrefillPatientAnswersParams{FormID: f.FormID, ChapterID: uuid.MustParse(cid), Data: data, Prefill: meta}); err != nil {
+			return err
 		}
 	}
-	return len(filled) > 0, nil
+	return nil
 }
 
 // prefillSources reads the patient's earlier submitted HQ forms in one trust, newest first, each
 // with its Question Sets and answers (ListPrefillSources). Their episodes go in the request's
 // audit row: their answers were read. Another trust's (otherTrust) go in a row of that trust's own,
 // at the source episode's hospital, never in this trust's (S26 answers 5).
-func (s *server) prefillSources(ctx context.Context, org uuid.UUID, f form, a *auditEntry, otherTrust bool) ([]prefill.Source, error) {
-	rows, err := s.q.ListPrefillSources(ctx, db.ListPrefillSourcesParams{OrgID: org, FormID: f.FormID, PatientID: f.PatientID, AccountID: f.AccountID})
+func prefillSources(ctx context.Context, q *db.Queries, org uuid.UUID, f form, a *auditEntry, otherTrust bool) ([]prefill.Source, error) {
+	rows, err := q.ListPrefillSources(ctx, db.ListPrefillSourcesParams{OrgID: org, FormID: f.FormID, PatientID: f.PatientID, AccountID: f.AccountID})
 	if err != nil {
 		return nil, err
 	}

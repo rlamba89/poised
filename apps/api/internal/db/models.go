@@ -24,6 +24,7 @@ type AuditLog struct {
 	Status     int16         `json:"status"`
 	PatientIds []uuid.UUID   `json:"patientIds"`
 	EpisodeIds []uuid.UUID   `json:"episodeIds"`
+	ActorOrgID uuid.NullUUID `json:"actorOrgId"`
 }
 
 type Category struct {
@@ -125,6 +126,7 @@ type EpisodeForm struct {
 	SubmittedAt pgtype.Timestamptz `json:"submittedAt"`
 	SubmittedBy uuid.NullUUID      `json:"submittedBy"`
 	CreatedAt   time.Time          `json:"createdAt"`
+	PrefilledAt pgtype.Timestamptz `json:"prefilledAt"`
 }
 
 type EpisodeMessage struct {
