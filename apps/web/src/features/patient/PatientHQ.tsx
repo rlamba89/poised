@@ -273,7 +273,8 @@ export default function PatientHQ({ path, onBehalf }: Props) {
             You&apos;re filling in {hq.patient.name}&apos;s health questionnaire for them. The answers are saved as theirs, marked as entered by you.
           </Alert>
         )}
-        {error && <Alert color="red" mb="md" withCloseButton onClose={() => setError("")}>{error}</Alert>}
+        {/* The cleared card already says the page couldn't load, so no red banner over it (S29). */}
+        {error && !freshUnloaded && <Alert color="red" mb="md" withCloseButton onClose={() => setError("")}>{error}</Alert>}
         {freshUnloaded ? (
           <Card withBorder p="xl" data-testid="fresh-reload-failed">
             <Title order={3}>The answers in this section were cleared</Title>

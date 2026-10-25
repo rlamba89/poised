@@ -10,12 +10,28 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * What every page shows when the server can't be reached (S29; Rahul, 25 Oct): the request never
+ * got an answer (offline, or the API down: status 0), or a gateway answered 5xx without the API's
+ * JSON body (e.g. the dev proxy's empty 502). Never the browser's own "Failed to fetch".
+ */
+export const NETWORK_ERROR = "We couldn't reach the server. Check your connection and try again.";
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw e; // the caller cancelled it
+    throw new ApiError(0, NETWORK_ERROR);
+  }
   const body = res.status === 204 ? null : await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(res.status, body?.error ?? "Something went wrong. Please try again.", body);
+  if (!res.ok) {
+    const fallback = res.status >= 500 && body === null ? NETWORK_ERROR : "Something went wrong. Please try again.";
+    throw new ApiError(res.status, body?.error ?? fallback, body);
+  }
   return body as T;
 }

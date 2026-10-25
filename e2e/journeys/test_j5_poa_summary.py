@@ -8,7 +8,11 @@ the answer clicked still on the screen.
 
 Its third (S28): a Question Set started fresh says so on both tabs, with Validate's wording, and
 the Patient reported BMI comes from the patient's own height and weight before About you is
-validated, then from the validated ones."""
+validated, then from the validated ones.
+
+Its fourth (S29): when the server can't be reached, the POA Summary says so plainly ("We couldn't
+reach the server…"), never the browser's "Failed to fetch": a request that fails outright, and a
+gateway's 502 with no body."""
 
 import re
 
@@ -150,3 +154,29 @@ def test_a_set_started_fresh_says_so_and_the_bmi_comes_from_the_patients_answers
     cara.validate(second, "About you", {"height": 170, "weight": 90})
     page.reload()
     expect(page.get_by_test_id("poa-detail-Patient reported BMI")).to_contain_text("31.1")
+
+
+NETWORK_ERROR = "We couldn't reach the server. Check your connection and try again."
+
+
+def test_the_poa_summary_says_plainly_when_the_server_cant_be_reached(page: Page, as_user):
+    hq = as_user("Alex Author").published_hq("workflow-hq.json", f"E2E J5d {unique()}")
+    episode = as_user("Cara Clinician").episode(hq, f"J5d {unique()}")
+    base = sign_in(page.context, "Cara Clinician")
+    poa = f"{base}/episodes/{episode['id']}/poa"
+
+    # Offline (the request never gets an answer): the page says so in words.
+    page.route(re.compile(r"/api/.*/episodes/[^/]+/hq$"), lambda route: route.abort("internetdisconnected"))
+    page.goto(poa)
+    expect(page.get_by_role("alert")).to_have_text(NETWORK_ERROR)
+    expect(page.get_by_text("Failed to fetch")).to_have_count(0)
+    page.unroute_all()
+
+    # Back online, the page loads; a comment that meets a gateway's empty 502 says the same.
+    page.reload()
+    notes = page.get_by_role("region", name="General notes")
+    notes.get_by_role("button", name="Add comment").click()
+    notes.get_by_role("textbox", name="Comment").fill("Made-up comment that won't arrive.")
+    page.route(re.compile(r"/api/.*/episodes/[^/]+/notes$"), lambda route: route.fulfill(status=502, body=""))
+    notes.get_by_role("button", name="Save comment").click()
+    expect(notes.get_by_role("alert")).to_have_text(NETWORK_ERROR)
