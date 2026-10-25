@@ -6,7 +6,7 @@ import (
 )
 
 // ForPatient returns the chapter JSON as a patient may receive it (VEW-01, plan 10.2): without
-// clinician-only questions and groups at any depth, without disclosures (clinicalOutputs) and
+// clinician-only questions and groups or Clinical Summaries at any depth, without disclosures (clinicalOutputs) and
 // without test cases. It also returns the names of the elements left, which are the only
 // answer keys a patient may save. It walks the JSON only; it never evaluates expressions.
 func ForPatient(raw json.RawMessage) (json.RawMessage, map[string]bool, error) {
@@ -19,6 +19,10 @@ func ForPatient(raw json.RawMessage) (json.RawMessage, map[string]bool, error) {
 	out, err := json.Marshal(doc)
 	return out, names, err
 }
+
+// SummaryType is the Clinical Summary element's type (S32): for clinicians only, always removed,
+// even if its clinicianOnly flag were missing.
+const SummaryType = "clinicalsummary"
 
 // elementLists are the keys whose arrays hold pages, questions or groups.
 var elementLists = map[string]bool{"pages": true, "elements": true, "templateElements": true}
@@ -37,7 +41,7 @@ func strip(v any, names map[string]bool) any {
 			kept := []any{}
 			for _, item := range list {
 				el, isObj := item.(map[string]any)
-				if isObj && el["clinicianOnly"] == true {
+				if isObj && (el["clinicianOnly"] == true || el["type"] == SummaryType) {
 					continue
 				}
 				if name, _ := el["name"].(string); isObj && k != "pages" && name != "" {

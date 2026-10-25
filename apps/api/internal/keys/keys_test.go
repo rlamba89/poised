@@ -926,3 +926,15 @@ func TestLinkedTo(t *testing.T) {
 		}
 	}
 }
+
+// A Clinical Summary element (S32) holds no answer of its own (its comments are cs_comments_…, a
+// clinician's answer the JSON never names), so no key check or pre-fill ever counts it.
+func TestWalkSummaryHoldsNoAnswer(t *testing.T) {
+	qs, err := Walk(json.RawMessage(`{"pages":[{"name":"p","elements":[{"type":"clinicalsummary","name":"cs_abcdef","clinicianOnly":true}]}]}`))
+	if err != nil || len(qs) != 1 {
+		t.Fatalf("Walk = %v, %v", qs, err)
+	}
+	if qs[0].Answerable || !qs[0].ClinicianOnly {
+		t.Errorf("summary = %+v, want not answerable and clinician-only", qs[0])
+	}
+}

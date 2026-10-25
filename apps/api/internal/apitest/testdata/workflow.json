@@ -1,6 +1,6 @@
 {
   "name": "Workflow HQ",
-  "description": "Two patient Question Sets with clinician-only content, and one clinician set. Everything a patient must not see has SECRET in it.",
+  "description": "Two patient Question Sets with clinician-only content (Clinical Summaries too, S32), and one clinician set. Everything a patient must not see has SECRET in it.",
   "chapters": [
     {
       "name": "About you",
@@ -26,7 +26,8 @@
                 "name": "g_heart",
                 "elements": [
                   { "type": "boolean", "name": "q_heart", "title": "Any heart problems?" },
-                  { "type": "text", "name": "q_secret_ecg", "title": "SECRET ECG reading", "clinicianOnly": true }
+                  { "type": "text", "name": "q_secret_ecg", "title": "SECRET ECG reading", "clinicianOnly": true },
+                  { "type": "clinicalsummary", "name": "cs_secret_heart", "title": "SECRET heart summary", "clinicianOnly": true }
                 ]
               },
               {
@@ -37,7 +38,8 @@
                   { "type": "text", "name": "q_med_name", "title": "Medicine" },
                   { "type": "text", "name": "q_secret_dose_check", "title": "SECRET dose check", "clinicianOnly": true }
                 ]
-              }
+              },
+              { "type": "clinicalsummary", "name": "cs_secret_page", "clinicianOnly": true }
             ]
           },
           {

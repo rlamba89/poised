@@ -308,9 +308,9 @@ func TestPatientHQ(t *testing.T) {
 		t.Helper()
 		r.Want(t, http.StatusOK)
 		// Nothing for clinicians reaches the patient (VEW-01): no clinician-only element, page or
-		// set, no disclosure (clinicalOutputs), no test case, and no clinician answers. And none of
+		// set, no Clinical Summary (S32), no disclosure (clinicalOutputs), no test case, and no clinician answers. And none of
 		// the identifiers the patient didn't type: not even the date of birth they did (S14 answers 1).
-		for _, secret := range []string{"SECRET", "clinicianOnly", "clinicalOutputs", "testCases", "q_secret", "q_on_secret_page",
+		for _, secret := range []string{"SECRET", "clinicianOnly", "clinicalOutputs", "testCases", "q_secret", "q_on_secret_page", "clinicalsummary", "cs_secret",
 			"1970-01-01", "dateOfBirth", "9434765919", "nationalId", "+447700900222", "sam@example.org", "HN-777", w.ep.PatientID.String()} {
 			if strings.Contains(string(r.Body), secret) {
 				t.Errorf("the patient JSON has %q: %s", secret, r.Body)

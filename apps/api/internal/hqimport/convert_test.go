@@ -61,7 +61,11 @@ const fixture = `{
       {
         "id": "set-2", "name": "Heart", "icon": "Heart",
         "pages": [{"id": "page-3", "name": {"text": "Heart"}, "elements": [
-          {"__typename": "QuestionText", "id": "q-heart", "name": {"text": "Tell us more"}, "visibleIf": "containsAny(selectedOptionIds, [{opt-yes}])"}
+          {"__typename": "QuestionText", "id": "q-heart", "name": {"text": "Tell us more"}, "visibleIf": "containsAny(selectedOptionIds, [{opt-yes}])"},
+          {"__typename": "QuestionGroupSection", "id": "g-1", "name": {"text": "Breathing"}, "elements": [
+            {"__typename": "QuestionText", "id": "q-breath", "name": {"text": "Breathless?"}},
+            {"__typename": "ClinicalPageSummary", "id": "sum-2", "isClinical": true}
+          ]}
         ]}]
       }
     ]
@@ -88,12 +92,16 @@ func TestConvert(t *testing.T) {
 	}
 	pages := q.Sets[0].Content["pages"].([]any)
 	p1 := pages[0].(map[string]any)
-	if p1["title"] != "Smoking" || p1["clinicalSummary"] != true {
+	if p1["title"] != "Smoking" || p1["clinicalSummary"] != nil {
 		t.Errorf("page 1: %v", p1)
 	}
 	els := p1["elements"].([]any)
-	if len(els) != 4 {
-		t.Fatalf("page 1 has %d elements, want 4 (the summary becomes a page flag)", len(els))
+	if len(els) != 5 {
+		t.Fatalf("page 1 has %d elements, want 5 (the summary is an element where it sat, S32)", len(els))
+	}
+	// The Clinical Summary element, clinician-only, named cs_… (its comments are cs_comments_…).
+	if sum := els[4].(map[string]any); sum["type"] != "clinicalsummary" || sum["clinicianOnly"] != true || !strings.HasPrefix(sum["name"].(string), "cs_") || sum["title"] != nil {
+		t.Errorf("summary: %v", sum)
 	}
 	smoke, many, allergy, statement := els[0].(map[string]any), els[1].(map[string]any), els[2].(map[string]any), els[3].(map[string]any)
 
@@ -155,6 +163,12 @@ func TestConvert(t *testing.T) {
 	if heart["visibleIf"] != nil {
 		t.Errorf("cross-set condition kept: %v", heart["visibleIf"])
 	}
+	// A summary inside a group stays inside it, where it sat.
+	group := q.Sets[1].Content["pages"].([]any)[0].(map[string]any)["elements"].([]any)[1].(map[string]any)
+	inner := group["elements"].([]any)
+	if len(inner) != 2 || inner[1].(map[string]any)["type"] != "clinicalsummary" || inner[1].(map[string]any)["clinicianOnly"] != true {
+		t.Errorf("group: %v", group)
+	}
 	all := strings.Join(warnings, "\n")
 	for _, w := range []string{"ICD10 Z72.0 is not in our library", "another Question Set"} {
 		if !strings.Contains(all, w) {
@@ -165,10 +179,10 @@ func TestConvert(t *testing.T) {
 
 func TestSimplify(t *testing.T) {
 	for in, want := range map[string]string{
-		"({q_a} = 'o_b')":                      "{q_a} = 'o_b'",
-		"!({q_a} = 'o_b')":                     "{q_a} <> 'o_b'",
-		"!({q_a} contains 'o_b')":              "{q_a} notcontains 'o_b'",
-		"({q_a} = 'o_b' or {q_a} = 'o_c')":     "({q_a} = 'o_b' or {q_a} = 'o_c')",
+		"({q_a} = 'o_b')":                     "{q_a} = 'o_b'",
+		"!({q_a} = 'o_b')":                    "{q_a} <> 'o_b'",
+		"!({q_a} contains 'o_b')":             "{q_a} notcontains 'o_b'",
+		"({q_a} = 'o_b' or {q_a} = 'o_c')":    "({q_a} = 'o_b' or {q_a} = 'o_c')",
 		"({q_a} = 'o_b') and ({q_c} = 'o_d')": "({q_a} = 'o_b') and ({q_c} = 'o_d')",
 	} {
 		if got := simplify(in); got != want {

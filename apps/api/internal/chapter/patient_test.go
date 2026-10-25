@@ -15,8 +15,10 @@ const mixed = `{
       {"type": "comment", "name": "q_secret", "clinicianOnly": true},
       {"type": "panel", "name": "g_1", "elements": [
         {"type": "text", "name": "q_inner"},
-        {"type": "text", "name": "q_inner_clin", "clinicianOnly": true}
+        {"type": "text", "name": "q_inner_clin", "clinicianOnly": true},
+        {"type": "clinicalsummary", "name": "cs_unflagged"}
       ]},
+      {"type": "clinicalsummary", "name": "cs_page", "clinicianOnly": true},
       {"type": "paneldynamic", "name": "q_meds", "templateElements": [{"type": "text", "name": "q_dose", "clinicianOnly": true}]}
     ]
   }, {
@@ -30,7 +32,8 @@ func TestForPatient(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(out)
-	for _, gone := range []string{"q_secret", "q_inner_clin", "q_dose", "clinicalOutputs", "Smoker", "testCases", "q_on_clin_page"} {
+	// A Clinical Summary (S32) never reaches the patient, even one somehow saved without its clinicianOnly flag.
+	for _, gone := range []string{"q_secret", "q_inner_clin", "q_dose", "clinicalOutputs", "Smoker", "testCases", "q_on_clin_page", "clinicalsummary", "cs_"} {
 		if strings.Contains(s, gone) {
 			t.Errorf("patient JSON still has %q: %s", gone, s)
 		}

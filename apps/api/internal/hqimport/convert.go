@@ -87,6 +87,7 @@ func (c *converter) index(set int, nodes []Node, names map[string]string) {
 			names[n.ID] = c.newID("g", 6)
 			c.index(set, n.Elements, names)
 		case "ClinicalPageSummary":
+			names[n.ID] = c.newID("cs", 6) // its comments are cs_comments_<id> (packages/clinical summary.ts)
 		default:
 			names[n.ID] = c.newID("q", 6)
 		}
@@ -114,10 +115,6 @@ func (c *converter) page(p Page, index int, names map[string]string) map[string]
 	}
 	var elements []any
 	for _, n := range p.Elements {
-		if n.Typename == "ClinicalPageSummary" {
-			page["clinicalSummary"] = true
-			continue
-		}
 		if el := c.element(n, names); el != nil {
 			elements = append(elements, el)
 		}
@@ -195,6 +192,9 @@ func (c *converter) element(n Node, names map[string]string) map[string]any {
 		setText()
 	case "PanelStatement":
 		el["type"], el["html"] = "html", textToHTML(n.Text.String())
+	case "ClinicalPageSummary":
+		// A Clinical Summary element where it sat (S32): it covers its Group or the page. Always clinician-only.
+		el["type"], el["clinicianOnly"] = "clinicalsummary", true
 	case "QuestionGroupSection":
 		el["type"] = "panel"
 		setText()
@@ -206,9 +206,6 @@ func (c *converter) element(n Node, names map[string]string) map[string]any {
 		}
 		var children []any
 		for _, child := range n.Elements {
-			if child.Typename == "ClinicalPageSummary" {
-				continue
-			}
 			if ch := c.element(child, names); ch != nil {
 				children = append(children, ch)
 			}
