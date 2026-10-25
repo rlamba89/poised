@@ -55,7 +55,7 @@
 - ~~**S31:** clinician capture blocks on Groups and Sections (CAP-01/02); J10 starts;~~ *dropped 25 Oct*
 - **S32:** the Clinical Summary element, replacing the page switch (SUM-01); SGN-04 changed; *verified 25 Oct* ([build notes](../sessions/S32-summary-element/build-notes.md): differences from this plan are the builder's choices listed there, e.g. the summary is stored as one small element expanded only for clinicians);
 - **S33:** the content library, platform and trust (INF-05, PX-13), with the superadmin list of the starter questions promised in S24's answers; *verified 25 Oct (verification 2, after verification 1's fixes and test report 4)* ([build notes](../sessions/S33-content-library/build-notes.md): a video's length is required; a leaflet is any https link; retiring is reversible; the video link cases are a file S34's check must also run);
-- **S34:** the Video element and its library picker (INF-01/02); J10 completed;
+- **S34:** the Video element and its library picker (INF-01/02); J10 completed; *verified 25 Oct (verification 1; test report 1 all passed, 24 of 24)* ([build notes](../sessions/S34-video-element/build-notes.md): a video needs a length to publish; Go holds back a send while a required tick with no condition is unticked; the iframe sends the referrer YouTube needs);
 - **S35:** the Information element, with the plan's Tiptap-or-Markdown choice (INF-03);
 - **S36:** the patient's Information per episode (INF-04, from the procedure's `info_content`) and the estimated time (PX-10).
 
