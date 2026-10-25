@@ -2,16 +2,16 @@
 // Go does the rest (apps/api/internal/keys): the matches behind "Pre-fills from N other HQs", and
 // the key checks Publish runs (a key used twice in the HQ; a published question whose answer
 // changed), which the editor shows in its Publish window before the author clicks.
-import type { ChapterJson, ElementJson } from "./doc";
+import { SUMMARY_TYPE, type ChapterJson, type ElementJson } from "./doc";
 
 /**
  * Whether an element can be pre-filled, so may have "Always ask fresh" and a pre-fill badge: an
- * answer not marked clinician-only. Never statements, calculations, groups or the profile (no
+ * answer not marked clinician-only. Never statements, calculations, groups, the profile or summaries (no
  * answer), nor signatures, uploads and the BMI calculator (one-off answers Go never copies).
  */
 export function canAskFresh(el: ElementJson): boolean {
   if (el.clinicianOnly) return false;
-  return !["panel", "html", "expression", "image", "profile", "bmi", "signaturepad", "file"].includes(el.type);
+  return !["panel", "html", "expression", "image", "profile", "bmi", "signaturepad", "file", SUMMARY_TYPE].includes(el.type);
 }
 
 /**

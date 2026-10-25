@@ -7,7 +7,8 @@ describe("canAskFresh", () => {
     expect(canAskFresh({ type: "text", name: "q" })).toBe(true);
     expect(canAskFresh({ type: "paneldynamic", name: "q" })).toBe(true);
     expect(canAskFresh({ type: "text", name: "q", clinicianOnly: true })).toBe(false);
-    for (const type of ["panel", "html", "expression", "profile", "bmi", "signaturepad", "file"]) expect(canAskFresh({ type, name: "q" })).toBe(false);
+    // A Clinical Summary (S32) holds no answer of its own, so it never goes to the library either.
+    for (const type of ["panel", "html", "expression", "profile", "bmi", "signaturepad", "file", "clinicalsummary"]) expect(canAskFresh({ type, name: "q" })).toBe(false);
   });
 });
 

@@ -1,6 +1,6 @@
 // The POA Summary's content (plan-workflow.md Step 5), laid out as the incumbent's: one section per
-// Question Set shown, and in it one block per page with its disclosure notes and clinical
-// comments ("<page> Summary"), plus the Medication, Admissions and BMI answers as tables.
+// Question Set shown, and in it, per page, one block per Clinical Summary with its disclosure notes
+// and clinical comments (S32), plus the Medication, Admissions and BMI answers as tables.
 // The same function builds both tabs: the validated summary (clinician answers) and the
 // patient's original answers.
 import type { Question } from "survey-core";
@@ -9,7 +9,7 @@ import { computeOutputs, isClinicianOnlyInTree } from "./outputs";
 import { registerClinicalProperties } from "./properties";
 import { prefilledAnswers, prefillMarks, type PrefillMark, type SetPrefill } from "./prefill";
 import { describeAnswer, sameAnswer, shownSets, type Answers } from "./respondent";
-import { SUMMARY_PREFIX } from "./summary";
+import { summariesIn, summaryOwners } from "./summary";
 import { modelFor, type SamplePatient } from "./testcases";
 import type { Viewer } from "./viewer";
 
@@ -18,9 +18,18 @@ export type CaptureKind = "medication" | "admissions" | "bmi";
 export type PoaCapture = { questionId: string; kind: CaptureKind; title: string; rows: Answers[] };
 /** An answer the clinician changed: what the patient said, and the final answer. */
 export type PoaChange = { questionId: string; title: string; patient: string; clinician: string };
-/** prefilled: the page's pre-filled answers shown (S26, PRE-04), each saying whether the patient changed it. */
+/**
+ * One Clinical Summary's block (S32): its title, the notes it lists and its clinical comments. Notes
+ * no summary covers go in a block named after the page ("<page> Summary"), so none are lost.
+ */
+export type PoaBlock = { name: string; title: string; notes: PoaNote[]; comments: string };
+/**
+ * blocks: the page's summaries with something to show, the page's own block (notes no summary
+ * covers) first, then the summaries in the order they sit on the page.
+ * prefilled: the page's pre-filled answers shown (S26, PRE-04), each saying whether the patient changed it.
+ */
 export type PoaPage = {
-  name: string; title: string; notes: PoaNote[]; comments: string; captures: PoaCapture[]; changes: PoaChange[]; prefilled: PrefillMark[];
+  name: string; title: string; blocks: PoaBlock[]; captures: PoaCapture[]; changes: PoaChange[]; prefilled: PrefillMark[];
 };
 /**
  * prefill: the set's pre-fill (S26), for the button the patient pressed; absent if nothing was
@@ -39,8 +48,8 @@ type SetInput = { id: string; name: string; content: ChapterJson };
  * - `original`, the patient's answers, marks the clinician's corrections.
  * - `prefill`, where the patient's pre-filled answers came from (S26), marks them, and whether the
  *   patient changed each, comparing with the patient's answers (`original`, else `answers`).
- * Pages and Question Sets with nothing to show are left out, as in the incumbent. Unlike the incumbent,
- * a page's notes are shown even when the page has no Clinical summary box, so none are lost.
+ * Pages, summaries and Question Sets with nothing to show are left out, as in the incumbent. Unlike the
+ * incumbent, notes no Clinical Summary covers are shown too, in a block named after the page.
  */
 export function poaSummary(
   sets: SetInput[],
@@ -58,9 +67,20 @@ export function poaSummary(
     model.data = data;
     const before = original?.[set.id];
     const pages = new Map<string, PoaPage>();
-    pagesOf(set.content).forEach((p, i) =>
-      pages.set(p.name, { name: p.name, title: pageTitle(p, i), notes: [], comments: "", captures: [], changes: [], prefilled: [] }),
-    );
+    const blocks = new Map<string, PoaBlock>(); // by summary name, and by page name for the page's own block
+    pagesOf(set.content).forEach((p, i) => {
+      const title = pageTitle(p, i);
+      const own: PoaBlock = { name: p.name, title: `${title} Summary`, notes: [], comments: "" };
+      blocks.set(p.name, own);
+      pages.set(p.name, { name: p.name, title, blocks: [own], captures: [], changes: [], prefilled: [] });
+    });
+    for (const s of summariesIn(set.content)) {
+      const comments = data[s.commentsId];
+      const block: PoaBlock = { name: s.name, title: s.title, notes: [], comments: typeof comments === "string" ? comments.trim() : "" };
+      blocks.set(s.name, block);
+      pages.get(s.page)?.blocks.push(block);
+    }
+    const owners = summaryOwners(set.content);
     const pageOf = (questionId: string) => pages.get(findElement(set.content, questionId)?.page.name ?? "");
 
     // Corrections first, so notes from a corrected answer can be marked.
@@ -78,9 +98,9 @@ export function poaSummary(
 
     for (const o of computeOutputs(model).outputs) {
       if (!o.noteText) continue;
-      const page = pageOf(o.questionId);
-      if (page && !page.notes.some((n) => n.text === o.noteText)) {
-        page.notes.push({ text: o.noteText, questionId: o.questionId, corrected: corrected.has(o.questionId) });
+      const block = blocks.get(owners.get(o.questionId) ?? pageOf(o.questionId)?.name ?? "");
+      if (block && !block.notes.some((n) => n.text === o.noteText)) {
+        block.notes.push({ text: o.noteText, questionId: o.questionId, corrected: corrected.has(o.questionId) });
       }
     }
 
@@ -94,11 +114,8 @@ export function poaSummary(
     const pre = prefill?.[set.id];
     for (const m of prefillMarks(model, prefilledAnswers(pre), before ?? data)) pageOf(m.questionId)?.prefilled.push(m);
 
-    for (const page of pages.values()) {
-      const comments = data[`${SUMMARY_PREFIX}comments_${page.name}`];
-      if (typeof comments === "string") page.comments = comments.trim();
-    }
-    const kept = [...pages.values()].filter((p) => p.notes.length || p.comments || p.captures.length || p.changes.length || p.prefilled.length);
+    for (const page of pages.values()) page.blocks = page.blocks.filter((b) => b.notes.length || b.comments);
+    const kept = [...pages.values()].filter((p) => p.blocks.length || p.captures.length || p.changes.length || p.prefilled.length);
     if (kept.length || pre?.choice === "start_fresh") out.push({ id: set.id, name: set.name, pages: kept, ...(pre ? { prefill: pre } : {}) });
     model.dispose();
   }

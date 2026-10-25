@@ -44,4 +44,19 @@ describe("publishProblems", () => {
     expect(problems).toHaveLength(1);
     expect(problems[0].set).toBe("Lifestyle");
   });
+
+  // S32 (SGN-04): two clinical summaries covering the same Group, Section or page.
+  it("reports two summaries in one Group, naming the set", () => {
+    const doc: ChapterJson = { pages: [{ name: "p_1", title: "Heart", elements: [
+      { type: "panel", name: "g_b", title: "Breathing", elements: [
+        { type: "text", name: "q_b", title: "Breathless?" },
+        { type: "clinicalsummary", name: "cs_one", clinicianOnly: true },
+        { type: "clinicalsummary", name: "cs_two", clinicianOnly: true },
+      ] },
+      { type: "clinicalsummary", name: "cs_page", clinicianOnly: true },
+    ] }] };
+    expect(publishProblems([{ name: "About you", doc }])).toEqual([
+      { set: "About you", message: "Two clinical summaries cover the same Group “Breathing”: keep one" },
+    ]);
+  });
 });

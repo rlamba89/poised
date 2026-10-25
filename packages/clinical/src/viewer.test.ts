@@ -25,6 +25,11 @@ describe("stripClinicianOnly", () => {
     ],
   };
 
+  it("removes a Clinical Summary even without its clinicianOnly flag (S32)", () => {
+    const doc = { pages: [{ name: "p", elements: [{ type: "text", name: "q_a" }, { type: "panel", name: "g", elements: [{ type: "clinicalsummary", name: "cs_x" }] }] }] };
+    expect(JSON.stringify(stripClinicianOnly(doc))).not.toContain("cs_x");
+  });
+
   it("removes clinician-only questions and groups at any depth", () => {
     expect(stripClinicianOnly(json)).toEqual({
       pages: [

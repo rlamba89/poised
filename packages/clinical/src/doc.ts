@@ -44,6 +44,7 @@ export type PageJson = {
   name: string;
   title?: string;
   visibleIf?: string;
+  /** The old "Clinical summary" switch (before S32), read as a summary element (summary.ts upgradeSummaries). */
   clinicalSummary?: boolean;
   elements?: ElementJson[];
   [key: string]: unknown;
@@ -57,7 +58,7 @@ export type ChapterJson = { pages?: PageJson[]; [key: string]: unknown };
 export const KINDS = [
   "group", "section", "yesno", "selectone", "selectmany", "text", "date", "number",
   "rating", "grid", "calculation", "upload", "signature",
-  "medication", "admissions", "bmi", "profile", "statement",
+  "medication", "admissions", "bmi", "profile", "statement", "summary",
 ] as const;
 export type Kind = (typeof KINDS)[number];
 
@@ -80,7 +81,12 @@ export const KIND_LABEL: Record<Kind, string> = {
   bmi: "BMI",
   profile: "Profile",
   statement: "Statement",
+  summary: "Clinical Summary",
 };
+
+/** The Clinical Summary element's SurveyJS type (S32): the clinician view expands it (summary.ts). */
+export const SUMMARY_TYPE = "clinicalsummary";
+export const isSummary = (el: ElementJson) => el.type === SUMMARY_TYPE;
 
 /** What an element is, in incumbent terms. */
 export function kindOf(el: ElementJson): Kind {
@@ -115,6 +121,8 @@ export function kindOf(el: ElementJson): Kind {
       return "signature";
     case "html":
       return "statement";
+    case SUMMARY_TYPE:
+      return "summary";
     case "medication":
     case "admissions":
     case "bmi":
@@ -139,8 +147,8 @@ export function childrenOf(el: ElementJson): ElementJson[] {
 export const isChoiceKind = (k: Kind) => k === "yesno" || k === "selectone" || k === "selectmany";
 /** Text, Date, Number and Rating carry outputs on the question itself (a Calculation too, unless it has bands). */
 export const hasQuestionOutputs = (k: Kind) => k === "text" || k === "date" || k === "number" || k === "rating" || k === "calculation";
-/** Kinds that hold an answer (everything except groups, statements and the profile). */
-export const isAnswerKind = (k: Kind) => !["group", "section", "statement", "profile"].includes(k);
+/** Kinds that hold an answer (everything except groups, statements, the profile and summaries). */
+export const isAnswerKind = (k: Kind) => !["group", "section", "statement", "profile", "summary"].includes(k);
 /** BMI and Profile are fixed blocks: they can only be deleted (incumbent "Locked"). */
 export const isLocked = (k: Kind) => k === "bmi" || k === "profile";
 
@@ -150,7 +158,7 @@ export const isLocked = (k: Kind) => k === "bmi" || k === "profile";
  * pre-fill: keep `placeholders` in apps/api/internal/keys/keys.go in step when they change.
  */
 export function newElement(kind: Kind, taken: Set<string>): ElementJson {
-  const name = freshId(kind === "group" || kind === "section" ? "g" : "q", 6, taken);
+  const name = freshId(kind === "group" || kind === "section" ? "g" : kind === "summary" ? "cs" : "q", 6, taken);
   const options = (labels: string[]) => {
     const used = new Set<string>();
     return labels.map((text) => ({ value: freshId("o", 4, used), text }));
@@ -195,6 +203,9 @@ export function newElement(kind: Kind, taken: Set<string>): ElementJson {
       return { type: "profile", name, title: "Your Profile" };
     case "statement":
       return { type: "html", name, html: "<p>Panel statement</p>" };
+    case "summary":
+      // No title: it shows "<Group or page name> summary" until the author gives one (summary.ts).
+      return { type: SUMMARY_TYPE, name, clinicianOnly: true };
   }
 }
 
@@ -386,7 +397,11 @@ export function groupsToMoveInto(doc: ChapterJson, name: string): ElementJson[] 
   };
   collect(loc.el);
   if (kindOf(loc.el) === "section") return [];
-  return allElements(doc).filter(({ el, page }) => page === loc.page && isContainer(el) && !inside.has(el.name) && el.name !== loc.parent?.name).map(({ el }) => el);
+  // A summary never goes inside a repeating group (S32).
+  return allElements(doc)
+    .filter(({ el, page }) => page === loc.page && isContainer(el) && !inside.has(el.name) && el.name !== loc.parent?.name)
+    .filter(({ el }) => !(isSummary(loc.el) && isRepeating(el)))
+    .map(({ el }) => el);
 }
 
 /**
@@ -440,7 +455,7 @@ function cloneWithNewIds(elements: ElementJson[], taken: Set<string>): ElementJs
   const renamed = new Map<string, string>();
   const optionMap = new Map<string, Map<string, string>>();
   const rename = (el: ElementJson) => {
-    const id = freshId(el.name.startsWith("g_") || isContainer(el) ? "g" : "q", 6, taken);
+    const id = freshId(isSummary(el) ? "cs" : el.name.startsWith("g_") || isContainer(el) ? "g" : "q", 6, taken);
     renamed.set(el.name, id);
     if (Array.isArray(el.choices)) {
       const used = new Set<string>();
@@ -594,9 +609,9 @@ export function expressionsIn(doc: ChapterJson): { expr: string; owner: string; 
   return out;
 }
 
-/** A short name for an element: its title, a statement's first words, or its ID. */
+/** A short name for an element: its title, a statement's first words, "Clinical summary", or its ID. */
 export function elementLabel(el: ElementJson): string {
-  return textOf(el.title) || plainText(el.html ?? "").slice(0, 60) || el.name;
+  return textOf(el.title) || plainText(el.html ?? "").slice(0, 60) || (isSummary(el) ? "Clinical summary" : el.name);
 }
 
 /** Everything whose conditions or calculations refer to an element (STR-08, LOG-13). */
@@ -651,7 +666,7 @@ export function firstQuestionOn(page: PageJson): ElementJson | undefined {
       if (isContainer(el) && !isRepeating(el)) {
         const inner = walk(childrenOf(el));
         if (inner) return inner;
-      } else if (el.type !== "html") return el;
+      } else if (el.type !== "html" && !isSummary(el)) return el;
     }
   };
   return walk(page.elements ?? []);

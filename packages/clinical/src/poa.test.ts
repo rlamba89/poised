@@ -42,25 +42,27 @@ describe("poaSummary", () => {
     expect(poa.map((s) => s.name)).toEqual(["About you", "Angina"]); // Angina is shown: the clinician said yes
     const [heart, meds, bmi] = poa[0].pages;
     expect(heart.title).toBe("Heart and blood");
-    expect(heart.notes).toEqual([
-      { text: "Angina - unspecified", questionId: "q_angina", corrected: true },
-      { text: "Anemia", questionId: "q_anaemia", corrected: false },
-    ]);
-    expect(heart.comments).toBe("On GTN spray.");
+    // The old page switch is read as a page summary named cs_<page>, so its comments keep their key (S32).
+    expect(heart.blocks).toEqual([{
+      name: "cs_p_heart", title: "Heart and blood summary", comments: "On GTN spray.",
+      notes: [
+        { text: "Angina - unspecified", questionId: "q_angina", corrected: true },
+        { text: "Anemia", questionId: "q_anaemia", corrected: false },
+      ],
+    }]);
     expect(heart.changes).toEqual([{ questionId: "q_angina", title: "Do you have angina?", patient: "No", clinician: "Yes" }]);
     expect(meds.captures).toEqual([{ questionId: "q_meds", kind: "medication", title: "Prescribed medications", rows: [{ name: "Omeprazole", dosage: "20mg", frequency: "Daily" }] }]);
     expect(bmi.captures[0].rows[0]).toMatchObject({ height: 165, weight: 74, bmi: 27.2 });
     // Pages with nothing to show are left out; a clinician-only answer isn't a correction.
     expect(poa[0].pages.map((p) => p.name)).toEqual(["p_heart", "p_meds", "p_bmi"]);
-    expect(poa[1].pages[0].notes[0].text).toBe("Stable angina");
+    expect(poa[1].pages[0].blocks).toMatchObject([{ title: "Angina follow-up Summary", notes: [{ text: "Stable angina" }] }]); // no summary: the page's own block
   });
 
   it("builds the patient's original answers without the clinician's", () => {
     const poa = poaSummary(sets, patient, "patient", jo);
     expect(poa.map((s) => s.name)).toEqual(["About you"]); // the patient said no angina
     const heart = poa[0].pages[0];
-    expect(heart.notes.map((n) => n.text)).toEqual(["Anemia"]);
-    expect(heart.comments).toBe("");
+    expect(heart.blocks.map((b) => [b.title, b.notes.map((n) => n.text), b.comments])).toEqual([["Heart and blood summary", ["Anemia"], ""]]);
     expect(heart.changes).toEqual([]);
   });
 });
@@ -153,5 +155,48 @@ describe("a set started fresh", () => {
     expect(poaSummary(sets, empty, "patient", jo, undefined, fresh).map((s) => [s.id, s.pages.length, s.prefill?.choice])).toEqual([["s1", 0, "start_fresh"]]);
     expect(poaSummary(sets, empty, "clinician", jo, empty, fresh).map((s) => s.id)).toEqual(["s1"]);
     expect(poaSummary(sets, empty, "patient", jo)).toEqual([]);
+  });
+});
+
+// S32 (SUM-01): one block per summary, with its own title, notes and comments; each note once,
+// under the nearest summary; notes no summary covers in a block named after the page.
+describe("several clinical summaries", () => {
+  const summary = (name: string, title?: string) => ({ type: "clinicalsummary", name, clinicianOnly: true, ...(title ? { title } : {}) });
+  const content: ChapterJson = {
+    pages: [
+      {
+        name: "p_heart", title: "Heart",
+        elements: [
+          yesNo("q_angina", "Angina?", "Angina"),
+          { type: "panel", name: "g_breath", title: "Breathing", elements: [yesNo("q_asthma", "Asthma?", "Asthma"), summary("cs_breath")] },
+          summary("cs_page", "Heart overview"),
+        ],
+      },
+      { name: "p_lungs", title: "Lungs", elements: [yesNo("q_cough", "Cough?", "Cough"), { type: "panel", name: "g_copd", title: "COPD", elements: [yesNo("q_copd", "COPD?", "COPD"), summary("cs_copd")] }] },
+    ],
+  };
+  const one = [{ id: "s1", name: "About you", content }];
+  const said = { s1: { q_angina: "q_angina_y", q_asthma: "q_asthma_y", q_cough: "q_cough_y", q_copd: "q_copd_y" } };
+  const validated = { s1: { ...said.s1, cs_comments_breath: "Uses a blue inhaler", cs_comments_page: "Refer to cardiology" } };
+  const blocks = (poa: ReturnType<typeof poaSummary>) =>
+    poa[0].pages.map((p) => [p.title, p.blocks.map((b) => [b.title, b.notes.map((n) => n.text), b.comments])]);
+
+  it("the validated summary: each summary's own notes and comment", () => {
+    expect(blocks(poaSummary(one, validated, "clinician", jo, said))).toEqual([
+      ["Heart", [["Breathing summary", ["Asthma"], "Uses a blue inhaler"], ["Heart overview", ["Angina"], "Refer to cardiology"]]],
+      ["Lungs", [["Lungs Summary", ["Cough"], ""], ["COPD summary", ["COPD"], ""]]],
+    ]);
+  });
+
+  it("the patient's answers: the same blocks, without comments", () => {
+    expect(blocks(poaSummary(one, said, "patient", jo))).toEqual([
+      ["Heart", [["Breathing summary", ["Asthma"], ""], ["Heart overview", ["Angina"], ""]]],
+      ["Lungs", [["Lungs Summary", ["Cough"], ""], ["COPD summary", ["COPD"], ""]]],
+    ]);
+  });
+
+  it("a summary with only a comment still shows; one with nothing doesn't", () => {
+    const quiet = { s1: { q_angina: "q_angina_n", q_asthma: "q_asthma_n", cs_comments_breath: "Checked" } };
+    expect(blocks(poaSummary(one, quiet, "clinician", jo, quiet))).toEqual([["Heart", [["Breathing summary", [], "Checked"]]]]);
   });
 });

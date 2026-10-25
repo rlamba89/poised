@@ -1,6 +1,7 @@
 // Who is viewing (VEW-01/02). Patients never receive clinician-only content: it is
 // removed from the JSON before the survey is built, not just hidden.
 import type { SurveyModel } from "survey-core";
+import { SUMMARY_TYPE } from "./doc";
 
 export type Viewer = "patient" | "clinician";
 
@@ -18,7 +19,8 @@ function stripElements(container: Json) {
   for (const key of ["elements", "templateElements"]) {
     const elements = container[key] as Json[] | undefined;
     if (!Array.isArray(elements)) continue;
-    container[key] = elements.filter((el) => el.clinicianOnly !== true);
+    // A Clinical Summary (S32) is for clinicians even if its flag were missing.
+    container[key] = elements.filter((el) => el.clinicianOnly !== true && el.type !== SUMMARY_TYPE);
     for (const el of container[key] as Json[]) stripElements(el);
   }
 }

@@ -256,3 +256,33 @@ describe("expression checks", () => {
     expect(unknownReferences(sample(), "{q_smoke} = 'o_yes' or {q_typo} > 1 or {viewer} = 'patient'")).toEqual(["q_typo"]);
   });
 });
+
+// S32: the Clinical Summary element.
+describe("the Clinical Summary element", () => {
+  it("is clinician-only, named cs_…, with no title until the author gives one", () => {
+    const el = newElement("summary", new Set());
+    expect(el).toEqual({ type: "clinicalsummary", name: expect.stringMatching(/^cs_[a-z]{6}$/), clinicianOnly: true });
+    expect(kindOf(el)).toBe("summary");
+  });
+
+  const withList = (): ChapterJson => ({
+    pages: [{ name: "p", elements: [
+      { type: "panel", name: "g_a", title: "A", elements: [{ type: "clinicalsummary", name: "cs_a", clinicianOnly: true }] },
+      { type: "paneldynamic", name: "g_list", templateElements: [] },
+      { type: "panel", name: "g_b", elements: [] },
+    ] }],
+  });
+
+  it("a copy, alone or in a copied Group, gets a new cs_ name", () => {
+    const one = copyElement(withList(), "cs_a");
+    expect(one.name).toMatch(/^cs_[a-z]{6}$/);
+    const group = copyElement(withList(), "g_a");
+    const inner = findElement(group.doc, group.name)!.el.elements![0];
+    expect(inner.name).toMatch(/^cs_[a-z]{6}$/);
+    expect(inner.name).not.toBe("cs_a");
+  });
+
+  it("is never offered a repeating group to move into", () => {
+    expect(groupsToMoveInto(withList(), "cs_a").map((g) => g.name)).toEqual(["g_b"]);
+  });
+});
