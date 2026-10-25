@@ -51,4 +51,14 @@
 
 ## Status
 
-Not started.
+**Split into sessions on 25 Oct 2026; not started.** The briefs are in [docs/sessions/](../sessions/README.md). Rahul answered every question on 25 Oct (each session's `answers.md`; decisions.md §2), and **dropped S31**: capture blocks (CAP-01/02) are deferred, since a Clinician Question Set already does the job. J10 starts in S32 without a capture block.
+- ~~**S31:** clinician capture blocks on Groups and Sections (CAP-01/02); J10 starts;~~ *dropped 25 Oct*
+- **S32:** the Clinical Summary element, replacing the page switch (SUM-01); SGN-04 changed;
+- **S33:** the content library, platform and trust (INF-05, PX-13), with the superadmin list of the starter questions promised in S24's answers;
+- **S34:** the Video element and its library picker (INF-01/02); J10 completed;
+- **S35:** the Information element, with the plan's Tiptap-or-Markdown choice (INF-03);
+- **S36:** the patient's Information per episode (INF-04, from the procedure's `info_content`) and the estimated time (PX-10).
+
+Proposed in the briefs, differing from this plan (for Rahul to confirm when the sessions start):
+- **Capture sets `clinicianOnly` on the block itself**, not on every child, so a capture Section never leaves the patient an empty screen; and Go's strip also drops anything marked `capture` (S31).
+- **INF-04 is built here** (S36): the plan lists INF-01…05 but its design didn't cover the patient's Information list.

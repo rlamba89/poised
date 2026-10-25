@@ -10,7 +10,7 @@ Plans F1–F4 and C1–C2 split into **17 sessions** (plus S02a, a bug fix). Tog
 
 Each session is small enough for one Claude session, and ends with something a tester can try in a browser.
 
-Plan C3 is split into **S18–S22** (20 Oct), and plan C4 into **S23–S26** (21 Oct). Plans C5–C10 get split the same way when we reach them.
+Plan C3 is split into **S18–S22** (20 Oct), plan C4 into **S23–S26** (21 Oct), and plan C5 into **S31–S36** (25 Oct). Plans C6–C10 get split the same way when we reach them.
 
 ## How a session runs
 
@@ -167,5 +167,18 @@ Rahul's 24 Oct decisions after plan C4, before plan C5 (S27; then S28 for S27's 
 | [S28](S28-s27-followups/brief.md) | — | S27's open items as Rahul answered them (24 Oct): the four-field join on the patient's behalf, another trust's audit names only the trust, other trusts read on the first open only, Start fresh on the POA Summary, the archived View's wording, the cancelled-after-sent home card, NOT RESPONDING hidden once cancelled, the reported BMI before validation; plus S27's small fixes | Answered 25 Oct ([answers.md](S28-s27-followups/answers.md)) | **Verified** (25 Oct, [verification 1](S28-s27-followups/verify.md)) |
 | [S29](S29-s28-followups/brief.md) | — | S28's open items as Rahul answered them (25 Oct): the reported BMI from shown answers only, an audit action for each opening-card button, plain network-error wording, no open-task count on archived episodes, the cancelled message on an archived-from-Cancelled link, a warning before "Same as…" replaces a link | Answered 25 Oct ([answers.md](S29-s28-followups/answers.md)) | **Verified** (25 Oct, [verification 1](S29-s28-followups/verify.md)) |
 | [S30](S30-s29-followups/brief.md) | — | S29's findings Rahul asked to fix (25 Oct): the plain network message for any 5xx without an API error, the cleared card hides only network errors, J8 reads only its own texts | Nothing to ask | **Verified** (25 Oct, [verification 1](S30-s29-followups/verify.md)) |
+
+### Plan C5: authoring additions (local, run in this order)
+
+Split on 25 Oct. Local like C3 and C4, with messages captured. Journey J10 starts in S32 (S31 dropped, 25 Oct), is completed in S34 as the plan describes, and is extended in S35 and S36.
+
+| ID | Plan | Builds | Needs from you first | Status |
+| --- | --- | --- | --- | --- |
+| [S31](S31-capture-blocks/brief.md) | C5 | Clinician capture blocks on Groups and Sections (CAP-01/02): hidden from patients, a tinted box for clinicians, their answers on the POA Summary; J10 starts | 1 question | **Dropped** (Rahul, 25 Oct: a Clinician Question Set already does this; [answers.md](S31-capture-blocks/answers.md)) |
+| [S32](S32-summary-element/brief.md) | C5 | The Clinical Summary element (SUM-01), replacing the page switch: several per page, each with its own notes and comment, one block each on the POA Summary; old pages keep working; SGN-04 changed | Answered 25 Oct ([answers.md](S32-summary-element/answers.md)) | Not started |
+| [S33](S33-content-library/brief.md) | C5 | The content library (INF-05, PX-13): platform and trust videos and leaflets, the superadmin and trust admin screens, the starter questions' superadmin list (from S24) | Answered 25 Oct ([answers.md](S33-content-library/answers.md)) | Not started |
+| [S34](S34-video-element/brief.md) | C5 | The Video element (INF-01/02): YouTube or Vimeo only, privacy-friendly embeds, the library picker, the "I have watched this" tick; J10 completed | Answered 25 Oct ([answers.md](S34-video-element/answers.md)) | Not started |
+| [S35](S35-information-element/brief.md) | C5 | The Information element (INF-03): formatted text with links and pictures, cleaned before display (the plan's Tiptap-or-Markdown choice) | Answered 25 Oct ([answers.md](S35-information-element/answers.md)) | Not started |
+| [S36](S36-patient-information-time/brief.md) | C5 | The patient's Information per episode (INF-04: the procedure's videos and leaflets, a clinician's additions, the hospital's contacts) and each Question Set's estimated time (PX-10) | Answered 25 Oct ([answers.md](S36-patient-information-time/answers.md)) | Not started |
 
 **Why this order:** nothing needs AWS until someone outside your laptop has to use the app. Building locally first lets the automatic run go without AWS stops. The cost is that the AWS hosting setup and its near-£0 idle cost are proven later (decided 12 Oct; [decisions.md](../decisions.md)).
