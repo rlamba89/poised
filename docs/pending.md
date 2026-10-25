@@ -139,6 +139,21 @@ docker compose up -d --force-recreate db
 - ~~**J8 is flaky on a long-lived database:** its mobile is one of 1,000 (`+447700900NNN`), so `captured(mobile)` can find another run's texts. Widen the range or filter by episode.~~ *Rahul, 25 Oct: fix it. Fixed in S30 (tested 25 Oct): J8 counts only texts carrying a link this episode's emails carry.*
 - `EpisodeList.tsx` uses `openTaskCount` only as a truthiness check and renders `e.openTasks` directly (tidy-up).
 
+### From S32's verification 1 (25 Oct; none blocking; [verify.md](sessions/S32-summary-element/verify.md))
+
+- **Rahul to decide: a summary with a condition** (`summary.ts`, `walk`): a hidden summary still takes its scope's notes, so Validate shows neither them nor its comments box, while the POA Summary prints them under its title. Options: the notes fall back to the next visible summary, or (simpler, recommended) the editor offers no Logic on a summary.
+- **A summary can reach a repeating group indirectly** (moving a Group that holds one, a nested Group, making its Group repeatable): Publish blocks it, but the Add bar and "Move into" check only the direct case.
+- **The importer can make two summaries in one scope** (`hqimport/convert.go`) from an export with two at the same level: Publish names it. Unlikely (the incumbent allows one per page).
+- **"Heart Summary" and "Heart summary" on one POA Summary** (the page's own block vs an untitled summary): pick one capitalisation.
+- **Tidy-ups:** one walk for summaries and owners (`refreshClinicalSummaries` walks three times per answer change, copying old-switch content each time); a `defaultTitle` on `SummaryInfo` instead of cloning the chapter in `SummarySettings`; `title: undefined` drops a title's translations; use `chapter.SummaryType` in `keys.go` and `convert.go`.
+- **Flaky e2e `test_audit.py::test_a_list_row_names_ten_patients_and_counts_them_all`** (not S32's): its hover tooltip didn't show once in a full `make e2e`; it passed on re-runs. A `wait_for` before the hover, or checking the tooltip text via its `title`/aria, would steady it.
+- **Flaky `TestStatusMessages/AWS_reports_a_status_message_undelivered`** (not S32's): `lastNote` takes the last General notes row, but the bounce note is stamped by the test's `time.Now()` and the earlier note by the database clock. Find the note by its text, or pass a later time.
+
+### From S32's test report 1 (25 Oct; all passed, 28 of 28, cosmetic exploring notes, no code change as the conductor asked)
+
+- **Deleting a summary: the confirmation says the wrong thing** (`QuestionnaireEditor.tsx`, `remove`): "“Clinical summary” will be deleted, with its options and disclosures." It should name the summary by its title (e.g. "Breathing summary", from `summariesIn`), and a summary has no options or disclosures.
+- **The greyed-out Clinical Summary button inside a repeating Group doesn't say why** (`AddContentBar.tsx`): no tooltip. BMI's disabled button behaves the same, so a tooltip for every disabled Add button would fix both.
+
 ### From S30's test report 1 (25 Oct; all passed, none blocking)
 
 - **The cleared card's wording under a cancelled banner** (`PatientHQ.tsx`): when Reload after Start fresh is refused because the episode was cancelled meanwhile, the red banner says so (S30), but the card below still says "The questionnaire couldn't be loaded again just now. Please try again." with **Reload**, an action that can't succeed. A wording or layout change for a refusal that isn't a network failure (e.g. drop the card, or its Reload, once the refusal is final) would read better.

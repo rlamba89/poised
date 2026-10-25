@@ -165,7 +165,7 @@ We add clinical meaning on top of SurveyJS using its supported extension mechani
 | SGN-01 | An author submits a draft for review with a note. A clinical reviewer approves it with a sign-off statement or returns it with comments. | New | Outside | Must |
 | SGN-02 | The approver cannot be anyone who edited that version. The tool records who approved, when and their statement. | New (clinical safety) | Outside | Must |
 | SGN-03 | Reviewers can comment on any question, option or clinical output. Comments are threaded and can be resolved. | New | Extend | Should |
-| SGN-04 | Publishing is blocked, with a list of problems that each link to the item, when: a condition refers to a missing question or a later one; a single-choice question has fewer than 2 options or a multi-choice fewer than 1; a clinical note has no category; a code is missing or retired; a published stable ID has changed; a page has more than one clinical summary; or a test case fails. | Extended (the incumbent checks some on save and none on publish) | Outside | Must |
+| SGN-04 | Publishing is blocked, with a list of problems that each link to the item, when: a condition refers to a missing question or a later one; a single-choice question has fewer than 2 options or a multi-choice fewer than 1; a clinical note has no category; a code is missing or retired; a published stable ID has changed; two clinical summaries cover the same Group, Section or page (changed in S32, SUM-01); or a test case fails. | Extended (the incumbent checks some on save and none on publish) | Outside | Must |
 | SGN-05 | The publish confirmation names the questionnaire, the version number and the environment. Afterwards, the user is told what happens next. | Parity | Outside | Must |
 
 ## 6. Form structure, questions and answer options
@@ -208,7 +208,7 @@ We add clinical meaning on top of SurveyJS using its supported extension mechani
 | QT-06 | Number | Minimum, maximum, decimal places and a unit label | New | Built-in | Must |
 | QT-07 | Searchable list | Pick one or several from a long list, including lists from the code library (for example, medicines) | New | Built-in + Extend | Should |
 | QT-08 | Display text | Information only; several paragraphs; can be clinician-only | Parity | Built-in | Must |
-| QT-09 | Clinical summary | A clinician-only comments box, at most one per page, that shows the page's clinical notes above it | Parity | Extend | Must |
+| QT-09 | Clinical summary | A clinician-only comments box that shows the clinical notes of its Group, Section or page above it; several per page, each note under the nearest one (S32, SUM-01) | Parity | Extend | Must |
 | QT-10 | Grid | Rows by columns of choices, where each cell's choice can carry clinical outputs | New | Built-in + Extend | Should |
 | QT-11 | Rating or pain scale | For example 0 to 10, with end labels | New | Built-in | Should |
 | QT-12 | File or photo upload | With allowed types and a size limit | New | Built-in | Should |
