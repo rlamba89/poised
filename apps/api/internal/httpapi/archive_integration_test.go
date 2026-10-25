@@ -520,3 +520,48 @@ func TestCancelledHomeSaysWhetherSent(t *testing.T) {
 		}
 	}
 }
+
+// An episode archived from Cancelled answers an old link's form with the cancelled message, as the
+// patient's home says "Cancelled by the hospital" (S29; Rahul, 25 Oct): one reason wherever they
+// arrive, sent or not. Archived from any other status, it keeps "closed" (and a sent one its View).
+func TestArchivedFromCancelledFormSaysCancelled(t *testing.T) {
+	t.Parallel()
+	w := newPeople(t)
+	sam := newPerson("1983-08-20")
+	unsent, sent, validated, open := w.recordIn(t, sam, w.a, w.hq, w.cara), w.recordIn(t, sam, w.a, w.hq, w.cara), w.recordIn(t, sam, w.a, w.hq, w.cara), w.recordIn(t, sam, w.a, w.hq, w.cara)
+	b := w.anon.AsPatient(t, sent.Link, sam.dob)
+	set := w.hq.Chapters[0].String()
+	for _, e := range []apitest.Episode{sent, validated} {
+		savedRevision(t, b.Do("PUT", patientPath(e, "/answers/"+set), map[string]any{"data": map[string]any{"q_smokes": "o_no"}, "revision": 0}))
+		b.Do("POST", patientPath(e, "/submit"), nil).Want(t, http.StatusNoContent)
+	}
+	for _, e := range []apitest.Episode{unsent, sent} {
+		w.clinician.Do("POST", epPath(w.a, e, "/cancel"), withRevision(t, w.clinic, e.ID, map[string]any{"reason": "patient_withdrew"})).Want(t, http.StatusNoContent)
+		archive(t, w.clinic, e)
+	}
+	setStatus(t, w.clinic, validated, "ready_for_poa") // the HQ review completed
+	archive(t, w.clinic, validated)
+	p := w.anon.NewBrowser(t).AsPatient(t, open.Link, sam.dob) // cancelling ended the sessions from those links
+
+	for _, e := range []apitest.Episode{unsent, sent} {
+		for _, r := range []*apitest.Resp{
+			p.Do("GET", patientPath(e, ""), nil),
+			p.Do("PUT", patientPath(e, "/answers/"+set), map[string]any{"data": map[string]any{"q_smokes": "o_yes"}, "revision": 1}),
+			p.Do("POST", patientPath(e, "/submit"), nil),
+		} {
+			refused(t, r, http.StatusForbidden)
+			if !strings.Contains(string(r.Body), `"code":"cancelled"`) || !strings.Contains(r.Message(), "cancelled by the hospital") {
+				t.Errorf("archived from Cancelled: %s", r)
+			}
+		}
+	}
+	// Archived from Ready for POA (validated): sent, so it can be viewed; a change is "closed".
+	p.Do("GET", patientPath(validated, ""), nil).Want(t, http.StatusOK)
+	r := p.Do("PUT", patientPath(validated, "/answers/"+set), map[string]any{"data": map[string]any{"q_smokes": "o_yes"}, "revision": 1})
+	refused(t, r, http.StatusForbidden)
+	if !strings.Contains(string(r.Body), `"code":"archived"`) || !strings.Contains(r.Message(), "closed") {
+		t.Errorf("archived from Ready for POA: %s", r)
+	}
+	// Staff keep the archived episode's own refusal on the on-behalf form.
+	refused(t, w.clinician.Do("GET", epPath(w.a, unsent, "/patient-form"), nil), http.StatusConflict)
+}

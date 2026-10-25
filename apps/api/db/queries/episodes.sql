@@ -190,7 +190,8 @@ ORDER BY ev.created_at, ev.seq; -- seq: notes written at the same time, in the o
 -- name: GetEpisodeForm :one
 -- An episode's HQ form as the patient fills it in: for the patient's session (the handler checks
 -- the episode is theirs) or staff completing it on their behalf (it checks the hospital).
-SELECT e.id, e.status, f.submitted_at AS patient_submitted_at, f.version_id, f.id AS form_id, f.prefilled_at,
+SELECT e.id, e.status, e.archived_from, -- S29: archived from Cancelled still says cancelled
+       f.submitted_at AS patient_submitted_at, f.version_id, f.id AS form_id, f.prefilled_at,
        e.org_id, e.hospital_id, e.patient_id, p.account_id, -- for the checks and the audit log, never sent to the patient
        p.first_name, p.last_name, p.date_of_birth, p.sex,
        q.name AS questionnaire_name, h.name AS hospital_name, h.timezone,

@@ -323,7 +323,10 @@ func (s *server) loadForm(w http.ResponseWriter, r *http.Request) (form, bool) {
 		writeError(w, http.StatusForbidden, formClosed)
 		return f, false
 	}
-	if e.Status == episode.Cancelled { // S20 answers 5: no form; code "cancelled" lets the page say so
+	// Archived since it was cancelled, the patient's form still says cancelled, as their home does
+	// (S29; Rahul, 25 Oct), sent or not. Staff get the archived episode's 409 below.
+	archivedCancelled := e.Status == episode.Archived && e.ArchivedFrom != nil && *e.ArchivedFrom == episode.Cancelled
+	if e.Status == episode.Cancelled || (archivedCancelled && accountOf(r) != uuid.Nil) { // S20 answers 5: no form; code "cancelled" lets the page say so
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": formCancelled, "code": "cancelled"})
 		return f, false
 	}

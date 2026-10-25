@@ -345,7 +345,8 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 
 const getEpisodeForm = `-- name: GetEpisodeForm :one
 
-SELECT e.id, e.status, f.submitted_at AS patient_submitted_at, f.version_id, f.id AS form_id, f.prefilled_at,
+SELECT e.id, e.status, e.archived_from, -- S29: archived from Cancelled still says cancelled
+       f.submitted_at AS patient_submitted_at, f.version_id, f.id AS form_id, f.prefilled_at,
        e.org_id, e.hospital_id, e.patient_id, p.account_id, -- for the checks and the audit log, never sent to the patient
        p.first_name, p.last_name, p.date_of_birth, p.sex,
        q.name AS questionnaire_name, h.name AS hospital_name, h.timezone,
@@ -363,6 +364,7 @@ WHERE e.id = $1
 type GetEpisodeFormRow struct {
 	ID                 uuid.UUID          `json:"id"`
 	Status             string             `json:"status"`
+	ArchivedFrom       *string            `json:"archivedFrom"`
 	PatientSubmittedAt pgtype.Timestamptz `json:"patientSubmittedAt"`
 	VersionID          uuid.UUID          `json:"versionId"`
 	FormID             uuid.UUID          `json:"formId"`
@@ -390,6 +392,7 @@ func (q *Queries) GetEpisodeForm(ctx context.Context, id uuid.UUID) (GetEpisodeF
 	err := row.Scan(
 		&i.ID,
 		&i.Status,
+		&i.ArchivedFrom,
 		&i.PatientSubmittedAt,
 		&i.VersionID,
 		&i.FormID,
