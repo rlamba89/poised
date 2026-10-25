@@ -109,6 +109,12 @@ export const routes: RouteObject[] = [
             lazy: async () => ({ Component: (await import("@/pages/hospital/Procedures")).Procedures }),
           },
           {
+            // The trust's content library (S33): videos and leaflets; whole-trust super clinicians read it, admins change it.
+            id: "content",
+            path: `${h}/content`,
+            lazy: async () => ({ Component: (await import("@/pages/hospital/Content")).Content }),
+          },
+          {
             // Staff filling in the patient's HQ for them (PAT-09, S14).
             id: "patient-form",
             path: `${h}/episodes/:eid/patient-form`,
@@ -122,7 +128,7 @@ export const routes: RouteObject[] = [
         ],
       },
       {
-        // The platform admin's console (S10): trusts and their hospitals. No patient data (OPS-06).
+        // The platform admin's console (S10): trusts and their hospitals; the content library (S33). No patient data (OPS-06).
         id: "admin",
         element: <AdminLayout />,
         children: [
@@ -136,6 +142,12 @@ export const routes: RouteObject[] = [
             id: "admin-trust",
             path: "/admin/trusts/:orgId",
             lazy: async () => ({ Component: (await import("@/pages/admin/Trust")).Trust }),
+          },
+          {
+            // Preopsis's content library and the platform's starter questions (S33).
+            id: "admin-content",
+            path: "/admin/content",
+            lazy: async () => ({ Component: (await import("@/pages/admin/Content")).Content }),
           },
         ],
       },

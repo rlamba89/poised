@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allHospitals, atLeast, canChange, canManageProcedures, canManageSettings, canManageStaff, canSeeAudit, findHospital, homePath, startPath, switchPath, type Here, type Hospital, type Me, type Trust } from "./auth";
+import { allHospitals, atLeast, canChange, canManageContent, canManageProcedures, canSeeContent, canManageSettings, canManageStaff, canSeeAudit, findHospital, homePath, startPath, switchPath, type Here, type Hospital, type Me, type Trust } from "./auth";
 
 const hospital = (id: string, role: Hospital["role"]): Hospital => ({ id, name: `Hospital ${id}`, timeZone: "UTC", role });
 const trustA: Trust = { id: "ta", name: "Trust A", code: "TA", role: "super_clinician", hospitals: [hospital("a1", "super_clinician"), hospital("a2", "admin")] };
@@ -122,5 +122,20 @@ describe("who manages the trust's procedures (S19)", () => {
   it("switching hospital keeps Procedures where they manage the trust", () => {
     expect(switchPath("/o/ta/h/a1/procedures", trustA, trustA.hospitals[1])).toBe("/o/ta/h/a2/procedures");
     expect(switchPath("/o/ta/h/a1/procedures", { ...trustB, role: "clinician" }, trustB.hospitals[0])).toBe("/o/tb/h/b1/episodes");
+  });
+});
+
+describe("who sees and changes the trust's content library (S33)", () => {
+  it("is read by whole-trust super clinicians and admins, and changed by its admins only", () => {
+    expect(canSeeContent(trustA)).toBe(true); // a whole-trust super clinician, as Alex
+    expect(canManageContent(trustA)).toBe(false);
+    expect(canManageContent({ ...trustA, role: "admin" })).toBe(true);
+    expect(canSeeContent({ ...trustA, role: "clinician" })).toBe(false);
+    // A super clinician of one hospital only (trust role null), as Sue Super.
+    expect(canSeeContent({ ...trustB, role: null, hospitals: [hospital("b1", "super_clinician")] })).toBe(false);
+  });
+  it("switching hospital keeps the content library where they may see it", () => {
+    expect(switchPath("/o/ta/h/a1/content", trustA, trustA.hospitals[1])).toBe("/o/ta/h/a2/content");
+    expect(switchPath("/o/ta/h/a1/content", { ...trustB, role: "clinician" }, trustB.hospitals[0])).toBe("/o/tb/h/b1/episodes");
   });
 });

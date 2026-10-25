@@ -37,7 +37,9 @@ describe("routes", () => {
     ["/o/o1/h/h1/settings", "settings", { orgId: "o1", hospitalId: "h1" }],
     ["/o/o1/h/h1/audit", "audit", { orgId: "o1", hospitalId: "h1" }],
     ["/o/o1/h/h1/procedures", "procedures", { orgId: "o1", hospitalId: "h1" }],
+    ["/o/o1/h/h1/content", "content", { orgId: "o1", hospitalId: "h1" }],
     ["/admin", "admin-trusts", {}],
+    ["/admin/content", "admin-content", {}],
     ["/admin/trusts/new", "admin-new-trust", {}],
     ["/admin/trusts/o1", "admin-trust", { orgId: "o1" }],
   ])("%s is the %s page", (path, id, params) => {
@@ -61,6 +63,7 @@ describe("routes", () => {
     "/o/o1/h/h1/settings",
     "/o/o1/h/h1/audit",
     "/o/o1/h/h1/procedures",
+    "/o/o1/h/h1/content",
   ])("puts %s inside the hospital layout", (path) => {
     const matches = matchRoutes(routes, path) ?? [];
     const layout = matches.find((m) => m.route.id === "hospital");
@@ -79,7 +82,7 @@ describe("routes", () => {
     },
   );
 
-  it.each(["/admin", "/admin/trusts/new", "/admin/trusts/o1"])("puts %s inside the admin layout (S10)", (path) => {
+  it.each(["/admin", "/admin/trusts/new", "/admin/trusts/o1", "/admin/content"])("puts %s inside the admin layout (S10)", (path) => {
     const matches = matchRoutes(routes, path) ?? [];
     expect(matches.some((m) => m.route.id === "admin")).toBe(true);
     expect(matches.some((m) => m.route.id === "hospital")).toBe(false);
