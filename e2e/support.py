@@ -204,6 +204,13 @@ def choose(scope: Page | Locator, question: str, option: str) -> None:
     expect(group.get_by_role("radio", name=option, exact=True)).to_be_checked()
 
 
+def block_video_sites(context: BrowserContext) -> None:
+    """Answers every request to YouTube and Vimeo with an empty page (S34), so a journey with a Video
+    element runs offline and checks only the player's address."""
+    for site in ("**/*youtube-nocookie.com/**", "**/*youtube.com/**", "**/*vimeo.com/**", "**/*ytimg.com/**", "**/*vimeocdn.com/**"):
+        context.route(site, lambda route: route.fulfill(status=200, content_type="text/html", body="<html><body>video</body></html>"))
+
+
 def pick(page: Page, label: str, option: str) -> None:
     """Picks an option from a dropdown (Mantine Select) by its label."""
     page.get_by_role("combobox", name=label).click()

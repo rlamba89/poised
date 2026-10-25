@@ -1,16 +1,21 @@
 """J10 Authoring additions (plan C5), built up session by session. S31 (capture blocks) was dropped,
-so it starts here, in S32: Clinical Summaries.
+so it starts here, in S32: Clinical Summaries; S34 completes it with a library video.
 
 The author adds two Clinical Summaries in the editor, one inside the "Breathing" Group and one on the
 page; each card says what it covers. A third, in the same Group, blocks Publish with the Question
 Set named; deleted, the HQ publishes. The patient, on a phone, never sees a summary. The clinician,
 validating, sees each summary box where the author placed it, listing only its own notes (each note
 once, under the nearest summary), and types a comment in each. The POA Summary shows one block per
-summary, with its own title, notes and comment."""
+summary, with its own title, notes and comment.
+
+S34: the author also adds a Video from the content library, found by its tag: its title and length
+fill in, and its "I have watched this video" tick is made required. The patient, on a phone (WebKit),
+sees the video (the player's address only: the real video site is blocked, so this runs offline) and
+can't finish the set until it's ticked; the clinician sees that it was ticked, and can't change it."""
 
 from playwright.sync_api import BrowserContext, Page, expect
 
-from support import choose, invite_path, sign_in, unique
+from support import block_video_sites, choose, invite_path, sign_in, unique
 
 
 def test_two_clinical_summaries_from_the_editor_to_the_poa_summary(page: Page, phone: BrowserContext, as_user):
@@ -60,6 +65,24 @@ def test_two_clinical_summaries_from_the_editor_to_the_poa_summary(page: Page, p
     page.get_by_role("dialog", name="Delete this?").get_by_role("button", name="Delete").click()
     expect(main.locator("[data-testid^=card-cs_]")).to_have_count(2)
     expect(page.get_by_test_id("save-status")).to_have_text("All changes saved")
+
+    # A library video (S34), found by its tag: its title and length fill in; its tick is made required.
+    main.get_by_role("button", name="Video", exact=True).last.click()  # the page's Add bar, below every card
+    settings = page.get_by_role("tabpanel", name="Settings")
+    settings.get_by_role("button", name="Choose from library").click()
+    picker = page.get_by_role("dialog", name="Choose a video from the library")
+    picker.get_by_test_id("video-tags").get_by_role("button", name="The anaesthetic", exact=True).click()
+    expect(picker.get_by_test_id("library-video-Example: Fasting before your operation")).to_have_count(0)
+    picker.get_by_test_id("library-video-Example: Your anaesthetic explained").get_by_role("button", name="Use this").click()
+    expect(picker).to_be_hidden()
+    video = main.locator("[data-testid^=card-q_]").filter(has_text="Example: Your anaesthetic explained")
+    expect(video).to_contain_text("YouTube · Length 10:35")
+    expect(settings.get_by_role("textbox", name="Length")).to_have_value("10:35")
+    settings.get_by_role("switch", name="“I have watched this video” tick").check()
+    settings.get_by_role("switch", name="Required").check()
+    expect(video).to_contain_text("I have watched this video")
+    expect(video).not_to_contain_text("(optional)")
+    expect(page.get_by_test_id("save-status")).to_have_text("All changes saved")
     page.get_by_role("banner").get_by_role("button", name="Publish").click()
     dialog = page.get_by_role("dialog", name="Publish version 1?")
     dialog.get_by_role("button", name="Publish").click()
@@ -67,6 +90,7 @@ def test_two_clinical_summaries_from_the_editor_to_the_poa_summary(page: Page, p
 
     # The patient, on their phone, answers Yes to both: no summary, nor its comments box, anywhere.
     episode = as_user("Cara Clinician").episode(hq, f"J10 {unique()}")
+    block_video_sites(phone)
     patient = phone.new_page()
     patient.goto(invite_path(episode["email"]))
     patient.get_by_role("button", name="Continue").click()
@@ -80,6 +104,15 @@ def test_two_clinical_summaries_from_the_editor_to_the_poa_summary(page: Page, p
     expect(patient.get_by_text("summary")).to_have_count(0)
     expect(patient.get_by_text("Heart overview")).to_have_count(0)
     expect(patient.get_by_text("Clinical comments")).to_have_count(0)
+    # The video (S34): the player through youtube-nocookie.com, and the required tick.
+    player = patient.locator("iframe[title='Example: Your anaesthetic explained']")
+    expect(player).to_have_attribute("src", "https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ")
+    expect(player).to_have_attribute("referrerpolicy", "strict-origin-when-cross-origin")
+    expect(patient.get_by_text("Length 10:35")).to_be_visible()
+    patient.get_by_role("button", name="Finish this section").click()
+    expect(patient.get_by_role("checkbox", name="I have watched this video")).to_be_visible()
+    expect(patient.get_by_text("Please tick “I have watched this video” to go on.")).to_be_visible()
+    patient.get_by_role("checkbox", name="I have watched this video").check()
     patient.get_by_role("button", name="Finish this section").click()
     patient.get_by_role("button", name="Send my answers").click()
     patient.get_by_role("dialog", name="Send your answers?").get_by_role("button", name="Send my answers").click()
@@ -97,6 +130,10 @@ def test_two_clinical_summaries_from_the_editor_to_the_poa_summary(page: Page, p
     # sits in the clinician column, beside the last row, as clinician items do).
     asthma = page.get_by_role("radiogroup", name="Do you have asthma?")
     assert asthma.bounding_box()["y"] < breathing_box.bounding_box()["y"]
+    # The video, and that the patient ticked it: read-only for the clinician (S34).
+    expect(page.get_by_role("checkbox", name="I have watched this video")).to_be_checked()
+    expect(page.get_by_role("checkbox", name="I have watched this video")).to_be_disabled()
+    expect(page.locator("[data-testid^=video-ticked-]")).to_have_text("The patient ticked this.")
     breathing_box.get_by_role("textbox").fill("Uses a blue inhaler.")
     heart_box.get_by_role("textbox").fill("Refer to cardiology.")
     heart_box.get_by_role("textbox").press("Tab")
@@ -115,3 +152,5 @@ def test_two_clinical_summaries_from_the_editor_to_the_poa_summary(page: Page, p
     expect(heart_block).to_contain_text("Angina")
     expect(heart_block).to_contain_text("Clinical comments: Refer to cardiology.")
     expect(heart_block).not_to_contain_text("Asthma")
+    # The POA Summary is unchanged by the video (S34): no block, and no "change" for its tick.
+    expect(about).not_to_contain_text("Your anaesthetic explained")

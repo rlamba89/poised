@@ -1,0 +1,50 @@
+{
+  "description": "One Question Set with a question and a video (S34).",
+  "chapters": [
+    {
+      "name": "Before your operation",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_prep",
+            "title": "Getting ready",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_smokes",
+                "title": "Do you smoke?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "video",
+                "name": "q_fasting",
+                "title": {
+                  "default": "Fasting before your operation",
+                  "de": "Nüchtern vor der Operation"
+                },
+                "videoUrl": "https://vimeo.com/76979871/8272103f6e",
+                "videoLength": 200,
+                "watchTick": true,
+                "tickText": {
+                  "default": "I have watched this video",
+                  "de": "Ich habe dieses Video gesehen"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
