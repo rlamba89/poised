@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stateOf, unsentWarning } from "./home";
+import { closedText, stateOf, unsentWarning } from "./home";
 
 describe("stateOf", () => {
   it.each([
@@ -10,6 +10,21 @@ describe("stateOf", () => {
     ["closed", "Closed by the hospital", ""], // S22: archived, so no form either
   ] as const)("%s → %s, %s", (state, label, action) => {
     expect(stateOf(state)).toMatchObject({ label, action });
+  });
+});
+
+// S28 (Rahul, 24 Oct): a cancelled questionnaire the patient had sent doesn't say "nothing to fill in".
+describe("closedText", () => {
+  it("a cancelled one the patient had sent asks them to contact the hospital", () => {
+    expect(closedText("cancelled", true)).toBe("The hospital has cancelled this. Please contact them if you have questions.");
+  });
+  it("an unsent cancelled one, and a closed one, keep their wording", () => {
+    expect(closedText("cancelled", false)).toBe("The hospital has cancelled this, so there's nothing to fill in. Please contact them if you have any questions.");
+    expect(closedText("closed", false)).toBe("The hospital has closed this, so there's nothing to fill in. Please contact them if you have any questions.");
+  });
+  it("nothing for the others", () => {
+    expect(closedText("sent", true)).toBe("");
+    expect(closedText("to_do", false)).toBe("");
   });
 });
 

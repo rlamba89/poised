@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChapterJson } from "./doc";
+import type { Answers } from "./respondent";
 import { poaSummary, reportedBmi } from "./poa";
 
 const out = (id: string, text: string, category = "Cardiovascular") => [{ id, codes: [], note: { text, category } }];
@@ -49,7 +50,6 @@ describe("poaSummary", () => {
     expect(heart.changes).toEqual([{ questionId: "q_angina", title: "Do you have angina?", patient: "No", clinician: "Yes" }]);
     expect(meds.captures).toEqual([{ questionId: "q_meds", kind: "medication", title: "Prescribed medications", rows: [{ name: "Omeprazole", dosage: "20mg", frequency: "Daily" }] }]);
     expect(bmi.captures[0].rows[0]).toMatchObject({ height: 165, weight: 74, bmi: 27.2 });
-    expect(reportedBmi(poa)).toBe(27.2);
     // Pages with nothing to show are left out; a clinician-only answer isn't a correction.
     expect(poa[0].pages.map((p) => p.name)).toEqual(["p_heart", "p_meds", "p_bmi"]);
     expect(poa[1].pages[0].notes[0].text).toBe("Stable angina");
@@ -62,5 +62,46 @@ describe("poaSummary", () => {
     expect(heart.notes.map((n) => n.text)).toEqual(["Anemia"]);
     expect(heart.comments).toBe("");
     expect(heart.changes).toEqual([]);
+  });
+});
+
+// S28 (Rahul, 24 Oct): the Patient reported BMI uses the patient's own answers until the set is
+// validated, then the validated ones; from a BMI question, or the library's height and weight.
+describe("reportedBmi", () => {
+  const sized: ChapterJson = {
+    pages: [{ name: "p_size", title: "Height and weight", elements: [
+      { type: "text", inputType: "number", name: "height", title: "How tall are you?" },
+      { type: "text", inputType: "number", name: "weight", title: "What do you weigh now?" },
+    ] }],
+  };
+  it("from a BMI question's height and weight", () => {
+    expect(reportedBmi(sets, (id) => (patient as Record<string, Answers | undefined>)[id])).toBe(27.2);
+  });
+  it("from the library's height and weight questions", () => {
+    expect(reportedBmi([{ id: "s1", name: "About you", content: sized }], () => ({ height: 170, weight: 80 }))).toBe(27.7);
+  });
+  it("the answers it's given: the patient's before validation, the validated ones after", () => {
+    const set = [{ id: "s1", name: "About you", content: sized }];
+    const patientsOwn = { s1: { height: 170, weight: 80 } };
+    const validated = { s1: { height: 170, weight: 90 } };
+    expect(reportedBmi(set, (id) => patientsOwn[id as "s1"])).toBe(27.7);
+    expect(reportedBmi(set, (id) => validated[id as "s1"])).toBe(31.1);
+  });
+  it("nothing without both a height and a weight", () => {
+    const set = [{ id: "s1", name: "About you", content: sized }];
+    expect(reportedBmi(set, () => ({ height: 170 }))).toBeUndefined();
+    expect(reportedBmi(set, () => ({ height: 0, weight: 80 }))).toBeUndefined();
+    expect(reportedBmi(set, () => undefined)).toBeUndefined();
+  });
+});
+
+// S28 (Rahul, 24 Oct): a set started fresh is in the summary, for its line, though nothing else shows.
+describe("a set started fresh", () => {
+  it("is kept with its pre-fill, on both tabs", () => {
+    const fresh = { s1: { answers: {}, choice: "start_fresh" as const, choiceAt: "2026-04-01T09:00:00Z" } };
+    const empty = { s1: { q_x: "q_x_n" } };
+    expect(poaSummary(sets, empty, "patient", jo, undefined, fresh).map((s) => [s.id, s.pages.length, s.prefill?.choice])).toEqual([["s1", 0, "start_fresh"]]);
+    expect(poaSummary(sets, empty, "clinician", jo, empty, fresh).map((s) => s.id)).toEqual(["s1"]);
+    expect(poaSummary(sets, empty, "patient", jo)).toEqual([]);
   });
 });

@@ -71,13 +71,14 @@ describe("the history", () => {
   });
 });
 
-// S27 (pending.md, S22): the flag is history once the episode is archived.
+// S27 (pending.md, S22): the flag is history once the episode is archived; S28: or cancelled.
 describe("notResponding (the red badge)", () => {
   const at = "2026-10-01T10:00:00Z";
-  it("while flagged and the HQ isn't sent, unless the episode is archived", () => {
+  it("while flagged and the HQ isn't sent, unless the episode is archived or cancelled", () => {
     expect(notResponding({ status: "hq_not_complete", notRespondingAt: at, patientSubmittedAt: null })).toBe(true);
     expect(notResponding({ status: "hq_not_complete", notRespondingAt: null, patientSubmittedAt: null })).toBe(false);
     expect(notResponding({ status: "ready_for_review", notRespondingAt: at, patientSubmittedAt: at })).toBe(false);
     expect(notResponding({ status: "archived", notRespondingAt: at, patientSubmittedAt: null })).toBe(false);
+    expect(notResponding({ status: "cancelled", notRespondingAt: at, patientSubmittedAt: null })).toBe(false);
   });
 });

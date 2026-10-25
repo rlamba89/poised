@@ -14,7 +14,7 @@ import {
 } from "@mantine/core";
 import { IconPrinter } from "@tabler/icons-react";
 import {
-  ageFrom, patientVariables, poaSummary, prefillChoiceText, prefillSourceText, reportedBmi, type PoaCapture, type PoaSet,
+  ageFrom, patientVariables, poaSummary, prefillChoiceText, prefillSourceText, reportedBmi, startedFreshText, type PoaCapture, type PoaSet,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { nationalIdLabel } from "@/lib/config";
@@ -43,7 +43,7 @@ export default function PoaSummary({ base, episodeId }: { base: string; episodeI
   useEffect(() => {
     if (!loaded) return;
     const spot = takeSpot(sessionStore(), episodeId);
-    if (spot && navigation === "POP") restoreSpot(spot);
+    if (spot && navigation === "POP") return restoreSpot(spot); // stops trying once the page is left
   }, [loaded, navigation, episodeId]);
   if (error || hqError) return <Alert color="red">{error || hqError}</Alert>;
   if (!data || !hq) return <Center h="40vh"><Loader /></Center>;
@@ -99,7 +99,8 @@ function Summary({ tab, episode: e, events, hq, path, onChanged, episodeId }: Su
     }
     return poaSummary(hq.chapters.filter((c) => c.audience === "patient"), hq.patient, "patient", vars, undefined, hq.prefill);
   }, [validated, hq, vars]);
-  const bmi = reportedBmi(sets);
+  // The patient's own height and weight until their set is validated, then the validated ones (S28), on both tabs.
+  const bmi = useMemo(() => reportedBmi(hq.chapters, (id) => (hq.clinician[id]?.validatedAt ? hq.clinician[id].data : hq.patient[id])), [hq]);
 
   return (
     <Stack>
@@ -200,9 +201,12 @@ const answerLink = (path: string, episodeId: string, setId: string): AnswerLink 
 
 function SetSection({ set, byLine, validated, answerLink }: { set: PoaSet; byLine: string; validated: boolean; answerLink: AnswerLink }) {
   const choice = set.prefill && set.pages.some((p) => p.prefilled.length > 0) ? prefillChoiceText(set.prefill, formatDay) : "";
+  // A set started fresh shows no pre-filled answer, so it says so, as Validate does (S28).
+  const fresh = startedFreshText(set.prefill, formatDay);
   return (
     <Stack gap="lg">
       {choice && <Text size="sm" c="dimmed" data-testid="poa-prefill-choice">{choice}</Text>}
+      {fresh && <Text size="sm" c="dimmed" data-testid="poa-started-fresh">{fresh}</Text>}
       {set.pages.map((p) => (
         <div key={p.name} data-testid={`poa-page-${p.title}`}>
           {(p.notes.length > 0 || p.comments) && (
@@ -343,7 +347,7 @@ function AsaGrades({ episode, path, onSaved, readOnly }: { episode: Episode; pat
 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
-    <Group gap="xs" wrap="nowrap" align="baseline">
+    <Group gap="xs" wrap="nowrap" align="baseline" data-testid={`poa-detail-${label}`}>
       <Text size="sm" fw={600} w={190}>{label}</Text>
       <Text size="sm">{value || "—"}</Text>
     </Group>

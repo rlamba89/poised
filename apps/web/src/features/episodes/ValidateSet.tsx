@@ -15,7 +15,7 @@ import type { Model } from "survey-core";
 import { Survey } from "survey-react-ui";
 import "survey-core/survey-core.css";
 import {
-  answerSaver, patientVariables, prefillChoiceText, prefilledAnswers, prefillMarks, refreshClinicalSummaries, registerClinicalProperties, sameAnswer,
+  answerSaver, patientVariables, prefillChoiceText, prefilledAnswers, prefillMarks, refreshClinicalSummaries, registerClinicalProperties, sameAnswer, startedFreshText,
   type Answers,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
@@ -190,7 +190,7 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
       )}
       {prefill?.choice === "start_fresh" && (
         <Alert color="brand" variant="light" data-testid="prefill-set">
-          Answers were pre-filled here from the patient&apos;s earlier questionnaires. {prefillChoiceText(prefill, formatDay)}
+          {startedFreshText(prefill, formatDay)}
         </Alert>
       )}
       {prefill && prefilled.length > 0 && (

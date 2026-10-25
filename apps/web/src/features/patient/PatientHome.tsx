@@ -11,10 +11,13 @@ import { Link } from "react-router";
 import { Alert, Badge, Button, Card, Center, Group, Loader, Stack, Text, TextInput, Title } from "@mantine/core";
 import { ApiError, api } from "@/lib/api";
 import { formatShortDate } from "@/lib/format";
-import { stateOf, unsentWarning, type EpisodeState } from "./home";
+import { closedText, stateOf, unsentWarning, type EpisodeState } from "./home";
 import { PatientFrame, SignedOut } from "./PatientHQ";
 
-type HomeEpisode = { id: string; patientName: string; hospital: string; questionnaireName: string; procedure: string; createdAt: string; state: EpisodeState };
+type HomeEpisode = { id: string; patientName: string; hospital: string; questionnaireName: string; procedure: string; createdAt: string; state: EpisodeState;
+  /** The patient sent it (S28: a cancelled one they'd sent says so). */
+  sent: boolean;
+};
 type Home = { firstName: string; episodes: HomeEpisode[]; contacts: { mobile: string; email: string } };
 
 export function PatientHome() {
@@ -65,12 +68,7 @@ export function PatientHome() {
                 <Text>{e.questionnaireName}</Text>
                 <Text size="sm">For {e.patientName}</Text>
                 {e.procedure && <Text size="sm" c="dimmed">Procedure: {e.procedure}</Text>}
-                {e.state === "cancelled" && (
-                  <Text size="sm">The hospital has cancelled this, so there&apos;s nothing to fill in. Please contact them if you have any questions.</Text>
-                )}
-                {e.state === "closed" && (
-                  <Text size="sm">The hospital has closed this, so there&apos;s nothing to fill in. Please contact them if you have any questions.</Text>
-                )}
+                {closedText(e.state, e.sent) && <Text size="sm" data-testid="home-closed-text">{closedText(e.state, e.sent)}</Text>}
                 <Group justify="space-between">
                   <Text size="sm" c="dimmed">Sent to you {formatShortDate(e.createdAt)}</Text>
                   {s.action && (

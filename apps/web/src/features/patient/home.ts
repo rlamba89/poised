@@ -20,6 +20,17 @@ export function stateOf(state: EpisodeState): { label: string; color: string; ac
 }
 
 /**
+ * The line under a cancelled or closed questionnaire; "" for the others. A cancelled one the patient
+ * had already sent (S28; Rahul, 24 Oct) doesn't say there's nothing to fill in: they filled it in.
+ */
+export function closedText(state: EpisodeState, sent: boolean): string {
+  if (state === "cancelled" && sent) return "The hospital has cancelled this. Please contact them if you have questions.";
+  if (state === "cancelled") return "The hospital has cancelled this, so there's nothing to fill in. Please contact them if you have any questions.";
+  if (state === "closed") return "The hospital has closed this, so there's nothing to fill in. Please contact them if you have any questions.";
+  return "";
+}
+
+/**
  * Closing the account (S22, EPI-09): the confirmation's warning about the questionnaires not yet
  * sent (to do or in progress), which won't be sent once the account is closed; "" when there are none.
  */

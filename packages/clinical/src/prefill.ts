@@ -7,7 +7,8 @@
 //   - prefillSourceText: "Pre-filled from Demo pre-op HQ, 3 Mar 2026 (matched by link)", with the
 //     hospital when it's another trust's;
 //   - prefillChoiceText: which button of the opening card the patient pressed;
-//   - prefilledAnswers: none once the patient chose Start fresh (S27).
+//   - prefilledAnswers: none once the patient chose Start fresh (S27);
+//   - startedFreshText: the line for a set started fresh, on Validate and the POA Summary (S28).
 import type { Question, SurveyModel } from "survey-core";
 import { isClinicianOnlyInTree } from "./outputs";
 import { describeAnswer, sameAnswer, type Answers } from "./respondent";
@@ -108,4 +109,14 @@ export function prefillChoiceText(p: SetPrefill, formatDay: (iso: string) => str
   return p.choice === "still_correct"
     ? `${who} “Everything is still correct”${withThem}${on}, so these pre-filled answers weren't checked one by one.`
     : `${who} “Check each answer”${withThem}${on}.`;
+}
+
+/**
+ * The line for a Question Set the patient (or staff with them) started fresh: Validate's since S27,
+ * and the POA Summary's on both tabs since S28 (Rahul, 24 Oct), where the set otherwise marks no
+ * pre-filled answer. "" for a set that wasn't started fresh.
+ */
+export function startedFreshText(p: SetPrefill | undefined, formatDay: (iso: string) => string): string {
+  if (p?.choice !== "start_fresh") return "";
+  return `Answers were pre-filled here from the patient's earlier questionnaires. ${prefillChoiceText(p, formatDay)}`;
 }

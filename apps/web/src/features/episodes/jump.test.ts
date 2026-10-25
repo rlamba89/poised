@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { questionOf, saveSpot, takeSpot, validateAt } from "./jump";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { questionOf, restoreSpot, saveSpot, takeSpot, validateAt } from "./jump";
 
 // S27 (answers 5): the POA Summary's answers open Validate at their question, and Back returns to the same place.
 describe("validateAt and questionOf", () => {
@@ -32,5 +32,49 @@ describe("saveSpot and takeSpot (where the clinician was on the POA Summary)", (
     const store = memory();
     store.setItem("poa-spot:e1", "{not json");
     expect(takeSpot(store, "e1")).toBeNull();
+  });
+});
+
+// S28 (S27 verification 3): leaving the POA Summary stops the way back trying to scroll.
+describe("restoreSpot", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  // A screen where the answer isn't drawn yet: each try asks for another frame, run by hand here.
+  const screen = (drawn: () => boolean) => {
+    const frames = new Map<number, () => void>();
+    let next = 0;
+    const scrollBy = vi.fn();
+    vi.stubGlobal("requestAnimationFrame", (cb: () => void) => (frames.set(++next, cb), next));
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+    vi.stubGlobal("CSS", { escape: (s: string) => s });
+    vi.stubGlobal("document", { querySelector: () => (drawn() ? { getBoundingClientRect: () => ({ top: 500 }) } : null) });
+    vi.stubGlobal("window", { scrollBy });
+    const run = () => {
+      const due = [...frames.entries()];
+      frames.clear();
+      for (const [, cb] of due) cb();
+    };
+    return { frames, run, scrollBy };
+  };
+  it("scrolls the answer back to where it was, once it's drawn", () => {
+    let drawn = false;
+    const s = screen(() => drawn);
+    restoreSpot({ anchor: "a", top: 200 });
+    s.run();
+    s.run();
+    drawn = true;
+    s.run();
+    expect(s.scrollBy).toHaveBeenCalledWith(0, 300);
+    expect(s.frames.size).toBe(0);
+  });
+  it("stops trying once cleaned up, so the next page isn't scrolled", () => {
+    let drawn = false;
+    const s = screen(() => drawn);
+    const stop = restoreSpot({ anchor: "a", top: 200 });
+    s.run();
+    stop();
+    expect(s.frames.size).toBe(0);
+    drawn = true;
+    s.run();
+    expect(s.scrollBy).not.toHaveBeenCalled();
   });
 });

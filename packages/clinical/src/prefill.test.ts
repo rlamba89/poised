@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChapterJson } from "./doc";
 import { poaSummary } from "./poa";
-import { prefillChoiceText, prefillMarks, prefillSourceText, prefilledAnswers, type PrefillEntry, type SetPrefill } from "./prefill";
+import { prefillChoiceText, prefillMarks, prefillSourceText, prefilledAnswers, startedFreshText, type PrefillEntry, type SetPrefill } from "./prefill";
 import { registerClinicalProperties } from "./properties";
 import { modelFor } from "./testcases";
 
@@ -152,5 +152,16 @@ describe("poaSummary with pre-filled answers", () => {
     const quiet: ChapterJson = { pages: [{ name: "q1", title: "Quiet", elements: [{ type: "text", name: "t", title: "T?" }] }] };
     const poa = poaSummary([{ id: "q", name: "Quiet", content: quiet }], { q: { t: "x" } }, "patient", jo, undefined, { q: { answers: { t: entry("x") }, choice: null, choiceAt: null, choiceByName: null } });
     expect(poa[0].pages.map((p) => p.name)).toEqual(["q1"]);
+  });
+});
+
+describe("startedFreshText (Validate's line, and the POA Summary's since S28)", () => {
+  it("for a set started fresh only", () => {
+    const set = (choice: SetPrefill["choice"]): SetPrefill => ({ answers: {}, choice, choiceAt: "2026-04-01T09:00:00Z", choiceByName: null });
+    expect(startedFreshText(set("start_fresh"), day)).toBe(
+      "Answers were pre-filled here from the patient's earlier questionnaires. The patient chose “Start fresh” on 2026-04-01, so the pre-filled answers were cleared and every answer here was given afresh.",
+    );
+    expect(startedFreshText(set("check_each"), day)).toBe("");
+    expect(startedFreshText(undefined, day)).toBe("");
   });
 });

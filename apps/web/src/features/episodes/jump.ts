@@ -45,19 +45,23 @@ export function takeSpot(store: Store | null, episodeId: string): Spot | null {
 
 /**
  * Puts the element back where it was on the screen (`top` px from the top), once it's drawn;
- * the POA Summary's sets load after the page, so it tries for a second at most.
+ * the POA Summary's sets load after the page, so it tries for a second at most. Returns the
+ * clean-up, which stops it trying: leaving the POA Summary within that second mustn't scroll the
+ * next page (S28).
  */
-export function restoreSpot(spot: Spot): void {
+export function restoreSpot(spot: Spot): () => void {
   let frames = 0;
+  let frame = 0;
   const tryIt = () => {
     const el = document.querySelector<HTMLElement>(`[data-poa-anchor="${CSS.escape(spot.anchor)}"]`);
     if (!el) {
-      if (frames++ < 60) requestAnimationFrame(tryIt);
+      if (frames++ < 60) frame = requestAnimationFrame(tryIt);
       return;
     }
     window.scrollBy(0, el.getBoundingClientRect().top - spot.top);
   };
-  requestAnimationFrame(tryIt);
+  frame = requestAnimationFrame(tryIt);
+  return () => cancelAnimationFrame(frame);
 }
 
 /**

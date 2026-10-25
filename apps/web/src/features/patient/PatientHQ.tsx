@@ -60,6 +60,8 @@ type HQ = {
   hospital: string;
   questionnaireName: string;
   submitted: boolean;
+  /** The episode is archived (S28): its sent answers' View no longer says the team will review them. */
+  archived?: boolean;
   chapters: QuestionSet[];
   answers: Record<string, Answers>;
   /** Each saved set's revision, which its first save sends back. A set with no answers yet has none. */
@@ -106,6 +108,9 @@ export default function PatientHQ({ path, onBehalf }: Props) {
   // The patient's session ended (401): nothing more can be loaded or saved here. `lost` is what
   // the refused request was carrying.
   const [ended, setEnded] = useState<{ message: string; lost: Lost } | null>(null);
+  // Start fresh cleared a set, but the HQ didn't load again (S28): the old answers mustn't stay on
+  // screen as if they were still there, so the page asks for a reload instead.
+  const [freshUnloaded, setFreshUnloaded] = useState(false);
   // A boolean, not the onBehalf object: a new object on each render would reload the form and
   // drop what staff were typing (S14 verification 1).
   const isPatient = !onBehalf;
@@ -120,6 +125,7 @@ export default function PatientHQ({ path, onBehalf }: Props) {
     [isPatient],
   );
 
+  // Whether it loaded: on a failure the page shows why, and the caller may say more.
   const load = useCallback(() => {
     setReloading(true);
     return api<HQ>(path)
@@ -130,10 +136,15 @@ export default function PatientHQ({ path, onBehalf }: Props) {
         setChoices({});
         setHq(h);
         setConflict("");
+        setFreshUnloaded(false);
         setError(""); // an earlier failure's message no longer applies
         setLoads((n) => n + 1);
+        return true;
       })
-      .catch((e: Error) => setError(e.message))
+      .catch((e: Error) => {
+        setError(e.message);
+        return false;
+      })
       .finally(() => setReloading(false));
   }, [path, endedBy]);
   useEffect(() => {
@@ -226,9 +237,13 @@ export default function PatientHQ({ path, onBehalf }: Props) {
   const choose = async (id: string, choice: PrefillChoice) => {
     try {
       await api(`${path}/prefill/${id}`, { method: "POST", body: JSON.stringify({ choice }) }).catch(endedBy());
-      if (choice === "start_fresh") await load();
-      else setChoices((c) => ({ ...c, [id]: choice }));
-      return true;
+      if (choice !== "start_fresh") {
+        setChoices((c) => ({ ...c, [id]: choice }));
+        return true;
+      }
+      if (await load()) return true;
+      setFreshUnloaded(true); // the set was cleared: say so, rather than leave its card up (S27 verification 3)
+      return false;
     } catch (e) {
       setError((e as Error).message);
       return false;
@@ -259,7 +274,13 @@ export default function PatientHQ({ path, onBehalf }: Props) {
           </Alert>
         )}
         {error && <Alert color="red" mb="md" withCloseButton onClose={() => setError("")}>{error}</Alert>}
-        {conflict ? (
+        {freshUnloaded ? (
+          <Card withBorder p="xl" data-testid="fresh-reload-failed">
+            <Title order={3}>The answers in this section were cleared</Title>
+            <Text mt="xs">The questionnaire couldn&apos;t be loaded again just now. Please try again.</Text>
+            <Button mt="md" loading={reloading} onClick={load}>Reload</Button>
+          </Card>
+        ) : conflict ? (
           <Card withBorder p="xl" data-testid="patient-conflict">
             <Title order={3}>Your answers weren&apos;t saved</Title>
             <Text mt="xs">{conflict}</Text>
@@ -276,7 +297,9 @@ export default function PatientHQ({ path, onBehalf }: Props) {
           <Card withBorder p="xl" ta="center">
             <IconCircleCheck size={48} color="var(--mantine-color-green-6)" style={{ margin: "0 auto" }} />
             <Title order={3} mt="sm">Thank you, {hq.patient.firstName}</Title>
-            <Text mt="xs">Your answers have been sent to the hospital. A member of the team will review them.</Text>
+            <Text mt="xs">
+              Your answers have been sent to the hospital.{hq.archived ? "" : " A member of the team will review them."}
+            </Text>
           </Card>
         ) : open ? (
           <SetForm

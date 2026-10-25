@@ -22,7 +22,10 @@ export type PoaChange = { questionId: string; title: string; patient: string; cl
 export type PoaPage = {
   name: string; title: string; notes: PoaNote[]; comments: string; captures: PoaCapture[]; changes: PoaChange[]; prefilled: PrefillMark[];
 };
-/** prefill: the set's pre-fill (S26), for the button the patient pressed; absent if nothing was pre-filled. */
+/**
+ * prefill: the set's pre-fill (S26), for the button the patient pressed; absent if nothing was
+ * pre-filled. A set started fresh (S27) is kept though nothing else on it shows, for its line (S28).
+ */
 export type PoaSet = { id: string; name: string; pages: PoaPage[]; prefill?: SetPrefill };
 
 const CAPTURES: CaptureKind[] = ["medication", "admissions", "bmi"];
@@ -96,18 +99,35 @@ export function poaSummary(
       if (typeof comments === "string") page.comments = comments.trim();
     }
     const kept = [...pages.values()].filter((p) => p.notes.length || p.comments || p.captures.length || p.changes.length || p.prefilled.length);
-    if (kept.length) out.push({ id: set.id, name: set.name, pages: kept, ...(pre ? { prefill: pre } : {}) });
+    if (kept.length || pre?.choice === "start_fresh") out.push({ id: set.id, name: set.name, pages: kept, ...(pre ? { prefill: pre } : {}) });
     model.dispose();
   }
   return out;
 }
 
-/** The patient-reported BMI, from the first BMI answer in the summary. */
-export function reportedBmi(summary: PoaSet[]): number | undefined {
-  for (const s of summary) {
-    for (const p of s.pages) {
-      const bmi = p.captures.find((c) => c.kind === "bmi")?.rows[0]?.bmi;
-      if (typeof bmi === "number") return bmi;
+/** The platform question library's keys for height (cm) and weight (kg) (apps/api/cmd/seed/library.json). */
+const HEIGHT = "height";
+const WEIGHT = "weight";
+
+/**
+ * The POA Summary's "Patient reported BMI" (S28; Rahul, 24 Oct): from the first Question Set, in
+ * order, whose answers give a height and a weight, either a BMI question's or the library's height
+ * and weight questions. `answersOf` says whose answers each set's are: the patient's until the set is
+ * validated, then the clinician's. Rounded to one decimal place, as the BMI question shows it.
+ */
+export function reportedBmi(sets: SetInput[], answersOf: (setId: string) => Answers | undefined): number | undefined {
+  for (const set of sets) {
+    const answers = answersOf(set.id) ?? {};
+    const pairs: [unknown, unknown][] = [];
+    for (const { el } of allElements(set.content)) {
+      const v = answers[el.name];
+      if (el.type === "bmi" && v && typeof v === "object") pairs.push([(v as Answers).height, (v as Answers).weight]);
+    }
+    pairs.push([answers[HEIGHT], answers[WEIGHT]]);
+    for (const [h, w] of pairs) {
+      const cm = Number(h);
+      const kg = Number(w);
+      if (h !== undefined && h !== "" && w !== undefined && w !== "" && cm > 0 && kg > 0) return Math.round((kg / (cm / 100) ** 2) * 10) / 10;
     }
   }
   return undefined;

@@ -115,6 +115,14 @@
   }
 }
 
+/* On a staff page, a question brought to the top ("Everything is still correct", a jump) stops
+   below the sticky top bar, its title showing (S28; S27 test report 2). Mantine sets the bar's
+   height on the shell; the patient's own pages have no bar. */
+.mantine-AppShell-main .sd-element,
+.mantine-AppShell-main [data-name] {
+  scroll-margin-top: calc(var(--app-shell-header-offset, var(--app-shell-header-height, 0px)) + var(--mantine-spacing-xs));
+}
+
 /* Validate opened from an answer on the POA Summary (S27): that question, highlighted for a moment (jump.ts). */
 [data-jumped="true"] {
   animation: sj-jumped 3s ease-out;
