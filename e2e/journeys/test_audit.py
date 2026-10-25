@@ -3,7 +3,10 @@ list screens included. A trust's whole-trust admins read it on the Audit screen,
 person, days and patient, and export it as a CSV. Clinicians don't see it; another trust's admin
 sees none of it.
 
-Each run makes a patient with a unique surname, so filtering by it finds only this run's rows."""
+Each run makes a patient with a unique surname, so filtering by it finds only this run's rows.
+
+Each of the pre-fill card's buttons has its own words in the log (S29): Start fresh, pressed by
+staff for the patient, reads "Started a Question Set fresh for the patient"."""
 
 import csv
 import io
@@ -13,6 +16,7 @@ from datetime import date, timedelta
 from playwright.sync_api import Browser, Page, expect
 
 from support import PATIENT_ANSWERS, choose, pick, sign_in, unique
+from test_j16b_prefill_cross_trust import trust_b_then_trust_a
 
 
 def open_audit(page: Page, base: str) -> None:
@@ -202,3 +206,17 @@ def test_a_list_row_names_ten_patients_and_counts_them_all(page: Page, as_user):
     expect(row).to_contain_text(re.compile(r"\d+ patients"))
     row.get_by_text(re.compile(r"\d+ patients")).hover()
     expect(page.get_by_role("tooltip")).to_be_visible()
+
+
+def test_start_fresh_for_the_patient_has_its_own_words_in_the_log(page: Page, as_user, patient_link):
+    _, second, cara, _ = trust_b_then_trust_a(as_user, patient_link, {"Your health": {"q_diabetes": "o_no", "snoring": "yes"}})
+    form = cara.h(f"/episodes/{second['id']}/patient-form")
+    cara.call("GET", form)  # Cara fills in for the patient: Trust B's answers are copied in
+    cara.call("POST", f"{form}/prefill/{second['hq']['chapters']['Your health']}", {"choice": "start_fresh"})
+
+    open_audit(page, sign_in(page.context, "Ada Admin"))
+    pick(page, "Who", "Cara Clinician (cara.clinician@hospital-a.example)")
+    page.get_by_label("Patient").fill(second["name"].removeprefix("Sam "))  # the surname
+    show(page, "?user=", "&patient=")
+    expect(log_rows(page).filter(has_text="Started a Question Set fresh for the patient")).to_have_count(1)
+    expect(log_rows(page).filter(has_text="Checked pre-filled answers with the patient")).to_have_count(0)  # the old, shared words

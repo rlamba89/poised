@@ -372,11 +372,16 @@ func TestPrefillChoice(t *testing.T) {
 		}
 	})
 	t.Run("audited, one row each", func(t *testing.T) {
-		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE action = 'link.prefill' AND $1 = ANY(episode_ids)`, e.ID); n < 2 {
-			t.Errorf("%d link.prefill rows", n)
+		// The button pressed names the action (S29): Everything is still correct, then Check each
+		// answer in another tab (recorded nothing, but was pressed).
+		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE action = 'link.prefill_still_correct' AND $1 = ANY(episode_ids) AND status = 204`, e.ID); n != 1 {
+			t.Errorf("%d link.prefill_still_correct rows", n)
 		}
-		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE action = 'behalf.prefill' AND $1 = ANY(episode_ids) AND user_id = $2`, e.ID, w.cara.ID); n != 1 {
-			t.Errorf("%d behalf.prefill rows", n)
+		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE action = 'link.prefill_check_each' AND $1 = ANY(episode_ids) AND status = 204`, e.ID); n != 1 {
+			t.Errorf("%d link.prefill_check_each rows", n)
+		}
+		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE action = 'behalf.prefill_check_each' AND $1 = ANY(episode_ids) AND user_id = $2`, e.ID, w.cara.ID); n != 1 {
+			t.Errorf("%d behalf.prefill_check_each rows", n)
 		}
 	})
 	t.Run("once sent: 409", func(t *testing.T) {

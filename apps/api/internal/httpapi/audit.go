@@ -59,21 +59,28 @@ var auditActions = map[string]string{
 	"behalf.view":        "Opened the patient's HQ to fill in for them",
 	"behalf.save":        "Saved answers for the patient",
 	"behalf.submit":      "Sent the HQ for the patient",
-	"behalf.prefill":     "Checked pre-filled answers with the patient", // S25: the opening card's button
-	"link.open":          "Patient opened their link",                   // S14: Continue
-	"link.dob":           "Patient entered their date of birth",
-	"link.view":          "Patient opened their questionnaire",
-	"link.save":          "Patient saved answers",
-	"link.submit":        "Patient sent their answers",
-	"link.prefill":       "Patient checked pre-filled answers", // S25
-	"home.view":          "Patient opened their home",          // S15: a row per hospital it listed
-	"account.join":       "Patient's record joined their sign-in account",
-	"contact.update":     "Patient changed their contact details",
-	"account.close":      "Patient closed their account", // S22: a row per trust whose records it unlinked
-	"procedure.create":   "Added a procedure",            // S19: the trust's procedure list
-	"procedure.update":   "Changed a procedure",
-	"audit.view":         "Viewed the audit log",
-	"audit.export":       "Exported the audit log",
+	"behalf.prefill":     "Checked pre-filled answers with the patient", // S25–S28: the opening card's button, before S29
+	// S29: each of the opening card's buttons has its own action (prefillChoice), by staff and by the patient.
+	"behalf.prefill_check_each":    "Checked each pre-filled answer with the patient",
+	"behalf.prefill_still_correct": "Confirmed pre-filled answers with the patient",
+	"behalf.prefill_start_fresh":   "Started a Question Set fresh for the patient",
+	"link.open":                    "Patient opened their link", // S14: Continue
+	"link.dob":                     "Patient entered their date of birth",
+	"link.view":                    "Patient opened their questionnaire",
+	"link.save":                    "Patient saved answers",
+	"link.submit":                  "Patient sent their answers",
+	"link.prefill":                 "Patient checked pre-filled answers", // S25–S28, before S29
+	"link.prefill_check_each":      "Patient chose to check each pre-filled answer",
+	"link.prefill_still_correct":   "Patient confirmed pre-filled answers",
+	"link.prefill_start_fresh":     "Patient started a Question Set fresh",
+	"home.view":                    "Patient opened their home", // S15: a row per hospital it listed
+	"account.join":                 "Patient's record joined their sign-in account",
+	"contact.update":               "Patient changed their contact details",
+	"account.close":                "Patient closed their account", // S22: a row per trust whose records it unlinked
+	"procedure.create":             "Added a procedure",            // S19: the trust's procedure list
+	"procedure.update":             "Changed a procedure",
+	"audit.view":                   "Viewed the audit log",
+	"audit.export":                 "Exported the audit log",
 
 	// S26: pre-fill from another trust. prefill.read is written under the trust whose answers
 	// were read (the source), beside the request's own row under the form's trust. It's a read:

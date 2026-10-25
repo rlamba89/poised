@@ -221,6 +221,11 @@ func (s *server) prefillChoice(w http.ResponseWriter, r *http.Request, f form) {
 		writeError(w, http.StatusBadRequest, "Choose “Check each answer”, “Everything is still correct” or “Start fresh”.")
 		return
 	}
+	// The button pressed names the row (S29; Rahul, 25 Oct): behalf.prefill_start_fresh and so on,
+	// so the log alone shows who confirmed the answers and who cleared them. A request refused
+	// before this point keeps the route's own action.
+	a := auditOf(r)
+	a.action += "_" + in.Choice
 	ctx := r.Context()
 	by := uuid.NullUUID{UUID: f.enteredBy, Valid: f.enteredBy != uuid.Nil}
 	if in.Choice == "start_fresh" {

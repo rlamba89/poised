@@ -505,8 +505,8 @@ func TestStartFresh(t *testing.T) {
 		}
 		// A tab that still shows the answers can't save them back.
 		refused(t, x.patient.Do("PUT", patientPath(x.inA, "/answers/"+again.String()), map[string]any{"data": map[string]any{"q_meds": []any{}}, "revision": 1}), http.StatusConflict)
-		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE action = 'link.prefill' AND $1 = ANY(episode_ids) AND status = 204`, x.inA.ID); n != 2 {
-			t.Errorf("%d link.prefill rows", n)
+		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE action = 'link.prefill_start_fresh' AND $1 = ANY(episode_ids) AND status = 204`, x.inA.ID); n != 2 {
+			t.Errorf("%d link.prefill_start_fresh rows", n)
 		}
 	})
 	t.Run("after Start fresh, a stale card's other buttons are refused, so an empty set is never sent as checked (verification 1, finding 1)", func(t *testing.T) {
@@ -548,6 +548,90 @@ func TestStartFresh(t *testing.T) {
 			t.Error("cleared after sending")
 		}
 	})
+}
+
+// Each of the opening card's buttons writes its own audit action (S29; Rahul, 25 Oct), by the
+// patient (link.prefill_*) and by staff for them (behalf.prefill_*), so the log alone shows who
+// confirmed the answers and who cleared them. The routes are TestPrefillChoice's and TestStartFresh's.
+func TestPrefillChoiceAuditActions(t *testing.T) {
+	t.Parallel()
+	w := newCrossTrustWorld(t)
+	again, healthAgain := w.later.Chapters[0], w.later.Chapters[1]
+	press := func(c *apitest.Client, path string, choice string) {
+		t.Helper()
+		c.Do("POST", path, map[string]string{"choice": choice}).Want(t, http.StatusNoContent)
+	}
+	rows := func(action string, e apitest.Episode, staff bool) int {
+		t.Helper()
+		who := `actor = 'patient' AND user_id IS NULL`
+		if staff {
+			who = `actor = 'staff' AND user_id = '` + w.cara.ID.String() + `'`
+		}
+		return count(t, w.db, `SELECT count(*) FROM audit_log WHERE org_id = $1 AND action = $2 AND $3 = ANY(episode_ids) AND status = 204 AND `+who,
+			w.a.Org, action, e.ID)
+	}
+
+	// The patient: Check each answer and Everything is still correct on one form, Start fresh on another.
+	p1, p2 := w.person(t, "AuditCard1"), w.person(t, "AuditCard2")
+	getCrossForm(t, p1.patient, patientPath(p1.inA, ""))
+	getCrossForm(t, p2.patient, patientPath(p2.inA, ""))
+	press(p1.patient, patientPath(p1.inA, "/prefill/"+again.String()), "check_each")
+	press(p1.patient, patientPath(p1.inA, "/prefill/"+healthAgain.String()), "still_correct")
+	press(p2.patient, patientPath(p2.inA, "/prefill/"+again.String()), "start_fresh")
+	// Staff for the patient, the same.
+	s1, s2 := w.person(t, "AuditCard3"), w.person(t, "AuditCard4")
+	getCrossForm(t, w.clinician, epPath(w.a, s1.inA, "/patient-form"))
+	getCrossForm(t, w.clinician, epPath(w.a, s2.inA, "/patient-form"))
+	press(w.clinician, epPath(w.a, s1.inA, "/patient-form/prefill/"+again.String()), "check_each")
+	press(w.clinician, epPath(w.a, s1.inA, "/patient-form/prefill/"+healthAgain.String()), "still_correct")
+	press(w.clinician, epPath(w.a, s2.inA, "/patient-form/prefill/"+again.String()), "start_fresh")
+
+	for _, c := range []struct {
+		action string
+		e      apitest.Episode
+		staff  bool
+	}{
+		{"link.prefill_check_each", p1.inA, false},
+		{"link.prefill_still_correct", p1.inA, false},
+		{"link.prefill_start_fresh", p2.inA, false},
+		{"behalf.prefill_check_each", s1.inA, true},
+		{"behalf.prefill_still_correct", s1.inA, true},
+		{"behalf.prefill_start_fresh", s2.inA, true},
+	} {
+		if n := rows(c.action, c.e, c.staff); n != 1 {
+			t.Errorf("%d %s rows", n, c.action)
+		}
+	}
+	for _, e := range []apitest.Episode{p1.inA, p2.inA, s1.inA, s2.inA} {
+		if n := count(t, w.db, `SELECT count(*) FROM audit_log WHERE action IN ('link.prefill', 'behalf.prefill') AND $1 = ANY(episode_ids)`, e.ID); n != 0 {
+			t.Errorf("%d rows with the old action", n)
+		}
+	}
+
+	// Trust A's admin reads each in words.
+	admin := w.anon.NewBrowser(t).LoginAs(t, w.fx.TrustUser(t, w.a.Org, "admin"))
+	r := admin.Do("GET", "/api/o/"+w.a.Org.String()+"/audit", nil)
+	r.Want(t, http.StatusOK)
+	var log struct {
+		Rows []struct{ Action, ActionLabel string }
+	}
+	r.Decode(t, &log)
+	labels := map[string]string{}
+	for _, row := range log.Rows {
+		labels[row.Action] = row.ActionLabel
+	}
+	for action, want := range map[string]string{
+		"link.prefill_check_each":      "Patient chose to check each pre-filled answer",
+		"link.prefill_still_correct":   "Patient confirmed pre-filled answers",
+		"link.prefill_start_fresh":     "Patient started a Question Set fresh",
+		"behalf.prefill_check_each":    "Checked each pre-filled answer with the patient",
+		"behalf.prefill_still_correct": "Confirmed pre-filled answers with the patient",
+		"behalf.prefill_start_fresh":   "Started a Question Set fresh for the patient",
+	} {
+		if labels[action] != want {
+			t.Errorf("%s: label %q, want %q", action, labels[action], want)
+		}
+	}
 }
 
 // A pre-filled set starts at revision 1, so a save that says "no row yet" (0) gets the stale 409
