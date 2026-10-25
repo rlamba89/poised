@@ -854,6 +854,28 @@ type Candidate struct {
 	Element     json.RawMessage `json:"element"`
 }
 
+// LinkedTo is the text of the question a key already links this one to (S29; Rahul, 25 Oct), for
+// "Same as…" to warn before replacing it: the library's question if the key is there, else the first
+// source's (the trust's newest published version holding it), as a candidate's title is chosen.
+// "" when no published or library question takes part in pre-fill with that key (a new question).
+func LinkedTo(name string, sources []Source) string {
+	title := ""
+	for _, s := range sources {
+		for _, p := range s.Questions {
+			if p.Name != name || !TakesPart(p) {
+				continue
+			}
+			if s.Library {
+				return p.Label()
+			}
+			if title == "" {
+				title = p.Label()
+			}
+		}
+	}
+	return title
+}
+
 // maxCandidates is the most "Same as…" lists at once; the author narrows the search for others.
 const maxCandidates = 50
 

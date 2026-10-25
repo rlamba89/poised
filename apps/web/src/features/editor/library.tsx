@@ -246,6 +246,8 @@ export function SameAsWindow(props: {
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 250);
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
+  // The text of the question this one's key already links to (Go's linkedTo), or "" (S29).
+  const [linkedTo, setLinkedTo] = useState("");
   const [error, setError] = useState("");
   const [shown, setShown] = useState<ElementJson | null>(null);
   // Each opening starts afresh, with an empty search (test report 1, found 2); the last question is
@@ -256,6 +258,7 @@ export function SameAsWindow(props: {
     if (element) {
       setSearch("");
       setCandidates(null);
+      setLinkedTo("");
       setError("");
     }
   }
@@ -263,8 +266,8 @@ export function SameAsWindow(props: {
   useEffect(() => {
     if (!element) return;
     let live = true;
-    api<{ candidates: Candidate[] }>(searchPath, { method: "POST", body: JSON.stringify({ question: element, q: debounced.trim() }) })
-      .then((r) => live && (setCandidates(r.candidates), setError("")))
+    api<{ candidates: Candidate[]; linkedTo: string }>(searchPath, { method: "POST", body: JSON.stringify({ question: element, q: debounced.trim() }) })
+      .then((r) => live && (setCandidates(r.candidates), setLinkedTo(r.linkedTo ?? ""), setError("")))
       .catch((e: Error) => live && setError(e.message));
     return () => {
       live = false;
@@ -280,6 +283,12 @@ export function SameAsWindow(props: {
           Link “{textOf(shown?.title) || shown?.name}” to a question the trust already asks, so a patient&apos;s earlier answer to that one fills
           this one in. It takes that question&apos;s ID and options, and keeps its own wording.
         </Text>
+        {/* Its key already comes from the library or a published HQ: Use this would change what it pre-fills from (S29). */}
+        {linkedTo && (
+          <Alert color="orange" p="xs" data-testid="same-as-linked">
+            <Text size="sm">This question is already linked to “{linkedTo}”. Using this replaces that link.</Text>
+          </Alert>
+        )}
         <TextInput
           label="Search"
           placeholder="Question text"

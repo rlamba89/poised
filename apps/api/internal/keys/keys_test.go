@@ -902,3 +902,27 @@ func mustWalk(t *testing.T, content string) []Question {
 	}
 	return qs
 }
+
+// "Same as…" warns before replacing a question's existing link (S29; Rahul, 25 Oct): LinkedTo is
+// the text of the question its key already links to, from the library if it's there, else the
+// trust's published questionnaires; "" for a key nothing published or in the library has.
+func TestLinkedTo(t *testing.T) {
+	published := Source{Name: "Demo pre-op HQ", Questions: walkSets(t, set("S", `{"type":"radiogroup","name":"smoker","title":"Smoking status","choices":["Yes","No"]},
+		{"type":"text","name":"q_pub","title":"Published only"},
+		{"type":"text","name":"q_nurse","title":"Nurse only","clinicianOnly":true},
+		{"type":"paneldynamic","name":"q_list","title":"Products","templateElements":[{"type":"text","name":"q_row","title":"Product"}]}`))}
+	library := Source{Name: "Library", Library: true, Questions: walkSets(t, set("Library", `{"type":"radiogroup","name":"smoker","title":"Do you smoke?","choices":["Yes","No"]}`))}
+	sources := []Source{published, library}
+	for name, want := range map[string]string{
+		"smoker":  "Do you smoke?",  // the library's wording wins, as for the candidate
+		"q_pub":   "Published only", // the trust's published question
+		"q_list":  "Products",
+		"q_new":   "", // a new question: no link yet
+		"q_nurse": "", // clinician-only: never pre-filled, so no link
+		"q_row":   "", // a repeating group's row travels with its group
+	} {
+		if got := LinkedTo(name, sources); got != want {
+			t.Errorf("LinkedTo(%q) = %q, want %q", name, got, want)
+		}
+	}
+}

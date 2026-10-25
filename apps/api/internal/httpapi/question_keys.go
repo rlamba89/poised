@@ -146,7 +146,8 @@ func (s *server) questionKeys(w http.ResponseWriter, r *http.Request) {
 // (S24): the keys the question in the body could take, from the trust's published and retired
 // questionnaires (each key as its newest version holding it asks it; this questionnaire's too) and
 // the library (the platform's and the trust's), matching `q` by text or key. Each comes with
-// whether it may be adopted (keys.Compatible, and not already in this HQ) and why not. Only those
+// whether it may be adopted (keys.Compatible, and not already in this HQ) and why not; and linkedTo,
+// the text of the question the question's own key already links to ("" for none). Only those
 // who may change the questionnaire ask: adopting changes it.
 func (s *server) searchQuestionKeys(w http.ResponseWriter, r *http.Request) {
 	row, ok := s.loadQuestionnaire(w, r)
@@ -198,7 +199,9 @@ func (s *server) searchQuestionKeys(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "walk library", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"candidates": keys.Candidates(mine[0], here, sources, in.Q)})
+	// linkedTo: the question this one's key already links to, if any, so the window can warn that
+	// Use this replaces that link (S29; Rahul, 25 Oct).
+	writeJSON(w, http.StatusOK, map[string]any{"candidates": keys.Candidates(mine[0], here, sources, in.Q), "linkedTo": keys.LinkedTo(mine[0].Name, sources)})
 }
 
 // keySources are the trust's questionnaires, each with every key's question from its newest

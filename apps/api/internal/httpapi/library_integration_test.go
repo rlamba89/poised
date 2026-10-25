@@ -286,7 +286,10 @@ func TestRemoveFromLibrary(t *testing.T) {
 	})
 }
 
-type candidatesResponse struct{ Candidates []keys.Candidate }
+type candidatesResponse struct {
+	Candidates []keys.Candidate
+	LinkedTo   string // S29: the text of the question its key already links to, or ""
+}
 
 func TestSameAsSearch(t *testing.T) {
 	t.Parallel()
@@ -325,6 +328,32 @@ func TestSameAsSearch(t *testing.T) {
 		}
 		if _, ok := byKey["q_new"]; ok {
 			t.Error("the question's own key was offered")
+		}
+	})
+	t.Run("happy path: a question already linked says to what, so the window can warn (S29)", func(t *testing.T) {
+		for _, c := range []struct {
+			question, want string
+		}{
+			{string(question), ""}, // a new question: no warning
+			// From a published HQ (this questionnaire's own earlier version is one): that question's text.
+			{`{"type":"radiogroup","name":"q_smokes","title":"Smoking now?","choices":[{"value":"o_yes","text":"Yes"},{"value":"o_no","text":"No"}]}`, "Do you smoke?"},
+			// From the library: the library's text, not this question's.
+			{`{"type":"radiogroup","name":"smoker","title":"Smoking status?","choices":[{"value":"never","text":"Never"}]}`, "Do you smoke?"},
+		} {
+			r := search(w.author, w.a, mine, map[string]any{"question": json.RawMessage(c.question), "q": "zzz-nothing"})
+			r.Want(t, http.StatusOK)
+			var got candidatesResponse
+			r.Decode(t, &got)
+			if got.LinkedTo != c.want || !strings.Contains(string(r.Body), `"linkedTo":`) {
+				t.Errorf("%s: linkedTo %q, want %q", c.question, got.LinkedTo, c.want)
+			}
+		}
+		// Trust B's own library question means nothing to trust A.
+		r := search(w.author, w.a, mine, map[string]any{"question": json.RawMessage(`{"type":"radiogroup","name":"q_b_smoke","title":"x","choices":["Yes"]}`)})
+		var got candidatesResponse
+		r.Decode(t, &got)
+		if got.LinkedTo != "" {
+			t.Errorf("trust B's library key: linkedTo %q", got.LinkedTo)
 		}
 	})
 	t.Run("happy path: an incompatible kind is offered greyed, with its reason", func(t *testing.T) {
