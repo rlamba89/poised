@@ -129,6 +129,22 @@ docker compose up -d --force-recreate db
 - **A race older than S23 (verification 1, item 8):** a chapter save that has passed its draft check can commit between Publish's key checks and the publish itself, so a just-saved change could be published unchecked. Closing it needs the save to take the trust's lock too (or re-check the status under it).
 - ~~**Hand checks for Rahul:** R-05 and R-02 at 390×844~~ *Both passed in test reports 3 and 4 (R-05 after the old "S02 test HQ" data was removed).*
 
+### From S29's verification 1 (25 Oct; none blocking, details in [verify.md](sessions/S29-s28-followups/verify.md))
+
+- **On AWS a gateway's 5xx is JSON (`{"message": …}`), so it still shows "Something went wrong"** (`apps/web/src/lib/api.ts`): the plain network message is given only for a 5xx with no JSON body (the brief's wording; the dev proxy's empty 502 works). Use it for any 5xx whose body has no `error`.
+- **The "answers were cleared" card hides every error, not only network ones** (`PatientHQ.tsx`): a Reload refused for another reason (e.g. cancelled meanwhile) shows no new message. Hide only `NETWORK_ERROR` there.
+- **For Rahul: "Same as…" warns on almost every question in a later draft**, naming its own earlier published wording (`keys.LinkedTo` counts this questionnaire's own versions, as recorded in decisions.md). Limit it to library and other-HQ keys if that reads oddly.
+- **A refused pre-fill press still gets the old shared label** ("Checked pre-filled answers…") for new rows; a neutral label would be clearer. A second press in another tab (204, nothing recorded) is logged as the button pressed.
+- **`reportedBmi` builds a model for every shown set** (could skip sets with no BMI, height or weight), and decides "shown" with the clinician's view (a patient-only height would be skipped; no HQ does this).
+- **J8 is flaky on a long-lived database:** its mobile is one of 1,000 (`+447700900NNN`), so `captured(mobile)` can find another run's texts. Widen the range or filter by episode.
+- `EpisodeList.tsx` uses `openTaskCount` only as a truthiness check and renders `e.openTasks` directly (tidy-up).
+
+### From S29's test report 2 (25 Oct; all passed, exploring notes, none blocking)
+
+- **The patient's cancelled, closed and not-found pages show no hospital name at the top right**, unlike the form pages (older than S29: the page has no form to take it from).
+- **For Rahul: no action ("What") filter on the Audit page.** S29's brief mentioned one; the new labels show in the What column and the CSV only. Add a filter by action if wanted.
+- Known and already listed: a double-click on Save comment saves the note twice; the Same as… **Use this** button is squeezed when a key is in many HQs (the e2e runs publish many).
+
 ### From S28's test report 1 (25 Oct; all passed, exploring notes, none blocking)
 
 - ~~**After a Start fresh whose reload fails, a red banner shows the raw browser error ("Failed to fetch")** above the friendly "The answers in this section were cleared" card (`PatientHQ.tsx`: `load()` sets the error as well). Cosmetic; could hide the banner while that card shows, or word network errors plainly in `api.ts`.~~ *Decided 25 Oct (Rahul): one plain network-error message in `api.ts` on every page, and the banner hidden while the cleared card shows. For S29 (decisions.md §2, "the open items after S28 answered").*
@@ -136,7 +152,7 @@ docker compose up -d --force-recreate db
 - **Trust B's Who box still lists a Trust A staff member** from rows written before S28 (S27's on-behalf `prefill.read` rows, append-only). Every row since S28 says "Staff at Trust A". Only local test data has such rows; nothing was pushed with them.
 - **Each staff page view writes two audit rows** in the dev build (React's double effect in development fetches twice). Not new; a production build fetches once.
 - **From S28's verification 1 (none blocking; details in [verify.md](sessions/S28-s27-followups/verify.md)):**
-  - ~~**For Rahul: "once per form" counts a first open that found nothing to read.** Say staff open Fill in for the patient first, and the record matches no account (for example the mobile differs). The form is then marked pre-filled, so the patient's own later open, which joins their account, gets nothing from other trusts. This follows answer 3 as written. Change it only if Rahul wants a later open to read the trusts a new join brings.~~ *Decided 25 Oct (Rahul): a later open reads a trust that a new join brings, once, for sets nobody has changed yet. For S29 (decisions.md §2, "the open items after S28 answered").*
+  - ~~**For Rahul: "once per form" counts a first open that found nothing to read.** Say staff open Fill in for the patient first, and the record matches no account (for example the mobile differs). The form is then marked pre-filled, so the patient's own later open, which joins their account, gets nothing from other trusts. This follows answer 3 as written. Change it only if Rahul wants a later open to read the trusts a new join brings.~~ *Settled 25 Oct (Rahul): an edge case, no change; S28's "once per form" stands (decisions.md §2, "the open items after S28 answered", item 1, reversed the same day).*
   - ~~**`reportedBmi` reads answers whether or not their question or set is shown** (`packages/clinical/src/poa.ts`). A BMI, or a height and weight, still held after a condition hid it could give the Patient reported BMI. The demo HQs ask height and weight unconditionally.~~ *Decided 25 Oct (Rahul): use only answers that are shown. For S29 (decisions.md §2, "the open items after S28 answered").*
   - **A `prefill.read` row is written even if the pre-fill's transaction then fails** (`prefill.go`), so a rare failed first open can read again on the next one. The read did happen.
 
