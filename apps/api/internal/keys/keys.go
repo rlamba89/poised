@@ -53,7 +53,8 @@ type Question struct {
 	Scale   string   // a rating's scale when it has no values, e.g. "1 to 5 by 1"
 	// Columns are a repeating list's: a dynamic panel's questions, or a dynamic matrix's columns.
 	Columns []Column
-	// Answerable is false for statements, calculations, the profile and Clinical Summaries, which nobody answers.
+	// Answerable is false for statements, calculations, the profile and Clinical Summaries, which nobody
+	// answers, and for a video's tick, which is never pre-filled or keyed (S34).
 	Answerable bool
 	// ClinicianOnly is set on the question, a group or page around it, or its Question Set.
 	ClinicianOnly bool
@@ -79,9 +80,11 @@ func (q Question) Label() string {
 	return q.Name
 }
 
-// notAnswered are the element types that hold no answer (a Clinical Summary's comments, S32, are a
-// clinician's answer under a key the JSON never names).
-var notAnswered = map[string]bool{"html": true, "expression": true, "image": true, "profile": true, "clinicalsummary": true}
+// notAnswered are the element types that hold no answer keys care about (a Clinical Summary's
+// comments, S32, are a clinician's answer under a key the JSON never names; a video's "I have
+// watched this video" tick, S34, is about this operation only, so it's never pre-filled, linked or
+// locked: S34 answers 2).
+var notAnswered = map[string]bool{"html": true, "expression": true, "image": true, "profile": true, "clinicalsummary": true, "video": true}
 
 // obj is a JSON object read leniently: a field of an unexpected shape reads as empty, so a chapter
 // SurveyJS accepts never stops the walk (one odd published chapter would otherwise stop every

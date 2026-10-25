@@ -1,0 +1,40 @@
+{
+  "name": "Video HQ",
+  "description": "A Question Set with videos (S34), for tests.",
+  "chapters": [
+    {
+      "name": "Before your operation",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_videos",
+            "elements": [
+              {
+                "type": "video", "name": "q_anaes", "title": "Your anaesthetic",
+                "videoUrl": "https://www.youtube.com/watch?v=aqz-KE-bpKQ", "videoLength": 635,
+                "watchTick": true, "tickText": "I have watched this video", "isRequired": true
+              },
+              {
+                "type": "video", "name": "q_fasting", "title": "Fasting",
+                "videoUrl": "https://vimeo.com/76979871", "videoLength": 62,
+                "watchTick": true, "tickText": "I have watched this video"
+              },
+              { "type": "radiogroup", "name": "q_smokes", "title": "Do you smoke?", "choices": [{ "value": "o_yes", "text": "Yes" }, { "value": "o_no", "text": "No" }] },
+              {
+                "type": "video", "name": "q_smoking", "title": "Stopping smoking", "visibleIf": "{q_smokes} = 'o_yes'",
+                "videoUrl": "https://youtu.be/aqz-KE-bpKQ", "videoLength": 635,
+                "watchTick": true, "tickText": "I have watched this video", "isRequired": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Nurse checks",
+      "audience": "clinician",
+      "content": { "pages": [{ "name": "p_checks", "elements": [{ "type": "text", "name": "q_bpread", "title": "Blood pressure" }] }] }
+    }
+  ]
+}

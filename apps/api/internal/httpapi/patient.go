@@ -1,12 +1,15 @@
 package httpapi
 
 import (
+	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -508,7 +511,8 @@ func (s *server) saveForm(w http.ResponseWriter, r *http.Request, f form) {
 
 // submitForm submits the HQ form, freezing the patient's answers, and moves the episode to Ready
 // for review (triage), through the transition table (S20), recording the change.
-// The browser has checked every required question (plan 2.1).
+// The browser has checked every required question (plan 2.1); Go also holds it back while a
+// required video tick every patient sees isn't ticked (S34).
 func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
 	who := role.None // the patient
 	if f.enteredBy != uuid.Nil {
@@ -526,6 +530,13 @@ func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
 	}
 	defer tx.Rollback(ctx)
 	q := db.New(tx)
+	if msg, err := uncheckedTicks(ctx, q, f); err != nil {
+		serverError(w, "check ticks", err)
+		return
+	} else if msg != "" {
+		writeError(w, http.StatusConflict, msg)
+		return
+	}
 	n, err := q.SubmitPatientHQ(ctx, db.SubmitPatientHQParams{
 		FormID: f.FormID, SubmittedBy: uuid.NullUUID{UUID: f.enteredBy, Valid: f.enteredBy != uuid.Nil},
 	})
@@ -550,6 +561,45 @@ func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// uncheckedTicks is why the HQ can't be sent yet, or "": a required "I have watched this video" tick
+// (S34, INF-02) that every patient sees isn't ticked. The browser checks every required question
+// first (plan 2.1); this holds back only what Go can know without evaluating a condition.
+func uncheckedTicks(ctx context.Context, q *db.Queries, f form) (string, error) {
+	rows, err := q.ListVersionChapters(ctx, f.VersionID)
+	if err != nil {
+		return "", err
+	}
+	saved, err := q.ListEpisodeAnswers(ctx, f.FormID)
+	if err != nil {
+		return "", err
+	}
+	answers := map[uuid.UUID]map[string]json.RawMessage{}
+	for _, a := range saved {
+		if a.Actor == "patient" {
+			var data map[string]json.RawMessage
+			_ = json.Unmarshal(a.Data, &data) // answers that aren't an object hold no tick
+			answers[a.ChapterID] = data
+		}
+	}
+	var titles []string
+	for _, c := range rows {
+		if c.Audience != "patient" {
+			continue
+		}
+		ticks, err := chapter.RequiredTicks(c.Content)
+		if err != nil {
+			return "", err
+		}
+		for _, t := range chapter.Unticked(ticks, answers[c.ID]) {
+			titles = append(titles, "“"+cmp.Or(t.Title, t.Name)+"”")
+		}
+	}
+	if len(titles) == 0 {
+		return "", nil
+	}
+	return "Please tick “I have watched this video” for " + strings.Join(titles, ", ") + " before sending your answers.", nil
 }
 
 // The patient's routes: GET, PUT …/answers/{cid} and POST …/submit on /api/p/episodes/{eid}.

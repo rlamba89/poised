@@ -938,3 +938,24 @@ func TestWalkSummaryHoldsNoAnswer(t *testing.T) {
 		t.Errorf("summary = %+v, want not answerable and clinician-only", qs[0])
 	}
 }
+
+// A video's "I have watched this video" tick (S34) is about this operation: never pre-filled, by key
+// or by wording (S34 answers 2), and no key check counts it (a later version may change the video).
+func TestVideoTickIsNeverPrefilledNorLocked(t *testing.T) {
+	video := `{"type":"video","name":"q_vid","title":"Your anaesthetic","videoUrl":"https://youtu.be/aqz-KE-bpKQ","videoLength":635,"watchTick":true,"isRequired":true}`
+	mine := walkSets(t, set("A", video))
+	if mine[0].Answerable || TakesPart(mine[0]) {
+		t.Errorf("video = %+v, want no answer for pre-fill or keys", mine[0].Question)
+	}
+	got := Matches(mine, []Version{{QuestionnaireID: "hq-1", Questionnaire: "Other", Questions: walkSets(t, set("B", video))}})
+	if len(got["q_vid"]) != 0 {
+		t.Errorf("a video's tick takes part in pre-fill: %v", got)
+	}
+	if ok, _ := Compatible(mine[0].Question, mine[0].Question); ok {
+		t.Error("a video can be linked with Same as…")
+	}
+	published := []Published{{Questionnaire: "HQ", VersionNo: 1, Question: walkSets(t, set("B", `{"type":"video","name":"q_vid","title":"Old video","videoUrl":"https://vimeo.com/76979871"}`))[0].Question}}
+	if p := LockProblems(mine, map[string][]Published{"q_vid": published}); len(p) != 0 {
+		t.Errorf("a changed video is a key problem: %v", p)
+	}
+}
