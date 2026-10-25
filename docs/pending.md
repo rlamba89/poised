@@ -131,18 +131,22 @@ docker compose up -d --force-recreate db
 
 ### From S29's verification 1 (25 Oct; none blocking, details in [verify.md](sessions/S29-s28-followups/verify.md))
 
-- **On AWS a gateway's 5xx is JSON (`{"message": …}`), so it still shows "Something went wrong"** (`apps/web/src/lib/api.ts`): the plain network message is given only for a 5xx with no JSON body (the brief's wording; the dev proxy's empty 502 works). Use it for any 5xx whose body has no `error`.
-- **The "answers were cleared" card hides every error, not only network ones** (`PatientHQ.tsx`): a Reload refused for another reason (e.g. cancelled meanwhile) shows no new message. Hide only `NETWORK_ERROR` there.
+- ~~**On AWS a gateway's 5xx is JSON (`{"message": …}`), so it still shows "Something went wrong"** (`apps/web/src/lib/api.ts`): the plain network message is given only for a 5xx with no JSON body (the brief's wording; the dev proxy's empty 502 works). Use it for any 5xx whose body has no `error`.~~ *Rahul, 25 Oct: fix it. Fixed in S30 (tested 25 Oct).*
+- ~~**The "answers were cleared" card hides every error, not only network ones** (`PatientHQ.tsx`): a Reload refused for another reason (e.g. cancelled meanwhile) shows no new message. Hide only `NETWORK_ERROR` there.~~ *Rahul, 25 Oct: fix it. Fixed in S30 (tested 25 Oct).*
 - ~~**For Rahul: "Same as…" warns on almost every question in a later draft**, naming its own earlier published wording (`keys.LinkedTo` counts this questionnaire's own versions, as recorded in decisions.md). Limit it to library and other-HQ keys if that reads oddly.~~ *Settled 25 Oct (Rahul): keep it. The warning shows only inside the Same as… window, when an author deliberately relinks a question that already has a key, which is rare; and it's true, since Use this breaks the link to the earlier version that pre-fill relies on (decisions.md §2).*
 - **A refused pre-fill press still gets the old shared label** ("Checked pre-filled answers…") for new rows; a neutral label would be clearer. A second press in another tab (204, nothing recorded) is logged as the button pressed.
 - **`reportedBmi` builds a model for every shown set** (could skip sets with no BMI, height or weight), and decides "shown" with the clinician's view (a patient-only height would be skipped; no HQ does this).
-- **J8 is flaky on a long-lived database:** its mobile is one of 1,000 (`+447700900NNN`), so `captured(mobile)` can find another run's texts. Widen the range or filter by episode.
+- ~~**J8 is flaky on a long-lived database:** its mobile is one of 1,000 (`+447700900NNN`), so `captured(mobile)` can find another run's texts. Widen the range or filter by episode.~~ *Rahul, 25 Oct: fix it. Fixed in S30 (tested 25 Oct): J8 counts only texts carrying a link this episode's emails carry.*
 - `EpisodeList.tsx` uses `openTaskCount` only as a truthiness check and renders `e.openTasks` directly (tidy-up).
+
+### From S30's test report 1 (25 Oct; all passed, none blocking)
+
+- **The cleared card's wording under a cancelled banner** (`PatientHQ.tsx`): when Reload after Start fresh is refused because the episode was cancelled meanwhile, the red banner says so (S30), but the card below still says "The questionnaire couldn't be loaded again just now. Please try again." with **Reload**, an action that can't succeed. A wording or layout change for a refusal that isn't a network failure (e.g. drop the card, or its Reload, once the refusal is final) would read better.
 
 ### From S29's test report 2 (25 Oct; all passed, exploring notes, none blocking)
 
 - **The patient's cancelled, closed and not-found pages show no hospital name at the top right**, unlike the form pages (older than S29: the page has no form to take it from).
-- **For Rahul: no action ("What") filter on the Audit page.** S29's brief mentioned one; the new labels show in the What column and the CSV only. Add a filter by action if wanted.
+- **For Rahul: no action ("What") filter on the Audit page.** S29's brief mentioned one; the new labels show in the What column and the CSV only. Add a filter by action if wanted. *Rahul, 25 Oct: not a priority; keep as is, revisit later.*
 - Known and already listed: a double-click on Save comment saves the note twice; the Same as… **Use this** button is squeezed when a key is in many HQs (the e2e runs publish many).
 
 ### From S28's test report 1 (25 Oct; all passed, exploring notes, none blocking)

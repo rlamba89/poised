@@ -159,12 +159,13 @@ Split on 21 Oct. Local like C3, with messages captured.
 
 ### After plan C4 (local)
 
-Rahul's 24 Oct decisions after plan C4, before plan C5 (S27; then S28 for S27's open items).
+Rahul's 24 Oct decisions after plan C4, before plan C5 (S27; then S28 for S27's open items, S29 for S28's, S30 for S29's findings).
 
 | ID | Plan | Builds | Needs from you first | Status |
 | --- | --- | --- | --- | --- |
 | [S27](S27-c4-followups/brief.md) | — | Pre-fill from other trusts without asking (no trust setting; the card names the hospital, with Start fresh), the archived read-only View and badge, neutral Cancelled wording, format names in the publish refusal, clickable answers on the POA Summary | Answered 24 Oct ([answers.md](S27-c4-followups/answers.md)) | **Verified** (24 Oct, [verification 3](S27-c4-followups/verify.md)) |
 | [S28](S28-s27-followups/brief.md) | — | S27's open items as Rahul answered them (24 Oct): the four-field join on the patient's behalf, another trust's audit names only the trust, other trusts read on the first open only, Start fresh on the POA Summary, the archived View's wording, the cancelled-after-sent home card, NOT RESPONDING hidden once cancelled, the reported BMI before validation; plus S27's small fixes | Answered 25 Oct ([answers.md](S28-s27-followups/answers.md)) | **Verified** (25 Oct, [verification 1](S28-s27-followups/verify.md)) |
 | [S29](S29-s28-followups/brief.md) | — | S28's open items as Rahul answered them (25 Oct): the reported BMI from shown answers only, an audit action for each opening-card button, plain network-error wording, no open-task count on archived episodes, the cancelled message on an archived-from-Cancelled link, a warning before "Same as…" replaces a link | Answered 25 Oct ([answers.md](S29-s28-followups/answers.md)) | **Verified** (25 Oct, [verification 1](S29-s28-followups/verify.md)) |
+| [S30](S30-s29-followups/brief.md) | — | S29's findings Rahul asked to fix (25 Oct): the plain network message for any 5xx without an API error, the cleared card hides only network errors, J8 reads only its own texts | Nothing to ask | **Verified** (25 Oct, [verification 1](S30-s29-followups/verify.md)) |
 
 **Why this order:** nothing needs AWS until someone outside your laptop has to use the app. Building locally first lets the automatic run go without AWS stops. The cost is that the AWS hosting setup and its near-£0 idle cost are proven later (decided 12 Oct; [decisions.md](../decisions.md)).
