@@ -16,6 +16,7 @@ import {
   modelFor, prefilledAnswers, sameAnswer, type Answers, type ChapterJson, type PrefillChoice, type PrefillEntry, type SamplePatient,
   type SetPrefill,
 } from "@poised/clinical";
+import { NETWORK_ERROR } from "@/lib/api";
 import { formatDay } from "@/lib/format";
 
 // The shapes Go sends (SetPrefill, PrefillEntry) are in @poised/clinical, shared with the clinician's view (S26).
@@ -173,4 +174,13 @@ export function focusQuestion(model: Model, name: string): () => void {
   const timer = setTimeout(stop, 1000);
   for (const e of userEvents) window.addEventListener(e, stop, { passive: true });
   return stop;
+}
+
+/**
+ * Whether the page's red error banner shows. Over the "answers were cleared" card (Start fresh
+ * cleared a set but the HQ didn't load again), the network message would only repeat the card, so
+ * it's hidden (S29); any other refusal, e.g. the episode cancelled meanwhile, still shows (S30).
+ */
+export function errorBannerShown(error: string, clearedCard: boolean): boolean {
+  return error !== "" && !(clearedCard && error === NETWORK_ERROR);
 }

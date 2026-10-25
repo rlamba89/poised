@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { modelFor, registerClinicalProperties, type ChapterJson } from "@poised/clinical";
-import { awaitsCheck, cardText, firstUnfilled, offersStartFresh, shownPrefilled, stillPrefilled, type PrefillEntry, type SetPrefill } from "./prefill";
+import { NETWORK_ERROR } from "@/lib/api";
+import { awaitsCheck, cardText, errorBannerShown, firstUnfilled, offersStartFresh, shownPrefilled, stillPrefilled, type PrefillEntry, type SetPrefill } from "./prefill";
 
 beforeAll(() => registerClinicalProperties());
 
@@ -160,5 +161,20 @@ describe("another trust's answers", () => {
     expect(shownPrefilled(m, fresh)).toEqual([]);
     expect(firstUnfilled(m, fresh)?.name).toBe("smoker");
     expect(awaitsCheck(set, { smoker: "no" }, fresh, vars)).toBe(false);
+  });
+});
+
+// S30: the "answers were cleared" card already says the page couldn't load, so it hides only the
+// network message; a Reload refused for another reason (e.g. the episode cancelled) still says why.
+describe("errorBannerShown", () => {
+  it("hides only the network message over the cleared card", () => {
+    expect(errorBannerShown(NETWORK_ERROR, true)).toBe(false);
+    expect(errorBannerShown("This questionnaire was cancelled by the hospital.", true)).toBe(true);
+  });
+  it("shows any error without the cleared card, and nothing when there's none", () => {
+    expect(errorBannerShown(NETWORK_ERROR, false)).toBe(true);
+    expect(errorBannerShown("Episode not found.", false)).toBe(true);
+    expect(errorBannerShown("", true)).toBe(false);
+    expect(errorBannerShown("", false)).toBe(false);
   });
 });

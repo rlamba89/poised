@@ -197,10 +197,14 @@ def test_on_behalf_one_detail_different_gets_nothing_from_trust_b(page: Page, as
     assert "joined their sign-in account" not in trust_a
 
 
+NETWORK_ERROR = "We couldn't reach the server. Check your connection and try again."
+
+
 def test_start_fresh_whose_reload_fails_says_the_answers_were_cleared(phone: BrowserContext, as_user, patient_link):
     """Start fresh worked, but the HQ didn't load again (S28; S27 verification 3): the card with the
     old answers mustn't stay up as if nothing happened. The page says the answers were cleared, with
-    Reload, which then opens the set empty, as a Start fresh that loads does."""
+    Reload, which then opens the set empty, as a Start fresh that loads does. The card already says
+    the page couldn't load, so no network banner over it (S29, S30)."""
     first, _, _, _ = trust_b_then_trust_a(as_user, patient_link, {"Your health": {"snoring": "yes"}})
     patient = open_as_patient(phone, first["email"])
     patient.get_by_test_id("set-Your health").get_by_role("button", name="Check").click()
@@ -208,7 +212,7 @@ def test_start_fresh_whose_reload_fails_says_the_answers_were_cleared(phone: Bro
 
     def reload_fails(route):
         if failing["on"] and route.request.method == "GET":
-            route.fulfill(status=503, content_type="application/json", body='{"error":"The service is busy. Please try again."}')
+            route.abort("internetdisconnected")
         else:
             if route.request.method == "POST" and "/prefill/" in route.request.url:
                 failing["on"] = True
@@ -220,9 +224,44 @@ def test_start_fresh_whose_reload_fails_says_the_answers_were_cleared(phone: Bro
     failed = patient.get_by_test_id("fresh-reload-failed")
     expect(failed).to_contain_text("The answers in this section were cleared")
     expect(patient.get_by_test_id("prefill-card")).to_have_count(0)
+    expect(patient.get_by_text(NETWORK_ERROR)).to_have_count(0)
     failing["on"] = False
     failed.get_by_role("button", name="Reload").click()
     expect(patient.get_by_test_id("fresh-reload-failed")).to_have_count(0)
     # As after a Start fresh that loads: the set open, empty, with no card.
     expect(patient.get_by_test_id("prefill-card")).to_have_count(0)
     expect(patient.get_by_role("radiogroup", name="Do you snore loudly?").get_by_role("radio", name="Yes", exact=True)).not_to_be_checked()
+
+
+def test_a_reload_refused_for_another_reason_still_says_why_over_the_cleared_card(page: Page, as_user, patient_link):
+    """The cleared card hides only the network message (S30): Cara, filling in for the patient, starts
+    a set fresh while reads fail, and the episode is cancelled before she presses Reload. The
+    refusal says it was cancelled, above the card."""
+    _, second, cara, _ = trust_b_then_trust_a(as_user, patient_link, {"Your health": {"snoring": "yes"}})
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{second['id']}/patient-form")
+    page.get_by_test_id("set-Your health").get_by_role("button", name="Check").click()
+    failing = {"on": False}
+
+    def reload_fails(route):
+        if failing["on"] and route.request.method == "GET":
+            route.abort("internetdisconnected")
+        else:
+            if route.request.method == "POST" and "/prefill/" in route.request.url:
+                failing["on"] = True
+            route.continue_()
+
+    page.route("**/api/o/**/episodes/**", reload_fails)
+    page.get_by_test_id("prefill-card").get_by_role("button", name="Start fresh").click()
+    page.get_by_test_id("start-fresh-confirm").get_by_role("button", name="Yes, start fresh").click()
+    failed = page.get_by_test_id("fresh-reload-failed")
+    expect(failed).to_contain_text("The answers in this section were cleared")
+    expect(page.get_by_text(NETWORK_ERROR)).to_have_count(0)
+
+    # Cancelled meanwhile (in another tab, say): Reload is refused, and the page says why.
+    failing["on"] = False
+    revision = cara.call("GET", cara.h(f"/episodes/{second['id']}"))["episode"]["revision"]
+    cara.call("POST", cara.h(f"/episodes/{second['id']}/cancel"), {"reason": "patient_withdrew", "revision": revision})
+    failed.get_by_role("button", name="Reload").click()
+    expect(page.get_by_role("alert").filter(has_text="This questionnaire was cancelled by the hospital")).to_be_visible()
+    expect(failed).to_be_visible()
