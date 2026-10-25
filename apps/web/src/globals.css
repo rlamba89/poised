@@ -141,3 +141,49 @@
     box-shadow: 0 0 0 3px transparent;
   }
 }
+
+/* The Video element (S34): the video site's player at 16:9, the full width of the question, and its tick. */
+.sj-video-length {
+  margin: 0 0 8px;
+  color: var(--mantine-color-gray-7);
+  font-size: 14px;
+}
+.sj-video-frame {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  aspect-ratio: 16 / 9;
+  background: var(--mantine-color-gray-2);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.sj-video-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.sj-video-missing {
+  margin: 0;
+  color: var(--mantine-color-red-7);
+}
+.sj-video-tick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: 16px;
+  cursor: pointer;
+}
+.sj-video-tick input {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  accent-color: var(--mantine-color-brand-6);
+}
+.sj-video-ticked {
+  margin: 6px 0 0;
+  color: var(--mantine-color-gray-7);
+  font-size: 14px;
+}

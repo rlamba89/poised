@@ -1,5 +1,6 @@
 // The content library's small rules (plan C5, S33; INF-05, PX-13). Go checks every link, length and
 // tag; these only shape the form and show a video's length.
+import { formatLength, parseLength } from "@poised/clinical";
 
 export type ContentKind = "video" | "leaflet";
 
@@ -25,27 +26,8 @@ export type ContentList = { items: ContentItem[]; checklist: Topic[] };
 /** A platform starter question in the platform admin's list (S33 answers 4). */
 export type StarterQuestion = { id: string; key: string; title: string; tags: string[]; retired: boolean };
 
-const two = (n: number) => String(n).padStart(2, "0");
-
-/** A length in seconds as "3:20", or "1:02:05" from an hour; "" for none. */
-export function formatLength(seconds: number | null): string {
-  if (seconds == null) return "";
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  return h > 0 ? `${h}:${two(m)}:${two(s)}` : `${m}:${two(s)}`;
-}
-
-/** A typed length, "m:ss", "h:mm:ss" or whole minutes, in seconds; null if it can't be read or is 0. */
-export function parseLength(text: string): number | null {
-  const t = text.trim();
-  let seconds: number | null = null;
-  let m: RegExpMatchArray | null;
-  if ((m = t.match(/^(\d{1,3})$/))) seconds = Number(m[1]) * 60;
-  else if ((m = t.match(/^(\d{1,3}):([0-5]\d)$/))) seconds = Number(m[1]) * 60 + Number(m[2]);
-  else if ((m = t.match(/^(\d{1,2}):([0-5]\d):([0-5]\d)$/))) seconds = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
-  return seconds ? seconds : null;
-}
+// A video's length is read and shown by the same helpers as the Video element's (S34).
+export { formatLength, parseLength };
 
 /** tags with `tag` added, unless it's there already in any case. */
 export function addTag(tags: string[], tag: string): string[] {

@@ -3,7 +3,7 @@ import { Button, Text } from "@mantine/core";
 import {
   IconBooks, IconBuildingHospital, IconCalculator, IconCalendar, IconCircleDot, IconClipboardText, IconGridDots, IconLayoutList, IconLetterT, IconMessage,
   IconNumbers, IconPill, IconScale, IconSeparatorHorizontal, IconSignature, IconSquareCheck, IconStar, IconToggleLeft, IconUpload,
-  IconUser, type Icon,
+  IconUser, IconVideo, type Icon,
 } from "@tabler/icons-react";
 import { KINDS, KIND_LABEL, kindOf, type ElementJson, type Kind, type Target } from "@poised/clinical";
 import { useEditor } from "./context";
@@ -29,12 +29,14 @@ export const KIND_ICON: Record<Kind, Icon> = {
   profile: IconUser,
   statement: IconMessage,
   summary: IconClipboardText,
+  video: IconVideo,
 };
 
 /**
  * Incumbent rules: a Section can't go inside a group or section; BMI must be alone on its
  * page, so it is offered only on an empty page and, once added, nothing else is. A Clinical
- * Summary is never offered inside a repeating group (S32): its rows have no single summary.
+ * Summary is never offered inside a repeating group (S32): its rows have no single summary; nor is a
+ * Video (S34): its tick would be asked once per row.
  */
 export function AddContentBar({ target, pageElements, inside }: { target: Target; pageElements: ElementJson[]; inside?: ElementJson }) {
   const { add, readOnly, openLibrary } = useEditor();
@@ -44,7 +46,7 @@ export function AddContentBar({ target, pageElements, inside }: { target: Target
     if (pageHasBmi) return false;
     if (k === "bmi") return pageElements.length === 0;
     if (k === "section") return !inside;
-    if (k === "summary") return inside?.type !== "paneldynamic";
+    if (k === "summary" || k === "video") return inside?.type !== "paneldynamic";
     return true;
   };
   return (

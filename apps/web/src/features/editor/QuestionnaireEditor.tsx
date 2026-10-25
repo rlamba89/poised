@@ -488,6 +488,7 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
               openDisclosures={setDisclosure}
               onSaveToLibrary={librarian ? () => setSavingToLibrary(selected) : undefined}
               onSameAs={!readOnly ? () => setSameAs(selected) : undefined}
+              libraryPath={librarian ? trustPath : undefined}
             />
           )}
           {!showSettings && logicPage && doc && (

@@ -5,10 +5,10 @@ import { Fragment, useEffect, useState } from "react";
 import { ActionIcon, Badge, Button, Menu, Text, TextInput, Tooltip } from "@mantine/core";
 import {
   IconArrowDown, IconArrowUp, IconCalculator, IconCopy, IconDots, IconFileArrowRight, IconGitBranch, IconInfoCircle, IconLink,
-  IconFolderMinus, IconFolderPlus, IconLock, IconPlus, IconRefresh, IconRepeat, IconSignature, IconTrash, IconUpload,
+  IconFolderMinus, IconFolderPlus, IconLock, IconPlayerPlay, IconPlus, IconRefresh, IconRepeat, IconSignature, IconTrash, IconUpload,
 } from "@tabler/icons-react";
 import {
-  bandsOf, calcFormOf, canAskFresh, choiceDisplayOf, keyPlace, copyElement, countDisclosures, dateSettingsOf, describeLogic, enableIfToReadOnly,
+  bandsOf, calcFormOf, canAskFresh, checkVideo, formatLength, providerName, choiceDisplayOf, keyPlace, copyElement, countDisclosures, dateSettingsOf, describeLogic, enableIfToReadOnly,
   findElement, groupsToMoveInto, hasQuestionOutputs, isLocked, kindOf, moveElement, moveElementTo, moveOutOfGroup, numberSettingsOf, optionsOf, pageTitle, pagesOf, plainText,
   repeatSettingsOf, summariesIn, textFormatOf, textOf, updateElement, DATE_FORMATS, TEXT_FORMATS, type ChoiceJson, type ElementJson, type Part,
   type Target,
@@ -200,6 +200,8 @@ function ElementCard(props: { el: ElementJson; index: number; count: number; tar
         <BmiBody el={el} />
       ) : kind === "summary" ? (
         <SummaryBody el={el} />
+      ) : kind === "video" ? (
+        <VideoBody el={el} />
       ) : (
         <>
           <div className={css.title}>
@@ -261,6 +263,37 @@ function SummaryBody({ el }: { el: ElementJson }) {
         <Text size="sm" fw={600}>Clinical comments</Text>
         <div className={css.fakeTextarea} style={{ width: "100%", marginTop: 4 }} />
       </div>
+    </>
+  );
+}
+
+/**
+ * A Video (S34): its title, where it plays from and its length (or what's missing), and the tick the
+ * patient sees under it, if any. The player itself shows in Preview.
+ */
+function VideoBody({ el }: { el: ElementJson }) {
+  const link = typeof el.videoUrl === "string" ? el.videoUrl : "";
+  const video = link ? checkVideo(link) : null;
+  const length = formatLength(typeof el.videoLength === "number" ? el.videoLength : undefined);
+  return (
+    <>
+      <div className={css.title}>
+        {el.visibleIf && <IconGitBranch size={16} className={css.branch} />}
+        <span>{textOf(el.title) || "Video"}</span>
+      </div>
+      <Text size="sm" c={video && length ? "dimmed" : "red"} data-testid="video-summary" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <IconPlayerPlay size={14} />
+        {[video ? providerName(video) : link ? "Not a YouTube or Vimeo link" : "No link yet", length ? `Length ${length}` : "No length yet"].join(" · ")}
+      </Text>
+      {!!el.watchTick && (
+        <div className={css.optionRow}>
+          <span className={css.checkboxBox} />
+          <Text size="sm">
+            {textOf(el.tickText) || "I have watched this video"}
+            {!el.isRequired && <span className={css.optional}> (optional)</span>}
+          </Text>
+        </div>
+      )}
     </>
   );
 }

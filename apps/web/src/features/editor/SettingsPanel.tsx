@@ -11,6 +11,7 @@ import { outputsAt, type DisclosureTarget } from "./DisclosureModal";
 import { BlurText, BlurTextarea } from "./inputs";
 import { ElementLogic } from "./LogicEditor";
 import { TypeSettings } from "./TypeSettings";
+import { VideoSettings } from "./VideoSettings";
 
 export type PanelTab = "settings" | "disclosures" | "logic";
 
@@ -29,6 +30,8 @@ export function SettingsPanel(props: {
   onSaveToLibrary?: () => void;
   /** "Same as…" (S24), or undefined: the user can't change this questionnaire. */
   onSameAs?: () => void;
+  /** The trust's API path for a video's "Choose from library" (S34), or undefined: the user can't search the library. */
+  libraryPath?: string;
 }) {
   const { doc, name, tab, readOnly, onTab, onClose, change } = props;
   const el = findElement(doc, name)?.el;
@@ -110,6 +113,8 @@ export function SettingsPanel(props: {
           <Stack>
             {kind === "summary" ? (
               <SummarySettings doc={doc} el={el} readOnly={readOnly} patch={patch} />
+            ) : kind === "video" ? (
+              <VideoSettings el={el} readOnly={readOnly} patch={patch} change={change} libraryPath={props.libraryPath} />
             ) : kind === "statement" ? (
               <>
                 <BlurTextarea label="Text" value={plainText(textOf(el.html))} minRows={4} disabled={readOnly} onSave={(t) => patch({ html: textToHtml(t) })} />
