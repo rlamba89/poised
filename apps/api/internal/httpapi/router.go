@@ -133,6 +133,13 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/orgs/{oid}/hospitals", admin(s.adminAddHospital))
 	mux.HandleFunc("PATCH /api/admin/orgs/{oid}/hospitals/{hid}", admin(s.adminUpdateHospital))
 	mux.HandleFunc("POST /api/admin/orgs/{oid}/admins", admin(s.adminInviteAdmin))
+	// The content library (S33): Preopsis's videos and leaflets, and the platform's starter
+	// questions, which a platform admin retires or offers again (content.go).
+	mux.HandleFunc("GET /api/admin/content", admin(s.adminListContent))
+	mux.HandleFunc("POST /api/admin/content", admin(s.adminAddContent))
+	mux.HandleFunc("PATCH /api/admin/content/{cid}", admin(s.adminChangeContent))
+	mux.HandleFunc("GET /api/admin/library-questions", admin(s.adminListStarterQuestions))
+	mux.HandleFunc("PATCH /api/admin/library-questions/{lid}", admin(s.adminRetireStarterQuestion))
 
 	// The trust's settings and each hospital's (S10): whole-trust admins only.
 	mux.HandleFunc("GET /api/o/{oid}/settings", org(s.getTrustSettings))
@@ -160,6 +167,14 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/o/{oid}/library-questions", org(s.listLibrary))
 	mux.HandleFunc("POST /api/o/{oid}/library-questions", org(s.saveToLibrary))
 	mux.HandleFunc("DELETE /api/o/{oid}/library-questions/{lid}", org(s.removeFromLibrary))
+
+	// The content library (S33): the trust's own videos and leaflets, changed by its whole-trust
+	// admins and read by its whole-trust super clinicians, with Preopsis's; the search is what an
+	// author may pick (S34). No patient data (content.go).
+	mux.HandleFunc("GET /api/o/{oid}/content", org(s.listContent))
+	mux.HandleFunc("POST /api/o/{oid}/content", org(s.addTrustContent))
+	mux.HandleFunc("GET /api/o/{oid}/content/search", org(s.searchContent))
+	mux.HandleFunc("PATCH /api/o/{oid}/content/{cid}", org(s.changeTrustContent))
 
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/questionnaires", hosp(s.listQuestionnaires))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires", hosp(s.createQuestionnaire))

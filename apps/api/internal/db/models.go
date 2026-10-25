@@ -58,6 +58,21 @@ type Code struct {
 	Status      string        `json:"status"`
 }
 
+type ContentItem struct {
+	ID            uuid.UUID     `json:"id"`
+	OrgID         uuid.NullUUID `json:"orgId"`
+	Kind          string        `json:"kind"`
+	Title         string        `json:"title"`
+	Url           string        `json:"url"`
+	LengthSeconds *int32        `json:"lengthSeconds"`
+	Tags          []string      `json:"tags"`
+	Status        string        `json:"status"`
+	CreatedBy     uuid.NullUUID `json:"createdBy"`
+	CreatedAt     time.Time     `json:"createdAt"`
+	UpdatedBy     uuid.NullUUID `json:"updatedBy"`
+	UpdatedAt     time.Time     `json:"updatedAt"`
+}
+
 type Episode struct {
 	ID                uuid.UUID          `json:"id"`
 	HospitalID        uuid.UUID          `json:"hospitalId"`
@@ -187,6 +202,7 @@ type LibraryQuestion struct {
 	Tags      []string        `json:"tags"`
 	CreatedBy uuid.NullUUID   `json:"createdBy"`
 	CreatedAt time.Time       `json:"createdAt"`
+	Retired   bool            `json:"retired"`
 }
 
 type LoginLink struct {

@@ -74,6 +74,7 @@ type Querier interface {
 	// A sign-in link (kind signin) to a contact, or a verification link (kind verify) for an
 	// account's new contact. Both expire.
 	CreateContactLink(ctx context.Context, arg CreateContactLinkParams) (uuid.UUID, error)
+	CreateContentItem(ctx context.Context, arg CreateContentItemParams) (uuid.UUID, error)
 	// The episode and its HQ form on the version, in one statement (S18). Creates nothing (no row)
 	// unless the patient is the trust's and the version is published and one this hospital uses.
 	CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (uuid.UUID, error)
@@ -152,6 +153,9 @@ type Querier interface {
 	// A sign-in or verification link, used or not, expired or not (the handler says which).
 	// A replaced (revoked) verification link is returned too, and refused as expired.
 	GetContactLinkByHash(ctx context.Context, arg GetContactLinkByHashParams) (GetContactLinkByHashRow, error)
+	// One item, if it's Preopsis's (owner NULL) or this owner's; for a change. A platform admin passes
+	// no owner, so only Preopsis's are found.
+	GetContentItem(ctx context.Context, arg GetContentItemParams) (GetContentItemRow, error)
 	// With its HQ form (S18): the version, the patient's submit and who sent it keep their names
 	// from before forms, so the episode's JSON is unchanged; hq_form_id holds the answers.
 	GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpisodeRow, error)
@@ -255,7 +259,7 @@ type Querier interface {
 	ListHome(ctx context.Context, accountID uuid.NullUUID) ([]ListHomeRow, error)
 	// The question library (S24): the platform's starter set (org_id NULL) and each trust's own.
 	// The platform's library and this trust's, matching the search (in the title or a tag, any case;
-	// '' matches everything), by title.
+	// '' matches everything), by title. A retired platform question (S33) only with with_retired.
 	ListLibraryQuestions(ctx context.Context, arg ListLibraryQuestionsParams) ([]ListLibraryQuestionsRow, error)
 	// Every hospital the user can work in, once per membership that reaches it: a trust-wide one
 	// (hospital_id NULL) reaches every hospital of the trust, a hospital one only that hospital.
@@ -277,6 +281,11 @@ type Querier interface {
 	ListOrgsForAdmin(ctx context.Context) ([]ListOrgsForAdminRow, error)
 	// A patient's episodes at this hospital only, newest first: never another hospital's.
 	ListPatientEpisodesHere(ctx context.Context, arg ListPatientEpisodesHereParams) ([]ListPatientEpisodesHereRow, error)
+	// The content library (S33): Preopsis's items (org_id NULL) and each trust's own.
+	// Preopsis's items, retired ones included (last), for the platform admin's page.
+	ListPlatformContent(ctx context.Context) ([]ListPlatformContentRow, error)
+	// The platform's starter questions, for the platform admin's list (S33), retired ones included.
+	ListPlatformLibrary(ctx context.Context) ([]ListPlatformLibraryRow, error)
 	// The platform library's questions (org_id NULL, the same for every trust), for pre-fill from
 	// another trust (S26): only their keys may match another trust's question by key.
 	ListPlatformLibraryElements(ctx context.Context) ([]json.RawMessage, error)
@@ -327,6 +336,8 @@ type Querier interface {
 	// The trust's whole-trust admins, for the platform admin, with each account's latest open
 	// invite (set while it waits for its first sign-in).
 	ListTrustAdmins(ctx context.Context, orgID uuid.UUID) ([]ListTrustAdminsRow, error)
+	// The trust's library page: its own items, retired ones included, then Preopsis's active ones.
+	ListTrustContent(ctx context.Context, orgID uuid.NullUUID) ([]ListTrustContentRow, error)
 	// Every Question Set of the trust's published and retired versions (S23): where each question
 	// key is used, and its options as published. Newest version first within each questionnaire.
 	ListTrustPublishedContents(ctx context.Context, orgID uuid.UUID) ([]ListTrustPublishedContentsRow, error)
@@ -467,6 +478,9 @@ type Querier interface {
 	// CLN-09: part of the code or description, within one code set, active only.
 	// ILIKE '%…%' is served by the pg_trgm GIN indexes.
 	SearchCodes(ctx context.Context, arg SearchCodesParams) ([]SearchCodesRow, error)
+	// What an author may pick (S34's picker): active items, Preopsis's and this trust's, with the tag
+	// (any case; '' any tag) and the search in the title or a tag (any case; '' everything), by title.
+	SearchContent(ctx context.Context, arg SearchContentParams) ([]SearchContentRow, error)
 	// The trust's patient records (plan C2, S13). A record is the trust's (org_id); "this hospital's
 	// patients" are those with at least one episode here, and only they are ever listed or shown at
 	// a hospital (decisions.md, 11 Oct).
@@ -489,6 +503,8 @@ type Querier interface {
 	SetHospitalStatus(ctx context.Context, arg SetHospitalStatusParams) error
 	SetOrgSettings(ctx context.Context, arg SetOrgSettingsParams) error
 	SetOrgStatus(ctx context.Context, arg SetOrgStatusParams) error
+	// Retire a platform starter question, or offer it again (S33 answers 4). A trust's own aren't.
+	SetPlatformLibraryRetired(ctx context.Context, arg SetPlatformLibraryRetiredParams) (int64, error)
 	SetQAJobsClock(ctx context.Context, offsetMinutes int32) error
 	// The patient's own change (PAT-10) is made to every trust's record of them, so invites and
 	// reminders go to the new contact. Returns the records changed, for each trust's audit log.
@@ -529,6 +545,7 @@ type Querier interface {
 	// Returns them, for each trust's audit log and the episodes' notes.
 	UnlinkAccountRecords(ctx context.Context, accountID uuid.NullUUID) ([]UnlinkAccountRecordsRow, error)
 	UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) error
+	UpdateContentItem(ctx context.Context, arg UpdateContentItemParams) error
 	// The details staff edit (the status has its own routes, S20). Changes nothing if the episode's
 	// revision is no longer the one the caller's page loaded: someone, or the workflow, changed it
 	// since.

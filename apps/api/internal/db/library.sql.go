@@ -98,19 +98,21 @@ func (q *Queries) LibraryKeyTaken(ctx context.Context, arg LibraryKeyTakenParams
 const listLibraryQuestions = `-- name: ListLibraryQuestions :many
 
 SELECT l.id, (l.org_id IS NULL)::boolean AS platform, l.key, l.title, l.element, l.tags, l.created_at,
-       coalesce(u.name, '') AS created_by_name
+       coalesce(u.name, '') AS created_by_name, l.retired
 FROM library_questions l
 LEFT JOIN users u ON u.id = l.created_by
 WHERE (l.org_id IS NULL OR l.org_id = $1)
-  AND ($2::text = ''
-       OR strpos(lower(l.title), lower($2::text)) > 0
-       OR EXISTS (SELECT 1 FROM unnest(l.tags) t WHERE strpos(lower(t), lower($2::text)) > 0))
+  AND ($2::boolean OR NOT l.retired)
+  AND ($3::text = ''
+       OR strpos(lower(l.title), lower($3::text)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(l.tags) t WHERE strpos(lower(t), lower($3::text)) > 0))
 ORDER BY lower(l.title), l.key, l.id
 `
 
 type ListLibraryQuestionsParams struct {
-	OrgID  uuid.NullUUID `json:"orgId"`
-	Search string        `json:"search"`
+	OrgID       uuid.NullUUID `json:"orgId"`
+	WithRetired bool          `json:"withRetired"`
+	Search      string        `json:"search"`
 }
 
 type ListLibraryQuestionsRow struct {
@@ -122,13 +124,14 @@ type ListLibraryQuestionsRow struct {
 	Tags          []string        `json:"tags"`
 	CreatedAt     time.Time       `json:"createdAt"`
 	CreatedByName string          `json:"createdByName"`
+	Retired       bool            `json:"retired"`
 }
 
 // The question library (S24): the platform's starter set (org_id NULL) and each trust's own.
 // The platform's library and this trust's, matching the search (in the title or a tag, any case;
-// ” matches everything), by title.
+// ” matches everything), by title. A retired platform question (S33) only with with_retired.
 func (q *Queries) ListLibraryQuestions(ctx context.Context, arg ListLibraryQuestionsParams) ([]ListLibraryQuestionsRow, error) {
-	rows, err := q.db.Query(ctx, listLibraryQuestions, arg.OrgID, arg.Search)
+	rows, err := q.db.Query(ctx, listLibraryQuestions, arg.OrgID, arg.WithRetired, arg.Search)
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +148,47 @@ func (q *Queries) ListLibraryQuestions(ctx context.Context, arg ListLibraryQuest
 			&i.Tags,
 			&i.CreatedAt,
 			&i.CreatedByName,
+			&i.Retired,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPlatformLibrary = `-- name: ListPlatformLibrary :many
+SELECT id, key, title, tags, retired FROM library_questions WHERE org_id IS NULL
+ORDER BY retired, lower(title), key, id
+`
+
+type ListPlatformLibraryRow struct {
+	ID      uuid.UUID `json:"id"`
+	Key     string    `json:"key"`
+	Title   string    `json:"title"`
+	Tags    []string  `json:"tags"`
+	Retired bool      `json:"retired"`
+}
+
+// The platform's starter questions, for the platform admin's list (S33), retired ones included.
+func (q *Queries) ListPlatformLibrary(ctx context.Context) ([]ListPlatformLibraryRow, error) {
+	rows, err := q.db.Query(ctx, listPlatformLibrary)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPlatformLibraryRow{}
+	for rows.Next() {
+		var i ListPlatformLibraryRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Key,
+			&i.Title,
+			&i.Tags,
+			&i.Retired,
 		); err != nil {
 			return nil, err
 		}
@@ -180,4 +224,22 @@ func (q *Queries) ListPlatformLibraryElements(ctx context.Context) ([]json.RawMe
 		return nil, err
 	}
 	return items, nil
+}
+
+const setPlatformLibraryRetired = `-- name: SetPlatformLibraryRetired :execrows
+UPDATE library_questions SET retired = $1 WHERE id = $2 AND org_id IS NULL
+`
+
+type SetPlatformLibraryRetiredParams struct {
+	Retired bool      `json:"retired"`
+	ID      uuid.UUID `json:"id"`
+}
+
+// Retire a platform starter question, or offer it again (S33 answers 4). A trust's own aren't.
+func (q *Queries) SetPlatformLibraryRetired(ctx context.Context, arg SetPlatformLibraryRetiredParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setPlatformLibraryRetired, arg.Retired, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/rlamba89/poised/apps/api/internal/content"
 	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/keys"
 	"github.com/rlamba89/poised/apps/api/internal/role"
@@ -18,7 +19,8 @@ import (
 
 // The question library (plan C4, session S24; §6 of saas-requirements.md, PNL-06 as changed):
 // GET/POST /api/o/{oid}/library-questions and DELETE …/{id}.
-//   - The platform's starter set (org_id NULL) is seeded (cmd/seed) and can't be changed here.
+//   - The platform's starter set (org_id NULL) is seeded (cmd/seed) and can't be changed here. A
+//     platform admin may retire one (S33; content.go): it isn't listed here any more.
 //   - Whole-trust super clinicians and admins, who may change the trust's questionnaires, list
 //     the library, save a question from the editor to the trust's own, and remove the trust's
 //     own (S24 answers 2). Nobody else sees it: it's only used while authoring.
@@ -29,8 +31,6 @@ import (
 const (
 	libraryRole     = "Only super clinicians and admins of the whole trust can use the question library."
 	libraryNotFound = "Library question not found."
-	maxLibraryTags  = 10
-	maxLibraryTag   = 40
 )
 
 // libraryQuestion is one item as the editor lists it; the editor works out its kind from Element.
@@ -79,7 +79,7 @@ func (s *server) saveToLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 	element, q, msg := libraryElement(in.Element)
 	if msg == "" {
-		in.Tags, msg = libraryTags(in.Tags)
+		in.Tags, msg = content.Tags(in.Tags) // the content library's rule (S33): the same limits
 	}
 	if msg != "" {
 		writeError(w, http.StatusBadRequest, msg)
@@ -119,7 +119,8 @@ func (s *server) saveToLibrary(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		library, err := tx.ListLibraryQuestions(ctx, db.ListLibraryQuestionsParams{OrgID: uuid.NullUUID{UUID: org, Valid: true}})
+		// Retired starter questions too (S33): their keys are still the platform's.
+		library, err := tx.ListLibraryQuestions(ctx, db.ListLibraryQuestionsParams{OrgID: uuid.NullUUID{UUID: org, Valid: true}, WithRetired: true})
 		if err != nil {
 			serverError(w, "list library", err)
 			return false
@@ -188,25 +189,6 @@ func libraryElement(raw json.RawMessage) (json.RawMessage, keys.Question, string
 		return nil, keys.Question{}, "Choose a question to save."
 	}
 	return out, qs[0], ""
-}
-
-// libraryTags trims the tags and drops empty and repeated ones.
-func libraryTags(in []string) ([]string, string) {
-	out := []string{}
-	for _, t := range in {
-		t = strings.TrimSpace(t)
-		if t == "" || slices.ContainsFunc(out, func(o string) bool { return strings.EqualFold(o, t) }) {
-			continue
-		}
-		if len([]rune(t)) > maxLibraryTag {
-			return nil, fmt.Sprintf("A tag is too long (%d characters at most).", maxLibraryTag)
-		}
-		out = append(out, t)
-	}
-	if len(out) > maxLibraryTags {
-		return nil, fmt.Sprintf("Too many tags (%d at most).", maxLibraryTags)
-	}
-	return out, ""
 }
 
 // removeFromLibrary removes one of the trust's own questions. Questionnaires it was inserted into

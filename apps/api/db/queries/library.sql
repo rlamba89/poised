@@ -2,12 +2,13 @@
 
 -- name: ListLibraryQuestions :many
 -- The platform's library and this trust's, matching the search (in the title or a tag, any case;
--- '' matches everything), by title.
+-- '' matches everything), by title. A retired platform question (S33) only with with_retired.
 SELECT l.id, (l.org_id IS NULL)::boolean AS platform, l.key, l.title, l.element, l.tags, l.created_at,
-       coalesce(u.name, '') AS created_by_name
+       coalesce(u.name, '') AS created_by_name, l.retired
 FROM library_questions l
 LEFT JOIN users u ON u.id = l.created_by
 WHERE (l.org_id IS NULL OR l.org_id = sqlc.arg(org_id))
+  AND (sqlc.arg(with_retired)::boolean OR NOT l.retired)
   AND (sqlc.arg(search)::text = ''
        OR strpos(lower(l.title), lower(sqlc.arg(search)::text)) > 0
        OR EXISTS (SELECT 1 FROM unnest(l.tags) t WHERE strpos(lower(t), lower(sqlc.arg(search)::text)) > 0))
@@ -35,3 +36,12 @@ DELETE FROM library_questions WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_
 -- The platform library's questions (org_id NULL, the same for every trust), for pre-fill from
 -- another trust (S26): only their keys may match another trust's question by key.
 SELECT element FROM library_questions WHERE org_id IS NULL;
+
+-- name: ListPlatformLibrary :many
+-- The platform's starter questions, for the platform admin's list (S33), retired ones included.
+SELECT id, key, title, tags, retired FROM library_questions WHERE org_id IS NULL
+ORDER BY retired, lower(title), key, id;
+
+-- name: SetPlatformLibraryRetired :execrows
+-- Retire a platform starter question, or offer it again (S33 answers 4). A trust's own aren't.
+UPDATE library_questions SET retired = sqlc.arg(retired) WHERE id = sqlc.arg(id) AND org_id IS NULL;

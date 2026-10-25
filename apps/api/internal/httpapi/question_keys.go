@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 
 	"github.com/google/uuid"
 
@@ -189,19 +190,26 @@ func (s *server) searchQuestionKeys(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "walk trust questionnaires", err)
 		return
 	}
-	library, err := s.q.ListLibraryQuestions(ctx, db.ListLibraryQuestionsParams{OrgID: uuid.NullUUID{UUID: row.OrgID, Valid: true}})
+	library, err := s.q.ListLibraryQuestions(ctx, db.ListLibraryQuestionsParams{OrgID: uuid.NullUUID{UUID: row.OrgID, Valid: true}, WithRetired: true})
 	if err != nil {
 		serverError(w, "list library", err)
 		return
 	}
-	sources, err := keySources(versions, library)
+	// A retired starter question (S33) isn't offered, but a question already linked to it still is.
+	offered := slices.DeleteFunc(slices.Clone(library), func(l db.ListLibraryQuestionsRow) bool { return l.Retired })
+	sources, err := keySources(versions, offered)
+	if err != nil {
+		serverError(w, "walk library", err)
+		return
+	}
+	linked, err := keySources(versions, library)
 	if err != nil {
 		serverError(w, "walk library", err)
 		return
 	}
 	// linkedTo: the question this one's key already links to, if any, so the window can warn that
 	// Use this replaces that link (S29; Rahul, 25 Oct).
-	writeJSON(w, http.StatusOK, map[string]any{"candidates": keys.Candidates(mine[0], here, sources, in.Q), "linkedTo": keys.LinkedTo(mine[0].Name, sources)})
+	writeJSON(w, http.StatusOK, map[string]any{"candidates": keys.Candidates(mine[0], here, sources, in.Q), "linkedTo": keys.LinkedTo(mine[0].Name, linked)})
 }
 
 // keySources are the trust's questionnaires, each with every key's question from its newest

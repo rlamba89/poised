@@ -385,3 +385,41 @@ func TestSameAsSearch(t *testing.T) {
 		refused(t, w.author.Do("POST", at(w.a, "/questionnaires/abc/question-keys/search"), map[string]any{"question": question}), http.StatusNotFound)
 	})
 }
+
+// A platform starter question a platform admin retired (S33 answers 4) isn't offered any more:
+// not by Insert from library, not as a "Same as…" candidate. Its key still belongs to the
+// platform (a trust can't save its own question with it), and a question already linked to it
+// still says so (linkedTo), so questions already inserted keep working as before.
+func TestRetiredStarterQuestion(t *testing.T) {
+	t.Parallel()
+	w := newCast(t)
+	smoker := platformQuestion(t, w, "smoker", "Do you smoke?", smokerElement)
+	platformQuestion(t, w, "snoring", "Do you snore?", `{"type":"radiogroup","name":"snoring","title":"Do you snore?","choices":[{"value":"yes","text":"Yes"},{"value":"no","text":"No"}]}`)
+	if _, err := w.db.Exec(t.Context(), `UPDATE library_questions SET retired = true WHERE id = $1`, smoker); err != nil {
+		t.Fatal(err)
+	}
+	if k := libraryKeys(listLibrary(t, w.author, w.a.Org, "")); !slices.Equal(k, []string{"snoring"}) {
+		t.Errorf("Insert from library offers %v, want no retired smoker", k)
+	}
+	if k := libraryKeys(listLibrary(t, w.author, w.a.Org, "smoke")); len(k) != 0 {
+		t.Errorf("searching finds %v", k)
+	}
+	mine := w.fx.DraftHQ(t, w.a, w.alex, "workflow.json")
+	search := func(question string) candidatesResponse {
+		t.Helper()
+		r := w.author.Do("POST", at(w.a, "/questionnaires/"+mine.ID.String()+"/question-keys/search"), map[string]any{"question": json.RawMessage(question), "q": "smoke"})
+		r.Want(t, http.StatusOK)
+		var got candidatesResponse
+		r.Decode(t, &got)
+		return got
+	}
+	got := search(`{"type":"radiogroup","name":"q_new","title":"Do you currently smoke?","choices":[{"value":"o_a","text":"Option 1"}]}`)
+	if slices.ContainsFunc(got.Candidates, func(c keys.Candidate) bool { return c.Key == "smoker" }) {
+		t.Error("Same as… offers the retired smoker")
+	}
+	if got := search(`{"type":"radiogroup","name":"smoker","title":"Smoking status?","choices":[{"value":"never","text":"Never"}]}`); got.LinkedTo != "Do you smoke?" {
+		t.Errorf("a question inserted from it: linkedTo %q, want the library's text", got.LinkedTo)
+	}
+	r := w.author.Do("POST", libraryPath(w.a.Org, ""), map[string]any{"element": json.RawMessage(`{"type":"text","name":"smoker","title":"Smoke?"}`)})
+	refused(t, r, http.StatusConflict)
+}
