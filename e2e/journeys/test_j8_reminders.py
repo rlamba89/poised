@@ -7,7 +7,9 @@ starts answering, so day 5's reminder doesn't go; on day 7 the episode is marked
 responding" until the patient sends their answers.
 
 The jobs page runs every job due at that time, so other journeys' episodes may get reminders
-too; this journey checks only its own patient's messages.
+too; this journey checks only its own episode's messages. Its mobile is one of only 1,000
+fictional numbers, so earlier runs' texts may be captured to it too (S30): a text counts only
+when it carries a link one of this episode's emails carries (a send's text and email share it).
 """
 
 import re
@@ -34,7 +36,12 @@ def test_j8_reminders_then_not_responding(page: Page, phone: BrowserContext, as_
     email = episode["email"]
 
     def messages() -> list[dict]:
-        return captured(email)
+        return captured(email)  # the email is new to this episode
+
+    def texts() -> list[dict]:
+        """This episode's texts to the mobile, newest first: those with a link its emails have."""
+        links = {found.group(0) for m in messages() if (found := INVITE.search(m["body"]))}
+        return [t for t in captured(mobile) if (found := INVITE.search(t["body"])) and found.group(0) in links]
 
     assert len(messages()) == 1  # the invite
     invite = INVITE.search(messages()[0]["body"]).group(0)
@@ -49,8 +56,9 @@ def test_j8_reminders_then_not_responding(page: Page, phone: BrowserContext, as_
     assert "This is a reminder from Hospital A1" in got[0]["body"]
     reminder = INVITE.search(got[0]["body"]).group(0)
     assert reminder != invite
-    texts = captured(mobile)
-    assert len(texts) == 2 and texts[0]["body"].startswith("Hello Sam, a reminder from Hospital A1:"), texts
+    got = texts()
+    assert len(got) == 2 and got[0]["body"].startswith("Hello Sam, a reminder from Hospital A1:"), got
+    assert INVITE.search(got[0]["body"]).group(0) == reminder
 
     # The captured-messages page shows it too.
     qa.goto("/qa/messages")
