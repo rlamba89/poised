@@ -1,7 +1,7 @@
 // Each Question Set's (chapter's) SurveyJS JSON, loaded on demand, with autosave (LCY-03),
 // undo and redo (LCY-05) and the stale-revision guard (LCY-04).
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChapterJson } from "@poised/clinical";
+import { upgradeSummaries, type ChapterJson } from "@poised/clinical";
 import { api, ApiError } from "@/lib/api";
 
 export type SaveStatus = "saved" | "modified" | "saving" | "error" | "conflict";
@@ -35,7 +35,10 @@ export function useChapters(base: string) {
       loading.current.add(id);
       api<{ content: ChapterJson; revision: number }>(`${base}/chapters/${id}`)
         .then((c) => {
-          entries.current.set(id, { doc: c.content ?? {}, revision: c.revision, undo: [], redo: [], status: "saved", queue: Promise.resolve() });
+          // The old page "Clinical summary" switch opens as a summary element (S32). A draft keeps it
+          // with its next save; a published version is never saved, so never rewritten.
+          const doc = upgradeSummaries(c.content ?? {});
+          entries.current.set(id, { doc, revision: c.revision, undo: [], redo: [], status: "saved", queue: Promise.resolve() });
           rerender();
         })
         .catch((e: Error) => setLoadError(e.message))

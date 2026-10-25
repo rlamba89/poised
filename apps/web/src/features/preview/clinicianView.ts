@@ -1,5 +1,5 @@
 // The clinician view (VEW-02), shared by the preview and episode validation: whole pages, each
-// page's Clinical summary box (QT-09), and clinician items marked so the two-column layout
+// Clinical Summary box where the author placed it (QT-09, S32), and clinician items marked so the two-column layout
 // (.sj-clinician-layout in globals.css) can put them on the right.
 import { Model } from "survey-core";
 import {

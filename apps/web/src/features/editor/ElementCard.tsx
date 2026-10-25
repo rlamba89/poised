@@ -10,7 +10,7 @@ import {
 import {
   bandsOf, calcFormOf, canAskFresh, choiceDisplayOf, keyPlace, copyElement, countDisclosures, dateSettingsOf, describeLogic, enableIfToReadOnly,
   findElement, groupsToMoveInto, hasQuestionOutputs, isLocked, kindOf, moveElement, moveElementTo, moveOutOfGroup, numberSettingsOf, optionsOf, pageTitle, pagesOf, plainText,
-  repeatSettingsOf, textFormatOf, textOf, updateElement, DATE_FORMATS, TEXT_FORMATS, type ChoiceJson, type ElementJson, type Part,
+  repeatSettingsOf, summariesIn, textFormatOf, textOf, updateElement, DATE_FORMATS, TEXT_FORMATS, type ChoiceJson, type ElementJson, type Part,
   type Target,
 } from "@poised/clinical";
 import { AddContentBar } from "./AddContentBar";
@@ -198,6 +198,8 @@ function ElementCard(props: { el: ElementJson; index: number; count: number; tar
         </>
       ) : kind === "bmi" ? (
         <BmiBody el={el} />
+      ) : kind === "summary" ? (
+        <SummaryBody el={el} />
       ) : (
         <>
           <div className={css.title}>
@@ -235,6 +237,31 @@ function ElementCard(props: { el: ElementJson; index: number; count: number; tar
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * A Clinical Summary (S32): its title (the Group's, Section's or page's name + " summary" until
+ * the author gives one), what it covers, and the comments box clinicians fill in. Its title is
+ * changed in the Settings panel.
+ */
+function SummaryBody({ el }: { el: ElementJson }) {
+  const ed = useEditor();
+  const info = summariesIn(ed.doc).find((s) => s.name === el.name);
+  return (
+    <>
+      <div className={css.title}>
+        {el.visibleIf && <IconGitBranch size={16} className={css.branch} />}
+        <span>{info?.title ?? "Clinical summary"}</span>
+      </div>
+      <Text size="sm" c="dimmed" data-testid="summary-covers">
+        Covers the {info?.scope ?? "page"}
+      </Text>
+      <div className={css.control}>
+        <Text size="sm" fw={600}>Clinical comments</Text>
+        <div className={css.fakeTextarea} style={{ width: "100%", marginTop: 4 }} />
+      </div>
+    </>
   );
 }
 

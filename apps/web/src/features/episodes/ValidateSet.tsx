@@ -128,9 +128,9 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
   );
 
   useEffect(() => {
-    refreshClinicalSummaries(model);
+    refreshClinicalSummaries(model, set.content);
     const changed = () => {
-      refreshClinicalSummaries(model);
+      refreshClinicalSummaries(model, set.content);
       clearTimeout(timer.current);
       timer.current = setTimeout(() => save(false), SAVE_DELAY_MS);
     };

@@ -213,11 +213,12 @@ function SetSection({ set, byLine, validated, answerLink }: { set: PoaSet; byLin
       {fresh && <Text size="sm" c="dimmed" data-testid="poa-started-fresh">{fresh}</Text>}
       {set.pages.map((p) => (
         <div key={p.name} data-testid={`poa-page-${p.title}`}>
-          {(p.notes.length > 0 || p.comments) && (
-            <Stack gap={4} mb={p.captures.length ? "sm" : 0}>
-              <Text fw={700} c="blue.9">{p.title} Summary</Text>
+          {/* One block per Clinical Summary, with its own title, notes and comments (S32). */}
+          {p.blocks.map((b) => (
+            <Stack key={b.name} gap={4} mb="sm" data-testid={`poa-summary-${b.title}`}>
+              <Text fw={700} c="blue.9">{b.title}</Text>
               <Text size="xs" c="dimmed">{byLine}</Text>
-              {p.notes.map((n) => (
+              {b.notes.map((n) => (
                 <Group key={n.text} gap={6}>
                   <Text size="sm" c="blue.8" td="underline">{answerLink(n.questionId, `note-${n.text}`, n.text)}</Text>
                   {validated && n.corrected && (
@@ -227,11 +228,11 @@ function SetSection({ set, byLine, validated, answerLink }: { set: PoaSet; byLin
                   )}
                 </Group>
               ))}
-              {p.comments && (
-                <Text size="sm"><b>Clinical comments:</b> {p.comments}</Text>
+              {b.comments && (
+                <Text size="sm"><b>Clinical comments:</b> {b.comments}</Text>
               )}
             </Stack>
-          )}
+          ))}
           {p.captures.map((c) => (
             <Stack key={c.questionId} gap={4} mb="sm">
               <Text fw={700} c="blue.9">{answerLink(c.questionId, "capture", c.title)}</Text>

@@ -122,7 +122,7 @@ function Preview({ base, chapter }: { base: string; chapter: ChapterDetail }) {
   useEffect(() => {
     const update = () => {
       answers.current = model.data;
-      refreshClinicalSummaries(model);
+      refreshClinicalSummaries(model, content);
       setResult(computeOutputs(model));
     };
     model.onValueChanged.add(update);

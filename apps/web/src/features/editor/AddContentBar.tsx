@@ -1,7 +1,7 @@
 // "Add content:" buttons (incumbent catalogue, plus Number from DSG-01 and the SurveyJS types).
 import { Button, Text } from "@mantine/core";
 import {
-  IconBooks, IconBuildingHospital, IconCalculator, IconCalendar, IconCircleDot, IconGridDots, IconLayoutList, IconLetterT, IconMessage,
+  IconBooks, IconBuildingHospital, IconCalculator, IconCalendar, IconCircleDot, IconClipboardText, IconGridDots, IconLayoutList, IconLetterT, IconMessage,
   IconNumbers, IconPill, IconScale, IconSeparatorHorizontal, IconSignature, IconSquareCheck, IconStar, IconToggleLeft, IconUpload,
   IconUser, type Icon,
 } from "@tabler/icons-react";
@@ -28,11 +28,13 @@ export const KIND_ICON: Record<Kind, Icon> = {
   bmi: IconScale,
   profile: IconUser,
   statement: IconMessage,
+  summary: IconClipboardText,
 };
 
 /**
  * Incumbent rules: a Section can't go inside a group or section; BMI must be alone on its
- * page, so it is offered only on an empty page and, once added, nothing else is.
+ * page, so it is offered only on an empty page and, once added, nothing else is. A Clinical
+ * Summary is never offered inside a repeating group (S32): its rows have no single summary.
  */
 export function AddContentBar({ target, pageElements, inside }: { target: Target; pageElements: ElementJson[]; inside?: ElementJson }) {
   const { add, readOnly, openLibrary } = useEditor();
@@ -42,6 +44,7 @@ export function AddContentBar({ target, pageElements, inside }: { target: Target
     if (pageHasBmi) return false;
     if (k === "bmi") return pageElements.length === 0;
     if (k === "section") return !inside;
+    if (k === "summary") return inside?.type !== "paneldynamic";
     return true;
   };
   return (

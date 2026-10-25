@@ -141,21 +141,11 @@ export function PageCanvas({ page, onOpenPageLogic }: { page: PageJson; onOpenPa
   return (
     <div onClick={() => ed.select(null)} style={{ minHeight: "100%" }}>
       <div className={css.canvasHeader}>
+        {/* The page's Clinical summary switch went in S32: add a Clinical Summary element instead. */}
         <Group gap={6}>
           <IconFile size={16} />
           <Text size="sm">Clinical Page</Text>
         </Group>
-        <Switch
-          label="Clinical summary"
-          labelPosition="left"
-          checked={!!page.clinicalSummary}
-          disabled={ed.readOnly}
-          onClick={(e) => e.stopPropagation()}
-          onChange={(e) => {
-            const on = e.currentTarget.checked;
-            ed.change((d) => updatePage(d, page.name, { clinicalSummary: on || undefined }));
-          }}
-        />
       </div>
       <div onClick={(e) => e.stopPropagation()}>
         <EditableText

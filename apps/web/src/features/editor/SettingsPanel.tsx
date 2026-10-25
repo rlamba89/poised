@@ -4,7 +4,7 @@ import { ActionIcon, Button, Group, Menu, Select, Stack, Switch, Tabs, Text } fr
 import { IconBooks, IconChevronDown, IconLink, IconLinkPlus, IconPlus, IconX } from "@tabler/icons-react";
 import {
   KIND_LABEL, bandsOf, canAskFresh, convertKind, keyPlace, convertibleKinds, findElement, hasQuestionOutputs, isAnswerKind, isChoiceKind, kindOf,
-  optionsOf, plainText, textOf, textToHtml, updateElement, type ChapterJson, type ElementJson,
+  optionsOf, plainText, summariesIn, textOf, textToHtml, updateElement, type ChapterJson, type ElementJson,
 } from "@poised/clinical";
 import { KIND_ICON } from "./AddContentBar";
 import { outputsAt, type DisclosureTarget } from "./DisclosureModal";
@@ -108,7 +108,9 @@ export function SettingsPanel(props: {
 
         <Tabs.Panel value="settings">
           <Stack>
-            {kind === "statement" ? (
+            {kind === "summary" ? (
+              <SummarySettings doc={doc} el={el} readOnly={readOnly} patch={patch} />
+            ) : kind === "statement" ? (
               <>
                 <BlurTextarea label="Text" value={plainText(textOf(el.html))} minRows={4} disabled={readOnly} onSave={(t) => patch({ html: textToHtml(t) })} />
                 <ClinicalSwitch el={el} readOnly={readOnly} patch={patch} />
@@ -186,6 +188,30 @@ export function SettingsPanel(props: {
         </Tabs.Panel>
       </div>
     </Tabs>
+  );
+}
+
+/**
+ * A Clinical Summary's title (S32): "<Group, Section or page name> summary" until the author types
+ * another; emptied, or set back to that, it follows the name again. It is always clinician-only.
+ */
+function SummarySettings({ doc, el, readOnly, patch }: { doc: ChapterJson; el: ElementJson; readOnly: boolean; patch: (p: Partial<ElementJson>) => void }) {
+  const info = summariesIn(doc).find((s) => s.name === el.name);
+  // The title it has with none of its own.
+  const fallback = summariesIn(updateElement(doc, el.name, { title: undefined })).find((s) => s.name === el.name)?.title ?? "";
+  return (
+    <>
+      <BlurText
+        label="Title"
+        value={info?.title ?? ""}
+        disabled={readOnly}
+        onSave={(t) => patch({ title: t.trim() && t.trim() !== fallback ? t.trim() : undefined })}
+      />
+      <Text size="sm" c="dimmed" data-testid="summary-help">
+        Only clinicians see this box. It covers the {info?.scope ?? "page"}: it lists the disclosure notes from there, with a box
+        for clinical comments, and both show on the POA summary. A note shows once, under the nearest summary.
+      </Text>
+    </>
   );
 }
 

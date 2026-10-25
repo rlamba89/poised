@@ -11,7 +11,10 @@
   .sj-clinician-layout .sd-page__content > .sd-row {
     grid-column: 1;
   }
-  .sj-clinician-layout .sd-page__content > .sd-row:has(.sj-clinician) {
+  /* A row holding clinician items goes on the right. A Clinical Summary inside a patient Group
+     (S32) stays inside it, on the left; a summary on the page itself goes on the right. */
+  .sj-clinician-layout .sd-page__content > .sd-row:has(.sj-clinician:not(.sj-summary)),
+  .sj-clinician-layout .sd-page__content > .sd-row:has(> .sd-element-wrapper > .sj-summary) {
     grid-column: 2;
   }
 }
