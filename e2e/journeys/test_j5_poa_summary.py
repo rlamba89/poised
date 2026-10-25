@@ -180,3 +180,15 @@ def test_the_poa_summary_says_plainly_when_the_server_cant_be_reached(page: Page
     page.route(re.compile(r"/api/.*/episodes/[^/]+/notes$"), lambda route: route.fulfill(status=502, body=""))
     notes.get_by_role("button", name="Save comment").click()
     expect(notes.get_by_role("alert")).to_have_text(NETWORK_ERROR)
+
+    # On AWS, API Gateway answers its own 5xx with JSON that isn't the API's (S30): the same words.
+    page.unroute_all()
+    page.reload()  # no earlier message on screen
+    notes.get_by_role("button", name="Add comment").click()
+    notes.get_by_role("textbox", name="Comment").fill("Made-up comment that won't arrive.")
+    expect(notes.get_by_role("alert")).to_have_count(0)
+    page.route(re.compile(r"/api/.*/episodes/[^/]+/notes$"), lambda route: route.fulfill(
+        status=502, content_type="application/json", body='{"message":"Internal Server Error"}'))
+    notes.get_by_role("button", name="Save comment").click()
+    expect(notes.get_by_role("alert")).to_have_text(NETWORK_ERROR)
+    expect(page.get_by_text("Something went wrong")).to_have_count(0)
