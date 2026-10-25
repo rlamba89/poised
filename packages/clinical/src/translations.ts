@@ -13,7 +13,7 @@ const FIELD: Record<string, string> = {
   title: "Text", description: "Description", html: "Statement", placeholder: "Placeholder", requiredErrorText: "Required message",
   otherText: "Other option", selectAllText: "Select all", minRateDescription: "Low label", maxRateDescription: "High label",
   panelAddText: "Add button", panelRemoveText: "Remove button", addRowText: "Add button", choices: "Option", rows: "Row", columns: "Column",
-  validators: "Message",
+  validators: "Message", tickText: "Tick",
 };
 
 /** One translatable text: where it is (a path into the JSON), and its value. */

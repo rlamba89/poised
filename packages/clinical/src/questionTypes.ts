@@ -2,8 +2,9 @@
 // preview and the patient runtime render them (plan-redesign.md, step 5).
 import { ComponentCollection, FunctionFactory, Serializer, type Question, type SurveyModel } from "survey-core";
 import { bandFor } from "./logic";
+import { registerVideoType } from "./video";
 
-/** Registers Medication, Admissions, BMI and Profile, and the flags the editor stores. Safe to call twice. */
+/** Registers Medication, Admissions, BMI, Profile and Video (S34), and the flags the editor stores. Safe to call twice. */
 export function registerQuestionTypes(): void {
   if (ComponentCollection.Instance.getCustomQuestionByName("medication")) return;
 
@@ -98,6 +99,7 @@ export function registerQuestionTypes(): void {
   Serializer.addProperty("question", { name: "linkedFrom", ...hidden });
 
   registerClinicalFunctions();
+  registerVideoType();
 
   Serializer.addProperty("medication", {
     name: "medicationType",

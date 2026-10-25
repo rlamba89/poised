@@ -58,7 +58,7 @@ export type ChapterJson = { pages?: PageJson[]; [key: string]: unknown };
 export const KINDS = [
   "group", "section", "yesno", "selectone", "selectmany", "text", "date", "number",
   "rating", "grid", "calculation", "upload", "signature",
-  "medication", "admissions", "bmi", "profile", "statement", "summary",
+  "medication", "admissions", "bmi", "profile", "statement", "summary", "video",
 ] as const;
 export type Kind = (typeof KINDS)[number];
 
@@ -82,11 +82,16 @@ export const KIND_LABEL: Record<Kind, string> = {
   profile: "Profile",
   statement: "Statement",
   summary: "Clinical Summary",
+  video: "Video",
 };
 
 /** The Clinical Summary element's SurveyJS type (S32): the clinician view expands it (summary.ts). */
 export const SUMMARY_TYPE = "clinicalsummary";
 export const isSummary = (el: ElementJson) => el.type === SUMMARY_TYPE;
+
+/** The Video element's SurveyJS type (S34): the player and an optional "I have watched" tick (video.ts). */
+export const VIDEO_TYPE = "video";
+export const isVideo = (el: ElementJson) => el.type === VIDEO_TYPE;
 
 /** What an element is, in incumbent terms. */
 export function kindOf(el: ElementJson): Kind {
@@ -123,6 +128,8 @@ export function kindOf(el: ElementJson): Kind {
       return "statement";
     case SUMMARY_TYPE:
       return "summary";
+    case VIDEO_TYPE:
+      return "video";
     case "medication":
     case "admissions":
     case "bmi":
@@ -147,8 +154,11 @@ export function childrenOf(el: ElementJson): ElementJson[] {
 export const isChoiceKind = (k: Kind) => k === "yesno" || k === "selectone" || k === "selectmany";
 /** Text, Date, Number and Rating carry outputs on the question itself (a Calculation too, unless it has bands). */
 export const hasQuestionOutputs = (k: Kind) => k === "text" || k === "date" || k === "number" || k === "rating" || k === "calculation";
-/** Kinds that hold an answer (everything except groups, statements, the profile and summaries). */
-export const isAnswerKind = (k: Kind) => !["group", "section", "statement", "profile", "summary"].includes(k);
+/**
+ * Kinds that hold an answer (everything except groups, statements, the profile and summaries). A
+ * video's tick is an answer, but it has its own settings and no conditions test it (S34).
+ */
+export const isAnswerKind = (k: Kind) => !["group", "section", "statement", "profile", "summary", "video"].includes(k);
 /** BMI and Profile are fixed blocks: they can only be deleted (incumbent "Locked"). */
 export const isLocked = (k: Kind) => k === "bmi" || k === "profile";
 
@@ -206,6 +216,9 @@ export function newElement(kind: Kind, taken: Set<string>): ElementJson {
     case "summary":
       // No title: it shows "<Group or page name> summary" until the author gives one (summary.ts).
       return { type: SUMMARY_TYPE, name, clinicianOnly: true };
+    case "video":
+      // No link yet: the author pastes one or picks one from the library (publish checks it).
+      return { type: VIDEO_TYPE, name, title: "Video" };
   }
 }
 
@@ -397,10 +410,10 @@ export function groupsToMoveInto(doc: ChapterJson, name: string): ElementJson[] 
   };
   collect(loc.el);
   if (kindOf(loc.el) === "section") return [];
-  // A summary never goes inside a repeating group (S32).
+  // A summary (S32) or a video (S34) never goes inside a repeating group.
   return allElements(doc)
     .filter(({ el, page }) => page === loc.page && isContainer(el) && !inside.has(el.name) && el.name !== loc.parent?.name)
-    .filter(({ el }) => !(isSummary(loc.el) && isRepeating(el)))
+    .filter(({ el }) => !((isSummary(loc.el) || isVideo(loc.el)) && isRepeating(el)))
     .map(({ el }) => el);
 }
 
@@ -732,7 +745,7 @@ function moveIn<T>(list: T[], index: number, delta: number) {
 /** Keys holding text a patient sees, which can be translated (LNG-01). */
 export const LOCALIZABLE_KEYS = [
   "title", "description", "html", "placeholder", "requiredErrorText", "otherText", "selectAllText",
-  "minRateDescription", "maxRateDescription", "panelAddText", "panelRemoveText", "addRowText",
+  "minRateDescription", "maxRateDescription", "panelAddText", "panelRemoveText", "addRowText", "tickText",
 ] as const;
 
 /** Item lists whose `text` can be translated. */

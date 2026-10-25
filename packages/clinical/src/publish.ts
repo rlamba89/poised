@@ -1,5 +1,6 @@
 // Checks before publishing (SGN-04, without sign-off yet): logic problems, two clinical summaries
-// covering the same Group, Section or page (S32), and failing test cases in every Question Set.
+// covering the same Group, Section or page (S32), a video without a YouTube or Vimeo link or a length
+// (S34), and failing test cases in every Question Set.
 // They run in the browser (plan 2.1); publishing is blocked while any are found.
 // The question-key checks (S23) are Go's: the editor shows them from GET …/question-keys.
 import type { ChapterJson } from "./doc";
@@ -8,6 +9,7 @@ import { registerClinicalProperties } from "./properties";
 import { chapterConditionProblems, combineChapters } from "./questionSets";
 import { summaryProblems } from "./summary";
 import { runTestCase, testCasesOf } from "./testcases";
+import { videoProblems } from "./video";
 
 export type PublishProblem = { set: string; message: string };
 
@@ -20,6 +22,7 @@ export function publishProblems(sets: { name: string; doc: ChapterJson }[]): Pub
     for (const m of chapterConditionProblems(s.doc, earlier)) out.push({ set: s.name, message: `Question Set condition: ${m}` });
     for (const p of logicProblems(s.doc)) out.push({ set: s.name, message: `${p.label}: ${p.message}` });
     for (const m of summaryProblems(s.doc)) out.push({ set: s.name, message: m });
+    for (const m of videoProblems(s.doc)) out.push({ set: s.name, message: m });
     for (const tc of testCasesOf(s.doc)) {
       if (!runTestCase(s.doc, tc).pass) out.push({ set: s.name, message: `Test case “${tc.name}” fails` });
     }
