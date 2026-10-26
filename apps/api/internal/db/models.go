@@ -333,12 +333,14 @@ type Questionnaire struct {
 }
 
 type QuestionnaireVersion struct {
-	ID              uuid.UUID `json:"id"`
-	QuestionnaireID uuid.UUID `json:"questionnaireId"`
-	VersionNo       int32     `json:"versionNo"`
-	Status          string    `json:"status"`
-	UpdatedBy       uuid.UUID `json:"updatedBy"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	ID              uuid.UUID       `json:"id"`
+	QuestionnaireID uuid.UUID       `json:"questionnaireId"`
+	VersionNo       int32           `json:"versionNo"`
+	Status          string          `json:"status"`
+	UpdatedBy       uuid.UUID       `json:"updatedBy"`
+	UpdatedAt       time.Time       `json:"updatedAt"`
+	Rules           json.RawMessage `json:"rules"`
+	RulesRevision   int32           `json:"rulesRevision"`
 }
 
 type RateLimitHit struct {

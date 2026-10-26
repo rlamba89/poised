@@ -60,3 +60,7 @@ WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id);
 SELECT o.settings AS org_settings, h.settings AS hospital_settings
 FROM hospitals h JOIN orgs o ON o.id = h.org_id
 WHERE h.id = sqlc.arg(hospital_id) AND h.org_id = sqlc.arg(org_id);
+
+-- name: CountTrustProcedures :one
+-- How many of these ids are the trust's procedures (an ASA rule may name them, S40).
+SELECT count(*) FROM procedures WHERE org_id = sqlc.arg(org_id) AND id = ANY(sqlc.arg(ids)::uuid[]);

@@ -134,6 +134,15 @@ func TestSeedTwice(t *testing.T) {
 		t.Errorf("Trust A's procedures: %d trust-wide, %d A1-only, %d with a published default HQ, %d retired, %d with another trust's HQ",
 			trustWide, a1Only, withDefault, retired, ofOtherTrust)
 	}
+	// S40: every demo HQ has the platform's default ASA rules, after both runs.
+	var withoutRules int
+	if err := c.DB.QueryRow(ctx, `SELECT count(*) FROM questionnaire_versions
+		WHERE rules IS NULL OR jsonb_array_length(rules->'rules') <> 2`).Scan(&withoutRules); err != nil {
+		t.Fatal(err)
+	}
+	if withoutRules != 0 {
+		t.Errorf("%d demo versions lack the default rules", withoutRules)
+	}
 	var bProcedures int
 	if err := c.DB.QueryRow(ctx, `SELECT count(*) FROM procedures p JOIN orgs o ON o.id = p.org_id
 		JOIN questionnaires q ON q.id = p.default_questionnaire_id AND q.org_id = p.org_id WHERE o.code = 'TB'`).Scan(&bProcedures); err != nil {

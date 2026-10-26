@@ -15,6 +15,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/rlamba89/poised/apps/api/internal/asarules"
 )
 
 // Fixed ids keep the seed idempotent and the demo data recognisable.
@@ -423,8 +425,10 @@ func seedHQs(ctx context.Context, tx pgx.Tx, orgs map[string]string) error {
 				ON CONFLICT (id) DO NOTHING`, d.questionnaire, orgs[d.trust], hq.Name, hq.Description, d.author); err != nil {
 				return fmt.Errorf("%s: %w", h.file, err)
 			}
-			if _, err := tx.Exec(ctx, `INSERT INTO questionnaire_versions (id, questionnaire_id, version_no, status, updated_by)
-				VALUES ($1, $2, 1, 'published', $3) ON CONFLICT (id) DO NOTHING`, d.version, d.questionnaire, d.author); err != nil {
+			// With the platform's default ASA rules (S40); a demo version seeded before rules existed gets them too.
+			if _, err := tx.Exec(ctx, `INSERT INTO questionnaire_versions (id, questionnaire_id, version_no, status, updated_by, rules)
+				VALUES ($1, $2, 1, 'published', $3, $4) ON CONFLICT (id) DO UPDATE SET rules = coalesce(questionnaire_versions.rules, EXCLUDED.rules)`,
+				d.version, d.questionnaire, d.author, asarules.Defaults()); err != nil {
 				return fmt.Errorf("%s version: %w", h.file, err)
 			}
 			for i, ch := range hq.Chapters {

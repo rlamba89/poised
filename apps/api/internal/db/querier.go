@@ -73,6 +73,8 @@ type Querier interface {
 	// if two runners decide at once. No row: it was already taken, the HQ has been sent, or the
 	// episode was cancelled or archived meanwhile.
 	CountReminder(ctx context.Context, arg CountReminderParams) (int64, error)
+	// How many of these ids are the trust's procedures (an ASA rule may name them, S40).
+	CountTrustProcedures(ctx context.Context, arg CountTrustProceduresParams) (int64, error)
 	// How many episodes each worklist has (S21): the episodes ListEpisodes would list for it, with the
 	// same scope and the same arguments. A worklist with none has no row.
 	CountWorklists(ctx context.Context, arg CountWorklistsParams) ([]CountWorklistsRow, error)
@@ -95,7 +97,8 @@ type Querier interface {
 	CreateInviteLink(ctx context.Context, arg CreateInviteLinkParams) (CreateInviteLinkRow, error)
 	CreateLibraryQuestion(ctx context.Context, arg CreateLibraryQuestionParams) (uuid.UUID, error)
 	// A new draft copied from version `from_version_id` (LCY-06/07): same chapters, same content,
-	// so stable IDs and test cases carry over. Chapters get new row ids.
+	// so stable IDs and test cases carry over. Chapters get new row ids. The ASA rules are copied too;
+	// a version from before rules existed gives the new draft the platform's defaults (S40 answers 1).
 	CreateNextVersion(ctx context.Context, arg CreateNextVersionParams) (uuid.UUID, error)
 	CreateOptionList(ctx context.Context, arg CreateOptionListParams) (uuid.UUID, error)
 	// Nothing is returned when the code is taken (any case).
@@ -108,6 +111,7 @@ type Querier interface {
 	CreateTask(ctx context.Context, arg CreateTaskParams) (uuid.UUID, error)
 	// Nothing is returned when the email is already taken (by an invite running at the same time).
 	CreateUserIfNew(ctx context.Context, arg CreateUserIfNewParams) ([]uuid.UUID, error)
+	// A new questionnaire's first draft, with the platform's default ASA rules (S40).
 	CreateVersion(ctx context.Context, arg CreateVersionParams) (uuid.UUID, error)
 	DeleteAccount(ctx context.Context, id uuid.UUID) error
 	// Its links to confirm a new contact (PAT-10).
@@ -488,6 +492,9 @@ type Querier interface {
 	//   - once the form has been submitted, the patient's answers are frozen;
 	//   - `revision` must be the row's current one, or 0 if there's no row yet (see SaveClinicianAnswers).
 	SavePatientAnswers(ctx context.Context, arg SavePatientAnswersParams) (int32, error)
+	// Saves a draft's ASA rules (S40) only if nobody saved them since the caller loaded `revision`.
+	// No row: the version isn't a draft any more, or the revision is stale.
+	SaveVersionRules(ctx context.Context, arg SaveVersionRulesParams) (int32, error)
 	// CLN-09: part of the code or description, within one code set, active only.
 	// ILIKE '%…%' is served by the pg_trgm GIN indexes.
 	SearchCodes(ctx context.Context, arg SearchCodesParams) ([]SearchCodesRow, error)
@@ -582,6 +589,7 @@ type Querier interface {
 	// meanwhile.
 	UseContactLink(ctx context.Context, arg UseContactLinkParams) (int64, error)
 	UserOrgMemberships(ctx context.Context, arg UserOrgMembershipsParams) ([]UserOrgMembershipsRow, error)
+	VersionStatus(ctx context.Context, id uuid.UUID) (string, error)
 }
 
 var _ Querier = (*Queries)(nil)

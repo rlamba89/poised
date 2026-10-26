@@ -44,14 +44,15 @@ VALUES ($1, $2, $3, $4)
 RETURNING id;
 
 -- name: CreateVersion :one
-INSERT INTO questionnaire_versions (questionnaire_id, version_no, status, updated_by)
-VALUES ($1, $2, 'draft', $3)
+-- A new questionnaire's first draft, with the platform's default ASA rules (S40).
+INSERT INTO questionnaire_versions (questionnaire_id, version_no, status, updated_by, rules)
+VALUES ($1, $2, 'draft', $3, sqlc.arg(rules)::jsonb)
 RETURNING id;
 
 -- name: GetQuestionnaire :one
 SELECT q.id, q.org_id, q.hospital_id, q.name, q.description, q.created_by, q.created_at,
        v.id AS version_id, v.version_no, v.status, v.updated_at,
-       editor.name AS updated_by_name
+       editor.name AS updated_by_name, v.rules, v.rules_revision
 FROM questionnaires q
 JOIN LATERAL (
     SELECT * FROM questionnaire_versions qv
@@ -90,10 +91,12 @@ SELECT count(*) FROM pub;
 
 -- name: CreateNextVersion :one
 -- A new draft copied from version `from_version_id` (LCY-06/07): same chapters, same content,
--- so stable IDs and test cases carry over. Chapters get new row ids.
+-- so stable IDs and test cases carry over. Chapters get new row ids. The ASA rules are copied too;
+-- a version from before rules existed gives the new draft the platform's defaults (S40 answers 1).
 WITH v AS (
-    INSERT INTO questionnaire_versions (questionnaire_id, version_no, status, updated_by)
-    SELECT prev.questionnaire_id, prev.version_no + 1, 'draft', sqlc.arg(updated_by)
+    INSERT INTO questionnaire_versions (questionnaire_id, version_no, status, updated_by, rules)
+    SELECT prev.questionnaire_id, prev.version_no + 1, 'draft', sqlc.arg(updated_by),
+           coalesce(prev.rules, sqlc.arg(default_rules)::jsonb)
     FROM questionnaire_versions prev WHERE prev.id = sqlc.arg(from_version_id)
     RETURNING questionnaire_versions.id
 ), c AS (
@@ -103,3 +106,15 @@ WITH v AS (
     WHERE ch.version_id = sqlc.arg(from_version_id)
 )
 SELECT id FROM v;
+
+-- name: SaveVersionRules :one
+-- Saves a draft's ASA rules (S40) only if nobody saved them since the caller loaded `revision`.
+-- No row: the version isn't a draft any more, or the revision is stale.
+UPDATE questionnaire_versions
+SET rules = sqlc.arg(rules)::jsonb, rules_revision = rules_revision + 1,
+    updated_by = sqlc.arg(updated_by), updated_at = now()
+WHERE id = sqlc.arg(id) AND status = 'draft' AND rules_revision = sqlc.arg(revision)
+RETURNING rules_revision;
+
+-- name: VersionStatus :one
+SELECT status FROM questionnaire_versions WHERE id = $1;

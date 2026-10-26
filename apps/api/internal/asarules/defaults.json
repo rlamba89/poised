@@ -1,0 +1,22 @@
+{
+  "noGradeAutoTriage": true,
+  "rules": [
+    {
+      "id": "low_risk",
+      "name": "Low risk",
+      "when": { "asa": { "op": "<=", "grade": 2 }, "noRedFlags": true },
+      "then": [{ "kind": "autoTriage", "target": "ready_for_admission" }]
+    },
+    {
+      "id": "high_risk",
+      "name": "High risk",
+      "when": { "asa": { "op": ">=", "grade": 3 } },
+      "then": [
+        { "kind": "task", "title": "Book anaesthetic review", "team": "anaesthetist" },
+        { "kind": "flag", "name": "Anaesthetic review" },
+        { "kind": "requireAnaesthetistAsa" }
+      ]
+    }
+  ],
+  "testCases": []
+}

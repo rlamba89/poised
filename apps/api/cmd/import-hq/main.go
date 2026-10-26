@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/rlamba89/poised/apps/api/internal/asarules"
 	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/hqimport"
 )
@@ -71,7 +72,7 @@ func main() {
 		if id, err = dq.CreateQuestionnaire(ctx, db.CreateQuestionnaireParams{OrgID: oid, Name: name, Description: q.Description, CreatedBy: uid}); err != nil {
 			return fmt.Errorf("create questionnaire: %w", err)
 		}
-		vid, err := dq.CreateVersion(ctx, db.CreateVersionParams{QuestionnaireID: id, VersionNo: 1, UpdatedBy: uid})
+		vid, err := dq.CreateVersion(ctx, db.CreateVersionParams{QuestionnaireID: id, VersionNo: 1, UpdatedBy: uid, Rules: asarules.Defaults()})
 		if err != nil {
 			return fmt.Errorf("create version: %w", err)
 		}

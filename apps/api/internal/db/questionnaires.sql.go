@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,28 +15,31 @@ import (
 
 const createNextVersion = `-- name: CreateNextVersion :one
 WITH v AS (
-    INSERT INTO questionnaire_versions (questionnaire_id, version_no, status, updated_by)
-    SELECT prev.questionnaire_id, prev.version_no + 1, 'draft', $1
-    FROM questionnaire_versions prev WHERE prev.id = $2
+    INSERT INTO questionnaire_versions (questionnaire_id, version_no, status, updated_by, rules)
+    SELECT prev.questionnaire_id, prev.version_no + 1, 'draft', $1,
+           coalesce(prev.rules, $2::jsonb)
+    FROM questionnaire_versions prev WHERE prev.id = $3
     RETURNING questionnaire_versions.id
 ), c AS (
     INSERT INTO chapters (version_id, position, name, description, icon, audience, content, updated_by)
     SELECT v.id, ch.position, ch.name, ch.description, ch.icon, ch.audience, ch.content, $1
     FROM chapters ch, v
-    WHERE ch.version_id = $2
+    WHERE ch.version_id = $3
 )
 SELECT id FROM v
 `
 
 type CreateNextVersionParams struct {
-	UpdatedBy     uuid.UUID `json:"updatedBy"`
-	FromVersionID uuid.UUID `json:"fromVersionId"`
+	UpdatedBy     uuid.UUID       `json:"updatedBy"`
+	DefaultRules  json.RawMessage `json:"defaultRules"`
+	FromVersionID uuid.UUID       `json:"fromVersionId"`
 }
 
 // A new draft copied from version `from_version_id` (LCY-06/07): same chapters, same content,
-// so stable IDs and test cases carry over. Chapters get new row ids.
+// so stable IDs and test cases carry over. Chapters get new row ids. The ASA rules are copied too;
+// a version from before rules existed gives the new draft the platform's defaults (S40 answers 1).
 func (q *Queries) CreateNextVersion(ctx context.Context, arg CreateNextVersionParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, createNextVersion, arg.UpdatedBy, arg.FromVersionID)
+	row := q.db.QueryRow(ctx, createNextVersion, arg.UpdatedBy, arg.DefaultRules, arg.FromVersionID)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
@@ -68,19 +72,26 @@ func (q *Queries) CreateQuestionnaire(ctx context.Context, arg CreateQuestionnai
 }
 
 const createVersion = `-- name: CreateVersion :one
-INSERT INTO questionnaire_versions (questionnaire_id, version_no, status, updated_by)
-VALUES ($1, $2, 'draft', $3)
+INSERT INTO questionnaire_versions (questionnaire_id, version_no, status, updated_by, rules)
+VALUES ($1, $2, 'draft', $3, $4::jsonb)
 RETURNING id
 `
 
 type CreateVersionParams struct {
-	QuestionnaireID uuid.UUID `json:"questionnaireId"`
-	VersionNo       int32     `json:"versionNo"`
-	UpdatedBy       uuid.UUID `json:"updatedBy"`
+	QuestionnaireID uuid.UUID       `json:"questionnaireId"`
+	VersionNo       int32           `json:"versionNo"`
+	UpdatedBy       uuid.UUID       `json:"updatedBy"`
+	Rules           json.RawMessage `json:"rules"`
 }
 
+// A new questionnaire's first draft, with the platform's default ASA rules (S40).
 func (q *Queries) CreateVersion(ctx context.Context, arg CreateVersionParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, createVersion, arg.QuestionnaireID, arg.VersionNo, arg.UpdatedBy)
+	row := q.db.QueryRow(ctx, createVersion,
+		arg.QuestionnaireID,
+		arg.VersionNo,
+		arg.UpdatedBy,
+		arg.Rules,
+	)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
@@ -127,10 +138,10 @@ func (q *Queries) DraftNameExists(ctx context.Context, arg DraftNameExistsParams
 const getQuestionnaire = `-- name: GetQuestionnaire :one
 SELECT q.id, q.org_id, q.hospital_id, q.name, q.description, q.created_by, q.created_at,
        v.id AS version_id, v.version_no, v.status, v.updated_at,
-       editor.name AS updated_by_name
+       editor.name AS updated_by_name, v.rules, v.rules_revision
 FROM questionnaires q
 JOIN LATERAL (
-    SELECT id, questionnaire_id, version_no, status, updated_by, updated_at FROM questionnaire_versions qv
+    SELECT id, questionnaire_id, version_no, status, updated_by, updated_at, rules, rules_revision FROM questionnaire_versions qv
     WHERE qv.questionnaire_id = q.id
     ORDER BY qv.version_no DESC LIMIT 1
 ) v ON true
@@ -146,18 +157,20 @@ type GetQuestionnaireParams struct {
 }
 
 type GetQuestionnaireRow struct {
-	ID            uuid.UUID     `json:"id"`
-	OrgID         uuid.UUID     `json:"orgId"`
-	HospitalID    uuid.NullUUID `json:"hospitalId"`
-	Name          string        `json:"name"`
-	Description   string        `json:"description"`
-	CreatedBy     uuid.UUID     `json:"createdBy"`
-	CreatedAt     time.Time     `json:"createdAt"`
-	VersionID     uuid.UUID     `json:"versionId"`
-	VersionNo     int32         `json:"versionNo"`
-	Status        string        `json:"status"`
-	UpdatedAt     time.Time     `json:"updatedAt"`
-	UpdatedByName string        `json:"updatedByName"`
+	ID            uuid.UUID       `json:"id"`
+	OrgID         uuid.UUID       `json:"orgId"`
+	HospitalID    uuid.NullUUID   `json:"hospitalId"`
+	Name          string          `json:"name"`
+	Description   string          `json:"description"`
+	CreatedBy     uuid.UUID       `json:"createdBy"`
+	CreatedAt     time.Time       `json:"createdAt"`
+	VersionID     uuid.UUID       `json:"versionId"`
+	VersionNo     int32           `json:"versionNo"`
+	Status        string          `json:"status"`
+	UpdatedAt     time.Time       `json:"updatedAt"`
+	UpdatedByName string          `json:"updatedByName"`
+	Rules         json.RawMessage `json:"rules"`
+	RulesRevision int32           `json:"rulesRevision"`
 }
 
 func (q *Queries) GetQuestionnaire(ctx context.Context, arg GetQuestionnaireParams) (GetQuestionnaireRow, error) {
@@ -176,6 +189,8 @@ func (q *Queries) GetQuestionnaire(ctx context.Context, arg GetQuestionnairePara
 		&i.Status,
 		&i.UpdatedAt,
 		&i.UpdatedByName,
+		&i.Rules,
+		&i.RulesRevision,
 	)
 	return i, err
 }
@@ -203,7 +218,7 @@ SELECT q.id, q.hospital_id, q.name, q.description, q.created_by, q.created_at,
 FROM questionnaires q
 JOIN users creator ON creator.id = q.created_by
 JOIN LATERAL (
-    SELECT id, questionnaire_id, version_no, status, updated_by, updated_at FROM questionnaire_versions qv
+    SELECT id, questionnaire_id, version_no, status, updated_by, updated_at, rules, rules_revision FROM questionnaire_versions qv
     WHERE qv.questionnaire_id = q.id
     ORDER BY qv.version_no DESC LIMIT 1
 ) v ON true
@@ -319,6 +334,35 @@ func (q *Queries) PublishVersion(ctx context.Context, arg PublishVersionParams) 
 	return count, err
 }
 
+const saveVersionRules = `-- name: SaveVersionRules :one
+UPDATE questionnaire_versions
+SET rules = $1::jsonb, rules_revision = rules_revision + 1,
+    updated_by = $2, updated_at = now()
+WHERE id = $3 AND status = 'draft' AND rules_revision = $4
+RETURNING rules_revision
+`
+
+type SaveVersionRulesParams struct {
+	Rules     json.RawMessage `json:"rules"`
+	UpdatedBy uuid.UUID       `json:"updatedBy"`
+	ID        uuid.UUID       `json:"id"`
+	Revision  int32           `json:"revision"`
+}
+
+// Saves a draft's ASA rules (S40) only if nobody saved them since the caller loaded `revision`.
+// No row: the version isn't a draft any more, or the revision is stale.
+func (q *Queries) SaveVersionRules(ctx context.Context, arg SaveVersionRulesParams) (int32, error) {
+	row := q.db.QueryRow(ctx, saveVersionRules,
+		arg.Rules,
+		arg.UpdatedBy,
+		arg.ID,
+		arg.Revision,
+	)
+	var rules_revision int32
+	err := row.Scan(&rules_revision)
+	return rules_revision, err
+}
+
 const touchVersion = `-- name: TouchVersion :exec
 UPDATE questionnaire_versions SET updated_by = $2, updated_at = now() WHERE id = $1
 `
@@ -331,4 +375,15 @@ type TouchVersionParams struct {
 func (q *Queries) TouchVersion(ctx context.Context, arg TouchVersionParams) error {
 	_, err := q.db.Exec(ctx, touchVersion, arg.ID, arg.UpdatedBy)
 	return err
+}
+
+const versionStatus = `-- name: VersionStatus :one
+SELECT status FROM questionnaire_versions WHERE id = $1
+`
+
+func (q *Queries) VersionStatus(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, versionStatus, id)
+	var status string
+	err := row.Scan(&status)
+	return status, err
 }

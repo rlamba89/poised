@@ -184,6 +184,7 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/questionnaires/{qid}/chapter-order", hosp(s.reorderChapters))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires/{qid}/publish", hosp(s.publishQuestionnaire))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/questionnaires/{qid}/versions", hosp(s.createVersion))
+	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/questionnaires/{qid}/rules", hosp(s.saveRules)) // S40: the draft's ASA rules
 	// Where the trust uses each question key (S23): the editor's pre-fill label and option lock (question_keys.go).
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/questionnaires/{qid}/question-keys", hosp(s.questionKeys))
 	// "Same as…" (S24): the keys a question could take, each with whether it's compatible (question_keys.go).

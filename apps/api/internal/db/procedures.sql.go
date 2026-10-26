@@ -13,6 +13,23 @@ import (
 	"github.com/google/uuid"
 )
 
+const countTrustProcedures = `-- name: CountTrustProcedures :one
+SELECT count(*) FROM procedures WHERE org_id = $1 AND id = ANY($2::uuid[])
+`
+
+type CountTrustProceduresParams struct {
+	OrgID uuid.UUID   `json:"orgId"`
+	Ids   []uuid.UUID `json:"ids"`
+}
+
+// How many of these ids are the trust's procedures (an ASA rule may name them, S40).
+func (q *Queries) CountTrustProcedures(ctx context.Context, arg CountTrustProceduresParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countTrustProcedures, arg.OrgID, arg.Ids)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createProcedure = `-- name: CreateProcedure :one
 INSERT INTO procedures (org_id, hospital_id, name, code, specialty, default_questionnaire_id, info_content, updated_by)
 VALUES ($1, $2, $3, $4, $5,

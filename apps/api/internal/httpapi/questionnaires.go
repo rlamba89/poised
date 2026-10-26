@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/rlamba89/poised/apps/api/internal/asarules"
 	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/role"
 )
@@ -111,7 +112,7 @@ func (s *server) createQuestionnaire(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "create questionnaire", err)
 		return
 	}
-	if _, err := q.CreateVersion(ctx, db.CreateVersionParams{QuestionnaireID: id, VersionNo: 1, UpdatedBy: uid}); err != nil {
+	if _, err := q.CreateVersion(ctx, db.CreateVersionParams{QuestionnaireID: id, VersionNo: 1, UpdatedBy: uid, Rules: asarules.Defaults()}); err != nil {
 		serverError(w, "create version", err)
 		return
 	}
@@ -260,7 +261,8 @@ func (s *server) publishQuestionnaire(w http.ResponseWriter, r *http.Request) {
 }
 
 // createVersion starts a new draft from the latest published version (LCY-06/07). Its chapters
-// are copied unchanged, so stable IDs and test cases carry over.
+// are copied unchanged, so stable IDs and test cases carry over; so are its ASA rules, or the
+// platform's defaults when it had none (S40 answers 1).
 func (s *server) createVersion(w http.ResponseWriter, r *http.Request) {
 	row, ok := s.loadQuestionnaire(w, r)
 	if !ok {
@@ -284,7 +286,7 @@ func (s *server) createVersion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, draftNameTaken)
 		return
 	}
-	id, err := s.q.CreateNextVersion(ctx, db.CreateNextVersionParams{FromVersionID: row.VersionID, UpdatedBy: currentUser(r).ID})
+	id, err := s.q.CreateNextVersion(ctx, db.CreateNextVersionParams{FromVersionID: row.VersionID, UpdatedBy: currentUser(r).ID, DefaultRules: asarules.Defaults()})
 	if err != nil {
 		serverError(w, "create version", err)
 		return
