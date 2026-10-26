@@ -4,7 +4,8 @@ import type { Question } from "survey-core";
 import type { ChapterJson } from "./doc";
 import { formatAnswer, isChoiceQuestion } from "./outputs";
 import { registerClinicalProperties } from "./properties";
-import { isChapterShown } from "./questionSets";
+import { combineChapters, isChapterShown } from "./questionSets";
+import { earlierKeysUsed, isEmpty, type Earlier } from "./scores";
 import { modelFor, type SamplePatient } from "./testcases";
 import type { Viewer } from "./viewer";
 
@@ -25,10 +26,13 @@ export function patientVariables(p: EpisodePatient, today = new Date()): SampleP
   return { name: `${p.firstName} ${p.lastName}`, age: ageFrom(p.dateOfBirth, today), sex: p.sex };
 }
 
-/** Whether every required question the viewer can see is answered, without showing errors. */
-export function isSetComplete(json: ChapterJson, data: Answers | undefined, viewer: Viewer, patient: SamplePatient): boolean {
+/**
+ * Whether every required question the viewer can see is answered, without showing errors. `earlier`
+ * (earlierContexts) matters when a condition here tests a score that uses earlier sets' answers.
+ */
+export function isSetComplete(json: ChapterJson, data: Answers | undefined, viewer: Viewer, patient: SamplePatient, earlier?: Earlier): boolean {
   registerClinicalProperties();
-  const m = modelFor(json, viewer, patient);
+  const m = modelFor(json, viewer, patient, earlier);
   m.data = data ?? {};
   const ok = m.validate(false);
   m.dispose();
@@ -41,28 +45,84 @@ export function isSetComplete(json: ChapterJson, data: Answers | undefined, view
  * saved. A change whose save failed keeps the set from counting, so the HQ can't be sent without it
  * (S02a). `sameAnswer` ignores key order.
  */
-export function isSetReadyToSend(json: ChapterJson, saved: Answers | undefined, draft: Answers | undefined, patient: SamplePatient): boolean {
+export function isSetReadyToSend(json: ChapterJson, saved: Answers | undefined, draft: Answers | undefined, patient: SamplePatient, earlier?: Earlier): boolean {
   if (draft !== undefined && !sameAnswer(draft, saved ?? {})) return false;
-  return isSetComplete(json, saved, "patient", patient);
+  return isSetComplete(json, saved, "patient", patient, earlier);
 }
 
 /**
  * The Question Sets shown, in order (LOG-02). A set's condition sees the answers of the sets
- * shown before it, and the patient's age and sex.
+ * shown before it, and the patient's age and sex. When a score uses another set's answers (S38),
+ * an earlier set's Calculations count with the values worked out now, not the ones saved with its
+ * answers, which go stale when the patient changes an earlier set (verification 2, F4).
  */
-export function shownSets<T extends { id: string; content: ChapterJson }>(
+export function shownSets<T extends { id: string; name?: string; content: ChapterJson }>(
   sets: T[], answers: Record<string, Answers | undefined>, viewer: Viewer, patient: SamplePatient,
 ): T[] {
-  let values: Answers = { patientAge: patient.age, patientSex: patient.sex, viewer };
-  return sets.filter((s) => {
-    if (!isChapterShown(s.content, values)) return false;
-    values = { ...values, ...answers[s.id] };
-    return true;
-  });
+  return hqSets(sets, answers, viewer, patient).shown;
 }
 
-const isEmpty = (v: unknown) =>
-  v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0) || (typeof v === "object" && Object.keys(v as object).length === 0);
+/**
+ * What each shown Question Set's survey gets from the sets shown before it (S38): their answers by
+ * key, and their JSON, so a score can use earlier sets' questions. One helper for every view: the
+ * patient's form, Validate, the POA Summary (and S41's evaluate service).
+ * - A set a condition hides gives nothing, so its questions count as unanswered.
+ * - Only the questions shown in a set count (one a condition hides, or on a hidden page or group, is
+ *   unanswered), plus every Calculation's value, worked out with the sets before it.
+ * - `viewer` decides what is in each set: a patient's form has no clinician-only questions.
+ * An HQ none of whose scores use another set's questions gets none (so older HQs work as before).
+ */
+export function earlierContexts<T extends { id: string; name?: string; content: ChapterJson }>(
+  sets: T[], answers: Record<string, Answers | undefined>, viewer: Viewer, patient: SamplePatient,
+): Map<string, Earlier> {
+  return hqSets(sets, answers, viewer, patient).earlier;
+}
+
+/**
+ * Both in one pass: the sets shown, and what each gets from the sets before it. For an HQ whose
+ * scores use only their own set, the saved answers decide, as before S38, and no survey is built.
+ * Otherwise each shown set's survey is built with the sets before it, and the next set's condition
+ * sees the saved answers with each Calculation's worked-out value in place of its saved one (an
+ * Incomplete score has none).
+ */
+export function hqSets<T extends { id: string; name?: string; content: ChapterJson }>(
+  sets: T[], answers: Record<string, Answers | undefined>, viewer: Viewer, patient: SamplePatient,
+): { shown: T[]; earlier: Map<string, Earlier> } {
+  let seen: Answers = { patientAge: patient.age, patientSex: patient.sex, viewer };
+  const earlier = new Map<string, Earlier>();
+  if (!sets.some((s) => earlierKeysUsed(s.content).length)) {
+    const shown = sets.filter((s) => {
+      if (!isChapterShown(s.content, seen)) return false;
+      seen = { ...seen, ...answers[s.id] };
+      return true;
+    });
+    return { shown, earlier };
+  }
+  registerClinicalProperties();
+  const shown: T[] = [];
+  const before: { name: string; doc: ChapterJson }[] = [];
+  let values: Answers = {};
+  for (const set of sets) {
+    if (!isChapterShown(set.content, seen)) continue;
+    shown.push(set);
+    const context: Earlier = { doc: combineChapters(before), values };
+    earlier.set(set.id, context);
+    const m = modelFor(set.content, viewer, patient, context);
+    m.data = answers[set.id] ?? {};
+    const next: Answers = { ...values };
+    const worked: Answers = {};
+    for (const q of m.getAllQuestions(false, false, false)) {
+      const calc = q.getType() === "expression";
+      if (calc) worked[q.name] = q.isEmpty() ? undefined : q.value;
+      if ((calc || (q.isVisible && q.isParentVisible)) && !q.isEmpty()) next[q.name] = q.value;
+    }
+    m.dispose();
+    values = next;
+    seen = { ...seen, ...answers[set.id], ...worked };
+    before.push({ name: set.name ?? set.id, doc: set.content });
+  }
+  return { shown, earlier };
+}
 
 /** Key order doesn't matter; a missing answer equals an empty one. */
 function canonical(v: unknown): unknown {

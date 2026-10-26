@@ -1,7 +1,7 @@
 // "Add content:" buttons (incumbent catalogue, plus Number from DSG-01 and the SurveyJS types).
 import { Button, Text } from "@mantine/core";
 import {
-  IconBooks, IconBuildingHospital, IconCalculator, IconCalendar, IconCircleDot, IconClipboardText, IconGridDots, IconInfoCircle, IconLayoutList, IconLetterT,
+  IconBooks, IconBuildingHospital, IconClipboardHeart, IconCalculator, IconCalendar, IconCircleDot, IconClipboardText, IconGridDots, IconInfoCircle, IconLayoutList, IconLetterT,
   IconNumbers, IconPill, IconScale, IconSeparatorHorizontal, IconSignature, IconSquareCheck, IconStar, IconToggleLeft, IconUpload,
   IconUser, IconVideo, type Icon,
 } from "@tabler/icons-react";
@@ -39,7 +39,7 @@ export const KIND_ICON: Record<Kind, Icon> = {
  * Video (S34): its tick would be asked once per row.
  */
 export function AddContentBar({ target, pageElements, inside }: { target: Target; pageElements: ElementJson[]; inside?: ElementJson }) {
-  const { add, readOnly, openLibrary } = useEditor();
+  const { add, readOnly, openLibrary, openReadyScore } = useEditor();
   if (readOnly) return null;
   const pageHasBmi = pageElements.some((el) => kindOf(el) === "bmi");
   const enabled = (k: Kind) => {
@@ -84,6 +84,21 @@ export function AddContentBar({ target, pageElements, inside }: { target: Target
             }}
           >
             From library
+          </Button>
+        )}
+        {/* A ready-made score (S38): on the page or in a Section, not inside another Group. */}
+        {openReadyScore && (!inside || inside.patientPage === true) && (
+          <Button
+            size="xs"
+            variant="light"
+            leftSection={<IconClipboardHeart size={14} />}
+            disabled={pageHasBmi}
+            onClick={(e) => {
+              e.stopPropagation();
+              openReadyScore(target);
+            }}
+          >
+            Ready-made score
           </Button>
         )}
       </div>

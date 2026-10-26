@@ -7,7 +7,7 @@ import {
   Alert, Anchor, Badge, Button, Card, Center, Group, Loader, SimpleGrid, Stack, Table, Text, Title,
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
-import { ageFrom, patientVariables, shownSets } from "@poised/clinical";
+import { ageFrom, shownSets } from "@poised/clinical";
 import { AUDIENCE_LABELS } from "@/features/chapters/types";
 import { api } from "@/lib/api";
 import { nationalIdLabel } from "@/lib/config";
@@ -16,7 +16,7 @@ import { EpisodeInformation } from "@/features/information/EpisodeInformation";
 import { EditProcedure } from "./EditProcedure";
 import { StatusBadge } from "./EpisodeList";
 import { GeneralNotes } from "./GeneralNotes";
-import { currentAnswers, useEpisodeHQ } from "./hq";
+import { allCurrentAnswers, hqPatient, useEpisodeHQ } from "./hq";
 import { historyWho, notResponding, type StatusEvent, type StatusOption, type UndoOption } from "./status";
 import { StatusControl, StatusHistory } from "./StatusControl";
 import { TasksPanel } from "./TasksPanel";
@@ -257,8 +257,7 @@ function QuestionSets({ base, episode, onReviewed }: { base: string; episode: Ep
   if (error) return <Alert color="red">{error}</Alert>;
   if (!hq) return null;
 
-  const answers = Object.fromEntries(hq.chapters.map((c) => [c.id, currentAnswers(hq, c.id)]));
-  const sets = shownSets(hq.chapters, answers, "clinician", patientVariables(episode));
+  const sets = shownSets(hq.chapters, allCurrentAnswers(hq), "clinician", hqPatient(episode));
   const waiting = episode.status === "hq_not_complete";
   const reviewing = episode.status === "ready_for_review";
   const allValidated = sets.every((s) => hq.clinician[s.id]?.validatedAt);

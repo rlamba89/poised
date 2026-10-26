@@ -1,40 +1,18 @@
 // The Question Set's own condition (LOG-02), in plain words above the preview. A one-set preview
 // can't see earlier sets' answers, so it decides only conditions that test just the patient.
-import { useEffect, useState } from "react";
 import { Alert, Text } from "@mantine/core";
 import { IconGitBranch } from "@tabler/icons-react";
-import {
-  chapterConditionOf, combineChapters, describeLogic, isChapterShown, testsOnlyThePatient, type ChapterJson, type Viewer,
-} from "@poised/clinical";
-import { api } from "@/lib/api";
+import { chapterConditionOf, describeLogic, isChapterShown, testsOnlyThePatient, type ChapterJson, type Viewer } from "@poised/clinical";
 import { DisplaysWhen } from "@/features/editor/ElementCard";
 
-type Detail = { chapters: { id: string; name: string }[] };
-
+/** `earlier`: the earlier Question Sets combined (useEarlierSets), once loaded. */
 export function SetCondition(props: {
-  base: string;
-  questionnaireId: string;
-  chapterId: string;
+  earlier: ChapterJson | null;
   content: ChapterJson;
   variables: { patientAge?: number; patientSex?: string; viewer: Viewer };
 }) {
-  const { base, questionnaireId, chapterId, content, variables } = props;
+  const { earlier, content, variables } = props;
   const expr = chapterConditionOf(content);
-  const [earlier, setEarlier] = useState<ChapterJson | null>(null);
-  useEffect(() => {
-    if (!expr) return;
-    let current = true;
-    (async () => {
-      const d = await api<Detail>(`${base}/questionnaires/${questionnaireId}`);
-      const before = d.chapters.slice(0, d.chapters.findIndex((c) => c.id === chapterId));
-      const docs = await Promise.all(before.map((c) => api<{ content: ChapterJson }>(`${base}/chapters/${c.id}`)));
-      if (current) setEarlier(combineChapters(before.map((c, i) => ({ name: c.name, doc: docs[i].content ?? {} }))));
-    })().catch(() => current && setEarlier({}));
-    return () => {
-      current = false;
-    };
-  }, [expr, base, questionnaireId, chapterId]);
-
   if (!expr) return null;
   const described = describeLogic(earlier ?? {}, expr);
   const decided = testsOnlyThePatient(expr) ? isChapterShown(content, variables) : undefined;

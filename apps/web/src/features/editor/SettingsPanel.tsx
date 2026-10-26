@@ -4,7 +4,7 @@ import { ActionIcon, Alert, Button, Group, Menu, Select, Stack, Switch, Tabs, Te
 import { IconBooks, IconChevronDown, IconLink, IconLinkPlus, IconPlus, IconX } from "@tabler/icons-react";
 import {
   KIND_LABEL, bandsOf, canAskFresh, convertKind, keyPlace, convertibleKinds, findElement, hasQuestionOutputs, isAnswerKind, isChoiceKind, kindOf,
-  logicOffered, optionsOf, summariesIn, textOf, updateElement, type ChapterJson, type ElementJson,
+  logicOffered, optionsOf, readyScoreAround, summariesIn, textOf, updateElement, type ChapterJson, type ElementJson,
 } from "@poised/clinical";
 import { KIND_ICON } from "./AddContentBar";
 import { outputsAt, type DisclosureTarget } from "./DisclosureModal";
@@ -33,15 +33,22 @@ export function SettingsPanel(props: {
   onSameAs?: () => void;
   /** The trust's API path for a video's "Choose from library" (S34), or undefined: the user can't search the library. */
   libraryPath?: string;
+  /** The earlier Question Sets combined, once loaded: a score may use their questions (S38). */
+  earlier?: ChapterJson;
 }) {
-  const { doc, name, tab, readOnly, onTab, onClose, change } = props;
+  const { doc, name, tab, onTab, onClose, change } = props;
   const el = findElement(doc, name)?.el;
+  // A ready-made score (S38): only the Group's condition and the disclosures can change.
+  const ready = readyScoreAround(doc, name);
+  const inReady = !!ready && ready.group.name !== name;
+  // Disclosures follow the version's read-only state; everything else is locked in a ready-made score too.
+  const readOnly = props.readOnly || !!ready;
   if (!el) return null;
   const kind = kindOf(el);
   const Icon = KIND_ICON[kind];
   const canDisclose = isChoiceKind(kind) || hasQuestionOutputs(kind) || kind === "grid";
   // No Logic on a Clinical Summary (S37), unless it already has a condition to remove.
-  const canLogic = logicOffered(el);
+  const canLogic = logicOffered(el) && !inReady;
   const shownTab = tab === "logic" && !canLogic ? "settings" : tab;
   const patch = (p: Partial<ElementJson>) => change((d) => updateElement(d, name, p));
   const targets = convertibleKinds(el);
@@ -93,7 +100,18 @@ export function SettingsPanel(props: {
           )}
           <Text size="xs" c="dimmed" ml="auto">ID {el.name}</Text>
         </Group>
-        {((libraryKind && props.onSaveToLibrary) || (sameAs && props.onSameAs) || linkedFrom?.title) && (
+        {ready && (
+          <Alert color="blue" mb="md" p="sm" data-testid="ready-score-note">
+            <Text size="sm" fw={600}>Ready-made: {ready.score.name}</Text>
+            <Text size="xs">
+              Its wording, points and bands are as published and can&apos;t be changed.
+              {inReady ? " You can add disclosures." : " You can give the Group a condition, and add disclosures to its questions and bands."}
+            </Text>
+            <Text size="xs" c="dimmed" mt={4}>{ready.score.source}</Text>
+            <Text size="xs" c="dimmed">{ready.score.licence}</Text>
+          </Alert>
+        )}
+        {!ready && ((libraryKind && props.onSaveToLibrary) || (sameAs && props.onSameAs) || linkedFrom?.title) && (
           <Group gap="xs" mb="md" mt={-8}>
             {sameAs && props.onSameAs && (
               <Button size="compact-xs" variant="light" leftSection={<IconLinkPlus size={12} />} onClick={props.onSameAs}>
@@ -182,19 +200,19 @@ export function SettingsPanel(props: {
                     onChange={(v) => patch({ medicationType: v ?? "prescribed" })}
                   />
                 )}
-                <TypeSettings key={name} doc={doc} el={el} readOnly={readOnly} change={change} />
+                <TypeSettings key={name} doc={doc} el={el} readOnly={readOnly} change={change} earlier={props.earlier} />
               </>
             )}
           </Stack>
         </Tabs.Panel>
 
         <Tabs.Panel value="disclosures">
-          <DisclosuresTab doc={doc} el={el} readOnly={readOnly} open={props.openDisclosures} />
+          <DisclosuresTab doc={doc} el={el} readOnly={props.readOnly} open={props.openDisclosures} />
         </Tabs.Panel>
 
         {canLogic && (
           <Tabs.Panel value="logic">
-            <ElementLogic key={name} doc={doc} name={name} readOnly={readOnly} change={change} />
+            <ElementLogic key={name} doc={doc} name={name} readOnly={props.readOnly} change={change} />
           </Tabs.Panel>
         )}
       </div>

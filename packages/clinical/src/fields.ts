@@ -6,6 +6,7 @@ import {
   type ElementJson, type Kind,
 } from "./doc";
 import { newId } from "./ids";
+import { formatScore, parseScore, type ScoreForm } from "./scores";
 import type { ClinicalOutput } from "./types";
 
 type Validator = { type: string; [key: string]: unknown };
@@ -328,7 +329,7 @@ export function convertKind(doc: ChapterJson, name: string, to: Kind): ChapterJs
 
 /** The formulas the Calculation form builds; anything else is a custom formula. */
 export type CalcForm =
-  | { kind: "score"; questions: string[] }
+  | ScoreForm
   | { kind: "years"; question: string }
   | { kind: "bmi"; height: string; weight: string }
   | { kind: "custom"; expression: string };
@@ -340,6 +341,10 @@ export type CalcForm =
 export function calcFormOf(expression: string | undefined, kind?: string): CalcForm {
   const expr = (expression ?? "").trim();
   if (kind === "custom") return { kind: "custom", expression: expr };
+  // A score with points lines and the Incomplete guard (S38, scores.ts).
+  const score = parseScore(expr);
+  if (score && (!kind || kind === "score")) return score;
+  // An older score: the total of what is answered.
   let m = /^score\(([^)]*)\)$/.exec(expr);
   if (m && (!kind || kind === "score")) return { kind: "score", questions: [...m[1].matchAll(/'([^']*)'/g)].map((x) => x[1]) };
   m = /^age\(\{([A-Za-z0-9_]+)\}\)$/.exec(expr);
@@ -370,7 +375,7 @@ export const calcPatch = (f: CalcForm): Partial<ElementJson> => ({ expression: f
 export function formatCalc(f: CalcForm): string {
   switch (f.kind) {
     case "score":
-      return f.questions.length ? `score(${f.questions.map((q) => `'${q}'`).join(", ")})` : "";
+      return formatScore(f);
     case "years":
       return f.question ? `age({${f.question}})` : "";
     case "bmi":

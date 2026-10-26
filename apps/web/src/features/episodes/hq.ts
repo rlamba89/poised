@@ -1,6 +1,6 @@
 // The episode's Question Sets with both actors' answers (GET …/episodes/{eid}/hq).
 import { useCallback, useEffect, useState } from "react";
-import type { Answers, ChapterJson, PrefillChoice, PrefillEntry, SetPrefill } from "@poised/clinical";
+import { patientVariables, type Answers, type ChapterJson, type PrefillChoice, type PrefillEntry, type SamplePatient, type SetPrefill } from "@poised/clinical";
 import type { Audience } from "@/features/chapters/types";
 import { api } from "@/lib/api";
 
@@ -34,6 +34,16 @@ export type EpisodeHQ = {
 
 /** The answers that count for a Question Set: the clinician's if they've started, else the patient's. */
 export const currentAnswers = (hq: EpisodeHQ, id: string): Answers => hq.clinician[id]?.data ?? hq.patient[id] ?? {};
+
+/** Every Question Set's answers that count, by set. */
+export const allCurrentAnswers = (hq: EpisodeHQ): Record<string, Answers> => Object.fromEntries(hq.chapters.map((c) => [c.id, currentAnswers(hq, c.id)]));
+
+/**
+ * The patient as the HQ's rules see them: their age on the day they sent their answers, so a score
+ * never changes later (S38: "over 50" stays as it was), or today's while they haven't sent them.
+ */
+export const hqPatient = (e: { firstName: string; lastName: string; dateOfBirth: string; sex: string; patientSubmittedAt: string | null }): SamplePatient =>
+  patientVariables(e, e.patientSubmittedAt ? new Date(e.patientSubmittedAt) : undefined);
 
 export function useEpisodeHQ(base: string, episodeId: string) {
   const [hq, setHq] = useState<EpisodeHQ | null>(null);

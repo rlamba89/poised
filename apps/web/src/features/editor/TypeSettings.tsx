@@ -1,19 +1,22 @@
 // The settings that differ by type: text format, number range and unit, date format, list
 // display, ticks, rating scale, grid rows and columns, calculations and bands, uploads and
 // repeating groups (QT-02..12, VAL-02/03, CAL-01/02, STR-04).
-import { ActionIcon, Button, Group, MultiSelect, Radio, SegmentedControl, Select, Stack, Switch, Text } from "@mantine/core";
+import { useEffect, useMemo, useState } from "react";
+import { ActionIcon, Button, Group, MultiSelect, NumberInput, Paper, Radio, SegmentedControl, Select, Stack, Switch, Text } from "@mantine/core";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import {
   DATE_FORMATS, TEXT_FORMATS, allElements, bandsOf, calcFormOf, calcPatch, choiceDisplayOf, emptyCalc, dateSettingsOf, formatCalc, isValidExpression,
-  kindOf, newId, numberSettingsOf, optionsOf, repeatSettingsOf, setChoiceDisplay, setDateSettings, setNumberSettings,
+  kindOf, linesToSave, newId, numberSettingsOf, optionsOf, pointsSubjects, scoredQuestions, repeatSettingsOf, setChoiceDisplay, setDateSettings, setNumberSettings,
   setRepeating, setTextFormat, textFormatOf, textOf, unknownReferences, updateElement, type Band, type CalcForm, type ChapterJson,
-  type DateFormat, type DateRange, type ElementJson, type TextFormat,
+  type DateFormat, type DateRange, type ElementJson, type PointsLine, type ScoreForm, type TextFormat,
 } from "@poised/clinical";
+import { RuleRow } from "./ConditionBuilder";
 import { BlurNumber, BlurText, BlurTextarea } from "./inputs";
 import { ItemList, OptionsEditor } from "./OptionsEditor";
 
 type Change = (e: (d: ChapterJson) => ChapterJson) => void;
-type Props = { doc: ChapterJson; el: ElementJson; readOnly: boolean; change: Change };
+/** `earlier`: the earlier Question Sets combined, once loaded; a score may use their questions (S38). */
+type Props = { doc: ChapterJson; el: ElementJson; readOnly: boolean; change: Change; earlier?: ChapterJson };
 
 export function TypeSettings(props: Props) {
   switch (kindOf(props.el)) {
@@ -250,12 +253,19 @@ function CalculationSettings(props: Props) {
   const form = calcFormOf(el.expression as string | undefined, el.calcKind as string | undefined);
   const others = allElements(doc).filter(({ el: e }) => e.name !== el.name);
   const pick = (test: (e: ElementJson) => boolean) => others.filter(({ el: e }) => test(e)).map(({ el: e }) => ({ value: e.name, label: textOf(e.title) || e.name }));
-  const scored = pick((e) => optionsOf(e).some((o) => o.score !== undefined));
+  // Each earlier set's scored questions, grouped "Set › Page", then this set's, each key once (S38).
+  const scored = scoredQuestions(doc, props.earlier, el.name);
+  // A question picked whose set isn't loaded yet still shows (as its key).
+  const known = new Set(scored.flatMap((g) => g.items.map((i) => i.value)));
+  const missing = form.kind === "score" ? form.questions.filter((q) => !known.has(q)).map((q) => ({ value: q, label: q })) : [];
   const dates = pick((e) => e.type === "text" && e.inputType === "date");
   const numbers = pick((e) => kindOf(e) === "number");
   const set = (f: CalcForm) => patch(calcPatch(f));
   const custom = form.kind === "custom" ? form.expression : "";
-  const customError = custom && !isValidExpression(custom) ? "This isn't a valid formula." : custom && unknownReferences(doc, custom).length ? `Unknown question: ${unknownReferences(doc, custom).join(", ")}` : undefined;
+  // A formula may use earlier sets' questions too (S38).
+  const earlierNames = new Set(allElements(props.earlier ?? {}).map(({ el: e }) => e.name));
+  const unknown = custom ? unknownReferences(doc, custom).filter((r) => !earlierNames.has(r)) : [];
+  const customError = custom && !isValidExpression(custom) ? "This isn't a valid formula." : unknown.length ? `Unknown question: ${unknown.join(", ")}` : undefined;
 
   return (
     <>
@@ -276,15 +286,23 @@ function CalculationSettings(props: Props) {
         }
       />
       {form.kind === "score" && (
-        <MultiSelect
-          label="Add up the scores of"
-          description={scored.length ? "Questions whose options have scores (switch on Scores in their options)" : "No question has scored options yet. Switch on Scores in a question's options."}
-          data={scored}
-          searchable
-          value={form.questions}
-          disabled={readOnly}
-          onChange={(questions) => set({ kind: "score", questions })}
-        />
+        <>
+          <MultiSelect
+            label="Add up the scores of"
+            description={
+              scored.length
+                ? "Questions whose options have scores, in this Question Set or an earlier one (switch on Scores in their options)"
+                : "No question has scored options yet. Switch on Scores in a question's options."
+            }
+            data={[...scored, ...(missing.length ? [{ group: "Not found", items: missing }] : [])]}
+            searchable
+            value={form.questions}
+            disabled={readOnly}
+            onChange={(questions) => set({ ...form, questions })}
+          />
+          <PointsLines {...props} form={form} onChange={(lines) => set({ ...form, lines })} />
+          <Text size="xs" c="dimmed">Incomplete until every question it adds up and every line has an answer: an Incomplete score has no band.</Text>
+        </>
       )}
       {form.kind === "years" && <Select label="Date" data={dates} value={form.question || null} disabled={readOnly} onChange={(q) => set({ kind: "years", question: q ?? "" })} />}
       {form.kind === "bmi" && (
@@ -306,6 +324,67 @@ function CalculationSettings(props: Props) {
       )}
       <BandsEditor {...props} />
     </>
+  );
+}
+
+/**
+ * "Add N points when…" lines (S38, SCR-01/02): each picks what it tests from menus (Patient,
+ * Measurements, Other scores, then answers in this or an earlier Question Set), so authors never
+ * type a formula. Unfinished lines stay here until complete; only complete ones are saved.
+ */
+function PointsLines(props: Props & { form: ScoreForm; onChange: (lines: PointsLine[]) => void }) {
+  const { doc, el, readOnly, earlier, form, onChange } = props;
+  const subjects = useMemo(() => pointsSubjects(doc, earlier, el.name), [doc, earlier, el.name]);
+  const saved = form.lines ?? [];
+  const [draft, setDraft] = useState<PointsLine[]>(saved);
+  const key = JSON.stringify(saved);
+  useEffect(() => {
+    if (linesToSave(draft, saved)) setDraft(saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  // The complete lines are saved whenever they change, even while another line is unfinished (verification 1, F1).
+  const update = (next: PointsLine[]) => {
+    setDraft(next);
+    const save = linesToSave(next, saved);
+    if (save) onChange(save);
+  };
+  return (
+    <div data-testid="points-lines">
+      <Text size="sm" fw={500}>Add points when…</Text>
+      <Text size="xs" c="dimmed" mb={6}>For example, 1 point when the patient&apos;s age is over 50, or when an answer in an earlier Question Set is Yes.</Text>
+      <Stack gap={6}>
+        {draft.map((line, i) => (
+          <Paper key={i} withBorder p={6}>
+            <Group gap={6} wrap="nowrap" align="flex-start" mb={6}>
+              <Text size="xs" mt={6}>Add</Text>
+              <NumberInput
+                size="xs"
+                w={70}
+                aria-label="Points"
+                value={Number.isFinite(line.points) ? line.points : ""}
+                disabled={readOnly}
+                onChange={(v) => update(draft.map((x, j) => (j === i ? { ...x, points: v === "" ? NaN : Number(v) } : x)))}
+              />
+              <Text size="xs" mt={6}>point{line.points === 1 ? "" : "s"} when</Text>
+            </Group>
+            <RuleRow
+              subjects={subjects}
+              rule={line.rule}
+              readOnly={readOnly}
+              answered={false}
+              placeholder="Select…"
+              removeLabel="Remove line"
+              onChange={(rule) => update(rule ? draft.map((x, j) => (j === i ? { ...x, rule } : x)) : draft.filter((_, j) => j !== i))}
+            />
+          </Paper>
+        ))}
+      </Stack>
+      {!readOnly && (
+        <Button size="compact-xs" variant="subtle" mt={6} leftSection={<IconPlus size={14} />} onClick={() => setDraft([...draft, { points: 1, rule: { left: "", op: "eq" } }])}>
+          Add points line
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -343,7 +422,8 @@ function BandsEditor(props: Props) {
       <Text size="xs" c="dimmed" mb={6}>For example STOP-BANG: Low up to 2, Intermediate up to 4, High above. Conditions and disclosures can use the band.</Text>
       <Stack gap={6}>
         {bands.map((b, i) => (
-          <Group key={b.id} gap={6} wrap="nowrap">
+          <div key={b.id}>
+          <Group gap={6} wrap="nowrap">
             <BlurText size="xs" style={{ flex: 1 }} aria-label={`Band ${i + 1}`} value={b.label} disabled={readOnly} onSave={(label) => label.trim() && save(bands.map((x) => (x.id === b.id ? { ...x, label: label.trim() } : x)))} />
             {i < bands.length - 1 ? (
               <BlurNumber size="xs" w={90} aria-label="Up to" leftSection={<Text size="xs">≤</Text>} value={b.max} disabled={readOnly} onSave={(max) => save(bands.map((x) => (x.id === b.id ? { ...x, max } : x)))} />
@@ -356,6 +436,9 @@ function BandsEditor(props: Props) {
               </ActionIcon>
             )}
           </Group>
+          {/* A ready-made score's "also when" rule (S38). */}
+          {b.when && <Text size="xs" c="dimmed" mt={2}>Also {b.label} when: {b.whenText ?? b.when}</Text>}
+          </div>
         ))}
       </Stack>
     </div>

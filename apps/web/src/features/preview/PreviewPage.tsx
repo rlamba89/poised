@@ -13,12 +13,13 @@ import "@/features/video/VideoQuestion"; // draws Video elements (S34)
 import "@/features/information/InformationQuestion"; // draws Information, cleaned (S35)
 import "survey-core/survey-core.css";
 import {
-  computeOutputs, forPatient, showBands, localesIn, refreshClinicalSummaries, registerClinicalProperties, setViewer, withoutSurveyHtml,
-  LANGUAGES, type ChapterJson, type ComputedOutputs, type Viewer,
+  applyEarlier, chapterConditionOf, combineChapters, computeOutputs, earlierKeysUsed, forPatient, givenEarlier, showBands, localesIn, refreshClinicalSummaries, registerClinicalProperties,
+  setViewer, withoutSurveyHtml, LANGUAGES, type Answers, type ChapterJson, type ComputedOutputs, type Viewer,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { clinicianModel } from "./clinicianView";
 import { SetCondition } from "./SetCondition";
+import { EarlierAnswers, useEarlierSets } from "./EarlierAnswers";
 import { TestCases } from "./TestCases";
 import { canChange, useHospital } from "@/lib/auth";
 import { showUnits } from "./units";
@@ -80,6 +81,17 @@ function Preview({ base, chapter }: { base: string; chapter: ChapterDetail }) {
   const [revision, setRevision] = useState(chapter.revision);
   const answers = useRef<Record<string, unknown>>({});
   const [restored, setRestored] = useState(0);
+  // Scores here that use earlier sets' answers (S38): the keys, the earlier sets, and the answers the author gives.
+  const earlierKeys = useMemo(() => earlierKeysUsed(content), [content]);
+  const earlierSets = useEarlierSets(base, chapter.questionnaireId, chapter.id, earlierKeys.length > 0 || !!chapterConditionOf(content));
+  const earlier = useMemo(() => (earlierSets ? combineChapters(earlierSets) : null), [earlierSets]);
+  const [earlierValues, setEarlierValues] = useState<Answers>({});
+  // Only the earlier sets this sample patient would see count (test report 2, F-1).
+  const sampleAge = patient.age === "" ? undefined : patient.age;
+  const given = useMemo(
+    () => (earlierSets ? givenEarlier(earlierSets, earlierValues, { age: sampleAge, sex: patient.sex ?? undefined }, viewer) : null),
+    [earlierSets, earlierValues, sampleAge, patient.sex, viewer],
+  );
 
   // Rebuilt when the viewer changes. Patients get the JSON without clinician-only content, with
   // each Section on its own screen and without page titles (VEW-01, STR-03). Clinicians see whole
@@ -113,13 +125,19 @@ function Preview({ base, chapter }: { base: string; chapter: ChapterDetail }) {
     model.locale = locale;
   }, [model, locale]);
 
-  // Sample patient details are survey variables: {patientName}, {patientAge}, {patientSex}.
+  // Sample patient details are survey variables: {patientName}, {patientAge}, {patientSex}. The
+  // earlier sets' answers given here are too (S38).
   useEffect(() => {
     model.setVariable("patientName", patient.name);
     model.setVariable("patientAge", patient.age === "" ? undefined : patient.age);
     model.setVariable("patientSex", patient.sex ?? undefined);
+    if (given) {
+      // A key whose set is hidden now must lose the answer it had a moment ago.
+      const cleared = Object.fromEntries(Object.keys(earlierValues).map((k) => [k, undefined]));
+      applyEarlier(model, { ...given.earlier, values: { ...cleared, ...given.earlier.values } });
+    }
     setResult(computeOutputs(model));
-  }, [model, patient]);
+  }, [model, patient, given, earlierValues]);
 
   useEffect(() => {
     const update = () => {
@@ -132,10 +150,12 @@ function Preview({ base, chapter }: { base: string; chapter: ChapterDetail }) {
     return () => model.onValueChanged.remove(update);
   }, [model]);
 
+  // A fresh survey with no answers: SurveyJS's clear() also drops the survey variables (the sample
+  // patient and the earlier sets' answers, S38 test report 1, F-1) and leaves the summary boxes as
+  // they were, so the survey is built again and the effects above set them all.
   const restart = () => {
     answers.current = {};
-    model.clear(true, true);
-    setResult(computeOutputs(model));
+    setRestored((n) => n + 1);
   };
   const locales = localesIn(content);
   const width = DEVICES[device];
@@ -186,10 +206,9 @@ function Preview({ base, chapter }: { base: string; chapter: ChapterDetail }) {
       </Group>
       <Grid>
         <Grid.Col span={{ base: 12, md: 8 }}>
+          {earlierKeys.length > 0 && <EarlierAnswers earlier={earlier} keys={earlierKeys} values={earlierValues} hidden={given?.hidden ?? []} onChange={setEarlierValues} />}
           <SetCondition
-            base={base}
-            questionnaireId={chapter.questionnaireId}
-            chapterId={chapter.id}
+            earlier={earlier}
             content={content}
             variables={{ patientAge: patient.age === "" ? undefined : patient.age, patientSex: patient.sex ?? undefined, viewer }}
           />
@@ -212,12 +231,15 @@ function Preview({ base, chapter }: { base: string; chapter: ChapterDetail }) {
               viewer={viewer}
               patient={patient}
               model={model}
+              earlier={earlierSets}
+              earlierValues={earlierValues}
               onSaved={(c, r) => {
                 setContent(c);
                 setRevision(r);
               }}
               onLoad={(tc) => {
                 answers.current = tc.answers;
+                setEarlierValues(tc.earlier ?? {});
                 setPatient({ name: tc.patient.name, age: tc.patient.age ?? "", sex: tc.patient.sex ?? null });
                 setViewerState(tc.viewer);
                 setRestored((n) => n + 1);
@@ -256,7 +278,7 @@ function SamplePatientCard({ value, onChange }: { value: SamplePatient; onChange
 }
 
 function OutputsPanel({ result }: { result: ComputedOutputs }) {
-  const { outputs, suggestedAsa } = result;
+  const { outputs, suggestedAsa, scores = [] } = result;
   const byCategory = new Map<string, string[]>();
   for (const o of outputs) {
     if (!o.output.note || !o.noteText) continue;
@@ -274,6 +296,16 @@ function OutputsPanel({ result }: { result: ComputedOutputs }) {
       <Title order={5} mb="xs">Clinical outputs</Title>
       {outputs.length === 0 && <Text size="sm" c="dimmed">The current answers produce no outputs.</Text>}
       <Stack gap="sm">
+        {scores.length > 0 && (
+          <div data-testid="preview-scores">
+            <Text size="sm" fw={600}>Scores</Text>
+            {scores.map((s) => (
+              <Text size="sm" key={s.questionId} component="div">
+                {s.title}: {s.incomplete ? <Badge size="xs" color="gray" variant="light">Incomplete</Badge> : s.value === undefined ? "—" : `${s.value}${s.band ? ` (${s.band.label})` : ""}`}
+              </Text>
+            ))}
+          </div>
+        )}
         {codes.length > 0 && (
           <div>
             <Text size="sm" fw={600}>Codes</Text>

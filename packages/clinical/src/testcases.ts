@@ -6,6 +6,8 @@ import { edit, type ChapterJson } from "./doc";
 import { computeOutputs, type ComputedOutputs } from "./outputs";
 import { forPatient, setViewer, type Viewer } from "./viewer";
 import { withoutSurveyHtml } from "./information";
+import { applyEarlier, type Earlier } from "./scores";
+import { givenEarlier } from "./questionSets";
 
 /** Made-up patient details only (PRV-08). */
 export type SamplePatient = { name: string; age?: number; sex?: string };
@@ -16,6 +18,11 @@ export type TestCase = {
   viewer: Viewer;
   patient: SamplePatient;
   answers: Record<string, unknown>;
+  /**
+   * Answers to earlier Question Sets' questions, by key (S38), for a score that uses them. The preview
+   * can't see earlier sets, so the author gives them; without them they count as unanswered.
+   */
+  earlier?: Record<string, unknown>;
   /** The outputs expected, as outputLines() writes them. */
   expected: string[];
 };
@@ -35,20 +42,28 @@ export function outputLines(r: ComputedOutputs): string[] {
   return [...new Set(lines)].sort();
 }
 
-/** A survey as the viewer gets it, for the sample patient. */
-export function modelFor(json: ChapterJson, viewer: Viewer, patient: SamplePatient): Model {
+/**
+ * A survey as the viewer gets it, for the sample patient. `earlier` gives it the earlier Question
+ * Sets' answers, for scores that use them (S38; respondent.ts earlierContexts builds it for an HQ).
+ */
+export function modelFor(json: ChapterJson, viewer: Viewer, patient: SamplePatient, earlier?: Earlier): Model {
   const clean = withoutSurveyHtml(json);
   const m = new Model(viewer === "patient" ? forPatient(clean) : clean);
   setViewer(m, viewer);
   m.setVariable("patientName", patient.name);
   m.setVariable("patientAge", patient.age);
   m.setVariable("patientSex", patient.sex);
+  applyEarlier(m, earlier);
   return m;
 }
 
-/** Runs one case against the chapter as it is now (PRV-06). */
-export function runTestCase(json: ChapterJson, tc: TestCase): TestResult {
-  const m = modelFor(json, tc.viewer, tc.patient);
+/**
+ * Runs one case against the chapter as it is now (PRV-06). `earlier` is the earlier Question Sets,
+ * for the points and bands of the earlier answers the case gives (S38); a set the case's patient
+ * wouldn't see gives none (givenEarlier).
+ */
+export function runTestCase(json: ChapterJson, tc: TestCase, earlier: { name: string; doc: ChapterJson }[] = []): TestResult {
+  const m = modelFor(json, tc.viewer, tc.patient, tc.earlier ? givenEarlier(earlier, tc.earlier, tc.patient, tc.viewer).earlier : undefined);
   m.data = tc.answers;
   const actual = outputLines(computeOutputs(m));
   const missing = tc.expected.filter((x) => !actual.includes(x));

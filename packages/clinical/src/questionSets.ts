@@ -4,6 +4,7 @@
 import { ConditionRunner } from "survey-core";
 import { allElements, edit, isValidExpression, pageTitle, pagesOf, referencesIn, VARIABLES, type ChapterJson } from "./doc";
 import { unknownAnswers } from "./logic";
+import type { Earlier } from "./scores";
 
 export const chapterConditionOf = (doc: ChapterJson): string | undefined =>
   typeof doc.chapterVisibleIf === "string" && doc.chapterVisibleIf.trim() ? doc.chapterVisibleIf : undefined;
@@ -55,3 +56,31 @@ export function chapterConditionProblems(doc: ChapterJson, earlier: ChapterJson)
 
 /** True when the condition tests only the patient and the viewer, so a one-set preview can decide it. */
 export const testsOnlyThePatient = (expr: string) => referencesIn(expr).every((r) => VARIABLES.includes(r));
+
+/**
+ * What a set placed after `sets` gets from answers given by hand (S38: the Preview's earlier answers,
+ * a test case's `earlier`), as earlierContexts does for an HQ, but without building each set's
+ * survey: each given answer goes with the set holding its key, and a set its condition hides for
+ * this patient gives nothing (`hidden` names it; test report 2, F-1).
+ */
+export function givenEarlier(
+  sets: { name: string; doc: ChapterJson }[],
+  given: Record<string, unknown>,
+  patient: { age?: number; sex?: string },
+  viewer: string,
+): { earlier: Earlier; hidden: string[] } {
+  let seen: Record<string, unknown> = { patientAge: patient.age, patientSex: patient.sex, viewer };
+  const values: Record<string, unknown> = {};
+  const hidden: string[] = [];
+  for (const s of sets) {
+    const names = new Set(allElements(s.doc).map(({ el }) => el.name));
+    const own = Object.fromEntries(Object.entries(given).filter(([k]) => names.has(k)));
+    if (!isChapterShown(s.doc, seen)) {
+      hidden.push(s.name);
+      continue;
+    }
+    seen = { ...seen, ...own };
+    Object.assign(values, own);
+  }
+  return { earlier: { doc: combineChapters(sets), values }, hidden };
+}

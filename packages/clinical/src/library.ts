@@ -123,6 +123,13 @@ function renameIn(d: ChapterJson, names: Map<string, string>, options: Map<strin
   const fix = (el: ElementJson) => {
     for (const key of EXPRESSION_KEYS) if (typeof el[key] === "string") el[key] = rewriteReferences(el[key] as string, names, options);
     for (const c of el.choices ?? []) if (typeof c === "object" && c.visibleIf) c.visibleIf = rewriteReferences(c.visibleIf, names, options);
+    // A ready-made score's BMI (S38): `q` or `q.bmi`.
+    if (typeof el.readyScoreBmi === "string") {
+      const [head, ...rest] = el.readyScoreBmi.split(".");
+      if (names.has(head)) el.readyScoreBmi = [names.get(head), ...rest].join(".");
+    }
+    // A band's "also when" condition (S38).
+    for (const b of Array.isArray(el.bands) ? (el.bands as { when?: string }[]) : []) if (typeof b.when === "string") b.when = rewriteReferences(b.when, names, options);
     if (isContainer(el)) childrenOf(el).forEach(fix);
   };
   if (typeof d.chapterVisibleIf === "string") d.chapterVisibleIf = rewriteReferences(d.chapterVisibleIf, names, options);
@@ -135,15 +142,18 @@ function renameIn(d: ChapterJson, names: Map<string, string>, options: Map<strin
     if (t.gotoName && names.has(t.gotoName)) t.gotoName = names.get(t.gotoName);
   }
   // Test cases keep their answers under the new key, with the values mapped (PRV-05).
-  for (const tc of Array.isArray(d.testCases) ? (d.testCases as { answers?: Record<string, unknown> }[]) : []) {
-    if (!tc.answers) continue;
-    for (const [old, renamed] of names) {
-      if (!(old in tc.answers)) continue;
-      const map = options.get(old);
-      const value = tc.answers[old];
-      const mapOne = (v: unknown) => (typeof v === "string" && map?.has(v) ? map.get(v) : v);
-      delete tc.answers[old];
-      tc.answers[renamed] = Array.isArray(value) ? value.map(mapOne) : mapOne(value);
+  // Their earlier sets' answers (S38) too.
+  for (const tc of Array.isArray(d.testCases) ? (d.testCases as { answers?: Record<string, unknown>; earlier?: Record<string, unknown> }[]) : []) {
+    for (const list of [tc.answers, tc.earlier]) {
+      if (!list) continue;
+      for (const [old, renamed] of names) {
+        if (!(old in list)) continue;
+        const map = options.get(old);
+        const value = list[old];
+        const mapOne = (v: unknown) => (typeof v === "string" && map?.has(v) ? map.get(v) : v);
+        delete list[old];
+        list[renamed] = Array.isArray(value) ? value.map(mapOne) : mapOne(value);
+      }
     }
   }
 }

@@ -13,7 +13,7 @@
 //   - the marker under each question that still holds its pre-filled answer (stillPrefilled).
 import type { Model, Question } from "survey-core";
 import {
-  modelFor, prefilledAnswers, sameAnswer, type Answers, type ChapterJson, type PrefillChoice, type PrefillEntry, type SamplePatient,
+  modelFor, prefilledAnswers, sameAnswer, type Answers, type ChapterJson, type PrefillChoice, type PrefillEntry, type SamplePatient, type Earlier,
   type SetPrefill,
 } from "@poised/clinical";
 import { NETWORK_ERROR } from "@/lib/api";
@@ -64,9 +64,10 @@ export function firstUnfilled(model: Model, prefill: SetPrefill | undefined): Qu
  * Whether a set waits for the patient to answer its opening card: pre-filled answers show, and
  * neither button has been pressed. Until then it doesn't count as complete.
  */
-export function awaitsCheck(content: ChapterJson, data: Answers | undefined, prefill: SetPrefill | undefined, patient: SamplePatient): boolean {
+export function awaitsCheck(content: ChapterJson, data: Answers | undefined, prefill: SetPrefill | undefined, patient: SamplePatient, earlier?: Earlier): boolean {
   if (!prefill || prefill.choice) return false;
-  const m = modelFor(content, "patient", patient);
+  // With the earlier sets' answers (S38), as the set's form has them (verification 2).
+  const m = modelFor(content, "patient", patient, earlier);
   m.data = data ?? {};
   const shown = shownPrefilled(m, prefill).length;
   m.dispose();

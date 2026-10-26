@@ -137,8 +137,12 @@ describe("changing type", () => {
 describe("calculation formulas (CAL-01/03)", () => {
   it("round-trips the formulas the form builds", async () => {
     const { calcFormOf, formatCalc } = await import("./fields");
-    for (const expr of ["score('q_a', 'q_b')", "age({q_dob})", "bmi({q_h}, {q_w})", "{q_a} * 2"]) expect(formatCalc(calcFormOf(expr))).toBe(expr);
+    for (const expr of ["iif(allAnswered('q_a', 'q_b'), score('q_a', 'q_b'), '')", "age({q_dob})", "bmi({q_h}, {q_w})", "{q_a} * 2"]) {
+      expect(formatCalc(calcFormOf(expr))).toBe(expr);
+    }
+    // An older score still opens in the form; saved again, it goes Incomplete while an input is missing (S38).
     expect(calcFormOf("score('q_a', 'q_b')")).toEqual({ kind: "score", questions: ["q_a", "q_b"] });
+    expect(formatCalc(calcFormOf("score('q_a', 'q_b')"))).toBe("iif(allAnswered('q_a', 'q_b'), score('q_a', 'q_b'), '')");
     expect(calcFormOf("")).toEqual({ kind: "score", questions: [] });
     // The chosen kind is kept while its formula is still empty, and a custom formula stays custom.
     expect(calcFormOf("", "years")).toEqual({ kind: "years", question: "" });

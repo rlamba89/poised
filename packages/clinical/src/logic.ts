@@ -64,7 +64,8 @@ export function formatLogic(g: Group): string | undefined {
 
 const completeCount = (g: Group): number => g.items.filter((x) => (isGroup(x) ? !!formatLogic(x) : isComplete(x))).length;
 
-function formatRule(r: Rule): string {
+/** One rule as a SurveyJS condition, e.g. `{patientAge} > 50` (also used by a score's points lines, S38). */
+export function formatRule(r: Rule): string {
   const left = r.fn === "age" ? `age({${r.left}})` : r.fn === "band" ? `band('${r.left}')` : `{${r.left}}`;
   if (NO_VALUE.includes(r.op)) return `${left} ${SYMBOL[r.op]}`;
   return `${left} ${SYMBOL[r.op]} ${literal(r.value!)}`;
@@ -89,6 +90,12 @@ export function parseLogic(expr: string | undefined): Group | undefined {
   if (!item) return undefined;
   // A negated group at the top is kept as a sub-group, so the top level stays plain All / Any.
   return isGroup(item) && !item.not ? item : { join: "and", items: [item] };
+}
+
+/** One parsed rule (not a group) from SurveyJS's operand, or undefined (S38: a score's points lines). */
+export function ruleOf(op: Operand): Rule | undefined {
+  const item = toItem(op);
+  return item && !isGroup(item) ? item : undefined;
 }
 
 function toItem(op: Operand): Rule | Group | undefined {
@@ -283,8 +290,14 @@ const optionsOfList = (list: unknown): { value: string; label: string }[] =>
     typeof c === "string" ? { value: c, label: c } : { value: String(c.value), label: textOf(c.text) || String(c.value) },
   );
 
-/** A Calculation's score bands (CAL-02). */
-export type Band = { id: string; label: string; max?: number; clinicalOutputs?: import("./types").ClinicalOutput[] };
+/**
+ * A Calculation's score bands (CAL-02). `when` (S38) is an "also when" condition: the band applies
+ * whenever it holds, whatever the value (STOP-Bang's high-risk rule), and `whenText` says it in
+ * words. Only ready-made scores set them.
+ */
+export type Band = {
+  id: string; label: string; max?: number; when?: string; whenText?: string; clinicalOutputs?: import("./types").ClinicalOutput[];
+};
 export const bandsOf = (el: ElementJson): Band[] => (Array.isArray(el.bands) ? (el.bands as Band[]) : []);
 
 /** The band a value falls in: the first whose maximum it doesn't exceed (the last band has none). */
@@ -323,6 +336,53 @@ export function subjectsFor(doc: ChapterJson, of: { element: string } | { page: 
     }
   }
   return [...out, ...VARIABLE_SUBJECTS];
+}
+
+/** The menus a score's "Add points when…" lines pick from (S38). */
+export const POINTS_MENUS = { patient: "Patient", measurements: "Measurements", scores: "Other scores" } as const;
+
+/** Whether a Calculation works out a BMI (the form's "BMI from height and weight"). */
+const isBmiCalc = (el: ElementJson) => el.type === "expression" && (el.calcKind === "bmi" || /^\s*bmi\(/.test(String(el.expression ?? "")));
+
+/**
+ * What a score's points lines can test (S38, SCR-01/02), in menus: **Patient** (age, sex),
+ * **Measurements** (a BMI question's or BMI Calculation's value), **Other scores** (another
+ * Calculation's band), then the answers to choice and number questions, grouped "Set › Page": the
+ * earlier sets' (`earlier`, from combineChapters), then this Question Set's ("This Question Set › Page").
+ * The score itself is left out, and so are questions inside repeating groups.
+ */
+export function pointsSubjects(doc: ChapterJson, earlier: ChapterJson | undefined, calc: string): Subject[] {
+  const [age, sex] = VARIABLE_SUBJECTS;
+  const out: Subject[] = [
+    { ...age, label: "Age", group: POINTS_MENUS.patient },
+    { ...sex, label: "Sex", group: POINTS_MENUS.patient },
+  ];
+  const answers: Subject[] = [];
+  const add = (source: ChapterJson, title: (page: string) => string) => {
+    const pages = pagesOf(source);
+    const repeating = repeatingParents(source);
+    for (const { el, page } of allElements(source)) {
+      if (el.name === calc || repeating.has(el.name)) continue;
+      const where = title(textOf(page.title) || `Page ${pages.indexOf(page) + 1}`);
+      const kind = kindOf(el);
+      const label = textOf(el.title) || el.name;
+      if (kind === "bmi") out.push({ id: `${el.name}.bmi`, left: `${el.name}.bmi`, label: `${label} (BMI)`, group: POINTS_MENUS.measurements, type: "number" });
+      else if (isBmiCalc(el)) out.push({ id: el.name, left: el.name, label: `${label} (BMI)`, group: POINTS_MENUS.measurements, type: "number" });
+      else if (kind === "calculation") {
+        const band = subjectsOfElement(el, where).find((s) => s.fn === "band");
+        if (band) out.push({ ...band, label: `${label} (${where})`, group: POINTS_MENUS.scores });
+      } else if (kind === "yesno" || kind === "selectone" || kind === "selectmany" || kind === "number") {
+        answers.push(...subjectsOfElement(el, where));
+      }
+    }
+  };
+  if (earlier) add(earlier, (p) => p);
+  add(doc, (p) => `This Question Set › ${p}`);
+  const order = (s: Subject) => [POINTS_MENUS.patient, POINTS_MENUS.measurements, POINTS_MENUS.scores].indexOf(s.group as never);
+  // A key repeated in an older draft (Publish refuses it) is listed once, where the survey finds it:
+  // the last one added, so this set's (verification 1, F2).
+  const once = (list: Subject[]) => list.filter((s, i) => !list.slice(i + 1).some((t) => t.id === s.id));
+  return [...once(out).sort((a, b) => order(a) - order(b)), ...once(answers)];
 }
 
 /** Each element inside a repeating group, with that group's name. */
@@ -403,23 +463,41 @@ const formatIsoDate = (v: string) => {
 export type LogicProblem = { label: string; message: string; owner: string };
 
 /**
- * Conditions that can't work: unreadable, testing a question that no longer exists, or
- * testing a question that comes later (forward and circular dependencies).
+ * The other Question Sets of the HQ (combineChapters), for checking a score that uses earlier sets'
+ * questions (S38): `earlier` are allowed, `later` are named as such.
  */
-export function logicProblems(doc: ChapterJson): LogicProblem[] {
+export type OtherSets = { earlier?: ChapterJson; later?: ChapterJson };
+
+/**
+ * Conditions that can't work: unreadable, testing a question that no longer exists, or
+ * testing a question that comes later (forward and circular dependencies). A Calculation (and its
+ * bands' conditions) may use questions in earlier Question Sets, never in later ones (S38).
+ */
+export function logicProblems(doc: ChapterJson, sets: OtherSets = {}): LogicProblem[] {
   const order = allElements(doc).map(({ el }) => el.name);
   const pageIndex = new Map(allElements(doc).map(({ el, page }) => [el.name, pagesOf(doc).indexOf(page)]));
+  const earlierNames = new Set(sets.earlier ? allElements(sets.earlier).map(({ el }) => el.name) : []);
+  const laterNames = new Set(sets.later ? allElements(sets.later).map(({ el }) => el.name) : []);
+  const withEarlier: ChapterJson = { pages: [...pagesOf(doc), ...(sets.earlier ? pagesOf(sets.earlier) : [])] };
   const out: LogicProblem[] = [];
   for (const x of expressionsIn(doc)) {
     if (!isValidExpression(x.expr)) {
       out.push({ label: x.label, message: "its condition can't be read", owner: x.owner });
       continue;
     }
-    const unknown = unknownReferences(doc, x.expr);
-    if (unknown.length) out.push({ label: x.label, message: `it tests something that no longer exists (${unknown.join(", ")})`, owner: x.owner });
-    const gone = unknownAnswers(doc, x.expr);
+    const calc = x.key === "expression" || x.key === "band";
+    const unknown = unknownReferences(doc, x.expr).filter((r) => !(calc && earlierNames.has(r)));
+    const later = unknown.filter((r) => laterNames.has(r));
+    const other = calc ? [] : unknown.filter((r) => earlierNames.has(r));
+    const missing = unknown.filter((r) => !later.includes(r) && !other.includes(r));
+    if (missing.length) out.push({ label: x.label, message: `it tests something that no longer exists (${missing.join(", ")})`, owner: x.owner });
+    if (calc && later.length) out.push({ label: x.label, message: `it uses a question in a later Question Set (${later.join(", ")})`, owner: x.owner });
+    if (!calc && (later.length || other.length)) {
+      out.push({ label: x.label, message: `it tests a question in another Question Set (${[...other, ...later].join(", ")})`, owner: x.owner });
+    }
+    const gone = unknownAnswers(calc ? withEarlier : doc, x.expr);
     if (gone.length) out.push({ label: x.label, message: `it tests an answer that no longer exists (${gone.join("; ")})`, owner: x.owner });
-    if (x.key === "expression") continue;
+    if (calc) continue;
     const refs = referencesIn(x.expr).filter((r) => order.includes(r));
     if (x.key === "trigger") {
       // A skip rule may test its own page and earlier pages.

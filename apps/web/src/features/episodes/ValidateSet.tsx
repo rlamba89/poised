@@ -17,7 +17,7 @@ import "@/features/video/VideoQuestion"; // draws Video elements (S34)
 import "@/features/information/InformationQuestion"; // draws Information, cleaned (S35)
 import "survey-core/survey-core.css";
 import {
-  answerSaver, patientVariables, prefillChoiceText, prefilledAnswers, prefillMarks, refreshClinicalSummaries, registerClinicalProperties, sameAnswer, startedFreshText,
+  answerSaver, earlierContexts, prefillChoiceText, prefilledAnswers, prefillMarks, refreshClinicalSummaries, registerClinicalProperties, sameAnswer, startedFreshText,
   type Answers,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
@@ -27,7 +27,7 @@ import { showCorrections } from "./corrections";
 import { showPrefillOrigins } from "./prefillOrigins";
 import { highlightQuestion, questionOf } from "./jump";
 import { useEpisode } from "./EpisodePage";
-import { currentAnswers, useEpisodeHQ, type EpisodeHQ, type HQSet } from "./hq";
+import { allCurrentAnswers, currentAnswers, hqPatient, useEpisodeHQ, type EpisodeHQ, type HQSet } from "./hq";
 import { patientName, type Episode } from "./types";
 
 registerClinicalProperties();
@@ -75,7 +75,10 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const model: Model = useMemo(() => {
-    const m = clinicianModel(set.content, patientVariables(episode));
+    // A score may use earlier sets' answers (S38): the ones that count now, each set's patient's or clinician's.
+    const patientNow = hqPatient(episode);
+    const earlier = earlierContexts(hq.chapters, allCurrentAnswers(hq), "clinician", patientNow).get(set.id);
+    const m = clinicianModel(set.content, patientNow, earlier);
     m.showCompleteButton = false; // "Validate" replaces it
     m.readOnly = !editable;
     if (patient) showCorrections(m, patient);

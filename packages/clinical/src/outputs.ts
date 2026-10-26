@@ -1,6 +1,7 @@
 // Where outputs live on a question, how they are validated, and how {answer} is rendered.
 import { Serializer, type ItemValue, type Question, type SurveyModel } from "survey-core";
-import { bandFor, type Band } from "./logic";
+import type { Band } from "./logic";
+import { bandIn, isGuardedScore } from "./scores";
 import { isClinicianOnly, normalizeOutput, outputsOf } from "./properties";
 import type { AsaGrade, ClinicalOutput } from "./types";
 
@@ -82,8 +83,13 @@ export type ProducedOutput = {
   noteText?: string;
 };
 
+/** A score's result (S38): its value and band, or Incomplete while an input has no answer. */
+export type ScoreResult = { questionId: string; title: string; value?: number; band?: { id: string; label: string }; incomplete: boolean };
+
 export type ComputedOutputs = {
   outputs: ProducedOutput[];
+  /** The scores shown (Calculations that total points or have bands), in order. */
+  scores?: ScoreResult[];
   /** The highest ASA grade among the outputs (CLN-17). */
   suggestedAsa?: { grade: AsaGrade; emergency: boolean };
 };
@@ -101,8 +107,12 @@ const ASA_ORDER: AsaGrade[] = ["I", "II", "III", "IV", "V", "VI"];
 export function computeOutputs(model: SurveyModel): ComputedOutputs {
   const patient = model.getVariable("viewer") === "patient";
   const outputs: ProducedOutput[] = [];
+  const scores: ScoreResult[] = [];
   for (const q of model.getAllQuestions(true, false, true)) {
-    if (q.isEmpty() || (patient && isClinicianOnlyInTree(q))) continue;
+    if (patient && isClinicianOnlyInTree(q)) continue;
+    const score = scoreOf(q);
+    if (score) scores.push(score);
+    if (q.isEmpty()) continue;
     const answer = formatAnswer(q, q.value);
     const base = { questionId: q.name, questionTitle: q.title };
     if (q.getType() === "matrix") {
@@ -138,17 +148,30 @@ export function computeOutputs(model: SurveyModel): ComputedOutputs {
       }
     }
   }
-  return { outputs, suggestedAsa: highestAsa(outputs) };
+  return { outputs, scores, suggestedAsa: highestAsa(outputs) };
+}
+
+/** A Calculation's score result, if it is a score (a total of points, or one with bands). */
+function scoreOf(q: Question): ScoreResult | undefined {
+  if (q.getType() !== "expression") return undefined;
+  const expr = String(q.getPropertyValue("expression") ?? "").trim();
+  const list = q.getPropertyValue("bands");
+  const banded = Array.isArray(list) && list.length > 0;
+  if (!banded && !isGuardedScore(expr) && !expr.startsWith("score(")) return undefined;
+  const base = { questionId: q.name, title: q.title };
+  if (q.isEmpty()) return { ...base, incomplete: isGuardedScore(expr) };
+  const band = bands(q);
+  return { ...base, value: Number(q.value), incomplete: false, ...(band ? { band: { id: band.id, label: band.label } } : {}) };
 }
 
 function note(o: ClinicalOutput, answer: string): string | undefined {
   return o.note ? renderNote(o.note.text, answer) : undefined;
 }
 
-/** A Calculation with bands: the band its value is in. */
+/** A Calculation with bands: the band its value is in (none while a score is Incomplete). */
 function bands(q: Question): Band | undefined {
   const list = q.getType() === "expression" ? q.getPropertyValue("bands") : undefined;
-  return Array.isArray(list) && list.length ? bandFor(list, q.value) : undefined;
+  return Array.isArray(list) && list.length ? bandIn(q.survey as SurveyModel, list, q.value) : undefined;
 }
 
 /** Whether the question, or a group it sits in, is clinician-only. */

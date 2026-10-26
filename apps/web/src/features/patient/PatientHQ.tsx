@@ -36,7 +36,7 @@ import "@/features/video/VideoQuestion"; // draws Video elements (S34)
 import "@/features/information/InformationQuestion"; // draws Information, cleaned (S35)
 import "survey-core/survey-core.css";
 import {
-  answerSaver, estimatedMinutes, estimateText, isSetReadyToSend, modelFor, registerClinicalProperties, sameAnswer, shownSets, type Answers, type AnswerSaver,
+  answerSaver, estimatedMinutes, hqSets, estimateText, isSetReadyToSend, modelFor, registerClinicalProperties, sameAnswer, type Answers, type AnswerSaver, type Earlier,
   type ChapterJson, type SamplePatient,
 } from "@poised/clinical";
 import { ApiError, api } from "@/lib/api";
@@ -159,6 +159,9 @@ export default function PatientHQ({ path, onBehalf }: Props) {
   }, [load]);
 
   const vars = useMemo<SamplePatient | null>(() => (hq ? { name: hq.patient.name, age: hq.patient.age, sex: hq.patient.sex } : null), [hq]);
+  // The earlier sets' answers each set gets (S38), worked out again only when the saved answers change:
+  // not on each keystroke (verification 1).
+  const earlierCache = useRef<{ key: string; value: { shown: QuestionSet[]; earlier: Map<string, Earlier> } } | null>(null);
 
   const setDraft = useCallback((id: string, data: Answers) => setDrafts((d) => ({ ...d, [id]: data })), []);
 
@@ -226,7 +229,11 @@ export default function PatientHQ({ path, onBehalf }: Props) {
   const saved: Record<string, Answers> = { ...hq.answers };
   for (const [id, saver] of savers.current) saved[id] = saver.confirmed ?? {};
 
-  const sets = shownSets(hq.chapters, saved, "patient", vars);
+  // The sets shown, and the earlier sets' answers each gets (S38), from what the server has; worked
+  // out again only when that changes.
+  const earlierKey = JSON.stringify([saved, vars, hq.chapters.map((c) => c.id)]);
+  if (earlierCache.current?.key !== earlierKey) earlierCache.current = { key: earlierKey, value: hqSets(hq.chapters, saved, "patient", vars) };
+  const { shown: sets, earlier } = earlierCache.current.value;
   const open = sets.find((s) => s.id === openId);
   const prefillOf = (id: string): SetPrefill | undefined => {
     const p = hq.prefill?.[id];
@@ -235,9 +242,9 @@ export default function PatientHQ({ path, onBehalf }: Props) {
   // Building a survey per set is not free, so only while the list is showing. A pre-filled set
   // waiting for its card's answer isn't complete yet.
   const listing = !open && !hq.submitted;
-  const toCheck = new Set(listing ? sets.filter((s) => awaitsCheck(s.content, drafts[s.id] ?? saved[s.id], prefillOf(s.id), vars)).map((s) => s.id) : []);
+  const toCheck = new Set(listing ? sets.filter((s) => awaitsCheck(s.content, drafts[s.id] ?? saved[s.id], prefillOf(s.id), vars, earlier.get(s.id))).map((s) => s.id) : []);
   const done = new Set(
-    listing ? sets.filter((s) => !toCheck.has(s.id) && isSetReadyToSend(s.content, saved[s.id], drafts[s.id], vars)).map((s) => s.id) : [],
+    listing ? sets.filter((s) => !toCheck.has(s.id) && isSetReadyToSend(s.content, saved[s.id], drafts[s.id], vars, earlier.get(s.id))).map((s) => s.id) : [],
   );
   // The card's button: Go records it, then the set goes on. Start fresh (S27) also has Go clear the
   // set, so the HQ loads again and the set opens empty (its saver then starts from the new revision).
@@ -316,6 +323,7 @@ export default function PatientHQ({ path, onBehalf }: Props) {
             data={drafts[open.id] ?? saved[open.id] ?? {}}
             saver={saverFor(open.id)}
             vars={vars}
+            earlier={earlier.get(open.id)}
             prefill={prefillOf(open.id)}
             whose={onBehalf ? hq.patient.firstName : undefined}
             onChoose={(choice) => choose(open.id, choice)}
@@ -450,6 +458,8 @@ type SetFormProps = {
   data: Answers;
   saver: AnswerSaver<Answers>;
   vars: SamplePatient;
+  /** The earlier sets' answers, for a score that uses them (S38). */
+  earlier?: Earlier;
   onChange: (data: Answers) => void;
   /** Called with the 409's message; the page then shows it with Reload instead of the set. */
   onConflict: (message: string) => void;
@@ -468,7 +478,7 @@ type SetFormProps = {
 };
 
 /** One Question Set in the patient view. Answers save shortly after each change. */
-function SetForm({ set, data, saver, vars, onChange, onConflict, onError, onClose, flushRef, prefill, whose, onChoose, onNextSet }: SetFormProps) {
+function SetForm({ set, data, saver, vars, earlier, onChange, onConflict, onError, onClose, flushRef, prefill, whose, onChoose, onNextSet }: SetFormProps) {
   // "Not saved" while what's on screen differs from what the server has (e.g. after a failed save).
   const [status, setStatus] = useState<"saving" | "saved" | "unsaved">(() => (sameAnswer(data, saver.confirmed ?? {}) ? "saved" : "unsaved"));
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -477,7 +487,7 @@ function SetForm({ set, data, saver, vars, onChange, onConflict, onError, onClos
   const latest = useRef(data);
 
   const model = useMemo(() => {
-    const m: Model = modelFor(set.content, "patient", vars);
+    const m: Model = modelFor(set.content, "patient", vars, earlier);
     showUnits(m);
     m.showPageTitles = false;
     m.completeText = "Finish this section";

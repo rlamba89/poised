@@ -5,7 +5,7 @@ import { ActionIcon, Alert, Badge, Button, Card, Group, Stack, Text, TextInput, 
 import { IconPlayerPlay, IconTrash } from "@tabler/icons-react";
 import type { SurveyModel } from "survey-core";
 import {
-  computeOutputs, newId, outputLines, runTestCase, setTestCases, testCasesOf, type ChapterJson, type TestCase, type TestResult,
+  computeOutputs, earlierKeysUsed, newId, outputLines, runTestCase, setTestCases, testCasesOf, type ChapterJson, type TestCase, type TestResult,
   type Viewer,
 } from "@poised/clinical";
 import { api, ApiError } from "@/lib/api";
@@ -21,6 +21,9 @@ export function TestCases(props: {
   viewer: Viewer;
   patient: SamplePatient;
   model: SurveyModel;
+  /** The earlier Question Sets and the answers to them given in the preview (S38). */
+  earlier: { name: string; doc: ChapterJson }[] | null;
+  earlierValues: Record<string, unknown>;
   onSaved: (content: ChapterJson, revision: number) => void;
   onLoad: (tc: TestCase) => void;
 }) {
@@ -59,11 +62,15 @@ export function TestCases(props: {
       answers: structuredClone(model.data),
       expected: outputLines(computeOutputs(model)),
     };
+    const given = Object.fromEntries(Object.entries(props.earlierValues).filter(([, v]) => v !== undefined));
+    if (Object.keys(given).length) tc.earlier = structuredClone(given);
     setName("");
     save([...cases, tc]);
   };
-  const runAll = () => setResults(Object.fromEntries(cases.map((tc) => [tc.id, runTestCase(content, tc)])));
+  const runAll = () => setResults(Object.fromEntries(cases.map((tc) => [tc.id, runTestCase(content, tc, props.earlier ?? [])])));
   const ran = Object.keys(results).length > 0;
+  // A case's earlier answers need the earlier sets' points and bands (S38): wait for them.
+  const waiting = earlierKeysUsed(content).length > 0 && !props.earlier;
   const failed = cases.filter((tc) => results[tc.id] && !results[tc.id].pass).length;
 
   return (
@@ -71,7 +78,7 @@ export function TestCases(props: {
       <Group justify="space-between" mb="xs">
         <Title order={5}>Test cases</Title>
         {cases.length > 0 && (
-          <Button size="compact-xs" variant="light" leftSection={<IconPlayerPlay size={12} />} onClick={runAll}>
+          <Button size="compact-xs" variant="light" leftSection={<IconPlayerPlay size={12} />} onClick={runAll} disabled={waiting}>
             Run all
           </Button>
         )}

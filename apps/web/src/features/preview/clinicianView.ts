@@ -3,11 +3,13 @@
 // (.sj-clinician-layout in globals.css) can put them on the right.
 import { Model } from "survey-core";
 import {
-  isClinicianOnly, setViewer, showBands, withClinicalSummaries, withoutSurveyHtml, SUMMARY_PREFIX, type ChapterJson, type SamplePatient,
+  applyEarlier, isClinicianOnly, setViewer, showBands, withClinicalSummaries, withoutSurveyHtml, SUMMARY_PREFIX, type ChapterJson, type Earlier,
+  type SamplePatient,
 } from "@poised/clinical";
 import { showUnits } from "./units";
 
-export function clinicianModel(content: ChapterJson, patient?: SamplePatient): Model {
+/** `earlier`: the earlier Question Sets' answers, for a score that uses them (S38, earlierContexts). */
+export function clinicianModel(content: ChapterJson, patient?: SamplePatient, earlier?: Earlier): Model {
   const m = new Model(withClinicalSummaries(withoutSurveyHtml(content)));
   setViewer(m, "clinician");
   if (patient) {
@@ -15,6 +17,7 @@ export function clinicianModel(content: ChapterJson, patient?: SamplePatient): M
     m.setVariable("patientAge", patient.age);
     m.setVariable("patientSex", patient.sex);
   }
+  applyEarlier(m, earlier);
   showUnits(m);
   showBands(m);
   m.widthMode = "responsive"; // two columns need the room

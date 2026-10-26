@@ -141,20 +141,26 @@ function start(value: string | undefined): LogicGroup | undefined {
   return g;
 }
 
-/** One rule: question → comparison → value. */
-function RuleRow({ subjects, rule, readOnly, onChange }: { subjects: Subject[]; rule: Rule; readOnly: boolean; onChange: (r: Rule | null) => void }) {
+/**
+ * One rule: question → comparison → value. A score's points line (S38) uses it too, with its own
+ * subjects, `answeredOnly` false (no "is answered": a line's input must be answered anyway) and its own labels.
+ */
+export function RuleRow({ subjects, rule, readOnly, onChange, answered = true, placeholder = "Select a question…", removeLabel = "Remove condition" }: {
+  subjects: Subject[]; rule: Rule; readOnly: boolean; onChange: (r: Rule | null) => void; answered?: boolean; placeholder?: string; removeLabel?: string;
+}) {
   const subject = subjects.find((s) => (rule.fn === "band" ? s.id === `band:${rule.left}` : s.left === rule.left && !s.fn));
   const groups = [...new Set(subjects.map((s) => s.group))].map((group) => ({
     group,
     items: subjects.filter((s) => s.group === group).map((s) => ({ value: s.id, label: s.label })),
   }));
-  const ops = subject ? OPS[subject.type] : [];
+  const opsOf = (s: Subject) => OPS[s.type].filter((o) => answered || (o.op !== "empty" && o.op !== "notempty"));
+  const ops = subject ? opsOf(subject) : [];
   const choice = subject ? opChoiceOf(subject, rule) : undefined;
 
   const pickSubject = (id: string | null) => {
     const s = subjects.find((x) => x.id === id);
     if (!s) return onChange({ left: "", op: "eq" });
-    const first = OPS[s.type][0];
+    const first = opsOf(s)[0];
     onChange({ left: s.left, fn: s.fn ?? first.fn, op: first.op });
   };
   const pickOp = (key: string | null) => {
@@ -171,17 +177,17 @@ function RuleRow({ subjects, rule, readOnly, onChange }: { subjects: Subject[]; 
           style={{ flex: 1 }}
           size="xs"
           aria-label="Question"
-          placeholder="Select a question…"
+          placeholder={placeholder}
           data={groups}
           value={subject?.id ?? null}
           searchable
           disabled={readOnly}
           onChange={pickSubject}
           comboboxProps={{ withinPortal: true }}
-          nothingFoundMessage="No earlier question matches"
+          nothingFoundMessage={answered ? "No earlier question matches" : "Nothing matches"}
         />
         {!readOnly && (
-          <ActionIcon variant="subtle" color="red" aria-label="Remove condition" onClick={() => onChange(null)} mt={2}>
+          <ActionIcon variant="subtle" color="red" aria-label={removeLabel} onClick={() => onChange(null)} mt={2}>
             <IconTrash size={14} />
           </ActionIcon>
         )}

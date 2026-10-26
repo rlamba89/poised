@@ -507,7 +507,7 @@ export const EXPRESSION_KEYS = ["visibleIf", "requiredIf", "enableIf", "expressi
 
 /**
  * Rewrites references after a copy or a rename: `{old}`, `{panel.old}`, `{old.row}`,
- * `'old'` in score() / band(), and the option IDs compared with a renamed question.
+ * `'old'` in score() / band() / allAnswered() (S38), and the option IDs compared with a renamed question.
  */
 export function rewriteReferences(expr: string, names: Map<string, string>, options = new Map<string, Map<string, string>>()): string {
   return expr
@@ -519,8 +519,8 @@ export function rewriteReferences(expr: string, names: Map<string, string>, opti
       })
     .replace(/\{((?:panel\.)?)([A-Za-z0-9_]+)((?:\.[A-Za-z0-9_]+)?)\}/g, (all, prefix: string, q: string, sub: string) =>
       names.has(q) ? `{${prefix}${names.get(q)}${sub}}` : all)
-    .replace(/\b(score|band)\(([^)]*)\)/g, (all, fn: string, args: string) =>
-      `${fn}(${args.replace(/'([^']*)'/g, (a, n: string) => `'${names.get(n) ?? n}'`)})`);
+    .replace(/\b(score|band|allAnswered)\(([^)]*)\)/g, (all, fn: string, args: string) =>
+      `${fn}(${args.replace(/'([^'.]*)((?:\.[^']*)?)'/g, (a, n: string, sub: string) => `'${names.get(n) ?? n}${sub}'`)})`);
 }
 
 /** The question names an expression refers to. */
@@ -528,7 +528,8 @@ export function referencesIn(expr: string | undefined): string[] {
   if (!expr) return [];
   const out = new Set<string>();
   for (const m of expr.matchAll(/\{(?:panel\.)?([A-Za-z0-9_]+)/g)) out.add(m[1]);
-  for (const m of expr.matchAll(/\b(?:score|band)\(([^)]*)\)/g)) for (const n of m[1].matchAll(/'([^']*)'/g)) out.add(n[1]);
+  // A score's inputs (S38) may name part of an answer, `q.bmi`: the question is `q`.
+  for (const m of expr.matchAll(/\b(?:score|band|allAnswered)\(([^)]*)\)/g)) for (const n of m[1].matchAll(/'([^']*)'/g)) out.add(n[1].split(".")[0]);
   return [...out];
 }
 
@@ -618,6 +619,10 @@ export function expressionsIn(doc: ChapterJson): { expr: string; owner: string; 
     }
     for (const o of optionsOf(el)) {
       if (o.visibleIf) out.push({ expr: o.visibleIf, owner: el.name, label: `${label} option "${o.text}"`, page, el, key: "choice" });
+    }
+    // A band's "also when" condition (S38: STOP-Bang's high-risk rule).
+    for (const b of Array.isArray(el.bands) ? (el.bands as { label?: string; when?: string }[]) : []) {
+      if (typeof b.when === "string" && b.when.trim()) out.push({ expr: b.when, owner: el.name, label: `${label} band "${b.label ?? ""}"`, page, el, key: "band" });
     }
   }
   for (const t of triggersOf(doc)) {

@@ -1,7 +1,7 @@
 // The incumbent's question types SurveyJS doesn't have, built from its own questions so the
 // preview and the patient runtime render them (plan-redesign.md, step 5).
-import { ComponentCollection, FunctionFactory, Serializer, type Question, type SurveyModel } from "survey-core";
-import { bandFor } from "./logic";
+import { ComponentCollection, FunctionFactory, Serializer, settings, type Question, type SurveyModel } from "survey-core";
+import { ALL_ANSWERED, bandIn, earlierPoints, earlierQuestion, inputAnswered, isGuardedScore } from "./scores";
 import { registerVideoType } from "./video";
 
 /** Registers Medication, Admissions, BMI, Profile and Video (S34), and the flags the editor stores. Safe to call twice. */
@@ -116,13 +116,24 @@ export function registerQuestionTypes(): void {
  * - `score('q_a', 'q_b')`: the total of the chosen options' scores
  * - `band('q_calc')`: the ID of the band a Calculation's value falls in
  * - `bmi(heightCm, weightKg)`: the body mass index, to one decimal place
+ * - `allAnswered('q_a', 'patientAge', …)` (S38): whether every input of a score has an answer
+ * score() and band() also find questions in earlier Question Sets (scores.ts, applyEarlier).
  */
 function registerClinicalFunctions(): void {
+  // SurveyJS skips a Calculation whose `{…}` variables didn't change. A score names its questions as
+  // text ('q_a'), so a score with a line testing {patientAge} would skip a change to q_a (S38 test
+  // report 1, F-1). Calculations always run again instead, as before SurveyJS tracked them.
+  settings.expressionQuestionTrackDependencies = false;
   FunctionFactory.Instance.register("score", function (this: { survey?: SurveyModel }, params: unknown[]) {
     let total = 0;
     for (const name of params) {
       const q = this.survey?.getQuestionByName(String(name)) as (Question & { choices?: { value: unknown; score?: number }[] }) | null;
-      if (!q || q.isEmpty()) continue;
+      if (!q) {
+        const earlier = earlierQuestion(this.survey, String(name));
+        if (earlier) total += earlierPoints(earlier.el, earlier.value);
+        continue;
+      }
+      if (q.isEmpty()) continue;
       const chosen: unknown[] = Array.isArray(q.value) ? q.value : [q.value];
       for (const c of q.choices ?? []) if (chosen.includes(c.value)) total += Number(c.score ?? 0);
     }
@@ -130,8 +141,15 @@ function registerClinicalFunctions(): void {
   });
   FunctionFactory.Instance.register("band", function (this: { survey?: SurveyModel }, params: unknown[]) {
     const q = this.survey?.getQuestionByName(String(params[0]));
-    if (!q || q.isEmpty()) return "";
-    return bandFor(q.getPropertyValue("bands"), q.value)?.id ?? "";
+    if (!q) {
+      const earlier = earlierQuestion(this.survey, String(params[0]));
+      return (earlier && bandIn(this.survey, earlier.el.bands, earlier.value)?.id) ?? "";
+    }
+    if (q.isEmpty()) return "";
+    return bandIn(this.survey, q.getPropertyValue("bands"), q.value)?.id ?? "";
+  });
+  FunctionFactory.Instance.register(ALL_ANSWERED, function (this: { survey?: SurveyModel }, params: unknown[]) {
+    return params.every((name) => inputAnswered(this.survey, String(name)));
   });
   FunctionFactory.Instance.register("bmi", (params: unknown[]) => {
     const [h, w] = params.map(Number);
@@ -139,10 +157,20 @@ function registerClinicalFunctions(): void {
   });
 }
 
-/** Shows a Calculation's band after its value, e.g. "5 (High)" (CAL-02). Call once per survey model. */
+/**
+ * Shows a Calculation's band after its value, e.g. "5 (High)" (CAL-02), and "Incomplete" for a score
+ * with an input not answered yet (S38). Call once per survey model.
+ */
 export function showBands(model: SurveyModel): void {
   model.onGetExpressionDisplayValue.add((_, o) => {
-    const band = bandFor(o.question.getPropertyValue("bands"), o.value);
+    if ((o.value === null || o.value === undefined || o.value === "") && isGuardedScore(o.question.getPropertyValue("expression"))) {
+      o.displayValue = INCOMPLETE;
+      return;
+    }
+    const band = bandIn(model, o.question.getPropertyValue("bands"), o.value);
     if (band) o.displayValue = `${o.displayValue} (${band.label})`;
   });
 }
+
+/** What a score with a missing input shows (S38). */
+export const INCOMPLETE = "Incomplete";

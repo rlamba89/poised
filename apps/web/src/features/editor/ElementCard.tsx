@@ -10,8 +10,8 @@ import {
 import {
   bandsOf, calcFormOf, canAskFresh, checkVideo, formatLength, providerName, choiceDisplayOf, keyPlace, copyElement, countDisclosures, dateSettingsOf, describeLogic, enableIfToReadOnly,
   findElement, groupsToMoveInto, hasQuestionOutputs, isLocked, kindOf, moveElement, moveElementTo, moveOutOfGroup, numberSettingsOf, optionsOf, pageTitle, pagesOf, informationPreview,
-  repeatSettingsOf, summariesIn, textFormatOf, textOf, updateElement, DATE_FORMATS, TEXT_FORMATS, type ChoiceJson, type ElementJson, type Part,
-  type Target,
+  readyScoreAround, readyScoreOf, repeatSettingsOf, summariesIn, textFormatOf, textOf, updateElement, DATE_FORMATS, TEXT_FORMATS, type ChoiceJson, type ElementJson, type Part,
+  type ChapterJson, type Target,
 } from "@poised/clinical";
 import { AddContentBar } from "./AddContentBar";
 import { useEditor } from "./context";
@@ -60,7 +60,11 @@ function ElementCard(props: { el: ElementJson; index: number; count: number; tar
   const required = describeLogic(ed.doc, el.requiredIf as string | undefined);
   const readOnlyWhen = describeLogic(ed.doc, enableIfToReadOnly(el.enableIf as string | undefined));
   const otherPages = pagesOf(ed.doc).map((p, i) => ({ p, i })).filter(({ p }) => p.name !== ed.pageName);
-  const intoGroups = groupsToMoveInto(ed.doc, el.name);
+  // A ready-made score (S38): its questions stay as published, in its Group; the Group can be moved or deleted.
+  const ready = readyScoreAround(ed.doc, el.name);
+  const inReady = !!ready && ready.group.name !== el.name;
+  const readyGroup = !!ready && !inReady;
+  const intoGroups = groupsToMoveInto(ed.doc, el.name).filter((g) => !readyScoreOf(g));
   const parent = findElement(ed.doc, el.name)?.parent;
 
   const classes = [css.card];
@@ -83,7 +87,7 @@ function ElementCard(props: { el: ElementJson; index: number; count: number; tar
         e.stopPropagation();
         if (!locked) ed.select(el.name);
       }}
-      draggable={!ed.readOnly}
+      draggable={!ed.readOnly && !inReady}
       onDragStart={(e) => {
         e.stopPropagation();
         ed.setDragging(el.name);
@@ -102,6 +106,8 @@ function ElementCard(props: { el: ElementJson; index: number; count: number; tar
         setDropHere(false);
         const dragged = ed.dragging;
         ed.setDragging(null);
+        // Nothing goes into a ready-made score's Group (S38).
+        if (inReady) return;
         if (dragged && dragged !== el.name) ed.change((d) => moveElementTo(d, dragged, { ...target, index }));
       }}
     >
@@ -123,17 +129,24 @@ function ElementCard(props: { el: ElementJson; index: number; count: number; tar
           {locked && (
             <Badge size="sm" variant="outline" color="gray" radius="sm" leftSection={<IconLock size={10} />}>Locked</Badge>
           )}
+          {ready && (
+            <Badge size="sm" variant="outline" color="blue" radius="sm" leftSection={<IconLock size={10} />} data-testid="ready-made">
+              {readyGroup ? `Ready-made: ${ready.score.name}` : "Ready-made"}
+            </Badge>
+          )}
           <KeyBadge el={el} />
         </span>
-        {!ed.readOnly && (
+        {!ed.readOnly && !inReady && (
           <span className={css.cardActions}>
             {!locked && (
               <>
+                {!readyGroup && (
                 <Tooltip label="Copy">
                   <ActionIcon variant="subtle" color="gray" size="sm" aria-label="Copy" onClick={(e) => act(e, () => ed.change((d) => copyElement(d, el.name).doc))}>
                     <IconCopy size={15} />
                   </ActionIcon>
                 </Tooltip>
+                )}
                 <Tooltip label="Move up">
                   <ActionIcon variant="subtle" color="gray" size="sm" aria-label="Move up" disabled={index === 0} onClick={(e) => act(e, () => ed.change((d) => moveElement(d, el.name, -1)))}>
                     <IconArrowUp size={15} />
@@ -207,7 +220,7 @@ function ElementCard(props: { el: ElementJson; index: number; count: number; tar
         <>
           <div className={css.title}>
             {el.visibleIf && <IconGitBranch size={16} className={css.branch} />}
-            {selected && !ed.readOnly && kind !== "profile" ? (
+            {selected && !ed.readOnly && kind !== "profile" && !ready ? (
               <InlineTitle el={el} />
             ) : (
               <span>
@@ -217,6 +230,7 @@ function ElementCard(props: { el: ElementJson; index: number; count: number; tar
             )}
           </div>
           {textOf(el.description) && <Text size="sm" className={css.description}>{textOf(el.description)}</Text>}
+          {readyGroup && <Text size="xs" c="dimmed" mt={4}>{ready.score.licence}</Text>}
           {!isGroup && <Body el={el} />}
         </>
       )}
@@ -241,6 +255,20 @@ function ElementCard(props: { el: ElementJson; index: number; count: number; tar
       )}
     </div>
   );
+}
+
+/**
+ * A score in words (S38): "Total of the scores of 3 questions (2 in earlier Question Sets), plus 2 points lines".
+ */
+function scoreSummary(f: { questions: string[]; lines?: unknown[] }, doc: ChapterJson): string {
+  const n = f.questions.length;
+  const earlier = f.questions.filter((q) => !findElement(doc, q)).length;
+  const lines = f.lines?.length ?? 0;
+  const parts = [
+    ...(n ? [`Total of the scores of ${n} question${n === 1 ? "" : "s"}${earlier ? ` (${earlier} in earlier Question Sets)` : ""}`] : []),
+    ...(lines ? [`${n ? "plus " : ""}${lines} points line${lines === 1 ? "" : "s"}`] : []),
+  ];
+  return parts.join(", ") || "Total of the scores of 0 questions";
 }
 
 /**
@@ -524,7 +552,7 @@ function Body({ el }: { el: ElementJson }) {
       const what = !el.expression
         ? "No formula yet. Choose one in Settings."
         : f.kind === "score"
-          ? `Total of the scores of ${f.questions.length} question${f.questions.length === 1 ? "" : "s"}`
+          ? scoreSummary(f, ed.doc)
           : f.kind === "years"
             ? "Years since a date"
             : f.kind === "bmi"
@@ -696,7 +724,7 @@ function GroupBody({ el, pageElements, target }: { el: ElementJson; pageElements
           Add content or drag and drop existing content in to this {el.patientPage ? "Section" : "Group"}
         </div>
       )}
-      {selected && <AddContentBar target={inner} pageElements={pageElements} inside={el} />}
+      {selected && !readyScoreOf(el) && <AddContentBar target={inner} pageElements={pageElements} inside={el} />}
       {el.type === "paneldynamic" && (
         <Button size="xs" variant="default" leftSection={<IconPlus size={14} />} tabIndex={-1} w="fit-content">
           {textOf(el.panelAddText) || "Add another"}

@@ -8,7 +8,7 @@ import { allElements, findElement, pagesOf, pageTitle, type ChapterJson } from "
 import { computeOutputs, isClinicianOnlyInTree } from "./outputs";
 import { registerClinicalProperties } from "./properties";
 import { prefilledAnswers, prefillMarks, type PrefillMark, type SetPrefill } from "./prefill";
-import { describeAnswer, sameAnswer, shownSets, type Answers } from "./respondent";
+import { describeAnswer, hqSets, sameAnswer, shownSets, type Answers } from "./respondent";
 import { summariesIn, summaryOwners } from "./summary";
 import { modelFor, type SamplePatient } from "./testcases";
 import type { Viewer } from "./viewer";
@@ -61,9 +61,11 @@ export function poaSummary(
 ): PoaSet[] {
   registerClinicalProperties();
   const out: PoaSet[] = [];
-  for (const set of shownSets(sets, answers, viewer, patient)) {
+  // A score may use earlier sets' answers (S38).
+  const { shown, earlier } = hqSets(sets, answers, viewer, patient);
+  for (const set of shown) {
     const data = answers[set.id] ?? {};
-    const model = modelFor(set.content, viewer, patient);
+    const model = modelFor(set.content, viewer, patient, earlier.get(set.id));
     model.data = data;
     const before = original?.[set.id];
     const pages = new Map<string, PoaPage>();

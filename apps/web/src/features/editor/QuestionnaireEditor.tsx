@@ -7,7 +7,7 @@ import { Alert, Anchor, Avatar, Badge, Button, Center, Group, Loader, Menu, Moda
 import { IconAlertTriangle, IconArrowLeft, IconCopyPlus, IconEye, IconLanguage, IconLogout, IconSend } from "@tabler/icons-react";
 import {
   addElement, addPage, adoptKey, chapterConditionProblems, combineChapters, copyPage, deleteElement, deletePage, dependentsOf, elementLabel,
-  adoptionLosses, findElement, findPage, insertFromLibrary, logicProblems, optionMapFor, renameReferences, movePage, movePageTo, pageTitle, pagesOf, takenNames, type ChapterJson,
+  adoptionLosses, findElement, findPage, insertFromLibrary, insertReadyScore, namesInElement, READY_SCORES, stopBangGroup, logicProblems, optionMapFor, renameReferences, movePage, movePageTo, pageTitle, pagesOf, takenNames, type ChapterJson,
   type ElementJson, type Kind, type Target,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
@@ -20,6 +20,7 @@ import { DisclosureModal, type DisclosureTarget } from "./DisclosureModal";
 import { LibraryWindow, SameAsWindow, SaveToLibraryWindow, type Candidate, type LibraryQuestion } from "./library";
 import { PageLogic } from "./LogicEditor";
 import { PublishModal } from "./PublishModal";
+import { ReadyScoreWindow } from "./ReadyScoreWindow";
 import { useQuestionKeys } from "./questionKeys";
 import { SettingsPanel, type PanelTab } from "./SettingsPanel";
 import { StructurePanel, type Selection } from "./StructurePanel";
@@ -69,6 +70,8 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
   const [publishing, setPublishing] = useState(false);
   // The question library and "Same as…" (S24): where to insert, and which question is being saved or linked.
   const [libraryTarget, setLibraryTarget] = useState<Target | null>(null);
+  // Where a ready-made score is being inserted (S38).
+  const [readyTarget, setReadyTarget] = useState<Target | null>(null);
   const [savingToLibrary, setSavingToLibrary] = useState<string | null>(null);
   const [sameAs, setSameAs] = useState<string | null>(null);
   // Whole-trust super clinicians and admins use the trust's library (S24 answers 2), as Go checks.
@@ -178,6 +181,7 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
       select: selectElement,
       change,
       openLibrary: librarian && !readOnly ? setLibraryTarget : null,
+      openReadyScore: readOnly ? null : setReadyTarget,
       add: (kind: Kind, target: Target) => {
         let added = "";
         change((d) => {
@@ -193,7 +197,16 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
         setConfirm({
           title: "Delete this?",
           body: `“${label}” will be deleted, with its options and disclosures.`,
-          dependents: dependentsOf(doc, name),
+          // A later set's score may use it too (S38).
+          dependents: [
+            ...dependentsOf(doc, name),
+            ...(data?.chapters ?? []).flatMap((c) => {
+              const other = c.id !== chapterId ? store.get(c.id)?.doc : undefined;
+              // A Group's questions too (verification 2: deleting STOP-Bang names the scores that use its questions).
+              const names = el ? namesInElement(el) : [name];
+              return other ? [...new Set(names.flatMap((n) => dependentsOf(other, n)))].map((d) => `${c.name} · ${d}`) : [];
+            }),
+          ],
           onConfirm: () => {
             change((d) => deleteElement(d, name));
             if (selected === name) setSelected(null);
@@ -228,6 +241,25 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
     let added = "";
     change((d) => {
       const r = insertFromLibrary(d, libraryTarget, q.element);
+      added = r.name;
+      return r.doc;
+    });
+    if (added) selectElement(added);
+    return "";
+  };
+  // A ready-made score (S38): its keys are fixed, so an HQ has it once.
+  const insertReadyScoreHere = (id: string, bmi: string): string => {
+    if (!readyTarget) return "";
+    if (data && !data.chapters.every((c) => store.get(c.id))) return "The questionnaire is still loading. Try again in a moment.";
+    const name = READY_SCORES.find((r) => r.id === id)?.name ?? id;
+    // A copy: findElement gives a page without elements an empty list, and the store's documents mustn't change.
+    if (allSets().some((d) => findElement(structuredClone(d), id))) return `This HQ already has ${name}. A ready-made score can be in an HQ only once.`;
+    // Its questions' keys are fixed: one adopted elsewhere with Same as… would repeat (verification 1, F3).
+    const taken = alreadyHere(stopBangGroup(bmi));
+    if (taken) return taken;
+    let added = "";
+    change((d) => {
+      const r = insertReadyScore(d, readyTarget, id, bmi);
       added = r.name;
       return r.doc;
     });
@@ -358,9 +390,12 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
   const earlier = earlierSets.every((c) => store.get(c.id))
     ? combineChapters(earlierSets.map((c) => ({ name: c.name, doc: store.get(c.id)!.doc })))
     : undefined;
+  const laterSets = chapter && data ? data.chapters.slice(data.chapters.indexOf(chapter) + 1) : [];
+  const later = laterSets.every((c) => store.get(c.id)) ? combineChapters(laterSets.map((c) => ({ name: c.name, doc: store.get(c.id)!.doc }))) : undefined;
   const problems = [
     ...(doc && earlier ? chapterConditionProblems(doc, earlier).map((message) => ({ label: "This Question Set", message, owner: "" })) : []),
-    ...(doc ? logicProblems(doc) : []),
+    // A score may use earlier sets' questions (S38): checked once they've loaded.
+    ...(doc ? logicProblems(doc, { earlier, later }) : []),
   ];
 
   return (
@@ -489,6 +524,7 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
               onSaveToLibrary={librarian ? () => setSavingToLibrary(selected) : undefined}
               onSameAs={!readOnly ? () => setSameAs(selected) : undefined}
               libraryPath={librarian ? trustPath : undefined}
+              earlier={earlier}
             />
           )}
           {!showSettings && logicPage && doc && (
@@ -552,6 +588,7 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
         onOpen={reloadKeys}
       />
 
+      <ReadyScoreWindow opened={!!readyTarget} doc={doc} earlier={earlier} onClose={() => setReadyTarget(null)} onInsert={insertReadyScoreHere} />
       <LibraryWindow opened={!!libraryTarget} trustPath={trustPath} onClose={() => setLibraryTarget(null)} onInsert={insertLibraryQuestion} />
       <SaveToLibraryWindow
         element={savingToLibrary && doc ? (findElement(doc, savingToLibrary)?.el ?? null) : null}

@@ -14,7 +14,7 @@ import {
 } from "@mantine/core";
 import { IconPrinter } from "@tabler/icons-react";
 import {
-  ageFrom, patientVariables, poaSummary, prefillChoiceText, prefillSourceText, reportedBmi, startedFreshText, type PoaCapture, type PoaSet,
+  ageFrom, poaSummary, prefillChoiceText, prefillSourceText, reportedBmi, startedFreshText, type PoaCapture, type PoaSet,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { nationalIdLabel } from "@/lib/config";
@@ -22,7 +22,7 @@ import { formatDate, formatDateTime, formatDay, formatOptionalDate } from "@/lib
 import { StatusBadge } from "./EpisodeList";
 import { useEpisode } from "./EpisodePage";
 import { GeneralNotes } from "./GeneralNotes";
-import { currentAnswers, useEpisodeHQ, type EpisodeHQ } from "./hq";
+import { allCurrentAnswers, hqPatient, useEpisodeHQ, type EpisodeHQ } from "./hq";
 import { restoreSpot, saveSpot, takeSpot, validateAt } from "./jump";
 import { sessionStore } from "@/lib/chunkError";
 import { SaveError, isStale, StatusControl } from "./StatusControl";
@@ -90,12 +90,11 @@ export default function PoaSummary({ base, episodeId }: { base: string; episodeI
 type SummaryProps = { tab: Tab; episode: Episode; events: EpisodeEvent[]; hq: EpisodeHQ; path: string; onChanged: () => void; episodeId: string };
 
 function Summary({ tab, episode: e, events, hq, path, onChanged, episodeId }: SummaryProps) {
-  const vars = useMemo(() => patientVariables(e), [e]);
+  const vars = useMemo(() => hqPatient(e), [e]);
   const validated = tab === "validated";
   const sets = useMemo(() => {
     if (validated) {
-      const answers = Object.fromEntries(hq.chapters.map((c) => [c.id, currentAnswers(hq, c.id)]));
-      return poaSummary(hq.chapters, answers, "clinician", vars, hq.patient, hq.prefill);
+      return poaSummary(hq.chapters, allCurrentAnswers(hq), "clinician", vars, hq.patient, hq.prefill);
     }
     return poaSummary(hq.chapters.filter((c) => c.audience === "patient"), hq.patient, "patient", vars, undefined, hq.prefill);
   }, [validated, hq, vars]);

@@ -21,3 +21,5 @@ export * from "./prefill";
 export * from "./video";
 export * from "./information";
 export * from "./estimate";
+export * from "./scores";
+export * from "./ready";
