@@ -1,10 +1,11 @@
 // Filling in an episode's HQ (plan-workflow.md Steps 3–4): the patient on their link, and the
 // clinician validating. The same rules decide which Question Sets are shown and when one is done.
 import type { Question } from "survey-core";
-import type { ChapterJson } from "./doc";
-import { formatAnswer, isChoiceQuestion } from "./outputs";
+import { asaRank, suggestAsa, type SuggestedAsa } from "./asa";
+import { referencesIn, SUGGESTED_ASA, type ChapterJson } from "./doc";
+import { computeOutputs, formatAnswer, isChoiceQuestion, type ProducedOutput } from "./outputs";
 import { registerClinicalProperties } from "./properties";
-import { combineChapters, isChapterShown } from "./questionSets";
+import { chapterConditionOf, combineChapters, isChapterShown } from "./questionSets";
 import { earlierKeysUsed, isEmpty, type Earlier } from "./scores";
 import { modelFor, type SamplePatient } from "./testcases";
 import type { Viewer } from "./viewer";
@@ -80,17 +81,20 @@ export function earlierContexts<T extends { id: string; name?: string; content: 
 
 /**
  * Both in one pass: the sets shown, and what each gets from the sets before it. For an HQ whose
- * scores use only their own set, the saved answers decide, as before S38, and no survey is built.
- * Otherwise each shown set's survey is built with the sets before it, and the next set's condition
- * sees the saved answers with each Calculation's worked-out value in place of its saved one (an
- * Incomplete score has none).
+ * scores use only their own set, and whose sets' conditions don't test the suggested ASA, the saved
+ * answers decide, as before S38, and no survey is built. Otherwise each shown set's survey is built
+ * with the sets before it, and the next set's condition sees the saved answers with each
+ * Calculation's worked-out value in place of its saved one (an Incomplete score has none), and
+ * `{suggestedAsa}` (S39 answers 2): the suggested ASA from the disclosures of the sets shown before
+ * it, as a number (III is 3), 0 for none.
  */
 export function hqSets<T extends { id: string; name?: string; content: ChapterJson }>(
   sets: T[], answers: Record<string, Answers | undefined>, viewer: Viewer, patient: SamplePatient,
 ): { shown: T[]; earlier: Map<string, Earlier> } {
   let seen: Answers = { patientAge: patient.age, patientSex: patient.sex, viewer };
   const earlier = new Map<string, Earlier>();
-  if (!sets.some((s) => earlierKeysUsed(s.content).length)) {
+  const usesAsa = sets.some((s) => testsSuggestedAsa(s.content));
+  if (!usesAsa && !sets.some((s) => earlierKeysUsed(s.content).length)) {
     const shown = sets.filter((s) => {
       if (!isChapterShown(s.content, seen)) return false;
       seen = { ...seen, ...answers[s.id] };
@@ -102,6 +106,8 @@ export function hqSets<T extends { id: string; name?: string; content: ChapterJs
   const shown: T[] = [];
   const before: { name: string; doc: ChapterJson }[] = [];
   let values: Answers = {};
+  const produced: ProducedOutput[] = [];
+  if (usesAsa) seen = { ...seen, [SUGGESTED_ASA]: 0 };
   for (const set of sets) {
     if (!isChapterShown(set.content, seen)) continue;
     shown.push(set);
@@ -116,12 +122,42 @@ export function hqSets<T extends { id: string; name?: string; content: ChapterJs
       if (calc) worked[q.name] = q.isEmpty() ? undefined : q.value;
       if ((calc || (q.isVisible && q.isParentVisible)) && !q.isEmpty()) next[q.name] = q.value;
     }
+    if (usesAsa) produced.push(...computeOutputs(m).outputs);
     m.dispose();
     values = next;
     seen = { ...seen, ...answers[set.id], ...worked };
+    if (usesAsa) {
+      const asa = suggestAsa(produced);
+      seen[SUGGESTED_ASA] = asa ? asaRank(asa.grade) : 0;
+    }
     before.push({ name: set.name ?? set.id, doc: set.content });
   }
   return { shown, earlier };
+}
+
+/** Whether a Question Set's condition tests the suggested ASA (only a clinician set's may). */
+const testsSuggestedAsa = (doc: ChapterJson) => referencesIn(chapterConditionOf(doc) ?? "").includes(SUGGESTED_ASA);
+
+/**
+ * The suggested ASA for the whole HQ (S39, ASA-01): the highest grade across every shown Question
+ * Set's disclosures, with its reasons, each set built as every view builds it (hqSets: a hidden set
+ * gives nothing, a score may use earlier sets' answers). `viewer` "clinician" with the answers that
+ * count gives the validated suggestion; "patient" with the patient's answers (and their sets only)
+ * gives the patient's. Each reason names its set (`setId`).
+ */
+export function hqSuggestedAsa<T extends { id: string; name?: string; content: ChapterJson }>(
+  sets: T[], answers: Record<string, Answers | undefined>, viewer: Viewer, patient: SamplePatient,
+): SuggestedAsa | undefined {
+  registerClinicalProperties();
+  const { shown, earlier } = hqSets(sets, answers, viewer, patient);
+  const outputs: (ProducedOutput & { setId: string })[] = [];
+  for (const s of shown) {
+    const m = modelFor(s.content, viewer, patient, earlier.get(s.id));
+    m.data = answers[s.id] ?? {};
+    for (const o of computeOutputs(m).outputs) outputs.push({ ...o, setId: s.id });
+    m.dispose();
+  }
+  return suggestAsa(outputs);
 }
 
 /** Key order doesn't matter; a missing answer equals an empty one. */

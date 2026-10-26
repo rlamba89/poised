@@ -331,9 +331,13 @@ function OutputsPanel({ result }: { result: ComputedOutputs }) {
           </div>
         )}
         {suggestedAsa && (
-          <div>
+          <div data-testid="preview-asa">
             <Text size="sm" fw={600}>Suggested ASA</Text>
             <Text size="sm">ASA {suggestedAsa.grade}{suggestedAsa.emergency ? "E" : ""}</Text>
+            {/* Why (S39): each disclosure at that grade, and any emergency one. */}
+            {suggestedAsa.reasons.map((r) => (
+              <Text size="xs" c="dimmed" key={r.text}>{r.text}</Text>
+            ))}
           </div>
         )}
         {flags.length > 0 && (

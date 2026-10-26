@@ -703,6 +703,13 @@ export function isValidExpression(expr: string): boolean {
 /** Values a condition can test besides questions: the sample patient and who is viewing. */
 export const VARIABLES = ["viewer", "patientName", "patientAge", "patientSex"];
 
+/**
+ * The suggested ASA so far (S39 answers 2): a number, 1 for I … 6 for VI, 0 for none. Only a
+ * clinician Question Set's own condition may test it (chapterConditionProblems); respondent.ts
+ * hqSets works it out from the sets shown before.
+ */
+export const SUGGESTED_ASA = "suggestedAsa";
+
 /** Names an expression refers to that are not questions in this chapter (likely typos). */
 export function unknownReferences(doc: ChapterJson, expr: string, variables: string[] = VARIABLES): string[] {
   const names = namesIn(doc);

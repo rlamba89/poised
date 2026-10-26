@@ -16,13 +16,13 @@ import { videoProblems } from "./video";
 export type PublishProblem = { set: string; message: string };
 
 /** Every problem that blocks publishing, Question Set by Question Set, in order. */
-export function publishProblems(sets: { name: string; doc: ChapterJson }[]): PublishProblem[] {
+export function publishProblems(sets: { name: string; doc: ChapterJson; audience?: string }[]): PublishProblem[] {
   registerClinicalProperties(); // test cases need the clinical properties and question types
   const out: PublishProblem[] = [];
   sets.forEach((s, i) => {
     const earlier = combineChapters(sets.slice(0, i));
     const later = combineChapters(sets.slice(i + 1));
-    for (const m of chapterConditionProblems(s.doc, earlier)) out.push({ set: s.name, message: `Question Set condition: ${m}` });
+    for (const m of chapterConditionProblems(s.doc, earlier, s.audience)) out.push({ set: s.name, message: `Question Set condition: ${m}` });
     // A score may use earlier sets' questions, never later ones (S38).
     for (const p of logicProblems(s.doc, { earlier, later })) out.push({ set: s.name, message: `${p.label}: ${p.message}` });
     for (const m of summaryProblems(s.doc)) out.push({ set: s.name, message: m });

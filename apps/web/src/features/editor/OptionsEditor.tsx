@@ -6,8 +6,8 @@ import { useState } from "react";
 import { ActionIcon, Button, Group, Modal, Stack, Switch, Text, Tooltip } from "@mantine/core";
 import { IconArrowDown, IconArrowUp, IconBooks, IconDeviceFloppy, IconList, IconPlus, IconTrash } from "@tabler/icons-react";
 import {
-  addChoice, kindOf, newId, optionsOf, orderOptions, setNoneOption, setSpecialOption, textOf, updateElement, SPECIAL_OPTIONS,
-  type ChapterJson, type ChoiceJson, type CodeRef, type ElementJson, type SpecialOption,
+  addChoice, afterCodeAdded, kindOf, newId, optionsOf, orderOptions, setNoneOption, setSpecialOption, textOf, updateElement, SPECIAL_OPTIONS,
+  type AsaChoice, type ChapterJson, type ChoiceJson, type CodeRef, type ElementJson, type SpecialOption,
 } from "@poised/clinical";
 import { CodePicker } from "@/features/outputs/CodePicker";
 import { BlurNumber, BlurText } from "./inputs";
@@ -171,12 +171,14 @@ export function OptionsEditor({ el, readOnly, change }: { el: ElementJson; readO
       <CodeImport
         opened={importing}
         onClose={() => setImporting(false)}
-        onAdd={(codes) => {
+        onAdd={(codes, guide) => {
           const taken = new Set(all.map((o) => o.value));
           const added = codes.map((c) => {
             const value = newId("o", 4, (id) => taken.has(id));
             taken.add(value);
-            return { value, text: c.display, clinicalOutputs: [{ id: newId("out", 6), codes: [c] }] };
+            // A code with one ASA guide example takes its grade (S39); several are chosen in the disclosure.
+            const { asa } = afterCodeAdded(undefined, [], guide[`${c.set}:${c.code}`] ?? []);
+            return { value, text: c.display, clinicalOutputs: [{ id: newId("out", 6), codes: [c], ...(asa ? { asa } : {}) }] };
           });
           setAll([...all, ...added]);
           setImporting(false);
@@ -193,20 +195,27 @@ const clean = (c: ChoiceJson): ChoiceJson => {
 };
 
 /** Pick codes; each becomes an option carrying that code as a disclosure (QT-07). */
-function CodeImport({ opened, onClose, onAdd }: { opened: boolean; onClose: () => void; onAdd: (codes: CodeRef[]) => void }) {
+function CodeImport({ opened, onClose, onAdd }: {
+  opened: boolean; onClose: () => void; onAdd: (codes: CodeRef[], guide: Record<string, AsaChoice[]>) => void;
+}) {
   const [codes, setCodes] = useState<CodeRef[]>([]);
+  const [guide, setGuide] = useState<Record<string, AsaChoice[]>>({});
   return (
     <Modal opened={opened} onClose={onClose} title="Add options from the code library" size="lg">
       <Stack>
-        <Text size="sm" c="dimmed">Each code becomes an option, with the code attached as its disclosure.</Text>
-        <CodePicker value={codes} onChange={setCodes} />
+        <Text size="sm" c="dimmed">
+          Each code becomes an option, with the code attached as its disclosure. A code with one example in the ASA guide gets its ASA
+          grade; where the grade depends on how severe it is, choose it in the option&apos;s disclosure.
+        </Text>
+        <CodePicker value={codes} onChange={setCodes} onAdded={(c, choices) => setGuide((was) => ({ ...was, [`${c.set}:${c.code}`]: choices }))} />
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>Cancel</Button>
           <Button
             disabled={!codes.length}
             onClick={() => {
-              onAdd(codes);
+              onAdd(codes, guide);
               setCodes([]);
+              setGuide({});
             }}
           >
             Add {codes.length || ""} option{codes.length === 1 ? "" : "s"}

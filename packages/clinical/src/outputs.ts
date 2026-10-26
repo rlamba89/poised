@@ -1,9 +1,10 @@
 // Where outputs live on a question, how they are validated, and how {answer} is rendered.
 import { Serializer, type ItemValue, type Question, type SurveyModel } from "survey-core";
+import { suggestAsa, type SuggestedAsa } from "./asa";
 import type { Band } from "./logic";
 import { bandIn, isGuardedScore } from "./scores";
 import { isClinicianOnly, normalizeOutput, outputsOf } from "./properties";
-import type { AsaGrade, ClinicalOutput } from "./types";
+import type { ClinicalOutput } from "./types";
 
 /**
  * Select One, Select Many (and any other choice type) carry outputs on their options. Matrices
@@ -90,11 +91,9 @@ export type ComputedOutputs = {
   outputs: ProducedOutput[];
   /** The scores shown (Calculations that total points or have bands), in order. */
   scores?: ScoreResult[];
-  /** The highest ASA grade among the outputs (CLN-17). */
-  suggestedAsa?: { grade: AsaGrade; emergency: boolean };
+  /** The highest ASA grade among the outputs, with its reasons (CLN-17; S39). */
+  suggestedAsa?: SuggestedAsa;
 };
-
-const ASA_ORDER: AsaGrade[] = ["I", "II", "III", "IV", "V", "VI"];
 
 /**
  * The outputs the current answers produce. Only questions the respondent can see
@@ -148,7 +147,8 @@ export function computeOutputs(model: SurveyModel): ComputedOutputs {
       }
     }
   }
-  return { outputs, scores, suggestedAsa: highestAsa(outputs) };
+  const suggestedAsa = suggestAsa(outputs);
+  return { outputs, scores, ...(suggestedAsa ? { suggestedAsa } : {}) };
 }
 
 /** A Calculation's score result, if it is a score (a total of points, or one with bands). */
@@ -181,16 +181,4 @@ export function isClinicianOnlyInTree(q: Question): boolean {
     if (isClinicianOnly(el as Question)) return true;
   }
   return false;
-}
-
-function highestAsa(outputs: ProducedOutput[]): ComputedOutputs["suggestedAsa"] {
-  let best: ComputedOutputs["suggestedAsa"];
-  for (const { output } of outputs) {
-    if (!output.asa) continue;
-    const rank = ASA_ORDER.indexOf(output.asa.grade);
-    const bestRank = best ? ASA_ORDER.indexOf(best.grade) : -1;
-    if (rank > bestRank) best = { ...output.asa };
-    else if (rank === bestRank && output.asa.emergency && best) best.emergency = true;
-  }
-  return best;
 }

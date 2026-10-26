@@ -1,6 +1,8 @@
 // The right-hand column: a Question Set's settings, or a page's cards.
 import { Group, Paper, Select, Switch, Text, Textarea } from "@mantine/core";
-import { chapterConditionOf, estimatedMinutes, estimateText, pagesOf as pagesIn, setChapterCondition, type ChapterJson } from "@poised/clinical";
+import {
+  chapterConditionOf, estimatedMinutes, estimateText, pagesOf as pagesIn, referencesIn, setChapterCondition, SUGGESTED_ASA, type ChapterJson,
+} from "@poised/clinical";
 import { secondsPerQuestion } from "@/lib/config";
 import { Toggle } from "./LogicEditor";
 import { IconFile, IconGitBranch } from "@tabler/icons-react";
@@ -26,6 +28,9 @@ export function SetCanvas(props: {
 }) {
   const { chapter, doc, earlier, readOnly, change, onPatch } = props;
   const lastEarlierPage = earlier ? pagesIn(earlier).at(-1)?.name ?? "" : "";
+  const clinicianSet = chapter.audience !== "patient";
+  // A patient set's condition that tests it anyway (a publish problem) still shows it, so it can be seen and removed (test report 1, C3).
+  const testsAsa = !!doc && referencesIn(chapterConditionOf(doc) ?? "").includes(SUGGESTED_ASA);
   const Icon = chapterIcon(chapter.icon);
   return (
     <>
@@ -126,7 +131,12 @@ export function SetCanvas(props: {
               value={chapterConditionOf(doc)}
               readOnly={readOnly}
               onChange={(expr) => change((d) => setChapterCondition(d, expr))}
-              emptyHint="This is the first Question Set, so only the patient's age and sex and who is viewing can be tested."
+              suggestedAsa={clinicianSet || testsAsa}
+              emptyHint={
+                clinicianSet
+                  ? "This is the first Question Set, so only the patient's age and sex, who is viewing and the suggested ASA can be tested."
+                  : "This is the first Question Set, so only the patient's age and sex and who is viewing can be tested."
+              }
             />
           ) : (
             <Text size="sm" c="dimmed">Loading the earlier Question Sets…</Text>
@@ -134,6 +144,12 @@ export function SetCanvas(props: {
           <Text size="xs" c="dimmed" mt="sm">
             A hidden Question Set isn&apos;t shown to the patient, and its answers produce no clinical outputs (LOG-09).
           </Text>
+          {clinicianSet && (
+            <Text size="xs" c="dimmed" mt={4}>
+              A clinician&apos;s Question Set can also be shown by the suggested ASA: the highest ASA grade the answers in the Question Sets
+              before it suggest (none counts as lower than I).
+            </Text>
+          )}
         </Paper>
       )}
     </>

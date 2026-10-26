@@ -19,9 +19,11 @@ export function ConditionBuilder(props: {
   onChange: (expr: string | undefined) => void;
   /** Shown when there is nothing to test yet. */
   emptyHint?: string;
+  /** A clinician Question Set's own condition may test the suggested ASA (S39). */
+  suggestedAsa?: boolean;
 }) {
-  const { doc, scope, value, readOnly, onChange } = props;
-  const subjects = useMemo(() => subjectsFor(doc, scope), [doc, scope]);
+  const { doc, scope, value, readOnly, onChange, suggestedAsa } = props;
+  const subjects = useMemo(() => subjectsFor(doc, scope, { suggestedAsa }), [doc, scope, suggestedAsa]);
   // A local draft keeps rows the author hasn't finished; only complete rules are saved.
   const [draft, setDraft] = useState<LogicGroup | undefined>(() => start(value));
   useEffect(() => {
@@ -237,6 +239,17 @@ function ValueInput({ subject, choice, rule, readOnly, onChange }: { subject: Su
           placeholder={choice.fn === "age" ? "Years" : "Number"}
           value={typeof rule.value === "number" ? rule.value : ""}
           onChange={(v) => onChange(v === "" ? undefined : Number(v))}
+        />
+      );
+    case "asa":
+      // The suggested ASA (S39): a grade I–VI, saved as its number.
+      return (
+        <Select
+          {...common}
+          placeholder="Select a grade"
+          data={options}
+          value={typeof rule.value === "number" ? String(rule.value) : null}
+          onChange={(v) => onChange(v ? Number(v) : undefined)}
         />
       );
     case "date":

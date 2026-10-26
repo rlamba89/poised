@@ -15,6 +15,10 @@ export type ClinicalOutput = {
   codes: CodeRef[];
   /** `text` may contain {answer}. `category` is the category name, copied from the library. */
   note?: { text: string; category: string };
-  asa?: { grade: AsaGrade; emergency: boolean };
+  /**
+   * The ASA grade this disclosure suggests. `reason` (S39) is the ASA guide's example it was taken
+   * from, e.g. "Poorly controlled diabetes", copied so a published HQ never changes.
+   */
+  asa?: { grade: AsaGrade; emergency: boolean; reason?: string };
   flag?: ReviewFlag;
 };

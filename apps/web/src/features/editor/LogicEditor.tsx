@@ -114,6 +114,8 @@ export function Toggle(props: {
   readOnly: boolean;
   onChange: (e: string | undefined) => void;
   emptyHint?: string;
+  /** A clinician Question Set's condition may test the suggested ASA (S39). */
+  suggestedAsa?: boolean;
 }) {
   const [conditional, setConditional] = useState(!!props.value);
   useEffect(() => setConditional(!!props.value), [props.value]);
@@ -139,6 +141,7 @@ export function Toggle(props: {
           value={props.value}
           readOnly={props.readOnly}
           onChange={props.onChange}
+          suggestedAsa={props.suggestedAsa}
           emptyHint={props.emptyHint ?? "Only questions that come earlier can be tested, plus the patient's age and sex and who is viewing."}
         />
       )}

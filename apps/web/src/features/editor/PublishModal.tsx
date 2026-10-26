@@ -15,7 +15,7 @@ type Props = {
   versionId: string;
   versionNo: number;
   /** Every Question Set in order, or null while some are still loading. */
-  sets: { name: string; doc: ChapterJson }[] | null;
+  sets: { name: string; doc: ChapterJson; audience: string }[] | null;
   unsaved: boolean;
   /** Go's key problems for the saved draft, or null while they're being fetched. */
   keyProblems: PublishProblem[] | null;

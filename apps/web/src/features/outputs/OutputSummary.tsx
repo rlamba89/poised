@@ -1,4 +1,4 @@
-// One clinical output in a line: its note with category, codes, ASA grade and flag.
+// One clinical output in a line: its note with category, codes, ASA grade (with its ASA guide example, S39) and flag.
 import { Badge, Group, Stack, Text } from "@mantine/core";
 import type { ClinicalOutput } from "@poised/clinical";
 
@@ -19,6 +19,7 @@ export function OutputSummary({ output }: { output: ClinicalOutput }) {
         {output.asa && (
           <Badge size="sm" color="gray">ASA {output.asa.grade}{output.asa.emergency ? "E" : ""}</Badge>
         )}
+        {output.asa?.reason && <Text size="xs" c="dimmed">({output.asa.reason})</Text>}
         {output.flag && (
           <Badge size="sm" color={output.flag === "red" ? "red" : "orange"}>{output.flag} flag</Badge>
         )}

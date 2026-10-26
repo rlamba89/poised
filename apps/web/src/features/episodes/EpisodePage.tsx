@@ -1,13 +1,13 @@
 // One episode: the patient, the procedure, the patient's invite (S14: resend it, or fill in the HQ
 // on their behalf), the Question Sets to validate (Step 4 of plan-workflow.md), the status and the
 // General notes, and the patient's Information (S36).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import {
   Alert, Anchor, Badge, Button, Card, Center, Group, Loader, SimpleGrid, Stack, Table, Text, Title,
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
-import { ageFrom, shownSets } from "@poised/clinical";
+import { ageFrom, hqSuggestedAsa, shownSets } from "@poised/clinical";
 import { AUDIENCE_LABELS } from "@/features/chapters/types";
 import { api } from "@/lib/api";
 import { nationalIdLabel } from "@/lib/config";
@@ -19,6 +19,7 @@ import { GeneralNotes } from "./GeneralNotes";
 import { allCurrentAnswers, hqPatient, useEpisodeHQ } from "./hq";
 import { historyWho, notResponding, type StatusEvent, type StatusOption, type UndoOption } from "./status";
 import { StatusControl, StatusHistory } from "./StatusControl";
+import { SuggestedAsaLine } from "./SuggestedAsa";
 import { TasksPanel } from "./TasksPanel";
 import { patientName, STATUS_LABELS, type Episode, type EpisodeEvent, type EpisodeInvite } from "./types";
 import { inviteUndelivered, statusUndelivered, undeliveredText, type Undelivered } from "./undelivered";
@@ -254,6 +255,12 @@ function QuestionSets({ base, episode, onReviewed }: { base: string; episode: Ep
   const { hq, error, reload } = useEpisodeHQ(base, episode.id);
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState("");
+  // S39: from the answers that count now (the clinician's where they've started, else the patient's);
+  // worked out once per load, and only once the patient has sent (verification 1).
+  const asa = useMemo(
+    () => (hq && episode.status !== "hq_not_complete" ? hqSuggestedAsa(hq.chapters, allCurrentAnswers(hq), "clinician", hqPatient(episode)) : undefined),
+    [hq, episode],
+  );
   if (error) return <Alert color="red">{error}</Alert>;
   if (!hq) return null;
 
@@ -285,6 +292,7 @@ function QuestionSets({ base, episode, onReviewed }: { base: string; episode: Ep
         )}
       </Group>
       {waiting && <Text size="sm" c="dimmed" mb="xs">Waiting for the patient to send their answers. Validation starts once they have.</Text>}
+      {!waiting && <SuggestedAsaLine asa={asa} />}
       {reviewing && !allValidated && <Text size="sm" c="dimmed" mb="xs">Validate every Question Set to complete the HQ review.</Text>}
       {episode.patientSubmittedByName && (
         <Text size="sm" mb="xs">Sent by {episode.patientSubmittedByName} on the patient&apos;s behalf on {formatDateTime(episode.patientSubmittedAt ?? "")}.</Text>

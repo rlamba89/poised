@@ -1,13 +1,28 @@
-// Find codes by part of the code or description, within one code set (CLN-09).
+// Find codes by part of the code or description, within one code set (CLN-09). Each code found
+// comes with its examples from the ASA guide (S39), which `onAdded` passes on.
 import { useEffect, useState } from "react";
 import { useDebouncedValue } from "@mantine/hooks";
 import { Badge, CloseButton, Group, Paper, SegmentedControl, Stack, Text, TextInput, UnstyledButton } from "@mantine/core";
-import type { CodeRef, CodeSet } from "@poised/clinical";
+import type { AsaChoice, CodeRef, CodeSet } from "@poised/clinical";
 import { api } from "@/lib/api";
 
-type CodeRow = { id: string; codeSet: CodeSet; code: string; description: string; categoryName: string | null };
+/**
+ * A code's ASA guide examples, for a code already on a disclosure (test report 1, F2): the search
+ * finds it by its code; none if it isn't found (retired) or the guide has none.
+ */
+export async function asaChoicesOf(c: CodeRef): Promise<AsaChoice[]> {
+  const rows = await api<CodeRow[]>(`/codes?${new URLSearchParams({ set: c.set, q: c.code })}`);
+  return rows.find((r) => r.codeSet === c.set && r.code === c.code)?.asaChoices ?? [];
+}
 
-export function CodePicker({ value, onChange }: { value: CodeRef[]; onChange: (codes: CodeRef[]) => void }) {
+type CodeRow = { id: string; codeSet: CodeSet; code: string; description: string; categoryName: string | null; asaChoices?: AsaChoice[] };
+
+export function CodePicker({ value, onChange, onAdded }: {
+  value: CodeRef[];
+  onChange: (codes: CodeRef[]) => void;
+  /** A code was added: its ASA guide examples (none for most codes). */
+  onAdded?: (code: CodeRef, choices: AsaChoice[]) => void;
+}) {
   const [set, setSet] = useState<CodeSet>("SNOMED");
   const [query, setQuery] = useState("");
   const [debounced] = useDebouncedValue(query.trim(), 200);
@@ -30,7 +45,9 @@ export function CodePicker({ value, onChange }: { value: CodeRef[]; onChange: (c
 
   const add = (row: CodeRow) => {
     if (!value.some((c) => c.set === row.codeSet && c.code === row.code)) {
-      onChange([...value, { set: row.codeSet, code: row.code, display: row.description }]);
+      const code: CodeRef = { set: row.codeSet, code: row.code, display: row.description };
+      onChange([...value, code]);
+      onAdded?.(code, row.asaChoices ?? []);
     }
     setQuery("");
   };
@@ -69,6 +86,7 @@ export function CodePicker({ value, onChange }: { value: CodeRef[]; onChange: (c
               <Text size="sm">
                 <b>{r.code}</b> {r.description}
                 {r.categoryName && <Text span c="dimmed"> · {r.categoryName}</Text>}
+                {!!r.asaChoices?.length && <Text span c="dimmed"> · ASA {[...new Set(r.asaChoices.map((c) => c.grade))].join(" or ")}</Text>}
               </Text>
             </UnstyledButton>
           ))}

@@ -14,12 +14,13 @@ import {
 } from "@mantine/core";
 import { IconPrinter } from "@tabler/icons-react";
 import {
-  ageFrom, poaSummary, prefillChoiceText, prefillSourceText, reportedBmi, startedFreshText, type PoaCapture, type PoaSet,
+  ageFrom, hqSuggestedAsa, poaSummary, prefillChoiceText, prefillSourceText, reportedBmi, startedFreshText, type PoaCapture, type PoaSet,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { nationalIdLabel } from "@/lib/config";
 import { formatDate, formatDateTime, formatDay, formatOptionalDate } from "@/lib/format";
 import { StatusBadge } from "./EpisodeList";
+import { SuggestedAsaBlock } from "./SuggestedAsa";
 import { useEpisode } from "./EpisodePage";
 import { GeneralNotes } from "./GeneralNotes";
 import { allCurrentAnswers, hqPatient, useEpisodeHQ, type EpisodeHQ } from "./hq";
@@ -98,6 +99,13 @@ function Summary({ tab, episode: e, events, hq, path, onChanged, episodeId }: Su
     }
     return poaSummary(hq.chapters.filter((c) => c.audience === "patient"), hq.patient, "patient", vars, undefined, hq.prefill);
   }, [validated, hq, vars]);
+  // The suggested ASA (S39): from the answers that count on the validated tab, from the patient's on theirs.
+  const asa = useMemo(
+    () => (validated
+      ? hqSuggestedAsa(hq.chapters, allCurrentAnswers(hq), "clinician", vars)
+      : hqSuggestedAsa(hq.chapters.filter((c) => c.audience === "patient"), hq.patient, "patient", vars)),
+    [validated, hq, vars],
+  );
   // The patient's own height and weight until their set is validated, then the validated ones (S28), on both tabs;
   // only answers that are shown (S29).
   const bmi = useMemo(
@@ -151,14 +159,21 @@ function Summary({ tab, episode: e, events, hq, path, onChanged, episodeId }: Su
           </Accordion.Item>
         ))}
 
-        {validated && (
-          <Accordion.Item value="asa">
-            <Accordion.Control><Title order={4} c="blue.9">Pre operative assessment ASA grades</Title></Accordion.Control>
-            <Accordion.Panel>
-              <AsaGrades episode={e} path={path} onSaved={onChanged} readOnly={e.status === "archived" || e.status === "cancelled"} />
-            </Accordion.Panel>
-          </Accordion.Item>
-        )}
+        <Accordion.Item value="asa">
+          <Accordion.Control><Title order={4} c="blue.9">Pre operative assessment ASA grades</Title></Accordion.Control>
+          <Accordion.Panel>
+            <Stack>
+              {/* Each reason is a link to its question, as the other answers are (S27). */}
+              <SuggestedAsaBlock
+                asa={asa}
+                link={(r) => (r.setId ? answerLink(path, episodeId, r.setId)(r.questionId, `asa-${r.text}`, r.text) : r.text)}
+              />
+              {validated && (
+                <AsaGrades episode={e} path={path} onSaved={onChanged} readOnly={e.status === "archived" || e.status === "cancelled"} />
+              )}
+            </Stack>
+          </Accordion.Panel>
+        </Accordion.Item>
       </Accordion>
       {sets.length === 0 && <Text c="dimmed">No answers produce anything for the summary yet.</Text>}
     </Stack>

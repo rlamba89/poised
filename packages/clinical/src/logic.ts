@@ -1,9 +1,10 @@
 // Conditions as data (LOG-03/04/05/06): the Builder edits a group of rules joined by AND or OR,
 // and reads expressions with SurveyJS's own parser, so the Builder and the Code tab always agree.
 import { ArrayOperand, BinaryOperand, ConditionsParser, Const, FunctionOperand, UnaryOperand, Variable, type Operand } from "survey-core";
+import { ASA_GRADES } from "./asa";
 import {
   allElements, childrenOf, elementLabel, expressionsIn, findElement, isAnswerKind, isRepeating, isValidExpression, kindOf, optionsOf,
-  pagesOf, readableExpression, textOf, unknownReferences, referencesIn, type ChapterJson, type ElementJson, type PageJson,
+  pagesOf, readableExpression, textOf, unknownReferences, referencesIn, SUGGESTED_ASA, type ChapterJson, type ElementJson, type PageJson,
 } from "./doc";
 
 export type Op = "eq" | "neq" | "anyof" | "noneof" | "contains" | "notcontains" | "allof" | "gt" | "gte" | "lt" | "lte" | "empty" | "notempty";
@@ -166,7 +167,7 @@ export function enableIfToReadOnly(enableIf: string | undefined): string | undef
 
 // ---------------------------------------------------------------- what a condition can test
 
-export type SubjectType = "single" | "multi" | "number" | "date" | "text" | "answered";
+export type SubjectType = "single" | "multi" | "number" | "date" | "text" | "answered" | "asa";
 export type Subject = {
   /** The Select value: `left`, or `band:<id>` for a score band. */
   id: string;
@@ -179,7 +180,7 @@ export type Subject = {
   options?: { value: string; label: string }[];
 };
 
-export type ValueInput = "none" | "option" | "options" | "number" | "date" | "text";
+export type ValueInput = "none" | "option" | "options" | "number" | "date" | "text" | "asa";
 export type OpChoice = { key: string; label: string; op: Op; fn?: "age"; input: ValueInput };
 
 const ANSWERED: OpChoice[] = [
@@ -222,6 +223,12 @@ export const OPS: Record<SubjectType, OpChoice[]> = {
   ],
   text: [...ANSWERED, { key: "eq", label: "is exactly", op: "eq", input: "text" }, { key: "contains", label: "contains", op: "contains", input: "text" }],
   answered: ANSWERED,
+  // The suggested ASA (S39): a grade I–VI, stored as its number. No grade is 0, so "is at most II" includes it.
+  asa: [
+    { key: "gte", label: "is at least", op: "gte", input: "asa" },
+    { key: "lte", label: "is at most", op: "lte", input: "asa" },
+    { key: "eq", label: "is", op: "eq", input: "asa" },
+  ],
 };
 
 /** The comparison a rule uses, in the list for its subject. */
@@ -241,6 +248,12 @@ const VARIABLE_SUBJECTS: Subject[] = [
     options: [{ value: "patient", label: "Patient" }, { value: "clinician", label: "Clinician" }],
   },
 ];
+
+/** The suggested ASA so far (S39 answers 2), for a clinician Question Set's condition only. */
+const SUGGESTED_ASA_SUBJECT: Subject = {
+  id: SUGGESTED_ASA, left: SUGGESTED_ASA, label: "Suggested ASA", group: PATIENT, type: "asa",
+  options: ASA_GRADES.map((g, i) => ({ value: String(i + 1), label: g })),
+};
 
 /** What one element offers to conditions; `prefix` is "panel." inside the same repeating group. */
 function subjectsOfElement(el: ElementJson, group: string, prefix = ""): Subject[] {
@@ -312,9 +325,12 @@ export function bandFor(bands: unknown, value: unknown): Band | undefined {
  * What a condition may test (LOG-05, LOG-08): questions that come earlier (for a page, on
  * earlier pages; for a skip rule, on its page or earlier), then the patient and the viewer.
  * Inside a repeating group, its own earlier questions are tested per entry (`{panel.<id>}`),
- * and questions inside other repeating groups can't be tested.
+ * and questions inside other repeating groups can't be tested. With `suggestedAsa` (a clinician
+ * Question Set's own condition, S39), the suggested ASA so far too.
  */
-export function subjectsFor(doc: ChapterJson, of: { element: string } | { page: string } | { upToPage: string }): Subject[] {
+export function subjectsFor(
+  doc: ChapterJson, of: { element: string } | { page: string } | { upToPage: string }, opts: { suggestedAsa?: boolean } = {},
+): Subject[] {
   const pages = pagesOf(doc);
   const titleOf = (p: PageJson) => textOf(p.title) || `Page ${pages.indexOf(p) + 1}`;
   const repeatingOf = repeatingParents(doc);
@@ -335,7 +351,7 @@ export function subjectsFor(doc: ChapterJson, of: { element: string } | { page: 
       out.push(...subjectsOfElement(el, titleOf(page)));
     }
   }
-  return [...out, ...VARIABLE_SUBJECTS];
+  return [...out, ...VARIABLE_SUBJECTS, ...(opts.suggestedAsa ? [SUGGESTED_ASA_SUBJECT] : [])];
 }
 
 /** The menus a score's "Add points when…" lines pick from (S38). */
@@ -400,7 +416,7 @@ function repeatingParents(doc: ChapterJson): Map<string, string> {
 
 /** The subject a rule tests, looked up anywhere in the chapter (for describing it). */
 export function subjectOfRule(doc: ChapterJson, r: Pick<Rule, "left" | "fn">): Subject | undefined {
-  const variable = VARIABLE_SUBJECTS.find((s) => s.left === r.left);
+  const variable = [...VARIABLE_SUBJECTS, SUGGESTED_ASA_SUBJECT].find((s) => s.left === r.left);
   if (variable) return variable;
   const name = r.left.replace(/^panel\./, "").split(".")[0];
   const found = allElements(doc).find(({ el }) => el.name === name);

@@ -2,7 +2,7 @@
 // in the chapter's own JSON as `chapterVisibleIf`, so the definition stays complete (OUT-01).
 // It may test questions in earlier Question Sets and the patient, never its own questions.
 import { ConditionRunner } from "survey-core";
-import { allElements, edit, isValidExpression, pageTitle, pagesOf, referencesIn, VARIABLES, type ChapterJson } from "./doc";
+import { allElements, edit, isValidExpression, pageTitle, pagesOf, referencesIn, SUGGESTED_ASA, VARIABLES, type ChapterJson } from "./doc";
 import { unknownAnswers } from "./logic";
 import type { Earlier } from "./scores";
 
@@ -35,16 +35,19 @@ export function isChapterShown(doc: ChapterJson, values: Record<string, unknown>
 
 /**
  * Why a Question Set's condition can't work: unreadable, testing something not in an earlier set, or
- * testing an answer an earlier choice question doesn't have.
+ * testing an answer an earlier choice question doesn't have. Only a clinician set (`audience` other
+ * than "patient") may test the suggested ASA (S39 answers 2): the patient's form has no disclosures.
  */
-export function chapterConditionProblems(doc: ChapterJson, earlier: ChapterJson): string[] {
+export function chapterConditionProblems(doc: ChapterJson, earlier: ChapterJson, audience?: string): string[] {
   const expr = chapterConditionOf(doc);
   if (!expr) return [];
   if (!isValidExpression(expr)) return ["its condition can't be read"];
   const known = new Set(allElements(earlier).map(({ el }) => el.name));
   const own = new Set(allElements(doc).map(({ el }) => el.name));
-  const refs = referencesIn(expr).filter((r) => !VARIABLES.includes(r));
+  const all = referencesIn(expr);
+  const refs = all.filter((r) => !VARIABLES.includes(r) && r !== SUGGESTED_ASA);
   const out: string[] = [];
+  if (all.includes(SUGGESTED_ASA) && (!audience || audience === "patient")) out.push("only a clinician's Question Set can test the suggested ASA");
   if (refs.some((r) => own.has(r))) out.push("it tests one of its own questions");
   const missing = refs.filter((r) => !known.has(r) && !own.has(r));
   if (missing.length) out.push(`it tests something that isn't in an earlier Question Set (${missing.join(", ")})`);
@@ -69,7 +72,9 @@ export function givenEarlier(
   patient: { age?: number; sex?: string },
   viewer: string,
 ): { earlier: Earlier; hidden: string[] } {
-  let seen: Record<string, unknown> = { patientAge: patient.age, patientSex: patient.sex, viewer };
+  // The suggested ASA can't be worked out from answers given by hand: 0 (none), as hqSets starts it,
+  // so an earlier clinician set's "is at most II" is decided as for an episode with no grade (verification 1).
+  let seen: Record<string, unknown> = { patientAge: patient.age, patientSex: patient.sex, viewer, [SUGGESTED_ASA]: 0 };
   const values: Record<string, unknown> = {};
   const hidden: string[] = [];
   for (const s of sets) {

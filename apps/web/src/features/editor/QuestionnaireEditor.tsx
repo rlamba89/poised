@@ -393,7 +393,7 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
   const laterSets = chapter && data ? data.chapters.slice(data.chapters.indexOf(chapter) + 1) : [];
   const later = laterSets.every((c) => store.get(c.id)) ? combineChapters(laterSets.map((c) => ({ name: c.name, doc: store.get(c.id)!.doc }))) : undefined;
   const problems = [
-    ...(doc && earlier ? chapterConditionProblems(doc, earlier).map((message) => ({ label: "This Question Set", message, owner: "" })) : []),
+    ...(doc && earlier ? chapterConditionProblems(doc, earlier, chapter?.audience).map((message) => ({ label: "This Question Set", message, owner: "" })) : []),
     // A score may use earlier sets' questions (S38): checked once they've loaded.
     ...(doc ? logicProblems(doc, { earlier, later }) : []),
   ];
@@ -582,7 +582,7 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
         path={`${base}/questionnaires/${questionnaireId}`}
         versionId={q.versionId}
         versionNo={q.versionNo}
-        sets={data.chapters.every((c) => store.get(c.id)) ? data.chapters.map((c) => ({ name: c.name, doc: store.get(c.id)!.doc })) : null}
+        sets={data.chapters.every((c) => store.get(c.id)) ? data.chapters.map((c) => ({ name: c.name, doc: store.get(c.id)!.doc, audience: c.audience })) : null}
         unsaved={store.overall !== "saved"}
         keyProblems={keysCurrent ? (keys?.problems ?? []) : null}
         onOpen={reloadKeys}

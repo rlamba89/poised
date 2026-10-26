@@ -173,8 +173,8 @@ describe("computeOutputs", () => {
         },
       ],
     };
-    expect(computeOutputs(survey(json, { q_a: ["o_1", "o_2"] })).suggestedAsa).toEqual({ grade: "IV", emergency: false });
-    expect(computeOutputs(survey(json, { q_a: ["o_1", "o_2", "o_3"] })).suggestedAsa).toEqual({ grade: "IV", emergency: true });
+    expect(computeOutputs(survey(json, { q_a: ["o_1", "o_2"] })).suggestedAsa).toMatchObject({ grade: "IV", emergency: false });
+    expect(computeOutputs(survey(json, { q_a: ["o_1", "o_2", "o_3"] })).suggestedAsa).toMatchObject({ grade: "IV", emergency: true });
     expect(computeOutputs(survey(chapter, { q_smoke: "o_yes" })).suggestedAsa).toBeUndefined();
   });
 });
