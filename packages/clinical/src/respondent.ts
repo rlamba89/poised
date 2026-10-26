@@ -3,7 +3,7 @@
 import type { Question } from "survey-core";
 import { asaRank, suggestAsa, type SuggestedAsa } from "./asa";
 import { referencesIn, SUGGESTED_ASA, type ChapterJson } from "./doc";
-import { computeOutputs, formatAnswer, isChoiceQuestion, type ProducedOutput } from "./outputs";
+import { computeOutputs, formatAnswer, isChoiceQuestion, type ProducedOutput, type ScoreResult } from "./outputs";
 import { registerClinicalProperties } from "./properties";
 import { chapterConditionOf, combineChapters, isChapterShown } from "./questionSets";
 import { earlierKeysUsed, isEmpty, type Earlier } from "./scores";
@@ -139,25 +139,39 @@ export function hqSets<T extends { id: string; name?: string; content: ChapterJs
 const testsSuggestedAsa = (doc: ChapterJson) => referencesIn(chapterConditionOf(doc) ?? "").includes(SUGGESTED_ASA);
 
 /**
+ * What the whole HQ's answers produce (S39, S40): every shown Question Set's disclosures (each
+ * naming its set), its scores, and the suggested ASA, each set built as every view builds it
+ * (hqSets: a hidden set gives nothing, a score may use earlier sets' answers).
+ */
+export function hqResult<T extends { id: string; name?: string; content: ChapterJson }>(
+  sets: T[], answers: Record<string, Answers | undefined>, viewer: Viewer, patient: SamplePatient,
+): { shown: T[]; outputs: (ProducedOutput & { setId: string })[]; scores: ScoreResult[]; suggestedAsa?: SuggestedAsa } {
+  registerClinicalProperties();
+  const { shown, earlier } = hqSets(sets, answers, viewer, patient);
+  const outputs: (ProducedOutput & { setId: string })[] = [];
+  const scores: ScoreResult[] = [];
+  for (const s of shown) {
+    const m = modelFor(s.content, viewer, patient, earlier.get(s.id));
+    m.data = answers[s.id] ?? {};
+    const r = computeOutputs(m);
+    for (const o of r.outputs) outputs.push({ ...o, setId: s.id });
+    scores.push(...(r.scores ?? []));
+    m.dispose();
+  }
+  const suggestedAsa = suggestAsa(outputs);
+  return { shown, outputs, scores, ...(suggestedAsa ? { suggestedAsa } : {}) };
+}
+
+/**
  * The suggested ASA for the whole HQ (S39, ASA-01): the highest grade across every shown Question
- * Set's disclosures, with its reasons, each set built as every view builds it (hqSets: a hidden set
- * gives nothing, a score may use earlier sets' answers). `viewer` "clinician" with the answers that
+ * Set's disclosures, with its reasons (hqResult). `viewer` "clinician" with the answers that
  * count gives the validated suggestion; "patient" with the patient's answers (and their sets only)
  * gives the patient's. Each reason names its set (`setId`).
  */
 export function hqSuggestedAsa<T extends { id: string; name?: string; content: ChapterJson }>(
   sets: T[], answers: Record<string, Answers | undefined>, viewer: Viewer, patient: SamplePatient,
 ): SuggestedAsa | undefined {
-  registerClinicalProperties();
-  const { shown, earlier } = hqSets(sets, answers, viewer, patient);
-  const outputs: (ProducedOutput & { setId: string })[] = [];
-  for (const s of shown) {
-    const m = modelFor(s.content, viewer, patient, earlier.get(s.id));
-    m.data = answers[s.id] ?? {};
-    for (const o of computeOutputs(m).outputs) outputs.push({ ...o, setId: s.id });
-    m.dispose();
-  }
-  return suggestAsa(outputs);
+  return hqResult(sets, answers, viewer, patient).suggestedAsa;
 }
 
 /** Key order doesn't matter; a missing answer equals an empty one. */

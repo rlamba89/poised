@@ -1,7 +1,8 @@
 // Checks before publishing (SGN-04, without sign-off yet): logic problems (a score may use earlier
 // Question Sets' questions, S38), two clinical summaries
 // covering the same Group, Section or page (S32), a video without a YouTube or Vimeo link or a length
-// (S34), and failing test cases in every Question Set.
+// (S34), and failing test cases in every Question Set; then the HQ's ASA rules (S40): a rule that can't
+// fire, and a failing whole-HQ test case.
 // They run in the browser (plan 2.1); publishing is blocked while any are found.
 // The question-key checks (S23) are Go's: the editor shows them from GET …/question-keys.
 import type { ChapterJson } from "./doc";
@@ -9,14 +10,15 @@ import { logicProblems } from "./logic";
 import { registerClinicalProperties } from "./properties";
 import { chapterConditionProblems, combineChapters } from "./questionSets";
 import { readyScoreProblems } from "./ready";
+import { ruleProblems, runHqTestCase, type RuleSet } from "./rules";
 import { summaryProblems } from "./summary";
 import { runTestCase, testCasesOf } from "./testcases";
 import { videoProblems } from "./video";
 
 export type PublishProblem = { set: string; message: string };
 
-/** Every problem that blocks publishing, Question Set by Question Set, in order. */
-export function publishProblems(sets: { name: string; doc: ChapterJson; audience?: string }[]): PublishProblem[] {
+/** Every problem that blocks publishing, Question Set by Question Set, in order, then the rules' ("Rules"). */
+export function publishProblems(sets: { name: string; doc: ChapterJson; audience?: string }[], rules?: RuleSet | null): PublishProblem[] {
   registerClinicalProperties(); // test cases need the clinical properties and question types
   const out: PublishProblem[] = [];
   sets.forEach((s, i) => {
@@ -32,5 +34,10 @@ export function publishProblems(sets: { name: string; doc: ChapterJson; audience
       if (!runTestCase(s.doc, tc, sets.slice(0, i)).pass) out.push({ set: s.name, message: `Test case “${tc.name}” fails` });
     }
   });
+  if (rules) {
+    const hq = sets.map((s, i) => ({ id: String(i), name: s.name, content: s.doc, audience: s.audience }));
+    for (const m of ruleProblems(rules, hq)) out.push({ set: "Rules", message: m });
+    for (const tc of rules.testCases) if (!runHqTestCase(hq, rules, tc).pass) out.push({ set: "Rules", message: `Test case “${tc.name}” fails` });
+  }
   return out;
 }
