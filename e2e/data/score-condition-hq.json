@@ -1,0 +1,115 @@
+{
+  "description": "Made-up HQ for J10 (S38 verification 2, F4): a set shown only when a score in the set before it, using the first set's answer, is 1 or more.",
+  "chapters": [
+    {
+      "name": "Snoring",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_a",
+            "title": "Snoring",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_e2e_sa",
+                "title": "Do you snore loudly?",
+                "yesNo": true,
+                "colCount": 0,
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes",
+                    "score": 1
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No",
+                    "score": 0
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Tiredness",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_b",
+            "title": "Tiredness",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_e2e_sb",
+                "title": "Are you tired in the day?",
+                "yesNo": true,
+                "colCount": 0,
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes",
+                    "score": 1
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No",
+                    "score": 0
+                  }
+                ]
+              },
+              {
+                "type": "expression",
+                "name": "q_e2e_ss",
+                "title": "Snoring score",
+                "calcKind": "score",
+                "expression": "iif(allAnswered('q_e2e_sa'), score('q_e2e_sa'), '')"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Sleep follow-up",
+      "audience": "patient",
+      "content": {
+        "chapterVisibleIf": "{q_e2e_ss} >= 1",
+        "pages": [
+          {
+            "name": "p_c",
+            "title": "Follow-up",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_e2e_sc",
+                "title": "Has anyone seen you stop breathing?",
+                "yesNo": true,
+                "colCount": 0,
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes",
+                    "score": 1
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No",
+                    "score": 0
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

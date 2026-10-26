@@ -1,0 +1,112 @@
+{
+  "description": "Made-up HQ for J10 (S38): scored questions in two Question Sets, a BMI question, and a Clinical Summary in the second set, for a score built in the editor. Sleep is shown only to women (test report 2, F-1).",
+  "chapters": [
+    {
+      "name": "Sleep",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_sleep",
+            "title": "Sleep habits",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_e2e_snore",
+                "title": "Do you snore loudly?",
+                "yesNo": true,
+                "colCount": 0,
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes",
+                    "score": 1
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No",
+                    "score": 0
+                  }
+                ]
+              },
+              {
+                "type": "radiogroup",
+                "name": "q_e2e_tired",
+                "title": "Do you often feel tired in the day?",
+                "yesNo": true,
+                "colCount": 0,
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes",
+                    "score": 1
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No",
+                    "score": 0
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "p_size",
+            "title": "Height and weight",
+            "elements": [
+              {
+                "type": "bmi",
+                "name": "q_e2e_bmi",
+                "title": "BMI Calculator",
+                "isRequired": true
+              }
+            ]
+          }
+        ],
+        "chapterVisibleIf": "{patientSex} = 'female'"
+      }
+    },
+    {
+      "name": "Neck",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_neck",
+            "title": "Collar",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_e2e_neck",
+                "title": "Is your shirt collar large?",
+                "yesNo": true,
+                "colCount": 0,
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes",
+                    "score": 1
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No",
+                    "score": 0
+                  }
+                ]
+              },
+              {
+                "type": "clinicalsummary",
+                "name": "cs_e2e_neck",
+                "title": "Sleep risk summary",
+                "clinicianOnly": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
