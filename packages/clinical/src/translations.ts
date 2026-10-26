@@ -2,15 +2,16 @@
 // English; once translated it becomes { default: "English", de: "Deutsch" }. Clinical notes,
 // codes and other clinician metadata are never listed here (CLN-08).
 import {
-  childrenOf, edit, isContainer, LOCALIZABLE_KEYS, LOCALIZABLE_LISTS, pagesOf, pageTitle, plainText, textOf,
+  childrenOf, edit, isContainer, LOCALIZABLE_KEYS, LOCALIZABLE_LISTS, pagesOf, pageTitle, textOf,
   type ChapterJson, type ElementJson,
 } from "./doc";
+import { htmlToLines, informationLabel } from "./information";
 
 /** Languages offered first (LNG-01); any other ISO code works too. */
 export const LANGUAGES: Record<string, string> = { de: "German", es: "Spanish", fr: "French", pl: "Polish", pt: "Portuguese", it: "Italian", ar: "Arabic", ur: "Urdu" };
 
 const FIELD: Record<string, string> = {
-  title: "Text", description: "Description", html: "Statement", placeholder: "Placeholder", requiredErrorText: "Required message",
+  title: "Text", description: "Description", html: "Information", markdown: "Information", placeholder: "Placeholder", requiredErrorText: "Required message",
   otherText: "Other option", selectAllText: "Select all", minRateDescription: "Low label", maxRateDescription: "High label",
   panelAddText: "Add button", panelRemoveText: "Remove button", addRowText: "Add button", choices: "Option", rows: "Row", columns: "Column",
   validators: "Message", tickText: "Tick",
@@ -24,7 +25,7 @@ export function textEntries(doc: ChapterJson): TextEntry[] {
   const out: TextEntry[] = [];
   const add = (path: (string | number)[], where: string, field: string, value: unknown, isHtml = false) => {
     const english = textOf(value);
-    if (english.trim()) out.push({ path, where, field, value, english: isHtml ? plainText(english) : english, isHtml });
+    if (english.trim()) out.push({ path, where, field, value, english: isHtml ? htmlToLines(english) : english, isHtml });
   };
   pagesOf(doc).forEach((page, pi) => {
     const pageName = pageTitle(page, pi);
@@ -33,7 +34,7 @@ export function textEntries(doc: ChapterJson): TextEntry[] {
       els.forEach((el, i) => {
         if (el.clinicianOnly) return;
         const path = [...base, i];
-        const where = `${pageName} › ${textOf(el.title) || plainText(el.html ?? "").slice(0, 40) || el.name}`;
+        const where = `${pageName} › ${textOf(el.title) || (el.type === "html" ? informationLabel(el).slice(0, 40) : "") || el.name}`;
         for (const key of LOCALIZABLE_KEYS) add([...path, key], where, FIELD[key], el[key], key === "html");
         for (const list of LOCALIZABLE_LISTS) {
           (Array.isArray(el[list]) ? (el[list] as unknown[]) : []).forEach((c, ci) => {
@@ -85,7 +86,7 @@ export function toCsv(doc: ChapterJson, locale: string): string {
   const rows = [["id", "where", "field", "english", locale]];
   for (const e of textEntries(doc)) {
     const t = translationOf(e.value, locale);
-    rows.push([e.path.join("/"), e.where, e.field, e.english, e.isHtml ? plainText(t) : t]);
+    rows.push([e.path.join("/"), e.where, e.field, e.english, e.isHtml ? htmlToLines(t) : t]);
   }
   return rows.map((r) => r.map(csvCell).join(",")).join("\r\n");
 }

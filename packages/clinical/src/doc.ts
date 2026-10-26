@@ -4,6 +4,7 @@
 // "Disclosures".
 import { ConditionsParser } from "survey-core";
 import { newId } from "./ids";
+import { informationLabel } from "./information";
 import type { ClinicalOutput } from "./types";
 
 /** A SurveyJS string: plain, or per language (`{ default: "…", de: "…" }`) once translated (LNG-01). */
@@ -34,7 +35,10 @@ export type ElementJson = {
   elements?: ElementJson[];
   /** A repeating group's (paneldynamic's) elements. */
   templateElements?: ElementJson[];
-  html?: string;
+  /** An old statement's HTML (before S35); translatable. */
+  html?: LocString;
+  /** An Information block's text with simple marks (S35, information.ts); translatable. */
+  markdown?: LocString;
   inputType?: string;
   clinicalOutputs?: ClinicalOutput[];
   [key: string]: unknown;
@@ -58,7 +62,7 @@ export type ChapterJson = { pages?: PageJson[]; [key: string]: unknown };
 export const KINDS = [
   "group", "section", "yesno", "selectone", "selectmany", "text", "date", "number",
   "rating", "grid", "calculation", "upload", "signature",
-  "medication", "admissions", "bmi", "profile", "statement", "summary", "video",
+  "medication", "admissions", "bmi", "profile", "information", "summary", "video",
 ] as const;
 export type Kind = (typeof KINDS)[number];
 
@@ -80,7 +84,7 @@ export const KIND_LABEL: Record<Kind, string> = {
   admissions: "Admissions",
   bmi: "BMI",
   profile: "Profile",
-  statement: "Statement",
+  information: "Information",
   summary: "Clinical Summary",
   video: "Video",
 };
@@ -125,7 +129,7 @@ export function kindOf(el: ElementJson): Kind {
     case "signaturepad":
       return "signature";
     case "html":
-      return "statement";
+      return "information";
     case SUMMARY_TYPE:
       return "summary";
     case VIDEO_TYPE:
@@ -155,10 +159,10 @@ export const isChoiceKind = (k: Kind) => k === "yesno" || k === "selectone" || k
 /** Text, Date, Number and Rating carry outputs on the question itself (a Calculation too, unless it has bands). */
 export const hasQuestionOutputs = (k: Kind) => k === "text" || k === "date" || k === "number" || k === "rating" || k === "calculation";
 /**
- * Kinds that hold an answer (everything except groups, statements, the profile and summaries). A
+ * Kinds that hold an answer (everything except groups, Information, the profile and summaries). A
  * video's tick is an answer, but it has its own settings and no conditions test it (S34).
  */
-export const isAnswerKind = (k: Kind) => !["group", "section", "statement", "profile", "summary", "video"].includes(k);
+export const isAnswerKind = (k: Kind) => !["group", "section", "information", "profile", "summary", "video"].includes(k);
 /** BMI and Profile are fixed blocks: they can only be deleted (incumbent "Locked"). */
 export const isLocked = (k: Kind) => k === "bmi" || k === "profile";
 
@@ -211,8 +215,9 @@ export function newElement(kind: Kind, taken: Set<string>): ElementJson {
       return { type: "bmi", name, title: "BMI Calculator", isRequired: true };
     case "profile":
       return { type: "profile", name, title: "Your Profile" };
-    case "statement":
-      return { type: "html", name, html: "<p>Panel statement</p>" };
+    case "information":
+      // The author's text with simple marks (S35, information.ts); old statements keep `html`.
+      return { type: "html", name, markdown: "Information for the patient" };
     case "summary":
       // No title: it shows "<Group or page name> summary" until the author gives one (summary.ts).
       return { type: SUMMARY_TYPE, name, clinicianOnly: true };
@@ -622,9 +627,9 @@ export function expressionsIn(doc: ChapterJson): { expr: string; owner: string; 
   return out;
 }
 
-/** A short name for an element: its title, a statement's first words, "Clinical summary", or its ID. */
+/** A short name for an element: its title, an Information block's first words, "Clinical summary", or its ID. */
 export function elementLabel(el: ElementJson): string {
-  return textOf(el.title) || plainText(el.html ?? "").slice(0, 60) || (isSummary(el) ? "Clinical summary" : el.name);
+  return textOf(el.title) || (el.type === "html" ? informationLabel(el).slice(0, 60) : "") || (isSummary(el) ? "Clinical summary" : el.name);
 }
 
 /** Everything whose conditions or calculations refer to an element (STR-08, LOG-13). */
@@ -699,30 +704,6 @@ export function unknownReferences(doc: ChapterJson, expr: string, variables: str
   return referencesIn(expr).filter((r) => !names.has(r) && !variables.includes(r));
 }
 
-// ---------------------------------------------------------------- statements
-
-/** Statement text ↔ HTML: one paragraph per line, escaped. */
-export function textToHtml(text: string): string {
-  return text
-    .split(/\n/)
-    .map((line) => `<p>${line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") || "&nbsp;"}</p>`)
-    .join("");
-}
-
-export function plainText(html: string): string {
-  return html
-    .replace(/<\/p>\s*<p>/g, "\n")
-    .replace(/<br\s*\/?>/g, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, "")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;/g, "'")
-    .replace(/&amp;/g, "&")
-    .trim();
-}
-
 // ---------------------------------------------------------------- helpers
 
 function targetList(d: ChapterJson, target: Target): ElementJson[] {
@@ -744,7 +725,7 @@ function moveIn<T>(list: T[], index: number, delta: number) {
 
 /** Keys holding text a patient sees, which can be translated (LNG-01). */
 export const LOCALIZABLE_KEYS = [
-  "title", "description", "html", "placeholder", "requiredErrorText", "otherText", "selectAllText",
+  "title", "description", "html", "markdown", "placeholder", "requiredErrorText", "otherText", "selectAllText",
   "minRateDescription", "maxRateDescription", "panelAddText", "panelRemoveText", "addRowText", "tickText",
 ] as const;
 

@@ -3,7 +3,7 @@ import { Model } from "survey-core";
 import {
   KINDS, addChoice, copyPage, isValidExpression, movePageTo, unknownReferences, addElement, addPage, copyElement, countDisclosures, deleteElement, deletePage,
   dependentsOf, findElement, formatCondition, kindOf, moveElement, moveElementTo, movePage, referencesIn, rewriteReferences,
-  newElement, optionsOf, parseCondition, plainText, setNoneOption, textToHtml, updateElement, updatePage, groupsToMoveInto,
+  newElement, optionsOf, parseCondition, setNoneOption, updateElement, updatePage, groupsToMoveInto,
   moveOutOfGroup, type ChapterJson,
 } from "./doc";
 import { GROUP_ID, OPTION_ID, QUESTION_ID } from "./ids";
@@ -36,7 +36,7 @@ describe("kinds", () => {
     expect(optionsOf(yes).map((o) => o.text)).toEqual(["Yes", "No"]);
     for (const o of optionsOf(yes)) expect(o.value).toMatch(OPTION_ID);
     expect(newElement("group", new Set()).name).toMatch(GROUP_ID);
-    expect(newElement("statement", new Set()).isRequired).toBeUndefined();
+    expect(newElement("information", new Set()).isRequired).toBeUndefined();
   });
 
   it("loads every kind into a SurveyJS model", () => {
@@ -220,14 +220,6 @@ describe("skip rules (LOG-12)", () => {
     const yes = (q.doc.pages![1].elements!.find((e) => e.name === q.name)!.choices![0] as { value: string }).value;
     const late = setTriggers(q.doc, [{ type: "complete", expression: `{${q.name}} = '${yes}'`, page: "p_one" }]);
     expect(logicProblems(late).map((p) => p.message)).toEqual(["it tests a question on a later page"]);
-  });
-});
-
-describe("statements", () => {
-  it("round-trips text through HTML, escaped", () => {
-    const text = "Line one\nA < B & C";
-    expect(textToHtml(text)).toBe("<p>Line one</p><p>A &lt; B &amp; C</p>");
-    expect(plainText(textToHtml(text))).toBe(text);
   });
 });
 

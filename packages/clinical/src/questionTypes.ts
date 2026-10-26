@@ -100,6 +100,8 @@ export function registerQuestionTypes(): void {
 
   registerClinicalFunctions();
   registerVideoType();
+  // Information (S35): the author's text with simple marks, translatable (information.ts).
+  Serializer.addProperty("html", { name: "markdown:text", visible: false, isLocalizable: true });
 
   Serializer.addProperty("medication", {
     name: "medicationType",

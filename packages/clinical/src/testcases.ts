@@ -5,6 +5,7 @@ import { Model } from "survey-core";
 import { edit, type ChapterJson } from "./doc";
 import { computeOutputs, type ComputedOutputs } from "./outputs";
 import { forPatient, setViewer, type Viewer } from "./viewer";
+import { withoutSurveyHtml } from "./information";
 
 /** Made-up patient details only (PRV-08). */
 export type SamplePatient = { name: string; age?: number; sex?: string };
@@ -36,7 +37,8 @@ export function outputLines(r: ComputedOutputs): string[] {
 
 /** A survey as the viewer gets it, for the sample patient. */
 export function modelFor(json: ChapterJson, viewer: Viewer, patient: SamplePatient): Model {
-  const m = new Model(viewer === "patient" ? forPatient(json) : json);
+  const clean = withoutSurveyHtml(json);
+  const m = new Model(viewer === "patient" ? forPatient(clean) : clean);
   setViewer(m, viewer);
   m.setVariable("patientName", patient.name);
   m.setVariable("patientAge", patient.age);

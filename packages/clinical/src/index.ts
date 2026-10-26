@@ -19,3 +19,4 @@ export * from "./answerSaver";
 export * from "./library";
 export * from "./prefill";
 export * from "./video";
+export * from "./information";
