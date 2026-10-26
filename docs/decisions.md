@@ -32,6 +32,14 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 26 Oct 2026: questions from the C5 run answered (Rahul, asked by the conductor after S36)
+
+- **A Clinical Summary box can't have a condition.** The editor offers no Logic on it, and Publish refuses one that has a condition. **Why:** a hidden box would hide its notes. *Not built yet: for a later session.*
+- **YouTube Shorts links stay refused** (S34's link list unchanged).
+- **A booked patient's Information list is fixed at booking, but each item shows its latest version, and a retired item disappears** (as S36 built it). This is how S36 answer 2 is read.
+- **"About 1 minute" stays on a Question Set with nothing to answer** (S36's "at least 1 minute" rule).
+- Details in pending.md ("From S32's…", "From S34's…", "From S36's…" sections).
+
 ### 26 Oct 2026: S36, the patient's Information and the estimated time (builder, automatic run; tested 26 Oct, test report 1 all passed, 28 of 28)
 
 - **A procedure's Information list is copied onto each new episode** (Rahul, S36 answers 2; `episode_info_items`, migration 00030), as a list of content library items, not frozen copies: an edit to a library item reaches booked patients, and **a retired item disappears from every patient's Information** (and shows again if brought back). Changing the procedure's list later changes only new episodes. ([build notes](sessions/S36-patient-information-time/build-notes.md))
