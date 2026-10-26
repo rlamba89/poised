@@ -188,7 +188,7 @@ Split on 26 Oct. S38–S44 run locally like C5, with messages captured; the `eva
 
 | ID | Plan | Builds | Needs from you first | Status |
 | --- | --- | --- | --- | --- |
-| [S38](S38-scores-across-sets/brief.md) | C6 | Scores that use answers from earlier Question Sets, and points for age, sex and BMI (SCR-01/02) | Answered 26 Oct ([answers.md](S38-scores-across-sets/answers.md)) | Not started |
+| [S38](S38-scores-across-sets/brief.md) | C6 | Scores that use answers from earlier Question Sets, and points for age, sex and BMI (SCR-01/02) | Answered 26 Oct ([answers.md](S38-scores-across-sets/answers.md)) | **Verified** (26 Oct, [verification 3](S38-scores-across-sets/verify.md); after verifications 1–2's fixes, [test report 5](S38-scores-across-sets/test-report-5.md) all passed; [build notes](S38-scores-across-sets/build-notes.md)) |
 | [S39](S39-suggested-asa/brief.md) | C6 | Each code's usual ASA grade filling in the disclosure; the suggested ASA for the whole HQ with its reasons, on the POA Summary and Validate (ASA-01) | Answered 26 Oct ([answers.md](S39-suggested-asa/answers.md)) | Not started |
 | [S40](S40-asa-rules/brief.md) | C6 | ASA rules on the HQ: the default rules, the Rules page, rules in the preview and test cases (ASA-02/03/04); J11 starts. Nothing acts on them yet | Answered 26 Oct ([answers.md](S40-asa-rules/answers.md)) | Not started |
 | [S41](S41-evaluate-service/brief.md) | C6 | The `evaluate` service, run locally: Go calls it on send and stores the result (`form_outputs`), fails safe, and re-checks publishing (D-1) | Answered 26 Oct ([answers.md](S41-evaluate-service/answers.md)) | Not started |
