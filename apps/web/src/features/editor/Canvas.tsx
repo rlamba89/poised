@@ -1,6 +1,7 @@
 // The right-hand column: a Question Set's settings, or a page's cards.
 import { Group, Paper, Select, Switch, Text, Textarea } from "@mantine/core";
-import { chapterConditionOf, pagesOf as pagesIn, setChapterCondition, type ChapterJson } from "@poised/clinical";
+import { chapterConditionOf, estimatedMinutes, estimateText, pagesOf as pagesIn, setChapterCondition, type ChapterJson } from "@poised/clinical";
+import { secondsPerQuestion } from "@/lib/config";
 import { Toggle } from "./LogicEditor";
 import { IconFile, IconGitBranch } from "@tabler/icons-react";
 import { describeLogic, pageTitle, pagesOf, updatePage, type PageJson } from "@poised/clinical";
@@ -31,6 +32,12 @@ export function SetCanvas(props: {
       <Group gap={6}>
         <Icon size={16} />
         <Text size="sm">Question Set</Text>
+        {/* PX-10 (S36): what the patient's tile will say; a clinician set has no patient. */}
+        {doc && chapter.audience === "patient" && estimateText(estimatedMinutes(doc, secondsPerQuestion())) && (
+          <Text size="sm" c="dimmed" data-testid="set-estimate">
+            · {estimateText(estimatedMinutes(doc, secondsPerQuestion()))} for the patient
+          </Text>
+        )}
       </Group>
       <div style={{ margin: "8px 0 16px" }}>
         <EditableText label="Question Set name" value={chapter.name} readOnly={readOnly} onSave={(name) => onPatch({ name })} size="lg" />

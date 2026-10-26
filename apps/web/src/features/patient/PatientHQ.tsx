@@ -26,7 +26,7 @@
 // which, once confirmed, has Go clear the set's pre-filled answers; the HQ then loads again, with
 // the set empty. It's offered only until a button is pressed, and Go refuses it once the set changed.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Anchor, Badge, Box, Button, Card, Center, Container, Group, Loader, Modal, Stack, Text, Title } from "@mantine/core";
+import { Alert, Anchor, Box, Button, Card, Center, Container, Group, Loader, Modal, Stack, Text, Title } from "@mantine/core";
 import { Link, useNavigate } from "react-router";
 import { IconArrowLeft, IconCircleCheck, IconHistory } from "@tabler/icons-react";
 
@@ -36,11 +36,13 @@ import "@/features/video/VideoQuestion"; // draws Video elements (S34)
 import "@/features/information/InformationQuestion"; // draws Information, cleaned (S35)
 import "survey-core/survey-core.css";
 import {
-  answerSaver, isSetReadyToSend, modelFor, registerClinicalProperties, sameAnswer, shownSets, type Answers, type AnswerSaver,
+  answerSaver, estimatedMinutes, estimateText, isSetReadyToSend, modelFor, registerClinicalProperties, sameAnswer, shownSets, type Answers, type AnswerSaver,
   type ChapterJson, type SamplePatient,
 } from "@poised/clinical";
 import { ApiError, api } from "@/lib/api";
 import { Logo } from "@/features/brand/Logo";
+import { secondsPerQuestion } from "@/lib/config";
+import { WholeBadge } from "@/lib/WholeBadge";
 import { lostWork, type Lost } from "./signedOut";
 import { showUnits } from "@/features/preview/units";
 import { formatDay } from "@/lib/format";
@@ -73,6 +75,9 @@ type HQ = {
 };
 
 const SAVE_DELAY_MS = 600;
+
+/** A set's estimated time (PX-10, S36): "About 4 minutes", or "" when the config couldn't be loaded. */
+const minutes = (content: ChapterJson) => estimateText(estimatedMinutes(content, secondsPerQuestion()));
 
 type Props = {
   /** The form's API path: `/p/episodes/<id>` for the patient, `<hospital>/episodes/<id>/patient-form` for staff. */
@@ -335,20 +340,23 @@ export default function PatientHQ({ path, onBehalf }: Props) {
               const started = Object.keys(drafts[s.id] ?? saved[s.id] ?? {}).length > 0;
               return (
                 <Card key={s.id} withBorder data-testid={`set-${s.name}`}>
-                  <Group justify="space-between" wrap="nowrap">
-                    <div>
+                  {/* The row wraps on a phone, and the badge and button never shrink, so neither is cut short (S36). */}
+                  <Group justify="space-between" wrap="wrap" gap="sm">
+                    <div style={{ flex: "1 1 12rem", minWidth: 0 }}>
                       <Text fw={700}>{s.name}</Text>
                       {s.description && <Text size="sm" c="dimmed">{s.description}</Text>}
+                      {/* PX-10 (S36): seconds per question (the deployment's setting) plus the videos' lengths. */}
+                      {minutes(s.content) && <Text size="sm" c="dimmed" data-testid="set-estimate">{minutes(s.content)}</Text>}
                     </div>
-                    <Group gap="sm" wrap="nowrap">
+                    <Group gap="sm" wrap="nowrap" ml="auto" style={{ flexShrink: 0 }}>
                       {done.has(s.id) ? (
-                        <Badge color="green" variant="light">Complete</Badge>
+                        <WholeBadge color="green" variant="light">Complete</WholeBadge>
                       ) : toCheck.has(s.id) ? (
-                        <Badge color="brand" variant="light">Please check</Badge>
+                        <WholeBadge color="brand" variant="light">Please check</WholeBadge>
                       ) : (
-                        started && <Badge color="orange" variant="light">In progress</Badge>
+                        started && <WholeBadge color="orange" variant="light">In progress</WholeBadge>
                       )}
-                      <Button variant={done.has(s.id) ? "default" : "filled"} onClick={() => setOpenId(s.id)}>
+                      <Button variant={done.has(s.id) ? "default" : "filled"} style={{ flexShrink: 0 }} onClick={() => setOpenId(s.id)}>
                         {done.has(s.id) ? "Review" : toCheck.has(s.id) ? "Check" : started ? "Continue" : "Start"}
                       </Button>
                     </Group>

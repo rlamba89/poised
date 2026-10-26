@@ -11,6 +11,8 @@ export type AppConfig = {
   nationalId: { type: string; label: string };
   /** How staff sign in (S12): the dev login (local only), Cognito's managed login, or both locally. */
   staffSignIn?: { devLogin: boolean; cognito: Cognito | null };
+  /** The estimated time's seconds for each question the patient sees (S36, PX-10; Go's SECONDS_PER_QUESTION). */
+  secondsPerQuestion?: number;
 };
 
 let current: AppConfig | undefined;
@@ -38,6 +40,12 @@ export const deploymentTimeZone = () => current?.timeZone;
 
 /** What staff call the patient identifier ("NHS number"), or a neutral name if the config couldn't be loaded. */
 export const nationalIdLabel = () => current?.nationalId?.label ?? "National ID";
+
+/**
+ * The estimated time's seconds per question (S36), or undefined if the config couldn't be loaded:
+ * then no estimate is shown. The number is the deployment's setting, never one of the web app's.
+ */
+export const secondsPerQuestion = () => current?.secondsPerQuestion;
 
 /** How staff sign in. Without the config (it couldn't be loaded), the dev login is tried. */
 export const staffSignIn = (): { devLogin: boolean; cognito: Cognito | null } =>

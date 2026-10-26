@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadConfig, locale, nationalIdLabel, resetConfigForTests } from "./config";
+import { loadConfig, locale, nationalIdLabel, resetConfigForTests, secondsPerQuestion } from "./config";
 
 function serve(status: number, body: unknown) {
   const fetch = vi.fn(async () => new Response(JSON.stringify(body), { status }));
@@ -36,6 +36,13 @@ describe("loadConfig", () => {
     serve(200, { locale: "en-CA", timeZone: "America/Toronto", nationalId: { type: "nhs", label: "NHS number" } });
     await loadConfig();
     expect(nationalIdLabel()).toBe("NHS number");
+  });
+
+  it("has the estimated time's seconds per question (S36) from the API only: none of its own", async () => {
+    expect(secondsPerQuestion()).toBeUndefined();
+    serve(200, { locale: "en-CA", timeZone: "America/Toronto", secondsPerQuestion: 20 });
+    await loadConfig();
+    expect(secondsPerQuestion()).toBe(20);
   });
 
   it("gives up after 5 seconds, so a hung API (e.g. a Lambda cold start gone wrong) can't leave a blank page", async () => {

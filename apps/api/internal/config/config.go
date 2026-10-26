@@ -52,7 +52,11 @@ type Config struct {
 	// it got the request from to X-Forwarded-For. 0 (locally): the connection's address is the
 	// client's. On AWS it's set by infra (internal/serve reads the client's address from the header).
 	ForwardedHops int
-	Country       Country
+	// SECONDS_PER_QUESTION (S36, PX-10): the estimated time a patient is shown for a Question Set
+	// counts this many seconds for each question they see, plus each video's length (S36 answers 3:
+	// configurable, default 15). Not a per-country value, so it keeps its default under CONFIG_STRICT.
+	SecondsPerQuestion int
+	Country            Country
 	// Cognito is the staff user pool (S12): staff sign in through its managed login. Required on
 	// AWS (CONFIG_STRICT); locally it's usually unset and the dev login stands in.
 	Cognito Cognito
@@ -82,6 +86,13 @@ func (c Cognito) Region() string { return strings.SplitN(c.UserPoolID, "_", 2)[0
 func (c Cognito) Issuer() string {
 	return "https://cognito-idp." + c.Region() + ".amazonaws.com/" + c.UserPoolID
 }
+
+// DefaultSecondsPerQuestion is SECONDS_PER_QUESTION's value when it isn't set (S36 answers 3), and
+// maxSecondsPerQuestion a sanity limit (10 minutes a question is surely a typing mistake).
+const (
+	DefaultSecondsPerQuestion = 15
+	maxSecondsPerQuestion     = 600
+)
 
 // maxForwardedHops is a sanity limit: on QA the browser's address is third from the right
 // (Amplify's rewrite adds two, API Gateway one; infra/api_stack.py).
@@ -127,6 +138,9 @@ type Public struct {
 	TimeZone    string           `json:"timeZone"`
 	NationalID  PublicNationalID `json:"nationalId"`
 	StaffSignIn PublicSignIn     `json:"staffSignIn"`
+	// SecondsPerQuestion is the estimated time's seconds for each question (S36): packages/clinical's
+	// estimatedMinutes uses it, so the number lives only here.
+	SecondsPerQuestion int `json:"secondsPerQuestion"`
 }
 
 // PublicSignIn is how staff sign in here (S12): the dev login (local only), Cognito's managed
@@ -157,7 +171,7 @@ func (c Config) Public() Public {
 	id := c.Country.NationalID()
 	p := Public{Locale: c.Country.Locale, TimeZone: c.Country.TimeZone,
 		NationalID:  PublicNationalID{Type: id.Type, Label: id.Label},
-		StaffSignIn: PublicSignIn{DevLogin: c.DevLogin}}
+		StaffSignIn: PublicSignIn{DevLogin: c.DevLogin}, SecondsPerQuestion: c.SecondsPerQuestion}
 	if c.Cognito.Enabled() {
 		p.StaffSignIn.Cognito = &PublicCognito{
 			AuthorizeURL: c.Cognito.Domain + "/oauth2/authorize",
@@ -257,6 +271,14 @@ func Load(getenv func(string) string) (Config, error) {
 			errs = append(errs, fmt.Errorf("JOBS_SCHEDULE_MINUTES must be a number of minutes from 1 to 1440, not %q", v))
 		}
 		c.JobsScheduleMinutes = n
+	}
+	c.SecondsPerQuestion = DefaultSecondsPerQuestion
+	if v := getenv("SECONDS_PER_QUESTION"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > maxSecondsPerQuestion {
+			errs = append(errs, fmt.Errorf("SECONDS_PER_QUESTION must be a whole number of seconds from 1 to %d, not %q", maxSecondsPerQuestion, v))
+		}
+		c.SecondsPerQuestion = n
 	}
 	if v := getenv("FORWARDED_HOPS"); v != "" {
 		n, err := strconv.Atoi(v)

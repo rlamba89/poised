@@ -8,9 +8,10 @@
 // Go checks every link, length and tag, and refuses with a plain message, shown under the form.
 // Forms are inline, not modals: testers' browser tabs can hide Mantine's modals (decisions.md §4).
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Anchor, Badge, Button, type BadgeProps, Card, Group, SegmentedControl, SimpleGrid, Stack, Table, TagsInput, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Anchor, Button, Card, Group, SegmentedControl, SimpleGrid, Stack, Table, TagsInput, Text, TextInput, Title } from "@mantine/core";
 import { IconCheck, IconFileText, IconMovie, IconPlus } from "@tabler/icons-react";
 import { api } from "@/lib/api";
+import { WholeBadge } from "@/lib/WholeBadge";
 import { canManageContent, canSeeContent, useHospital } from "@/lib/auth";
 import { addTag, bodyOf, changedFields, cleanTags, emptyForm, formOf, formatLength, type ContentForm, type ContentItem, type ContentKind, type ContentList, type StarterQuestion, type Topic } from "./content";
 
@@ -100,8 +101,8 @@ function ContentLibrary({ path, canChange, intro, ownHeading, readOnlyNote, admi
         <div>
           <Title order={3}>Content library</Title>
           <Text size="sm" c="dimmed">
-            {intro} Videos are YouTube or Vimeo links; a leaflet is a link to a PDF on the web. A retired item isn&apos;t offered any more,
-            but anything that already uses it keeps its copy.
+            {intro} Videos are YouTube or Vimeo links; a leaflet is a link to a PDF on the web. A retired item isn&apos;t offered any more:
+            questionnaires keep their own copy of a video, but it disappears from every patient&apos;s Information.
           </Text>
           {readOnlyNote && <Text size="sm" c="dimmed" mt={4}>{readOnlyNote}</Text>}
         </div>
@@ -144,15 +145,6 @@ function ContentLibrary({ path, canChange, intro, ownHeading, readOnlyNote, admi
       )}
     </Stack>
   );
-}
-
-/**
- * A badge that always shows its whole text. Mantine's Badge hides what doesn't fit (overflow
- * hidden), which lets a narrow table column squeeze a tag to "MEASUREME…" at phone width (S33 test
- * reports 1 and 2); with overflow visible and no shrinking, the column grows to fit it instead.
- */
-function WholeBadge(props: BadgeProps & React.ComponentPropsWithoutRef<"div">) {
-  return <Badge {...props} style={{ flexShrink: 0, overflow: "visible" }} styles={{ label: { overflow: "visible" } }} />;
 }
 
 /** PX-13's checklist: each topic, ticked when an active item has its tag. */

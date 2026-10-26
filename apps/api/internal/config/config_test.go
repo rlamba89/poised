@@ -238,7 +238,7 @@ func TestPublic(t *testing.T) {
 	got := c.Public()
 	want := config.Public{Locale: "en-CA", TimeZone: "America/Toronto",
 		NationalID:  config.PublicNationalID{Type: "nhs", Label: "NHS number"},
-		StaffSignIn: config.PublicSignIn{DevLogin: true}}
+		StaffSignIn: config.PublicSignIn{DevLogin: true}, SecondsPerQuestion: 15}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("public = %+v", got)
 	}
@@ -300,9 +300,9 @@ func TestLoadCognito(t *testing.T) {
 		}
 	})
 	for name, bad := range map[string]string{
-		"STAFF_POOL_ID": "not-a-pool",
-		"STAFF_POOL_DOMAIN":       "poised.auth.example.test",
-		"STAFF_POOL_CLIENT_ID":    "has spaces",
+		"STAFF_POOL_ID":        "not-a-pool",
+		"STAFF_POOL_DOMAIN":    "poised.auth.example.test",
+		"STAFF_POOL_CLIENT_ID": "has spaces",
 	} {
 		t.Run(name+" refused: "+bad, func(t *testing.T) {
 			e := cognito(country())
@@ -438,6 +438,29 @@ func TestLoadJobsSchedule(t *testing.T) {
 	for _, bad := range []string{"0", "-5", "every 5", "1441"} {
 		e["JOBS_SCHEDULE_MINUTES"] = bad
 		if _, err := config.Load(e.get); err == nil || !strings.Contains(err.Error(), "JOBS_SCHEDULE_MINUTES") {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
+}
+
+// The estimated time's seconds per question (S36, PX-10; Rahul: configurable, default 15). Not a
+// per-country value, so it has its default under CONFIG_STRICT too. The web app reads it from
+// GET /api/config.
+func TestLoadSecondsPerQuestion(t *testing.T) {
+	for _, e := range []env{required(), strict()} {
+		c, err := config.Load(e.get)
+		if err != nil || c.SecondsPerQuestion != 15 || c.Public().SecondsPerQuestion != 15 {
+			t.Fatalf("default: %d, %v", c.SecondsPerQuestion, err)
+		}
+	}
+	e := required()
+	e["SECONDS_PER_QUESTION"] = "20"
+	if c, err := config.Load(e.get); err != nil || c.SecondsPerQuestion != 20 || c.Public().SecondsPerQuestion != 20 {
+		t.Fatalf("20: %d, %v", c.SecondsPerQuestion, err)
+	}
+	for _, bad := range []string{"0", "-5", "15s", "1.5", "601"} {
+		e["SECONDS_PER_QUESTION"] = bad
+		if _, err := config.Load(e.get); err == nil || !strings.Contains(err.Error(), "SECONDS_PER_QUESTION") {
 			t.Errorf("%q: %v", bad, err)
 		}
 	}

@@ -132,10 +132,13 @@ func TestConfig(t *testing.T) {
 		"DEFAULT_LOCALE": "fr-CA", "PHONE_COUNTRY": "CA", "CONFIG_STRICT": "true",
 		"NATIONAL_ID_TYPE": "nhs",     // the only scheme built so far
 		"MESSAGING":        "capture", // strict needs it set (S14 verification 1)
+		// The estimated time's seconds per question (S36): not a per-country value, but the
+		// browser gets it from here.
+		"SECONDS_PER_QUESTION": "20",
 	}
 	// Strict (AWS) has Cognito and no dev login (S12).
 	c, fx := apitest.NewWith(t, apitest.Options{Env: country, Cognito: true})
-	want := map[string]any{"locale": "fr-CA", "timeZone": "America/Toronto",
+	want := map[string]any{"locale": "fr-CA", "timeZone": "America/Toronto", "secondsPerQuestion": float64(20),
 		"nationalId": map[string]any{"type": "nhs", "label": "NHS number"},
 		"staffSignIn": map[string]any{"devLogin": false, "cognito": map[string]any{
 			"authorizeUrl": "https://apitest.auth.example.test/oauth2/authorize",
