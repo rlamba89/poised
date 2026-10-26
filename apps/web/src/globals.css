@@ -187,3 +187,59 @@
   color: var(--mantine-color-gray-7);
   font-size: 14px;
 }
+
+/* Information blocks (S35, INF-03): the author's headings, lists, links and pictures, at any width.
+   Pictures never get wider than their column (a phone's screen); long links wrap. */
+.sj-info {
+  overflow-wrap: anywhere;
+}
+/* Fixed sizes, so a heading is the same in the editor's preview and in a survey. "div.sj-info" outranks
+   SurveyJS's own ".sd-html h2" (48px/56px at a phone's width: test report 1, F1). */
+div.sj-info h2 {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 700;
+  margin: 0.8em 0 0.4em;
+}
+div.sj-info h3 {
+  font-size: 1.125rem;
+  line-height: 1.625rem;
+  font-weight: 700;
+  margin: 0.8em 0 0.4em;
+}
+div.sj-info h4 {
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 700;
+  margin: 0.8em 0 0.3em;
+}
+div.sj-info > :first-child {
+  margin-top: 0;
+}
+.sj-info ul,
+.sj-info ol {
+  margin: 0.4em 0;
+  padding-left: 1.5em;
+}
+.sj-info li {
+  margin: 0.15em 0;
+}
+/* :link and :visited outrank SurveyJS's own (lighter) link colour. */
+.sj-info a:link,
+.sj-info a:visited {
+  color: var(--mantine-color-brand-8);
+  text-decoration: underline;
+}
+.sj-info img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 8px 0;
+  border-radius: 4px;
+}
+.sj-info-preview {
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--mantine-color-white);
+}

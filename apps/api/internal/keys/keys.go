@@ -513,7 +513,7 @@ func publishedShapes(list []Published) []shape {
 var kindNames = map[string]string{
 	"single": "single choice", "multiple": "multiple choice", "boolean": "Yes/No switch", "dates": "list of dates",
 	"list": "repeating list", "grid": "grid", "bmi": "BMI", "signaturepad": "signature", "file": "file upload",
-	"html": "statement", "expression": "calculation", "matrixdropdown": "table",
+	"html": "information block", "expression": "calculation", "matrixdropdown": "table",
 }
 
 func kindName(k string) string { return or(kindNames[k], k) }

@@ -3,12 +3,12 @@
 // (.sj-clinician-layout in globals.css) can put them on the right.
 import { Model } from "survey-core";
 import {
-  isClinicianOnly, setViewer, showBands, withClinicalSummaries, SUMMARY_PREFIX, type ChapterJson, type SamplePatient,
+  isClinicianOnly, setViewer, showBands, withClinicalSummaries, withoutSurveyHtml, SUMMARY_PREFIX, type ChapterJson, type SamplePatient,
 } from "@poised/clinical";
 import { showUnits } from "./units";
 
 export function clinicianModel(content: ChapterJson, patient?: SamplePatient): Model {
-  const m = new Model(withClinicalSummaries(content));
+  const m = new Model(withClinicalSummaries(withoutSurveyHtml(content)));
   setViewer(m, "clinician");
   if (patient) {
     m.setVariable("patientName", patient.name);

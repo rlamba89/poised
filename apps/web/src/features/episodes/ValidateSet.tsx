@@ -14,6 +14,7 @@ import { IconArrowLeft, IconCircleCheck } from "@tabler/icons-react";
 import type { Model } from "survey-core";
 import { Survey } from "survey-react-ui";
 import "@/features/video/VideoQuestion"; // draws Video elements (S34)
+import "@/features/information/InformationQuestion"; // draws Information, cleaned (S35)
 import "survey-core/survey-core.css";
 import {
   answerSaver, patientVariables, prefillChoiceText, prefilledAnswers, prefillMarks, refreshClinicalSummaries, registerClinicalProperties, sameAnswer, startedFreshText,

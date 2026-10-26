@@ -10,9 +10,10 @@ import {
 import { Model } from "survey-core";
 import { Survey } from "survey-react-ui";
 import "@/features/video/VideoQuestion"; // draws Video elements (S34)
+import "@/features/information/InformationQuestion"; // draws Information, cleaned (S35)
 import "survey-core/survey-core.css";
 import {
-  computeOutputs, forPatient, showBands, localesIn, refreshClinicalSummaries, registerClinicalProperties, setViewer,
+  computeOutputs, forPatient, showBands, localesIn, refreshClinicalSummaries, registerClinicalProperties, setViewer, withoutSurveyHtml,
   LANGUAGES, type ChapterJson, type ComputedOutputs, type Viewer,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
@@ -86,7 +87,7 @@ function Preview({ base, chapter }: { base: string; chapter: ChapterDetail }) {
   const model = useMemo(() => {
     let m: Model;
     if (viewer === "patient") {
-      m = new Model(forPatient(content));
+      m = new Model(forPatient(withoutSurveyHtml(content)));
       setViewer(m, viewer);
       showUnits(m);
       showBands(m);

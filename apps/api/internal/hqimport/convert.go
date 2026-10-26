@@ -411,7 +411,8 @@ func icon(name string) string {
 // htmlEscaper escapes only what HTML needs, as the editor does (html.EscapeString also encodes quotes).
 var htmlEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
 
-// textToHTML matches the editor's textToHtml: one paragraph per line, escaped.
+// textToHTML writes a statement as the editor did before S35: one paragraph per line, escaped (the
+// Information element shows it as it is, and opens it as those lines).
 func textToHTML(text string) string {
 	var b strings.Builder
 	for _, line := range strings.Split(text, "\n") {

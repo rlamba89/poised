@@ -1,7 +1,7 @@
 // "Add content:" buttons (incumbent catalogue, plus Number from DSG-01 and the SurveyJS types).
 import { Button, Text } from "@mantine/core";
 import {
-  IconBooks, IconBuildingHospital, IconCalculator, IconCalendar, IconCircleDot, IconClipboardText, IconGridDots, IconLayoutList, IconLetterT, IconMessage,
+  IconBooks, IconBuildingHospital, IconCalculator, IconCalendar, IconCircleDot, IconClipboardText, IconGridDots, IconInfoCircle, IconLayoutList, IconLetterT,
   IconNumbers, IconPill, IconScale, IconSeparatorHorizontal, IconSignature, IconSquareCheck, IconStar, IconToggleLeft, IconUpload,
   IconUser, IconVideo, type Icon,
 } from "@tabler/icons-react";
@@ -27,7 +27,7 @@ export const KIND_ICON: Record<Kind, Icon> = {
   admissions: IconBuildingHospital,
   bmi: IconScale,
   profile: IconUser,
-  statement: IconMessage,
+  information: IconInfoCircle,
   summary: IconClipboardText,
   video: IconVideo,
 };

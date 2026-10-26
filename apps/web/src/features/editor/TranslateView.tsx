@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { Alert, Badge, Button, Group, SegmentedControl, Select, Stack, Table, Text, Title } from "@mantine/core";
 import { IconDownload, IconUpload, IconX } from "@tabler/icons-react";
 import {
-  LANGUAGES, fromCsv, localesIn, missingCount, plainText, setTranslation, textEntries, toCsv, translationOf, type ChapterJson,
+  LANGUAGES, fromCsv, htmlToLines, localesIn, missingCount, setTranslation, textEntries, toCsv, translationOf, type ChapterJson,
 } from "@poised/clinical";
 import { BlurTextarea } from "./inputs";
 
@@ -103,14 +103,14 @@ export function TranslateView(props: {
                   <Badge size="xs" variant="light" color="gray">{e.field}</Badge>
                 </Table.Td>
                 <Table.Td>
-                  <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{e.english}</Text>
+                  <Text size="sm" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{e.english}</Text>
                 </Table.Td>
                 <Table.Td>
                   <BlurTextarea
                     aria-label={`${LANGUAGES[locale] ?? locale} for ${e.english}`}
                     minRows={1}
                     size="xs"
-                    value={e.isHtml ? plainText(value) : value}
+                    value={e.isHtml ? htmlToLines(value) : value}
                     placeholder="Not translated"
                     error={!value ? " " : undefined}
                     disabled={readOnly}

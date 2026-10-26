@@ -9,7 +9,7 @@ import {
 } from "@tabler/icons-react";
 import {
   bandsOf, calcFormOf, canAskFresh, checkVideo, formatLength, providerName, choiceDisplayOf, keyPlace, copyElement, countDisclosures, dateSettingsOf, describeLogic, enableIfToReadOnly,
-  findElement, groupsToMoveInto, hasQuestionOutputs, isLocked, kindOf, moveElement, moveElementTo, moveOutOfGroup, numberSettingsOf, optionsOf, pageTitle, pagesOf, plainText,
+  findElement, groupsToMoveInto, hasQuestionOutputs, isLocked, kindOf, moveElement, moveElementTo, moveOutOfGroup, numberSettingsOf, optionsOf, pageTitle, pagesOf, informationPreview,
   repeatSettingsOf, summariesIn, textFormatOf, textOf, updateElement, DATE_FORMATS, TEXT_FORMATS, type ChoiceJson, type ElementJson, type Part,
   type Target,
 } from "@poised/clinical";
@@ -187,14 +187,15 @@ function ElementCard(props: { el: ElementJson; index: number; count: number; tar
         )}
       </div>
 
-      {kind === "statement" ? (
+      {kind === "information" ? (
         <>
           {el.visibleIf && <IconGitBranch size={16} className={css.branch} />}
-          <div className={css.statementText} style={{ marginTop: el.visibleIf ? 8 : 0 }}>
-            {plainText(textOf(el.html)).split("\n").map((line, i) => (
-              <p key={i}>{line}</p>
-            ))}
-          </div>
+          <div
+            className={`sj-info ${css.statementText}`}
+            style={{ marginTop: el.visibleIf ? 8 : 0 }}
+            // Formatted and cleaned (informationPreview): only safe tags, links and https pictures.
+            dangerouslySetInnerHTML={{ __html: informationPreview(el) }}
+          />
         </>
       ) : kind === "bmi" ? (
         <BmiBody el={el} />

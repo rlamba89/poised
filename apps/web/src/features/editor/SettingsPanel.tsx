@@ -4,11 +4,12 @@ import { ActionIcon, Button, Group, Menu, Select, Stack, Switch, Tabs, Text } fr
 import { IconBooks, IconChevronDown, IconLink, IconLinkPlus, IconPlus, IconX } from "@tabler/icons-react";
 import {
   KIND_LABEL, bandsOf, canAskFresh, convertKind, keyPlace, convertibleKinds, findElement, hasQuestionOutputs, isAnswerKind, isChoiceKind, kindOf,
-  optionsOf, plainText, summariesIn, textOf, textToHtml, updateElement, type ChapterJson, type ElementJson,
+  optionsOf, summariesIn, textOf, updateElement, type ChapterJson, type ElementJson,
 } from "@poised/clinical";
 import { KIND_ICON } from "./AddContentBar";
 import { outputsAt, type DisclosureTarget } from "./DisclosureModal";
 import { BlurText, BlurTextarea } from "./inputs";
+import { InformationSettings } from "./InformationSettings";
 import { ElementLogic } from "./LogicEditor";
 import { TypeSettings } from "./TypeSettings";
 import { VideoSettings } from "./VideoSettings";
@@ -46,7 +47,7 @@ export function SettingsPanel(props: {
   const place = keyPlace(doc, name);
   const askFresh = canAskFresh(el) && !props.clinicianSet && !place.clinicianOnly && !place.inList;
   // The library (S24) takes one question that holds an answer pre-fill can copy: not a group, a
-  // statement, a calculation, the profile, a signature, an upload or the BMI block; and not a
+  // Information block, a calculation, the profile, a signature, an upload or the BMI block; and not a
   // question of a repeating group, whose answer lives in the group's rows (test report 1, found 1).
   const libraryKind = canAskFresh({ ...el, clinicianOnly: false }) && !place.inList;
   // "Same as…" links a patient's answer pre-fill can copy; repeating lists get their keys from the library.
@@ -115,9 +116,9 @@ export function SettingsPanel(props: {
               <SummarySettings doc={doc} el={el} readOnly={readOnly} patch={patch} />
             ) : kind === "video" ? (
               <VideoSettings el={el} readOnly={readOnly} patch={patch} change={change} libraryPath={props.libraryPath} />
-            ) : kind === "statement" ? (
+            ) : kind === "information" ? (
               <>
-                <BlurTextarea label="Text" value={plainText(textOf(el.html))} minRows={4} disabled={readOnly} onSave={(t) => patch({ html: textToHtml(t) })} />
+                <InformationSettings el={el} readOnly={readOnly} patch={patch} />
                 <ClinicalSwitch el={el} readOnly={readOnly} patch={patch} />
               </>
             ) : (

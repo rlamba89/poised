@@ -177,7 +177,7 @@ func libraryElement(raw json.RawMessage) (json.RawMessage, keys.Question, string
 	case qs[0].Name == "":
 		return nil, keys.Question{}, "The question has no ID."
 	case !qs[0].Answerable:
-		return nil, keys.Question{}, "Statements, calculations and the profile hold no answer, so they can't go in the library."
+		return nil, keys.Question{}, "Information blocks, calculations and the profile hold no answer, so they can't go in the library."
 	case keys.OneOff(qs[0].Type):
 		return nil, keys.Question{}, "Signatures, file uploads and the BMI block are never pre-filled, so they don't go in the library."
 	}
