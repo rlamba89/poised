@@ -91,12 +91,9 @@ export function ElementLogic({ doc, name, readOnly, change }: { doc: ChapterJson
           doc={doc}
           fields={[
             { key: "visibleIf", label: "Visible if", value: el.visibleIf },
-            ...(answer
-              ? [
-                  { key: "requiredIf", label: "Required if", value: el.requiredIf as string | undefined },
-                  { key: "enableIf", label: "Enable if", value: el.enableIf as string | undefined },
-                ]
-              : []),
+            // Also shown on another element that has one (a summary's from the API, S37), so it can be removed.
+            ...(answer || el.requiredIf ? [{ key: "requiredIf", label: "Required if", value: el.requiredIf as string | undefined }] : []),
+            ...(answer || el.enableIf ? [{ key: "enableIf", label: "Enable if", value: el.enableIf as string | undefined }] : []),
           ]}
           readOnly={readOnly}
           onSave={(key, value) => patch({ [key]: value, ...(key === "requiredIf" && value ? { isRequired: undefined } : {}) })}

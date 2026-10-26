@@ -59,4 +59,22 @@ describe("publishProblems", () => {
       { set: "About you", message: "Two clinical summaries cover the same Group “Breathing”: keep one" },
     ]);
   });
+
+  // S37 (Rahul, 26 Oct): a Clinical Summary can't have a condition.
+  it("reports a summary with a condition, naming the set and the summary", () => {
+    const doc: ChapterJson = { pages: [{ name: "p_1", title: "Heart", elements: [
+      { type: "radiogroup", name: "q_b", title: "Breathless?", choices: ["Yes", "No"] },
+      { type: "clinicalsummary", name: "cs_page", title: "Heart checks", clinicianOnly: true, visibleIf: "{q_b} = 'Yes'" },
+    ] }] };
+    expect(publishProblems([{ name: "About you", doc }])).toEqual([
+      { set: "About you", message: "The clinical summary “Heart checks” has a condition: remove it (a summary is always shown)" },
+    ]);
+  });
+  it("passes a summary without a condition", () => {
+    const doc: ChapterJson = { pages: [{ name: "p_1", title: "Heart", elements: [
+      { type: "radiogroup", name: "q_b", title: "Breathless?", choices: ["Yes", "No"] },
+      { type: "clinicalsummary", name: "cs_page", clinicianOnly: true },
+    ] }] };
+    expect(publishProblems([{ name: "About you", doc }])).toEqual([]);
+  });
 });

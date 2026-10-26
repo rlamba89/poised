@@ -58,6 +58,8 @@ export type SummaryInfo = {
   scopeName?: string;
   /** Inside a repeating group, which is not allowed. */
   inList: boolean;
+  /** Has a condition (shown, required or read-only when…), which is not allowed (S37). */
+  conditional: boolean;
   notesId: string;
   commentsId: string;
 };
@@ -78,7 +80,7 @@ function walk(doc: ChapterJson): { summaries: SummaryInfo[]; visits: Visit[] } {
       if (isSummary(el)) {
         const id = idOf(el.name);
         summaries.push({
-          name: el.name, title: textOf(el.title) || `${label} summary`, page: page.name, scope, scopeName, inList,
+          name: el.name, title: textOf(el.title) || `${label} summary`, page: page.name, scope, scopeName, inList, conditional: hasCondition(el),
           notesId: `${SUMMARY_PREFIX}notes_${id}`, commentsId: `${SUMMARY_PREFIX}comments_${id}`,
         });
         continue;
@@ -98,6 +100,19 @@ function walk(doc: ChapterJson): { summaries: SummaryInfo[]; visits: Visit[] } {
   return { summaries, visits };
 }
 
+/**
+ * Whether an element has a condition: shown, required or read-only when… (an empty one is none).
+ * A summary can't have one (Rahul, 26 Oct, S37): a hidden summary would hide its notes.
+ */
+export const hasCondition = (el: ElementJson): boolean =>
+  (["visibleIf", "requiredIf", "enableIf"] as const).some((k) => typeof el[k] === "string" && (el[k] as string).trim() !== "");
+
+/**
+ * Whether the editor offers Logic on an element (S37): not on a summary, unless it already has a
+ * condition (a draft made by hand or by the API), so the author can remove it.
+ */
+export const logicOffered = (el: ElementJson): boolean => !isSummary(el) || hasCondition(el);
+
 /** Every summary, in document order. */
 export const summariesIn = (doc: ChapterJson): SummaryInfo[] => walk(doc).summaries;
 
@@ -108,7 +123,11 @@ export function summaryOwners(doc: ChapterJson): Map<string, string> {
   return out;
 }
 
-/** What blocks publishing (SGN-04): two summaries covering the same Group, Section or page; one inside a repeating group. */
+/**
+ * What blocks publishing (SGN-04): two summaries covering the same Group, Section or page; one inside
+ * a repeating group; one with a condition (S37). Published versions are never rewritten: a published
+ * summary with a condition keeps working as before.
+ */
 export function summaryProblems(doc: ChapterJson): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -119,6 +138,7 @@ export function summaryProblems(doc: ChapterJson): string[] {
   }
   for (const s of summariesIn(doc)) {
     if (s.inList) out.push(`The clinical summary “${s.title}” is inside a repeating group: move it out`);
+    if (s.conditional) out.push(`The clinical summary “${s.title}” has a condition: remove it (a summary is always shown)`);
   }
   return [...new Set(out)];
 }

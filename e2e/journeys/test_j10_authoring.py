@@ -23,7 +23,11 @@ episode for that procedure: the patient, on a phone, sees each Question Set's es
 4 minutes": five questions at the deployment's 15 seconds and a 150-second video; the clinician-only
 question and the summary don't count), and under Information on their home the video's player, the
 leaflet's link and the hospital's phone and email, with no sideways scroll. Cara adds another leaflet
-to this episode only: the patient sees it; the editor's Question Set header shows the same estimate."""
+to this episode only: the patient sees it; the editor's Question Set header shows the same estimate.
+
+S37: a Clinical Summary can't have a condition. Its settings offer no Logic tab (a question's still
+do). A draft whose summary has one (made by the API) can't be published: the Publish window names the
+summary, and its Settings say why; the author removes the condition in the Code tab, and it publishes."""
 
 from playwright.sync_api import BrowserContext, Page, expect
 
@@ -61,6 +65,12 @@ def test_two_clinical_summaries_from_the_editor_to_the_poa_summary(page: Page, p
     settings.get_by_role("textbox", name="Title").press("Tab")
     expect(main.locator("[data-testid^=card-cs_]").filter(has_text="Heart overview")).to_contain_text("Covers the page “Heart”")
     expect(page.get_by_test_id("save-status")).to_have_text("All changes saved")
+    # No Logic on a summary (S37): no Logic tab and no "Displays when" on its card; a question still has Logic.
+    expect(page.get_by_role("tab", name="Settings", exact=True)).to_be_visible()
+    expect(page.get_by_role("tab", name="Logic", exact=True)).to_have_count(0)
+    expect(main.locator("[data-testid^=card-cs_]").filter(has_text="Heart overview")).not_to_contain_text("Displays when")
+    main.get_by_test_id("card-q_angina").click()
+    expect(page.get_by_role("tab", name="Logic", exact=True)).to_be_visible()
 
     # A second summary in the same Group blocks Publish, naming the Question Set.
     group.get_by_text("Breathing", exact=True).click()
@@ -287,3 +297,43 @@ def test_procedure_information_and_estimated_time(page: Page, phone: BrowserCont
     expect(page.get_by_role("main").get_by_test_id("set-estimate")).to_have_text("· About 4 minutes for the patient")
     page.get_by_role("complementary").get_by_text("Nurse checks").click()
     expect(page.get_by_role("main").get_by_test_id("set-estimate")).to_have_count(0)
+
+
+def test_a_summary_with_a_condition_cannot_be_published(page: Page, as_user):
+    alex = as_user("Alex Author")
+    hq = alex.draft_hq("summary-condition-hq.json", f"E2E J10 S37 {unique()}")
+    base = sign_in(page.context, "Alex Author")
+    page.goto(f"{base}/questionnaires/{hq['id']}")
+    page.get_by_role("complementary").get_by_text("About you").click()
+    page.get_by_role("complementary").get_by_text("Heart").click()
+    main = page.get_by_role("main")
+
+    # Publish is refused, naming the Question Set and the summary.
+    page.get_by_role("banner").get_by_role("button", name="Publish").click()
+    dialog = page.get_by_role("dialog", name="Publish version 1?")
+    expect(dialog.get_by_test_id("publish-problems")).to_contain_text(
+        "About you · The clinical summary “Heart checks” has a condition: remove it (a summary is always shown)")
+    expect(dialog.get_by_role("button", name="Publish")).to_be_disabled()
+    dialog.get_by_role("button", name="Cancel").click()
+
+    # The summary's Settings say why; its Logic tab is there only to remove the condition.
+    card = main.get_by_test_id("card-cs_heart")
+    expect(card).to_contain_text("Displays when")
+    card.click()
+    expect(page.get_by_test_id("summary-condition")).to_contain_text("A Clinical Summary can't have a condition")
+    page.get_by_role("tab", name="Logic", exact=True).click()
+    logic = page.get_by_role("tabpanel", name="Logic")
+    logic.get_by_role("tab", name="Code").click()
+    logic.get_by_role("textbox", name="Visible if").fill("")
+    logic.get_by_role("button", name="Save logic").click()
+    expect(page.get_by_test_id("save-status")).to_have_text("All changes saved")
+
+    # Removed: no Logic tab, no warning, and the HQ publishes.
+    expect(page.get_by_role("tab", name="Logic", exact=True)).to_have_count(0)
+    expect(page.get_by_test_id("summary-condition")).to_have_count(0)
+    expect(card).not_to_contain_text("Displays when")
+    page.get_by_role("banner").get_by_role("button", name="Publish").click()
+    dialog = page.get_by_role("dialog", name="Publish version 1?")
+    expect(dialog.get_by_test_id("publish-problems")).to_have_count(0)
+    dialog.get_by_role("button", name="Publish").click()
+    expect(dialog).to_be_hidden()

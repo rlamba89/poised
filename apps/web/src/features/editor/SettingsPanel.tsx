@@ -1,10 +1,10 @@
 // The left column while a card is selected: Settings | Disclosures | Logic (incumbent
 // QuestionSettingsPanel). Text fields save when they lose focus, so typing is one undo step.
-import { ActionIcon, Button, Group, Menu, Select, Stack, Switch, Tabs, Text } from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, Menu, Select, Stack, Switch, Tabs, Text } from "@mantine/core";
 import { IconBooks, IconChevronDown, IconLink, IconLinkPlus, IconPlus, IconX } from "@tabler/icons-react";
 import {
   KIND_LABEL, bandsOf, canAskFresh, convertKind, keyPlace, convertibleKinds, findElement, hasQuestionOutputs, isAnswerKind, isChoiceKind, kindOf,
-  optionsOf, summariesIn, textOf, updateElement, type ChapterJson, type ElementJson,
+  logicOffered, optionsOf, summariesIn, textOf, updateElement, type ChapterJson, type ElementJson,
 } from "@poised/clinical";
 import { KIND_ICON } from "./AddContentBar";
 import { outputsAt, type DisclosureTarget } from "./DisclosureModal";
@@ -40,6 +40,9 @@ export function SettingsPanel(props: {
   const kind = kindOf(el);
   const Icon = KIND_ICON[kind];
   const canDisclose = isChoiceKind(kind) || hasQuestionOutputs(kind) || kind === "grid";
+  // No Logic on a Clinical Summary (S37), unless it already has a condition to remove.
+  const canLogic = logicOffered(el);
+  const shownTab = tab === "logic" && !canLogic ? "settings" : tab;
   const patch = (p: Partial<ElementJson>) => change((d) => updateElement(d, name, p));
   const targets = convertibleKinds(el);
   const isGroup = kind === "group" || kind === "section";
@@ -55,12 +58,12 @@ export function SettingsPanel(props: {
   const linkedFrom = el.linkedFrom as { questionnaire?: string; title?: string } | undefined;
 
   return (
-    <Tabs value={tab} onChange={(t) => t && onTab(t as PanelTab)} keepMounted={false}>
+    <Tabs value={shownTab} onChange={(t) => t && onTab(t as PanelTab)} keepMounted={false}>
       <Group justify="space-between" wrap="nowrap" pr="sm" style={{ borderBottom: "1px solid var(--mantine-color-gray-3)" }}>
         <Tabs.List style={{ borderBottom: 0 }}>
           <Tabs.Tab value="settings">Settings</Tabs.Tab>
           {canDisclose && <Tabs.Tab value="disclosures">Disclosures</Tabs.Tab>}
-          <Tabs.Tab value="logic">Logic</Tabs.Tab>
+          {canLogic && <Tabs.Tab value="logic">Logic</Tabs.Tab>}
         </Tabs.List>
         <ActionIcon variant="subtle" color="gray" aria-label="Close settings" onClick={onClose}>
           <IconX size={18} />
@@ -189,9 +192,11 @@ export function SettingsPanel(props: {
           <DisclosuresTab doc={doc} el={el} readOnly={readOnly} open={props.openDisclosures} />
         </Tabs.Panel>
 
-        <Tabs.Panel value="logic">
-          <ElementLogic key={name} doc={doc} name={name} readOnly={readOnly} change={change} />
-        </Tabs.Panel>
+        {canLogic && (
+          <Tabs.Panel value="logic">
+            <ElementLogic key={name} doc={doc} name={name} readOnly={readOnly} change={change} />
+          </Tabs.Panel>
+        )}
       </div>
     </Tabs>
   );
@@ -213,6 +218,13 @@ function SummarySettings({ doc, el, readOnly, patch }: { doc: ChapterJson; el: E
         disabled={readOnly}
         onSave={(t) => patch({ title: t.trim() && t.trim() !== fallback ? t.trim() : undefined })}
       />
+      {/* S37: a draft's summary with a condition (made by hand or by the API) can't be published. */}
+      {info?.conditional && !readOnly && (
+        <Alert color="orange" data-testid="summary-condition">
+          A Clinical Summary can&apos;t have a condition, so this version can&apos;t be published. Remove the condition in the
+          Logic tab (Display: Always, or the Code tab), or delete the summary.
+        </Alert>
+      )}
       <Text size="sm" c="dimmed" data-testid="summary-help">
         Only clinicians see this box. It covers the {info?.scope ?? "page"}: it lists the disclosure notes from there, with a box
         for clinical comments, and both show on the POA summary. A note shows once, under the nearest summary.

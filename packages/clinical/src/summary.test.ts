@@ -3,7 +3,7 @@ import { Model, type QuestionHtmlModel } from "survey-core";
 import type { ChapterJson, ElementJson } from "./doc";
 import { registerClinicalProperties } from "./properties";
 import {
-  refreshClinicalSummaries, summariesIn, summaryOwners, summaryProblems, upgradeSummaries, withClinicalSummaries,
+  logicOffered, refreshClinicalSummaries, summariesIn, summaryOwners, summaryProblems, upgradeSummaries, withClinicalSummaries,
 } from "./summary";
 import { stripClinicianOnly } from "./viewer";
 
@@ -159,5 +159,40 @@ describe("summaryProblems", () => {
       { type: "paneldynamic", name: "g_list", title: "Medicines", templateElements: [{ type: "text", name: "q_m" }, summary("cs_in_list")] },
     ] }] };
     expect(summaryProblems(doc)).toEqual(["The clinical summary “Medicines summary” is inside a repeating group: move it out"]);
+  });
+  // S37 (Rahul, 26 Oct): a hidden summary would hide its notes, so a summary can't have a condition.
+  it("a summary with a condition: shown, required or read-only", () => {
+    const doc = structuredClone(scoped);
+    const els = doc.pages![0].elements!;
+    els[1].elements![2].visibleIf = "{q_asthma} = 'q_asthma_y'";
+    els[2].elements![1].enableIf = "{q_anaemia} = 'q_anaemia_y'";
+    els[3].requiredIf = "{q_angina} = 'q_angina_y'";
+    expect(summaryProblems(doc)).toEqual([
+      "The clinical summary “Breathing summary” has a condition: remove it (a summary is always shown)",
+      "The clinical summary “Blood checks” has a condition: remove it (a summary is always shown)",
+      "The clinical summary “Heart summary” has a condition: remove it (a summary is always shown)",
+    ]);
+  });
+  it("an empty condition is no condition", () => {
+    const doc = structuredClone(scoped);
+    doc.pages![0].elements![3].visibleIf = "";
+    expect(summaryProblems(doc)).toEqual([]);
+  });
+});
+
+// S37: the editor offers no Logic on a summary, except to remove a condition it already has.
+describe("logicOffered", () => {
+  it("not on a summary", () => {
+    expect(logicOffered(summary("cs_a"))).toBe(false);
+    expect(logicOffered({ ...summary("cs_a"), visibleIf: " " })).toBe(false);
+  });
+  it("on a summary that already has a condition, so it can be removed", () => {
+    expect(logicOffered({ ...summary("cs_a"), visibleIf: "{q} = 'y'" })).toBe(true);
+    expect(logicOffered({ ...summary("cs_a"), requiredIf: "{q} = 'y'" })).toBe(true);
+  });
+  it("on every other element, as before", () => {
+    expect(logicOffered({ type: "text", name: "q" })).toBe(true);
+    expect(logicOffered({ type: "panel", name: "g", elements: [] })).toBe(true);
+    expect(logicOffered({ type: "html", name: "i", html: "" })).toBe(true);
   });
 });
