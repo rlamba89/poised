@@ -139,6 +139,20 @@ docker compose up -d --force-recreate db
 - ~~**J8 is flaky on a long-lived database:** its mobile is one of 1,000 (`+447700900NNN`), so `captured(mobile)` can find another run's texts. Widen the range or filter by episode.~~ *Rahul, 25 Oct: fix it. Fixed in S30 (tested 25 Oct): J8 counts only texts carrying a link this episode's emails carry.*
 - `EpisodeList.tsx` uses `openTaskCount` only as a truthiness check and renders `e.openTasks` directly (tidy-up).
 
+### From S37's test report 1 (26 Oct; all passed, 17 of 17; minor, no code change; [test-report-1.md](sessions/S37-summary-no-conditions/test-report-1.md))
+
+- **The Logic tab's Code view saves one field at a time:** emptying "Required if", switching to "Enable if" without Save logic, then saving keeps the Required if. Older behaviour, but a summary with two conditions (only from the API) needs two saves, and its warning doesn't say so. Keep the unsaved text per field, or warn on switching.
+- **"Display: Always" can't remove a summary's required-if or enable-if** (only from the API): the Builder shows only Display. The warning says "Display: Always, or the Code tab"; it could name the Code tab alone in that case.
+- **Two summaries with the same title and a condition give one problem line** (identical messages are de-duplicated); fixing one still lists the other, so nothing is missed.
+- **A summary's delete window** says "“Clinical summary” will be deleted, with its options and disclosures" for an untitled one (not its "Heart summary" name), and summaries have neither options nor disclosures.
+- **A patient Question Set's page heading reads "Clinical Page"** in the editor (older wording, noted only).
+
+### From S37's verification 1 (26 Oct; Verified; minor, none blocking; [verify.md](sessions/S37-summary-no-conditions/verify.md))
+
+- **Go's publish doesn't check summaries** (any of the summary rules: two in one place, one in a repeating group, one with a condition), so the API alone can publish one the editor refuses. Same as logic problems and test cases (plan 2.1). If the API is ever used to publish without the editor, move the structural summary checks into Go (it may walk the JSON).
+- **The HQ importer can put a condition on a summary** (`hqimport/convert.go`: the incumbent's renderIf/visibleIf is copied onto every element, a `ClinicalPageSummary` too). The imported draft then shows the publish problem until the author removes it. The importer could drop it with a warning.
+- **On a summary that already has a condition, the Logic Builder can also add one** (e.g. Display: Conditionally on one with only a required-if). Only for drafts made outside the editor; Publish still refuses it. A removal-only view would be tighter.
+
 ### From S36's verification 1 (26 Oct; Verified; minor, none blocking; [verify.md](sessions/S36-patient-information-time/verify.md))
 
 - ~~**Question for Rahul: what "copied onto the episode" means (S36 answers 2).** The episode gets a copy of the procedure's **list** (which items), so changing the procedure's list later leaves booked patients alone. But each copied row still points at the library item, so **editing** an item (its title or link) reaches booked patients, and **retiring** one hides it from every patient (the brief's "Retired items stop showing", manual-test focus 4). The alternative is freezing each item's title and link onto the episode, so a retired or edited item stays as it was for booked patients. Keep as built (recommended: a fixed link or a withdrawn leaflet should reach everyone), or freeze?~~ *Settled 26 Oct (Rahul): as built. The list is fixed at booking; each item shows its latest version, and a retired item disappears.*
