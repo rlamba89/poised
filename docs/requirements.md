@@ -394,7 +394,7 @@ Authors can attach clinical outputs to any panel (CLN-02).
 
 | ID | Requirement | Origin | SurveyJS | Priority |
 | --- | --- | --- | --- | --- |
-| DSG-01 | The toolbox uses clinical names in this order: Group, Yes / No, Select One, Select Many, Text, Date, Number, Searchable list, Medication, Admissions, BMI, Profile, Statement, then Library. Types a hospital does not allow are hidden. | Parity (names and order) | Built-in | Must |
+| DSG-01 | The toolbox uses clinical names in this order: Group, Yes / No, Select One, Select Many, Text, Date, Number, Searchable list, Medication, Admissions, BMI, Profile, Statement (called **Information** since S35, 25 Oct), then Library. Types a hospital does not allow are hidden. | Parity (names and order) | Built-in | Must |
 | DSG-02 | The settings panel shows a short, clinician-friendly set of settings, with clinical settings first. Advanced settings are shown only to users allowed to use them. | New | Built-in + Extend | Must |
 | DSG-03 | The designer links to the user guide | Parity | Extend | Should |
 | DSG-04 | Errors are shown in plain language, for example "A draft questionnaire with this name already exists" | Parity | Outside | Must |

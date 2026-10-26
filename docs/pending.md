@@ -139,6 +139,37 @@ docker compose up -d --force-recreate db
 - ~~**J8 is flaky on a long-lived database:** its mobile is one of 1,000 (`+447700900NNN`), so `captured(mobile)` can find another run's texts. Widen the range or filter by episode.~~ *Rahul, 25 Oct: fix it. Fixed in S30 (tested 25 Oct): J8 counts only texts carrying a link this episode's emails carry.*
 - `EpisodeList.tsx` uses `openTaskCount` only as a truthiness check and renders `e.openTasks` directly (tidy-up).
 
+### From S35's verification 2 (25 Oct; Verified; minor, none blocking; [verify.md](sessions/S35-information-element/verify.md))
+
+- **Editing an old statement reads its lines as marks.** An old statement opens as its plain lines; once edited, a line such as `# of tablets`, `1. Stop aspirin` or `*note*` becomes a heading, a numbered list or italic. The live preview shows it before the author leaves the box, and the editor and the import only ever wrote escaped plain text, so links or bold can't be lost; only hand-made HTML would lose them. A fix: escape a leading `#`, `-`, `1.` and stars when an old statement is first turned into text.
+- **A class of plain words is kept on any allowed tag** (`sanitizeHtml`), so HTML written through the content API could borrow the app's own classes (e.g. `sd-btn` to look like a button). Nothing runs, and only staff who can change questionnaires can write it. Allowing only the classes the app writes (`sj-…`) would close it.
+- **The safe drawing of `html` elements is registered by importing `InformationQuestion.tsx`** on each page that shows a survey (PatientHQ, ValidateSet, PreviewPage). A new page that shows a survey must import it too, or SurveyJS draws the raw HTML again (and Information blocks show nothing). Registering it once at app start would remove that trap.
+- **A picture inside a link** (`[words ![p](https://…)](https://…)`) isn't understood: it shows as a broken link. The hint doesn't offer it; worth supporting if authors ask.
+- **Small:** `[words]()` lists an empty address in the orange note; a named character without its `;` (`&amp chips`, in hand-made HTML only) shows literally; `elementLabel` formats a whole block to take its first 60 characters.
+
+### From S35's test report 3 (25 Oct; all passed, 7 of 7; after verification 1's fixes; no code change)
+
+- **A `{placeholder}` in a picture's description or a link's address shows as written** (e.g. `alt="{q_note}"`, `https://example.org/{q_note}`). By design since verification 1 (F1): values are filled only between tags, never into an address or attribute. An author is unlikely to want it; if one does, fill an `alt` with the value escaped (never an address).
+- **Validate's orange "Patient answered: …" note** under a changed long text answer doesn't wrap: with a long answer it runs about 200px past the question card's right edge (not off the page). Probably since S04's corrections note; a `overflow-wrap: anywhere` on it would do.
+- **A blank line between numbered steps** gives a bigger gap in the Settings Preview (about 80px) than on the card (about 60px): Mantine's and the card's paragraph spacing differ. Both read fine.
+
+### From S35's test report 2 (25 Oct; all passed, 10 of 10; cosmetic, no code change)
+
+- **Hand-made HTML on the editor card:** a block with loose words between two paragraphs (e.g. `<p>a</p>b<p>c</p>`, which nobody can type and the incumbent import doesn't write) shows those words closer to the next line than to the one before. It's the browser's spacing for text outside a paragraph; the Settings Preview spaces them evenly, and once the block is edited it's saved as three paragraphs.
+
+### From S35's test report 1 (25 Oct; exploring notes, not S35, no code change)
+
+- **The patient's set list at 390px** cuts the status badge to "COMPL…" and the Review button to "Revie" (also seen after S34; Mantine's Badge hides overflow, see the S33 gotcha).
+- **A reload inside a set** takes the patient back to the sections list (the URL doesn't name the set).
+- **Not confirmed:** opening Preview while the header says "Saving…" may show the chapter without the last edit; reopening it shows it.
+- **A question:** the editor's page header says "Clinical Page" above a page of a patient Question Set.
+
+### From S35's build (25 Oct; for Rahul, none blocking)
+
+- **Patients can't choose a language yet.** Every text can be translated (LNG-01), and the editor's Preview shows each language, but the patient's form always shows English: nothing sets the survey's language for a patient. S35 tests Information translations in the Preview, as S34 did for videos. A patient language choice (e.g. from the hospital's setting or a picker) needs a plan step.
+- **A picture's site sees the patient's IP address** when the picture loads (it's fetched from that site; the page sends no referrer, so not which page). Uploading pictures to our own storage comes with C8.
+- **An Information block's text is checked only when shown**, not when saved: Go stores whatever JSON the editor sends (as for every element), and every survey cleans it before display (`sanitizeHtml`).
+
 ### From S34's test report 1 (25 Oct; all passed, 24 of 24; none blocking, no code change)
 
 - **The patient's set list is cut short at 390px (before S34):** on the patient's questionnaire page, a set's status badge reads "PLEASE CHE…" / "IN PROGR…" and the **Continue** button "Continu" when the set's name wraps to two lines ("Question Set 1"). Mantine's Badge hides overflow (the S33 gotcha); use a badge that doesn't shrink, or let the row wrap (`PatientHQ.tsx`).
