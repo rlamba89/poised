@@ -11,7 +11,11 @@ summary, with its own title, notes and comment.
 S34: the author also adds a Video from the content library, found by its tag: its title and length
 fill in, and its "I have watched this video" tick is made required. The patient, on a phone (WebKit),
 sees the video (the player's address only: the real video site is blocked, so this runs offline) and
-can't finish the set until it's ticked; the clinician sees that it was ticked, and can't change it."""
+can't finish the set until it's ticked; the clinician sees that it was ticked, and can't change it.
+
+S35: the author also adds an Information block with a heading, a list and a link, and a <script>
+typed into it; the preview shows it formatted as they type. The patient, on a phone, sees it
+formatted (the link opens in a new tab), and the <script> as text: it never runs."""
 
 from playwright.sync_api import BrowserContext, Page, expect
 
@@ -83,6 +87,21 @@ def test_two_clinical_summaries_from_the_editor_to_the_poa_summary(page: Page, p
     expect(video).to_contain_text("I have watched this video")
     expect(video).not_to_contain_text("(optional)")
     expect(page.get_by_test_id("save-status")).to_have_text("All changes saved")
+
+    # An Information block (S35): a heading, a list and a link, and a <script> that must stay text.
+    main.get_by_role("button", name="Information", exact=True).last.click()
+    settings = page.get_by_role("tabpanel", name="Settings")
+    settings.get_by_role("textbox", name="Text").fill(
+        "## On the day\n- Bring your inhaler\n- Bring your glasses\n"
+        "Read [the hospital's guide](https://example.org/guide).\n<script>window.__xss=1</script>")
+    preview = settings.get_by_test_id("information-preview")
+    expect(preview.get_by_role("heading", name="On the day")).to_be_visible()
+    expect(preview.get_by_role("listitem")).to_have_text(["Bring your inhaler", "Bring your glasses"])
+    expect(preview.get_by_role("link", name="the hospital's guide")).to_have_attribute("href", "https://example.org/guide")
+    expect(preview).to_contain_text("<script>window.__xss=1</script>")
+    settings.get_by_role("textbox", name="Text").press("Tab")
+    expect(main.locator("[data-testid^=card-q_]").filter(has_text="On the day")).to_contain_text("Bring your glasses")
+    expect(page.get_by_test_id("save-status")).to_have_text("All changes saved")
     page.get_by_role("banner").get_by_role("button", name="Publish").click()
     dialog = page.get_by_role("dialog", name="Publish version 1?")
     dialog.get_by_role("button", name="Publish").click()
@@ -109,6 +128,14 @@ def test_two_clinical_summaries_from_the_editor_to_the_poa_summary(page: Page, p
     expect(player).to_have_attribute("src", "https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ")
     expect(player).to_have_attribute("referrerpolicy", "strict-origin-when-cross-origin")
     expect(patient.get_by_text("Length 10:35")).to_be_visible()
+    # The Information block (S35), formatted; the typed <script> is only text.
+    expect(patient.get_by_role("heading", name="On the day")).to_be_visible()
+    expect(patient.locator(".sj-info li")).to_have_text(["Bring your inhaler", "Bring your glasses"])
+    guide = patient.get_by_role("link", name="the hospital's guide")
+    expect(guide).to_have_attribute("href", "https://example.org/guide")
+    expect(guide).to_have_attribute("target", "_blank")
+    expect(patient.get_by_text("<script>window.__xss=1</script>")).to_be_visible()
+    assert patient.evaluate("window.__xss") is None, "the typed <script> ran"
     patient.get_by_role("button", name="Finish this section").click()
     expect(patient.get_by_role("checkbox", name="I have watched this video")).to_be_visible()
     expect(patient.get_by_text("Please tick “I have watched this video” to go on.")).to_be_visible()

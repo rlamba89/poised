@@ -211,6 +211,18 @@ def block_video_sites(context: BrowserContext) -> None:
         context.route(site, lambda route: route.fulfill(status=200, content_type="text/html", body="<html><body>video</body></html>"))
 
 
+TEST_PICTURE = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500">'
+    '<rect width="1200" height="500" fill="#0f766e"/><text x="40" y="270" font-size="80" fill="#fff">Car park B</text></svg>'
+)
+
+
+def serve_test_pictures(context: BrowserContext) -> None:
+    """Answers https://pictures.example.org/… with a made-up picture 1200 pixels wide (S35), so an
+    Information block's picture loads offline, and is wider than a phone's screen."""
+    context.route("https://pictures.example.org/**", lambda route: route.fulfill(status=200, content_type="image/svg+xml", body=TEST_PICTURE))
+
+
 def pick(page: Page, label: str, option: str) -> None:
     """Picks an option from a dropdown (Mantine Select) by its label."""
     page.get_by_role("combobox", name=label).click()

@@ -1,0 +1,63 @@
+{
+  "description": "One Question Set with Information blocks (S35): an old statement, one with HTML nobody could type in the editor, and a formatted one with a picture and a German translation; and one that shows the patient's answer back ({q_note}), which must stay plain text (verification 1, F1).",
+  "chapters": [
+    {
+      "name": "Before you come in",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_info",
+            "title": "Your visit",
+            "elements": [
+              {
+                "type": "html",
+                "name": "i_old",
+                "html": "<p>Please arrive 30 minutes early.</p><p>Bring a dressing gown &amp; slippers.</p>"
+              },
+              {
+                "type": "html",
+                "name": "i_bad",
+                "html": "<p>Imported text</p><img src=x onerror=\"window.__xss=1\"><a href=\"javascript:window.__xss=2\">bad link</a><script>window.__xss=3</script><p onclick=\"window.__xss=4\">Click me</p>"
+              },
+              {
+                "type": "html",
+                "name": "i_parking",
+                "markdown": {
+                  "default": "## Parking\nPark in **car park B**.\n- Pay at the machine\n- Keep your ticket\nSee [the map](https://example.org/map) or [call us](tel:+10000000000).\n![The car park entrance](https://pictures.example.org/car-park.svg)",
+                  "de": "## Parken\nParken Sie im **Parkhaus B**."
+                }
+              },
+              {
+                "type": "radiogroup",
+                "name": "q_lift",
+                "title": "Will someone drive you home?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "comment",
+                "name": "q_note",
+                "title": "Anything else we should know?"
+              },
+              {
+                "type": "html",
+                "name": "i_echo",
+                "markdown": "You told us: **{q_note}**"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
