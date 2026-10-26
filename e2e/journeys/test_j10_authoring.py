@@ -15,9 +15,19 @@ can't finish the set until it's ticked; the clinician sees that it was ticked, a
 
 S35: the author also adds an Information block with a heading, a list and a link, and a <script>
 typed into it; the preview shows it formatted as they type. The patient, on a phone, sees it
-formatted (the link opens in a new tab), and the <script> as text: it never runs."""
+formatted (the link opens in a new tab), and the <script> as text: it never runs.
+
+S36: the patient's Information and the estimated time. Alex gives a procedure a library video and a
+trust leaflet on the Procedures page; the hospital has a phone number and email for patients. A new
+episode for that procedure: the patient, on a phone, sees each Question Set's estimated time ("About
+4 minutes": five questions at the deployment's 15 seconds and a 150-second video; the clinician-only
+question and the summary don't count), and under Information on their home the video's player, the
+leaflet's link and the hospital's phone and email, with no sideways scroll. Cara adds another leaflet
+to this episode only: the patient sees it; the editor's Question Set header shows the same estimate."""
 
 from playwright.sync_api import BrowserContext, Page, expect
+
+import re
 
 from support import block_video_sites, choose, invite_path, sign_in, unique
 
@@ -181,3 +191,99 @@ def test_two_clinical_summaries_from_the_editor_to_the_poa_summary(page: Page, p
     expect(heart_block).not_to_contain_text("Asthma")
     # The POA Summary is unchanged by the video (S34): no block, and no "change" for its tick.
     expect(about).not_to_contain_text("Your anaesthetic explained")
+
+
+def test_procedure_information_and_estimated_time(page: Page, phone: BrowserContext, as_user):
+    u = unique()
+    ada, alex, cara = as_user("Ada Admin"), as_user("Alex Author"), as_user("Cara Clinician")
+    # The trust's own leaflets (the content library, S33), the hospital's contact details for patients
+    # (Settings, S10), and a procedure offered at every hospital.
+    leaflet = f"E2E Fasting leaflet {u}"
+    extra = f"E2E Parking leaflet {u}"
+    for title in (leaflet, extra):
+        ada.call("POST", ada.o("/content"), {"kind": "leaflet", "title": title, "url": f"https://example.org/{u.replace(' ', '-')}/{title[4:11].lower()}.pdf", "tags": []})
+    hospital_id = ada.base.split("/h/")[1]
+    ada.call("PATCH", ada.o("/settings"), {"hospitalId": hospital_id, "values": {"contact.phone": "0100 555 0199", "contact.email": "poa@hospital-a1.example"}})
+    procedure = f"E2E Bunion {u}"
+    alex.call("POST", alex.o("/procedures"), {"name": procedure, "code": "", "specialty": "", "hospitalId": None})
+    hq = alex.published_hq("information-time-hq.json", f"E2E Info {u}")
+
+    # Alex gives the procedure a video and a leaflet from the library, on the Procedures page.
+    base = sign_in(page.context, "Alex Author")
+    page.goto(f"{base}/procedures")
+    page.get_by_test_id(f"procedure-{procedure}").get_by_role("button", name="Edit").click()
+    form = page.get_by_test_id("procedure-form")
+    picker = form.get_by_role("combobox", name="Add a video or leaflet")
+    picker.click()
+    picker.fill("Your anaesthetic")
+    page.get_by_role("option", name="Example: Your anaesthetic explained (Video)").click()
+    picker.click()
+    picker.fill(leaflet)
+    page.get_by_role("option", name=f"{leaflet} (Leaflet)").click()
+    expect(form.get_by_test_id("procedure-info").get_by_role("button", name=re.compile("^Remove"))).to_have_count(2)
+    form.get_by_role("button", name="Save changes").click()
+    expect(page.get_by_test_id(f"procedure-{procedure}").get_by_test_id("procedure-info-summary")).to_have_text("1 video, 1 leaflet")
+
+    # A new episode for it gets the list (S36 answers 2).
+    episode = cara.episode(hq, f"J10 Info {u}", procedure=procedure)
+
+    # The patient, on a phone: each set's estimated time…
+    block_video_sites(phone)
+    patient = phone.new_page()
+    patient.goto(invite_path(episode["email"]))
+    patient.get_by_role("button", name="Continue").click()
+    patient.get_by_label("Day").fill("17")
+    patient.get_by_label("Month").fill("5")
+    patient.get_by_label("Year").fill("1980")
+    patient.get_by_role("button", name="Continue").click()
+    expect(patient.get_by_test_id("set-Before your operation").get_by_test_id("set-estimate")).to_have_text("About 4 minutes")
+    expect(patient.get_by_test_id("set-Your health").get_by_test_id("set-estimate")).to_have_text("About 1 minute")
+    # …with the status badge and button whole at phone width (S36: the row wraps instead).
+    patient.get_by_test_id("set-Your health").get_by_role("button", name="Start").click()
+    choose(patient, "Do you have diabetes?", "No")
+    patient.get_by_role("button", name="Finish this section").click()
+    badge = patient.get_by_test_id("set-Your health").get_by_text("Complete", exact=True)
+    expect(badge).to_be_visible()
+    assert badge.evaluate("e => e.scrollWidth <= e.clientWidth + 1"), "the Complete badge is cut short"
+    review = patient.get_by_test_id("set-Your health").get_by_role("button", name="Review")
+    assert review.evaluate("e => e.scrollWidth <= e.clientWidth + 1"), "the Review button is cut short"
+
+    # …and under Information on their home: the video, the leaflet and the hospital's phone and email.
+    patient.goto("/home")
+    card = patient.get_by_test_id("home-episode").filter(has_text=hq["name"])
+    card.get_by_role("button", name="Information").click()
+    info = card.get_by_test_id("home-information-list")
+    player = info.locator("iframe[title='Example: Your anaesthetic explained']")
+    expect(player).to_have_attribute("src", "https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ")
+    expect(info.get_by_text("Length 10:35")).to_be_visible()
+    link = info.get_by_role("link", name=leaflet)
+    expect(link).to_have_attribute("target", "_blank")
+    expect(link).to_have_attribute("href", re.compile(r"^https://example\.org/"))
+    expect(info.get_by_test_id("info-contact")).to_contain_text("Questions? Contact Hospital A1")
+    expect(info.get_by_role("link", name="0100 555 0199")).to_have_attribute("href", "tel:01005550199")
+    expect(info.get_by_role("link", name="poa@hospital-a1.example")).to_have_attribute("href", "mailto:poa@hospital-a1.example")
+    expect(info.get_by_role("link", name=extra)).to_have_count(0)
+    assert patient.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "the home scrolls sideways"
+
+    # Cara adds another leaflet to this episode only; the patient sees it.
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}")
+    panel = page.get_by_test_id("episode-information")
+    expect(panel.get_by_test_id("episode-info-Example: Your anaesthetic explained")).to_contain_text("From the procedure")
+    add = panel.get_by_role("combobox", name="Add a video or leaflet for this patient")
+    add.click()
+    add.fill(extra)
+    page.get_by_role("option", name=f"{extra} (Leaflet)").click()
+    expect(panel.get_by_test_id(f"episode-info-{extra}")).to_contain_text("Added for this patient by Cara Clinician")
+    patient.reload()
+    card = patient.get_by_test_id("home-episode").filter(has_text=hq["name"])
+    card.get_by_role("button", name="Information").click()
+    expect(card.get_by_test_id("home-information-list").get_by_role("link", name=extra)).to_be_visible()
+
+    # The editor's Question Set header shows the patient's estimate (and none for the clinician's set).
+    base = sign_in(page.context, "Alex Author")
+    page.goto(f"{base}/questionnaires/{hq['id']}")
+    page.get_by_role("complementary").get_by_text("Before your operation").click()
+    expect(page.get_by_role("main").get_by_test_id("set-estimate")).to_have_text("· About 4 minutes for the patient")
+    page.get_by_role("complementary").get_by_text("Nurse checks").click()
+    expect(page.get_by_role("main").get_by_test_id("set-estimate")).to_have_count(0)

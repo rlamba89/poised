@@ -1,0 +1,167 @@
+{
+  "description": "The estimated time (S36): five questions and a 150-second video for the patient, with a clinician-only question and a Clinical Summary that don't count; then a one-question set.",
+  "chapters": [
+    {
+      "name": "Before your operation",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_prep",
+            "title": "Getting ready",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_smokes",
+                "title": "Do you smoke?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "radiogroup",
+                "name": "q_drinks",
+                "title": "Do you drink alcohol?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "radiogroup",
+                "name": "q_exercise",
+                "title": "Do you exercise?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "radiogroup",
+                "name": "q_stairs",
+                "title": "Can you climb stairs?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "radiogroup",
+                "name": "q_allergies",
+                "title": "Do you have allergies?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "name": "q_nurse_note",
+                "title": "Nurse's note",
+                "clinicianOnly": true
+              },
+              {
+                "type": "clinicalsummary",
+                "name": "cs_prep",
+                "clinicianOnly": true
+              },
+              {
+                "type": "video",
+                "name": "q_fasting",
+                "title": "Fasting before your operation",
+                "videoUrl": "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
+                "videoLength": 150
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Your health",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_health",
+            "title": "Health",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_diabetes",
+                "title": "Do you have diabetes?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Nurse checks",
+      "audience": "clinician",
+      "content": {
+        "pages": [
+          {
+            "name": "p_checks",
+            "title": "Checks",
+            "elements": [
+              {
+                "type": "text",
+                "name": "q_bp",
+                "title": "Blood pressure",
+                "isRequired": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
