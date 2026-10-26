@@ -1,0 +1,193 @@
+{
+  "description": "J11: ASA rules (S40). Smoking gives ASA II, heart failure ASA III, chest pain on walking a red flag. A clinician-only Snore score with Low and High bands.",
+  "chapters": [
+    {
+      "name": "About you",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_you",
+            "title": "About you",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_smokes",
+                "title": "Do you smoke?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes",
+                    "clinicalOutputs": [
+                      {
+                        "id": "out_smoker",
+                        "codes": [
+                          {
+                            "set": "SNOMED",
+                            "code": "77176002",
+                            "display": "Smoker"
+                          }
+                        ],
+                        "note": {
+                          "text": "Smoker",
+                          "category": "Lifestyle"
+                        },
+                        "asa": {
+                          "grade": "II",
+                          "emergency": false,
+                          "reason": "Current smoker"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "radiogroup",
+                "name": "q_chest_pain",
+                "title": "Do you get chest pain when you walk?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes",
+                    "clinicalOutputs": [
+                      {
+                        "id": "out_chest",
+                        "codes": [],
+                        "note": {
+                          "text": "Chest pain on exertion",
+                          "category": "Cardiac"
+                        },
+                        "flag": "red"
+                      }
+                    ]
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "radiogroup",
+                "name": "q_snore",
+                "title": "How often do you snore?",
+                "choices": [
+                  {
+                    "value": "o_never",
+                    "text": "Never",
+                    "score": 0
+                  },
+                  {
+                    "value": "o_some",
+                    "text": "Sometimes",
+                    "score": 1
+                  },
+                  {
+                    "value": "o_night",
+                    "text": "Every night",
+                    "score": 3
+                  }
+                ]
+              },
+              {
+                "type": "expression",
+                "name": "q_snore_score",
+                "title": "Snore score",
+                "clinicianOnly": true,
+                "expression": "iif(allAnswered('q_snore'), score('q_snore'), '')",
+                "bands": [
+                  {
+                    "id": "b_low",
+                    "label": "Low",
+                    "max": 1
+                  },
+                  {
+                    "id": "b_high",
+                    "label": "High"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Your heart",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_heart",
+            "title": "Heart",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_heart_failure",
+                "title": "Have you been told you have heart failure?",
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes",
+                    "clinicalOutputs": [
+                      {
+                        "id": "out_hf",
+                        "codes": [
+                          {
+                            "set": "ICD10",
+                            "code": "I50.9",
+                            "display": "Heart failure unspecified"
+                          }
+                        ],
+                        "note": {
+                          "text": "Heart failure",
+                          "category": "Cardiac"
+                        },
+                        "asa": {
+                          "grade": "III",
+                          "emergency": false,
+                          "reason": "Moderate reduction of ejection fraction"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Nurse checks",
+      "audience": "clinician",
+      "content": {
+        "pages": [
+          {
+            "name": "p_nurse",
+            "title": "Checks",
+            "elements": [
+              {
+                "type": "comment",
+                "name": "q_nurse_note",
+                "title": "Nurse's note"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
