@@ -172,6 +172,14 @@ func (s *server) createEpisode(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "create episode", err)
 		return
 	}
+	// The procedure's Information list is copied onto the episode (S36 answers 2): a booked patient
+	// keeps the list from when they were booked.
+	if dates.procedure.Valid {
+		if err := q.CopyProcedureInfo(ctx, db.CopyProcedureInfoParams{EpisodeID: id, ProcedureID: dates.procedure.UUID, OrgID: orgID(r)}); err != nil {
+			serverError(w, "copy information", err)
+			return
+		}
+	}
 	// Its first status, in the history (EPI-03); General notes say "Episode created" below.
 	if err := recordStatus(ctx, q, id, episode.Create, "", episode.HQNotComplete, "", currentUser(r).ID, ""); err != nil {
 		serverError(w, "status history", err)
@@ -325,17 +333,26 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Choose an ASA grade from 1 to 6.")
 		return
 	}
-	n, err := s.q.UpdateEpisode(r.Context(), db.UpdateEpisodeParams{
-		ID: e.ID, Revision: *in.Revision, ProcedureID: next.procedure, PlannedDate: next.planned,
-		PoaDate: next.poa, Anaesthetic: *in.Anaesthetic,
-		Consultant: *in.Consultant, NurseAsa: nurse, AnaesthetistAsa: anaes,
+	saved := s.inTx(w, r, func(q *db.Queries) bool {
+		n, err := q.UpdateEpisode(r.Context(), db.UpdateEpisodeParams{
+			ID: e.ID, Revision: *in.Revision, ProcedureID: next.procedure, PlannedDate: next.planned,
+			PoaDate: next.poa, Anaesthetic: *in.Anaesthetic,
+			Consultant: *in.Consultant, NurseAsa: nurse, AnaesthetistAsa: anaes,
+		})
+		if err != nil {
+			serverError(w, "update episode", err)
+			return false
+		}
+		if n == 0 {
+			writeStale(w)
+			return false
+		}
+		if next.procedure != was.procedure { // S36: the items copied from the old procedure give way to the new one's
+			return s.swapProcedureInfo(w, r, q, e.ID, next.procedure)
+		}
+		return true
 	})
-	if err != nil {
-		serverError(w, "update episode", err)
-		return
-	}
-	if n == 0 {
-		writeStale(w)
+	if !saved {
 		return
 	}
 	uid := currentUser(r).ID
@@ -345,6 +362,23 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// swapProcedureInfo replaces the Information items an episode copied from its procedure with its
+// new procedure's list (none if it has none now). The items a clinician added stay (S36).
+func (s *server) swapProcedureInfo(w http.ResponseWriter, r *http.Request, q *db.Queries, episodeID uuid.UUID, procedure uuid.NullUUID) bool {
+	if err := q.ClearProcedureInfo(r.Context(), episodeID); err != nil {
+		serverError(w, "clear information", err)
+		return false
+	}
+	if !procedure.Valid {
+		return true
+	}
+	if err := q.CopyProcedureInfo(r.Context(), db.CopyProcedureInfoParams{EpisodeID: episodeID, ProcedureID: procedure.UUID, OrgID: orgID(r)}); err != nil {
+		serverError(w, "copy information", err)
+		return false
+	}
+	return true
 }
 
 // asaChange applies a requested ASA grade (nil keeps, 0 clears, 1–6 sets) and describes the

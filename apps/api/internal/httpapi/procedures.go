@@ -35,6 +35,9 @@ const (
 	maxProcedureName   = 200
 	maxProcedureCode   = 50
 	maxSpecialty       = 100
+	// The Information list (S36, INF-04): items from the content library, at most this many.
+	maxProcedureInfo   = 50
+	procedureInfoItems = "Information: choose videos and leaflets from the trust's content library."
 )
 
 // offeredProcedure is a procedure a new episode at one hospital can be given, with the HQ that is
@@ -162,6 +165,7 @@ type procedureFields struct {
 	Name, Code, Specialty string
 	HospitalID            uuid.NullUUID
 	DefaultQuestionnaire  uuid.NullUUID
+	Info                  []uuid.UUID // the Information list (S36): content item ids, in order
 	Retired               bool
 }
 
@@ -174,6 +178,7 @@ type procedureChange struct {
 	Specialty              *string         `json:"specialty"`
 	HospitalID             json.RawMessage `json:"hospitalId"`
 	DefaultQuestionnaireID json.RawMessage `json:"defaultQuestionnaireId"`
+	InfoContent            *[]string       `json:"infoContent"` // S36: content item ids, in order
 	Retired                *bool           `json:"retired"`
 }
 
@@ -185,7 +190,11 @@ func readProcedureChange(w http.ResponseWriter, r *http.Request, current procedu
 		return current, false
 	}
 	next := current
-	in := procedureChange{Name: &next.Name, Code: &next.Code, Specialty: &next.Specialty, Retired: &next.Retired}
+	info := []string{}
+	for _, id := range current.Info {
+		info = append(info, id.String())
+	}
+	in := procedureChange{Name: &next.Name, Code: &next.Code, Specialty: &next.Specialty, Retired: &next.Retired, InfoContent: &info}
 	if !readJSON(w, r, 8<<10, &in) {
 		return current, false
 	}
@@ -198,8 +207,22 @@ func readProcedureChange(w http.ResponseWriter, r *http.Request, current procedu
 
 // apply trims and checks the decoded change and puts it into p; it returns a plain-language problem, or "".
 func (in procedureChange) apply(p *procedureFields) string {
-	if in.Name == nil || in.Code == nil || in.Specialty == nil || in.Retired == nil {
+	if in.Name == nil || in.Code == nil || in.Specialty == nil || in.Retired == nil || in.InfoContent == nil {
 		return "The request could not be read."
+	}
+	if len(*in.InfoContent) > maxProcedureInfo {
+		return fmt.Sprintf("Information: %d videos and leaflets at most.", maxProcedureInfo)
+	}
+	p.Info = []uuid.UUID{}
+	for _, raw := range *in.InfoContent {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return procedureInfoItems
+		}
+		if slices.Contains(p.Info, id) {
+			return "Information: each video or leaflet can be in the list once."
+		}
+		p.Info = append(p.Info, id)
 	}
 	p.Name, p.Code, p.Specialty, p.Retired = strings.TrimSpace(*in.Name), strings.TrimSpace(*in.Code), strings.TrimSpace(*in.Specialty), *in.Retired
 	switch {
@@ -236,6 +259,9 @@ func checkProcedure(w http.ResponseWriter, r *http.Request, q *db.Queries, curre
 	if next.HospitalID != current.HospitalID && !checkHospital(w, r, q, next.HospitalID) {
 		return false
 	}
+	if !checkProcedureInfo(w, r, q, current.Info, next.Info) {
+		return false
+	}
 	if next.DefaultQuestionnaire == current.DefaultQuestionnaire || !next.DefaultQuestionnaire.Valid {
 		return true
 	}
@@ -264,7 +290,7 @@ func (s *server) createProcedure(w http.ResponseWriter, r *http.Request) {
 		var err error
 		id, err = q.CreateProcedure(r.Context(), db.CreateProcedureParams{
 			OrgID: orgID(r), HospitalID: in.HospitalID, Name: in.Name, Code: in.Code, Specialty: in.Specialty,
-			DefaultQuestionnaireID: in.DefaultQuestionnaire, UpdatedBy: uuid.NullUUID{UUID: currentUser(r).ID, Valid: true},
+			DefaultQuestionnaireID: in.DefaultQuestionnaire, InfoContent: infoJSON(in.Info), UpdatedBy: uuid.NullUUID{UUID: currentUser(r).ID, Valid: true},
 		})
 		return procedureSaved(w, err)
 	})
@@ -296,13 +322,17 @@ func (s *server) updateProcedure(w http.ResponseWriter, r *http.Request) {
 		}
 		current := procedureFields{Name: row.Name, Code: row.Code, Specialty: row.Specialty, HospitalID: row.HospitalID,
 			DefaultQuestionnaire: row.DefaultQuestionnaireID, Retired: row.Retired}
+		if err := json.Unmarshal(row.InfoContent, &current.Info); err != nil {
+			serverError(w, "procedure information", err)
+			return false
+		}
 		next, ok := readProcedureChange(w, r, current)
 		if !ok || !checkProcedure(w, r, q, current, next) {
 			return false
 		}
 		err = q.UpdateProcedure(r.Context(), db.UpdateProcedureParams{
 			ID: id, OrgID: orgID(r), HospitalID: next.HospitalID, Name: next.Name, Code: next.Code, Specialty: next.Specialty,
-			DefaultQuestionnaireID: next.DefaultQuestionnaire, Retired: next.Retired,
+			DefaultQuestionnaireID: next.DefaultQuestionnaire, InfoContent: infoJSON(next.Info), Retired: next.Retired,
 			UpdatedBy: uuid.NullUUID{UUID: currentUser(r).ID, Valid: true},
 		})
 		return procedureSaved(w, err)
@@ -310,6 +340,41 @@ func (s *server) updateProcedure(w http.ResponseWriter, r *http.Request) {
 	if ok {
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// checkProcedureInfo answers 400 unless every item in the new Information list (S36) is Preopsis's
+// or the trust's own, and active. An item retired since it was put in the list may stay, so the
+// list can be changed around it (it isn't shown to patients while retired).
+func checkProcedureInfo(w http.ResponseWriter, r *http.Request, q *db.Queries, current, next []uuid.UUID) bool {
+	if slices.Equal(current, next) || len(next) == 0 {
+		return true
+	}
+	rows, err := q.TrustContentItems(r.Context(), db.TrustContentItemsParams{Ids: next, OrgID: uuid.NullUUID{UUID: orgID(r), Valid: true}})
+	if err != nil {
+		serverError(w, "content items", err)
+		return false
+	}
+	for _, id := range next {
+		i := slices.IndexFunc(rows, func(c db.TrustContentItemsRow) bool { return c.ID == id })
+		switch {
+		case i < 0:
+			writeError(w, http.StatusBadRequest, procedureInfoItems)
+			return false
+		case rows[i].Status != "active" && !slices.Contains(current, id):
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("Information: “%s” is retired, so it can't be added.", rows[i].Title))
+			return false
+		}
+	}
+	return true
+}
+
+// infoJSON is a procedure's Information list as stored: a JSON array of ids, never null.
+func infoJSON(ids []uuid.UUID) json.RawMessage {
+	if ids == nil {
+		ids = []uuid.UUID{}
+	}
+	raw, _ := json.Marshal(ids)
+	return raw
 }
 
 // procedureSaved answers a failed save itself: a name the trust already has is a 409.

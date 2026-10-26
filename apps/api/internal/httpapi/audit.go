@@ -52,6 +52,9 @@ var auditActions = map[string]string{
 	"task.list":          "Opened an episode's tasks", // S21
 	"task.create":        "Added a task",
 	"task.update":        "Completed or re-opened a task",
+	"information.list":   "Opened an episode's Information", // S36
+	"information.add":    "Added Information to an episode",
+	"information.remove": "Removed Information from an episode",
 	"answers.view":       "Opened the answers",
 	"answers.save":       "Saved the clinician's answers",
 	"review.complete":    "Completed the HQ review",
@@ -73,7 +76,8 @@ var auditActions = map[string]string{
 	"link.prefill_check_each":      "Patient chose to check each pre-filled answer",
 	"link.prefill_still_correct":   "Patient confirmed pre-filled answers",
 	"link.prefill_start_fresh":     "Patient started a Question Set fresh",
-	"home.view":                    "Patient opened their home", // S15: a row per hospital it listed
+	"link.information":             "Patient opened their Information", // S36
+	"home.view":                    "Patient opened their home",        // S15: a row per hospital it listed
 	"account.join":                 "Patient's record joined their sign-in account",
 	"contact.update":               "Patient changed their contact details",
 	"account.close":                "Patient closed their account", // S22: a row per trust whose records it unlinked

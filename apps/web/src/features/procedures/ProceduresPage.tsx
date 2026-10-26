@@ -4,21 +4,28 @@
 // new episodes, but stays on the episodes that have it (answers 5).
 //
 // The form is inline, not a modal: testers' browser tabs can hide Mantine's modals (decisions.md §4).
+//
+// Information for patients (S36, INF-04): each procedure has a list of videos and leaflets from the
+// content library (Preopsis's and the trust's own active items). A new episode for the procedure
+// gets a copy of the list (S36 answers 2); episodes already made keep theirs.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Badge, Button, Card, Group, Select, SimpleGrid, Stack, Table, Text, TextInput, Title } from "@mantine/core";
-import { IconPlus } from "@tabler/icons-react";
+import { Alert, Button, Card, Group, Select, SimpleGrid, Stack, Table, Text, TextInput, Title } from "@mantine/core";
+import { IconFileText, IconMovie, IconPlus } from "@tabler/icons-react";
+import { addable, infoSummary, kindLabel, type LibraryItem, type ProcedureInfoItem } from "@/features/information/info";
 import { api } from "@/lib/api";
+import { WholeBadge } from "@/lib/WholeBadge";
 import { canManageProcedures, useHospital } from "@/lib/auth";
 import { changedFields, type Procedure, type PublishedHQ } from "./procedures";
 
 const EVERY = "every"; // the hospital Select's value for "every hospital of the trust"
 const NONE = "none"; // the default HQ Select's value for "no default HQ"
 
-type Form = { name: string; code: string; specialty: string; hospital: string; defaultHQ: string };
-const EMPTY: Form = { name: "", code: "", specialty: "", hospital: EVERY, defaultHQ: NONE };
+type Form = { name: string; code: string; specialty: string; hospital: string; defaultHQ: string; info: string[] };
+const EMPTY: Form = { name: "", code: "", specialty: "", hospital: EVERY, defaultHQ: NONE, info: [] };
 
 const formOf = (p: Procedure): Form => ({
   name: p.name, code: p.code, specialty: p.specialty, hospital: p.hospitalId ?? EVERY, defaultHQ: p.defaultQuestionnaireId ?? NONE,
+  info: p.infoContent ?? [],
 });
 
 /** The POST or PATCH body for a form: every field, with null for "every hospital" and "no default HQ". */
@@ -26,6 +33,7 @@ const bodyOf = (f: Form) => ({
   name: f.name, code: f.code, specialty: f.specialty,
   hospitalId: f.hospital === EVERY ? null : f.hospital,
   defaultQuestionnaireId: f.defaultHQ === NONE ? null : f.defaultHQ,
+  infoContent: f.info,
 });
 
 export function ProceduresPage() {
@@ -34,6 +42,7 @@ export function ProceduresPage() {
   const path = `/o/${trust.id}/procedures`;
   const [list, setList] = useState<Procedure[] | null>(null);
   const [hqs, setHqs] = useState<PublishedHQ[]>([]);
+  const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [editing, setEditing] = useState<Procedure | "new" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -53,7 +62,9 @@ export function ProceduresPage() {
     load();
     // The trust's published questionnaires, from this hospital (they're the trust's, so every hospital has them).
     api<PublishedHQ[]>(`${base}/published-hqs`).then(setHqs).catch((e: Error) => setError(e.message));
-  }, [allowed, load, base]);
+    // What the Information list can take (S36): the content library's active items.
+    api<LibraryItem[]>(`/o/${trust.id}/content/search`).then(setLibrary).catch((e: Error) => setError(e.message));
+  }, [allowed, load, base, trust.id]);
 
   if (!allowed) return <Alert color="red" title="Only super clinicians and admins of the whole trust can manage its procedures" />;
   if (!list) return error ? <Alert color="red">{error}</Alert> : null;
@@ -97,6 +108,7 @@ export function ProceduresPage() {
           procedure={editing === "new" ? null : editing}
           hospitals={trust.hospitals}
           hqs={hqs}
+          library={library}
           onSaved={saved}
           onCancel={() => setEditing(null)}
         />
@@ -112,6 +124,7 @@ export function ProceduresPage() {
               <Table.Th>Specialty</Table.Th>
               <Table.Th>Offered at</Table.Th>
               <Table.Th>Default HQ</Table.Th>
+              <Table.Th>Information</Table.Th>
               <Table.Th />
             </Table.Tr>
           </Table.Thead>
@@ -121,13 +134,14 @@ export function ProceduresPage() {
                 <Table.Td>
                   <Group gap="xs">
                     <Text fw={600} size="sm">{p.name}</Text>
-                    {p.retired && <Badge color="gray" variant="light">Retired</Badge>}
+                    {p.retired && <WholeBadge color="gray" variant="light">Retired</WholeBadge>}
                   </Group>
                 </Table.Td>
                 <Table.Td>{p.code || "—"}</Table.Td>
                 <Table.Td>{p.specialty || "—"}</Table.Td>
                 <Table.Td>{p.hospitalName ?? "Every hospital"}</Table.Td>
                 <Table.Td>{p.defaultQuestionnaireName ?? "The hospital's default"}</Table.Td>
+                <Table.Td data-testid="procedure-info-summary">{infoSummary(p.infoItems ?? []) || "—"}</Table.Td>
                 <Table.Td ta="right">
                   <Group gap="xs" justify="flex-end" wrap="nowrap">
                     <Button size="xs" variant="default" disabled={editing !== null} onClick={() => { setEditing(p); setNotice(""); }}>Edit</Button>
@@ -146,20 +160,24 @@ export function ProceduresPage() {
   );
 }
 
-function ProcedureForm({ path, procedure, hospitals, hqs, onSaved, onCancel }: {
+function ProcedureForm({ path, procedure, hospitals, hqs, library, onSaved, onCancel }: {
   path: string;
   procedure: Procedure | null; // null: a new one
   hospitals: { id: string; name: string }[];
   hqs: PublishedHQ[];
+  library: LibraryItem[];
   onSaved: (notice: string) => void;
   onCancel: () => void;
 }) {
   const [form, setForm] = useState<Form>(procedure ? formOf(procedure) : EMPTY);
   const [saving, setSaving] = useState(false);
   // Edit on a row further down opens the form at the top: bring it into view (S19 test report 1).
+  // Its start, not "nearest": since S36's Information list the form can be taller than a short
+  // window, and "nearest" would then show its end, with the Name off screen. The margin keeps its
+  // title clear of the fixed header.
   const card = useRef<HTMLFormElement>(null);
   useEffect(() => {
-    card.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    card.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
   }, []);
   const [error, setError] = useState("");
   const text = (key: "name" | "code" | "specialty") => ({
@@ -205,7 +223,7 @@ function ProcedureForm({ path, procedure, hospitals, hqs, onSaved, onCancel }: {
 
   // noValidate: the API's own messages, not the browser's "Please fill in this field." (S19 test report 2).
   return (
-    <Card withBorder data-testid="procedure-form" ref={card} component="form" onSubmit={save} noValidate>
+    <Card withBorder data-testid="procedure-form" ref={card} component="form" onSubmit={save} noValidate style={{ scrollMarginTop: 72 }}>
       <Title order={4} mb="sm">{procedure ? `Edit ${procedure.name}` : "Add a procedure"}</Title>
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
         <TextInput label="Name" required {...text("name")} />
@@ -222,11 +240,76 @@ function ProcedureForm({ path, procedure, hospitals, hqs, onSaved, onCancel }: {
           onChange={(v) => setForm({ ...form, defaultHQ: v ?? NONE })}
         />
       </SimpleGrid>
+      <InformationList value={form.info} known={procedure?.infoItems ?? []} library={library} onChange={(info) => setForm({ ...form, info })} />
       {error && <Alert color="red" mt="sm">{error}</Alert>}
       <Group justify="flex-end" mt="md">
         <Button variant="default" onClick={onCancel}>Cancel</Button>
         <Button type="submit" loading={saving}>{procedure ? "Save changes" : "Add procedure"}</Button>
       </Group>
     </Card>
+  );
+}
+
+/**
+ * The procedure's Information for patients (S36): its videos and leaflets in order, each with
+ * Remove, and a picker of the library's active items not in the list. An item retired since it was
+ * added stays, marked: patients don't see it while it's retired.
+ */
+function InformationList({ value, known, library, onChange }: {
+  value: string[];
+  known: ProcedureInfoItem[];
+  library: LibraryItem[];
+  onChange: (ids: string[]) => void;
+}) {
+  const find = (id: string) => known.find((k) => k.id === id) ?? library.find((l) => l.id === id);
+  const choices = addable(library, value).map((l) => ({ value: l.id, label: `${l.title} (${kindLabel(l.kind)})` }));
+  // The picker is emptied after each pick, ready for the next.
+  const [search, setSearch] = useState("");
+  return (
+    <Stack gap="xs" mt="md" data-testid="procedure-info">
+      <div>
+        <Text fw={500} size="sm">Information for patients</Text>
+        <Text size="xs" c="dimmed">
+          Videos and leaflets from the content library, shown on the patient&apos;s home. A new episode for this procedure gets a copy of this
+          list; episodes already made keep theirs.
+        </Text>
+      </div>
+      {value.length === 0 && <Text size="sm" c="dimmed">None yet.</Text>}
+      {value.map((id) => {
+        const item = find(id);
+        const Icon = item?.kind === "video" ? IconMovie : IconFileText;
+        return (
+          <Group key={id} justify="space-between" wrap="nowrap" data-testid={`procedure-info-${item?.title ?? id}`}>
+            <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+              <Icon size={16} style={{ flexShrink: 0 }} aria-label={item ? kindLabel(item.kind) : undefined} />
+              <Text size="sm" style={{ overflowWrap: "anywhere" }}>{item?.title ?? "An item no longer in the library"}</Text>
+              {item && "status" in item && item.status === "retired" && (
+                <WholeBadge color="gray" variant="light" title="Patients don't see it while it's retired">Retired</WholeBadge>
+              )}
+            </Group>
+            <Button size="compact-xs" variant="subtle" color="red" onClick={() => onChange(value.filter((v) => v !== id))}
+              aria-label={`Remove ${item?.title ?? "item"}`}>
+              Remove
+            </Button>
+          </Group>
+        );
+      })}
+      <Select
+        aria-label="Add a video or leaflet"
+        placeholder={choices.length ? "Add a video or leaflet…" : "Nothing else in the content library"}
+        data={choices}
+        value={null}
+        onChange={(v) => {
+          if (v) onChange([...value, v]);
+          setSearch("");
+        }}
+        searchable
+        searchValue={search}
+        onSearchChange={setSearch}
+        disabled={choices.length === 0}
+        maw={420}
+        nothingFoundMessage="Nothing matches"
+      />
+    </Stack>
   );
 }

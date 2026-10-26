@@ -47,4 +47,9 @@ describe("changedFields", () => {
     expect(changedFields({ name: "Hip", hospitalId: "a1", code: "" }, { name: "Hip", hospitalId: null, code: "H" })).toEqual({ hospitalId: null, code: "H" });
     expect(changedFields({ name: "Hip" }, { name: "Hip" })).toEqual({});
   });
+  it("compares lists by their items, in order (the Information list, S36)", () => {
+    expect(changedFields({ infoContent: ["a", "b"] }, { infoContent: ["a", "b"] })).toEqual({});
+    expect(changedFields({ infoContent: ["a", "b"] }, { infoContent: ["b", "a"] })).toEqual({ infoContent: ["b", "a"] });
+    expect(changedFields({ infoContent: ["a"] }, { infoContent: [] })).toEqual({ infoContent: [] });
+  });
 });

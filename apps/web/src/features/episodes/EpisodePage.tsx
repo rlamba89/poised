@@ -1,6 +1,6 @@
 // One episode: the patient, the procedure, the patient's invite (S14: resend it, or fill in the HQ
 // on their behalf), the Question Sets to validate (Step 4 of plan-workflow.md), the status and the
-// General notes.
+// General notes, and the patient's Information (S36).
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import {
@@ -12,6 +12,7 @@ import { AUDIENCE_LABELS } from "@/features/chapters/types";
 import { api } from "@/lib/api";
 import { nationalIdLabel } from "@/lib/config";
 import { formatDate, formatDateTime, formatOptionalDate } from "@/lib/format";
+import { EpisodeInformation } from "@/features/information/EpisodeInformation";
 import { EditProcedure } from "./EditProcedure";
 import { StatusBadge } from "./EpisodeList";
 import { GeneralNotes } from "./GeneralNotes";
@@ -155,6 +156,8 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
       </Card>
 
       <TasksPanel path={path} episode={e} onChanged={reload} />
+
+      <EpisodeInformation path={path} episode={e} onChanged={reload} />
 
       <Card withBorder>
         <Title order={4} mb="xs">Status history</Title>

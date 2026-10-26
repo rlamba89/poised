@@ -27,6 +27,8 @@ type Querier interface {
 	// later time writes as of then.
 	AddAutomaticEpisodeEvent(ctx context.Context, arg AddAutomaticEpisodeEventParams) error
 	AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams) error
+	// A clinician's item, last in the list; 0 rows if the episode already has it.
+	AddEpisodeInfo(ctx context.Context, arg AddEpisodeInfoParams) (int64, error)
 	AddHit(ctx context.Context, arg AddHitParams) error
 	AddMembership(ctx context.Context, arg AddMembershipParams) error
 	// Makes the user a superadmin (A-21); nothing changes if they already are.
@@ -52,12 +54,17 @@ type Querier interface {
 	// The hospitals' auto-archives go first (S22 test report 1, F-2): they decide on the activity
 	// there has been, before a reminder due in the same run would make an idle episode look active.
 	ClaimDueJob(ctx context.Context, arg ClaimDueJobParams) (ClaimDueJobRow, error)
+	// The items copied from the episode's procedure, before its new procedure's are copied.
+	ClearProcedureInfo(ctx context.Context, episodeID uuid.UUID) error
 	CompleteReview(ctx context.Context, arg CompleteReviewParams) (int64, error)
 	// No row: it's already done.
 	CompleteTask(ctx context.Context, arg CompleteTaskParams) (int64, error)
 	// Another account with the same details (date of birth, first name, surname) already signs in with this
 	// contact: two accounts would then answer the same sign-in, so the change is refused.
 	ContactTaken(ctx context.Context, arg ContactTakenParams) (bool, error)
+	// The procedure's list onto the episode, in its order (retired items too: they show again if
+	// brought back). One the episode already has (a clinician added it) keeps its row.
+	CopyProcedureInfo(ctx context.Context, arg CopyProcedureInfoParams) error
 	CountHits(ctx context.Context, arg CountHitsParams) (int32, error)
 	// The trust's whole-trust admins other than this user.
 	CountOtherTrustAdmins(ctx context.Context, arg CountOtherTrustAdminsParams) (int64, error)
@@ -244,6 +251,9 @@ type Querier interface {
 	ListEpisodeAnswers(ctx context.Context, episodeFormID uuid.UUID) ([]ListEpisodeAnswersRow, error)
 	// user_name is NULL for the patient's entries and the automatic ones.
 	ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeEventsRow, error)
+	// The episode's list, in order: the procedure's, then a clinician's in the order added. Retired
+	// items come too, for staff; the patient gets the active ones only.
+	ListEpisodeInfo(ctx context.Context, arg ListEpisodeInfoParams) ([]ListEpisodeInfoRow, error)
 	// One trust's episodes: at every hospital when all_hospitals (a trust-wide member's "All
 	// hospitals", STF-03), else only at the hospitals listed. Optionally of one status, and of one
 	// worklist (S21, EPI-02: in_worklist, migration 00022), whose "procedure within N days" counts
@@ -428,6 +438,9 @@ type Querier interface {
 	// pressed is kept. by: staff on the patient's behalf, NULL for the patient. No row: the form was
 	// sent, the set wasn't pre-filled, or a button was already recorded.
 	RecordPrefillChoice(ctx context.Context, arg RecordPrefillChoiceParams) (int64, error)
+	// Removes an item from the episode's list and returns its title, for the General notes; no row if
+	// the episode hasn't it.
+	RemoveEpisodeInfo(ctx context.Context, arg RemoveEpisodeInfoParams) (string, error)
 	// No row: it's already open.
 	ReopenTask(ctx context.Context, arg ReopenTaskParams) (int64, error)
 	// The job ran: look again at run_at.
@@ -540,6 +553,12 @@ type Querier interface {
 	// other. No row: the session has ended.
 	TouchPatientSession(ctx context.Context, arg TouchPatientSessionParams) (uuid.UUID, error)
 	TouchVersion(ctx context.Context, arg TouchVersionParams) error
+	// The patient's Information for an episode (S36, INF-04): videos and leaflets from the content
+	// library. A procedure's list (procedures.info_content, ids in order) is copied onto an episode when
+	// it's made; a clinician adds to or removes from that one episode's list (episode_info_items).
+	// Every read joins only Preopsis's items and the episode's own trust's.
+	// Of these content items, those a trust may use: Preopsis's and its own, with their status.
+	TrustContentItems(ctx context.Context, arg TrustContentItemsParams) ([]TrustContentItemsRow, error)
 	// Closing an account (S22, EPI-09): the login goes; every trust's records and episodes stay.
 	// The trust's records of the person leave the account, which a later invite makes again (S15).
 	// Returns them, for each trust's audit log and the episodes' notes.

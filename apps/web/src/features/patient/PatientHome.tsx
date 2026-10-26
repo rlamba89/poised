@@ -4,6 +4,9 @@
 // (the last digits, the first letter and the domain), with Change (PAT-10): a link goes to the new
 // mobile or email, and nothing changes until it's opened there.
 //
+// Information (S36, INF-04): each questionnaire's card opens its videos and leaflets and the
+// hospital's phone and email (features/information/PatientInformation.tsx).
+//
 // Close my account (S22, EPI-09): at the bottom, behind an inline confirmation that warns about
 // any questionnaire not yet sent. The login goes; the hospitals keep their records.
 import { useCallback, useEffect, useState, type FormEvent } from "react";
@@ -13,6 +16,7 @@ import { ApiError, api } from "@/lib/api";
 import { formatShortDate } from "@/lib/format";
 import { closedText, stateOf, unsentWarning, type EpisodeState } from "./home";
 import { PatientFrame, SignedOut } from "./PatientHQ";
+import { PatientInformation } from "@/features/information/PatientInformation";
 
 type HomeEpisode = { id: string; patientName: string; hospital: string; questionnaireName: string; procedure: string; createdAt: string; state: EpisodeState;
   /** The patient sent it (S28: a cancelled one they'd sent says so). */
@@ -77,6 +81,8 @@ export function PatientHome() {
                     </Button>
                   )}
                 </Group>
+                {/* S36 (INF-04): the episode's videos, leaflets and the hospital's contact details; none once cancelled or closed. */}
+                {e.state !== "cancelled" && e.state !== "closed" && <PatientInformation episodeId={e.id} />}
               </Stack>
             </Card>
           );

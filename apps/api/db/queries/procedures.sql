@@ -7,7 +7,12 @@
 -- else the trust-wide ones and those of the hospitals listed. Retired ones included.
 SELECT p.id, p.name, p.code, p.specialty, p.hospital_id, h.name AS hospital_name,
        p.default_questionnaire_id, q.name AS default_questionnaire_name,
-       p.info_content, p.proms_plan, p.retired, p.updated_at
+       p.info_content, p.proms_plan, p.retired, p.updated_at,
+       -- The Information list's items (S36), in order: each one's kind, title and status, so the page
+       -- can name a retired one. Only Preopsis's and this trust's items are ever found.
+       (SELECT coalesce(jsonb_agg(jsonb_build_object('id', c.id, 'kind', c.kind, 'title', c.title, 'status', c.status) ORDER BY x.ord), '[]'::jsonb)
+        FROM jsonb_array_elements_text(p.info_content) WITH ORDINALITY AS x(id, ord)
+        JOIN content_items c ON c.id::text = x.id AND (c.org_id IS NULL OR c.org_id = p.org_id))::jsonb AS info_items
 FROM procedures p
 LEFT JOIN hospitals h ON h.id = p.hospital_id
 LEFT JOIN questionnaires q ON q.id = p.default_questionnaire_id
@@ -33,20 +38,20 @@ WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id)
 
 -- name: GetProcedure :one
 -- One of the trust's procedures, as stored, for a change.
-SELECT id, name, code, specialty, hospital_id, default_questionnaire_id, retired
+SELECT id, name, code, specialty, hospital_id, default_questionnaire_id, info_content, retired
 FROM procedures WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id)
 FOR UPDATE;
 
 -- name: CreateProcedure :one
-INSERT INTO procedures (org_id, hospital_id, name, code, specialty, default_questionnaire_id, updated_by)
+INSERT INTO procedures (org_id, hospital_id, name, code, specialty, default_questionnaire_id, info_content, updated_by)
 VALUES (sqlc.arg(org_id), sqlc.arg(hospital_id), sqlc.arg(name), sqlc.arg(code), sqlc.arg(specialty),
-        sqlc.arg(default_questionnaire_id), sqlc.arg(updated_by))
+        sqlc.arg(default_questionnaire_id), sqlc.arg(info_content), sqlc.arg(updated_by))
 RETURNING id;
 
 -- name: UpdateProcedure :exec
 UPDATE procedures
 SET hospital_id = sqlc.arg(hospital_id), name = sqlc.arg(name), code = sqlc.arg(code), specialty = sqlc.arg(specialty),
-    default_questionnaire_id = sqlc.arg(default_questionnaire_id), retired = sqlc.arg(retired),
+    default_questionnaire_id = sqlc.arg(default_questionnaire_id), info_content = sqlc.arg(info_content), retired = sqlc.arg(retired),
     updated_by = sqlc.arg(updated_by), updated_at = now()
 WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id);
 

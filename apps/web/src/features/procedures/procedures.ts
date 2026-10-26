@@ -1,6 +1,7 @@
 // The trust's procedure list (plan C3, S19; PRC-01) as the Go API returns it
 // (apps/api/internal/httpapi/procedures.go), and the rules that don't need React, unit-tested in
 // procedures.test.ts. Go decides which procedures are offered where and which HQ each one picks.
+import type { ProcedureInfoItem } from "@/features/information/info";
 
 /** GET /api/o/{trust}/procedures: the list for managing it, retired ones included. */
 export type Procedure = {
@@ -13,6 +14,9 @@ export type Procedure = {
   defaultQuestionnaireId: string | null;
   defaultQuestionnaireName: string | null;
   retired: boolean;
+  /** The patient's Information (S36, INF-04): content library item ids, in order, and those items. */
+  infoContent: string[];
+  infoItems: ProcedureInfoItem[];
 };
 
 /**
@@ -61,7 +65,8 @@ export function procedureChoices(offered: OfferedProcedure[], current: { id: str
   return choices;
 }
 
-/** The fields of `next` that differ from `was`: an edit sends only those (PATCH keeps the rest). */
+/** The fields of `next` that differ from `was`: an edit sends only those (PATCH keeps the rest). Lists compare by their items. */
 export function changedFields<T extends Record<string, unknown>>(was: T, next: T): Partial<T> {
-  return Object.fromEntries(Object.entries(next).filter(([k, v]) => was[k] !== v)) as Partial<T>;
+  const same = (a: unknown, b: unknown) => (Array.isArray(a) && Array.isArray(b) ? JSON.stringify(a) === JSON.stringify(b) : a === b);
+  return Object.fromEntries(Object.entries(next).filter(([k, v]) => !same(was[k], v))) as Partial<T>;
 }

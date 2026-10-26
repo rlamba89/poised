@@ -225,6 +225,11 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/tasks", hosp(s.audited("task.list", s.listTasks)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/tasks", hosp(s.audited("task.create", s.createTask)))
 	mux.HandleFunc("PATCH /api/o/{oid}/h/{hid}/episodes/{eid}/tasks/{tid}", hosp(s.audited("task.update", s.updateTask)))
+	// The patient's Information for the episode (S36, INF-04): its videos and leaflets, copied from
+	// its procedure and added to by anyone at the hospital (information.go).
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/information", hosp(s.audited("information.list", s.listEpisodeInfo)))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/information", hosp(s.audited("information.add", s.addEpisodeInfo)))
+	mux.HandleFunc("DELETE /api/o/{oid}/h/{hid}/episodes/{eid}/information/{cid}", hosp(s.audited("information.remove", s.removeEpisodeInfo)))
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/hq", hosp(s.audited("answers.view", s.episodeHQ)))
 	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/episodes/{eid}/answers/{cid}", hosp(s.audited("answers.save", s.saveClinicianAnswers)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/complete-review", hosp(s.audited("review.complete", s.completeReview)))
@@ -250,6 +255,8 @@ func (s *server) patientRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/p/episodes/{eid}/answers/{cid}", session(s.audited("link.save", s.savePatientForm)))
 	mux.HandleFunc("POST /api/p/episodes/{eid}/submit", session(s.audited("link.submit", s.submitPatientForm)))
 	mux.HandleFunc("POST /api/p/episodes/{eid}/prefill/{cid}", session(s.audited("link.prefill", s.patientPrefillChoice)))
+	// The episode's Information (S36, INF-04): its videos and leaflets, and the hospital's phone and email.
+	mux.HandleFunc("GET /api/p/episodes/{eid}/information", session(s.audited("link.information", s.patientInfo)))
 
 	// Accounts across trusts (S15): a returning patient's sign-in link (by mobile or email, then
 	// Continue and their date of birth, as an invite), their home, and changing a contact. The

@@ -144,6 +144,15 @@ type EpisodeForm struct {
 	PrefilledAt pgtype.Timestamptz `json:"prefilledAt"`
 }
 
+type EpisodeInfoItem struct {
+	EpisodeID     uuid.UUID     `json:"episodeId"`
+	ContentItemID uuid.UUID     `json:"contentItemId"`
+	FromProcedure bool          `json:"fromProcedure"`
+	Position      int32         `json:"position"`
+	AddedBy       uuid.NullUUID `json:"addedBy"`
+	AddedAt       time.Time     `json:"addedAt"`
+}
+
 type EpisodeMessage struct {
 	ID         uuid.UUID          `json:"id"`
 	EpisodeID  uuid.UUID          `json:"episodeId"`

@@ -14,20 +14,21 @@ import (
 )
 
 const createProcedure = `-- name: CreateProcedure :one
-INSERT INTO procedures (org_id, hospital_id, name, code, specialty, default_questionnaire_id, updated_by)
+INSERT INTO procedures (org_id, hospital_id, name, code, specialty, default_questionnaire_id, info_content, updated_by)
 VALUES ($1, $2, $3, $4, $5,
-        $6, $7)
+        $6, $7, $8)
 RETURNING id
 `
 
 type CreateProcedureParams struct {
-	OrgID                  uuid.UUID     `json:"orgId"`
-	HospitalID             uuid.NullUUID `json:"hospitalId"`
-	Name                   string        `json:"name"`
-	Code                   string        `json:"code"`
-	Specialty              string        `json:"specialty"`
-	DefaultQuestionnaireID uuid.NullUUID `json:"defaultQuestionnaireId"`
-	UpdatedBy              uuid.NullUUID `json:"updatedBy"`
+	OrgID                  uuid.UUID       `json:"orgId"`
+	HospitalID             uuid.NullUUID   `json:"hospitalId"`
+	Name                   string          `json:"name"`
+	Code                   string          `json:"code"`
+	Specialty              string          `json:"specialty"`
+	DefaultQuestionnaireID uuid.NullUUID   `json:"defaultQuestionnaireId"`
+	InfoContent            json.RawMessage `json:"infoContent"`
+	UpdatedBy              uuid.NullUUID   `json:"updatedBy"`
 }
 
 func (q *Queries) CreateProcedure(ctx context.Context, arg CreateProcedureParams) (uuid.UUID, error) {
@@ -38,6 +39,7 @@ func (q *Queries) CreateProcedure(ctx context.Context, arg CreateProcedureParams
 		arg.Code,
 		arg.Specialty,
 		arg.DefaultQuestionnaireID,
+		arg.InfoContent,
 		arg.UpdatedBy,
 	)
 	var id uuid.UUID
@@ -70,7 +72,7 @@ func (q *Queries) GetHospitalAndOrgSettings(ctx context.Context, arg GetHospital
 }
 
 const getProcedure = `-- name: GetProcedure :one
-SELECT id, name, code, specialty, hospital_id, default_questionnaire_id, retired
+SELECT id, name, code, specialty, hospital_id, default_questionnaire_id, info_content, retired
 FROM procedures WHERE id = $1 AND org_id = $2
 FOR UPDATE
 `
@@ -81,13 +83,14 @@ type GetProcedureParams struct {
 }
 
 type GetProcedureRow struct {
-	ID                     uuid.UUID     `json:"id"`
-	Name                   string        `json:"name"`
-	Code                   string        `json:"code"`
-	Specialty              string        `json:"specialty"`
-	HospitalID             uuid.NullUUID `json:"hospitalId"`
-	DefaultQuestionnaireID uuid.NullUUID `json:"defaultQuestionnaireId"`
-	Retired                bool          `json:"retired"`
+	ID                     uuid.UUID       `json:"id"`
+	Name                   string          `json:"name"`
+	Code                   string          `json:"code"`
+	Specialty              string          `json:"specialty"`
+	HospitalID             uuid.NullUUID   `json:"hospitalId"`
+	DefaultQuestionnaireID uuid.NullUUID   `json:"defaultQuestionnaireId"`
+	InfoContent            json.RawMessage `json:"infoContent"`
+	Retired                bool            `json:"retired"`
 }
 
 // One of the trust's procedures, as stored, for a change.
@@ -101,6 +104,7 @@ func (q *Queries) GetProcedure(ctx context.Context, arg GetProcedureParams) (Get
 		&i.Specialty,
 		&i.HospitalID,
 		&i.DefaultQuestionnaireID,
+		&i.InfoContent,
 		&i.Retired,
 	)
 	return i, err
@@ -110,7 +114,12 @@ const listProcedures = `-- name: ListProcedures :many
 
 SELECT p.id, p.name, p.code, p.specialty, p.hospital_id, h.name AS hospital_name,
        p.default_questionnaire_id, q.name AS default_questionnaire_name,
-       p.info_content, p.proms_plan, p.retired, p.updated_at
+       p.info_content, p.proms_plan, p.retired, p.updated_at,
+       -- The Information list's items (S36), in order: each one's kind, title and status, so the page
+       -- can name a retired one. Only Preopsis's and this trust's items are ever found.
+       (SELECT coalesce(jsonb_agg(jsonb_build_object('id', c.id, 'kind', c.kind, 'title', c.title, 'status', c.status) ORDER BY x.ord), '[]'::jsonb)
+        FROM jsonb_array_elements_text(p.info_content) WITH ORDINALITY AS x(id, ord)
+        JOIN content_items c ON c.id::text = x.id AND (c.org_id IS NULL OR c.org_id = p.org_id))::jsonb AS info_items
 FROM procedures p
 LEFT JOIN hospitals h ON h.id = p.hospital_id
 LEFT JOIN questionnaires q ON q.id = p.default_questionnaire_id
@@ -138,6 +147,7 @@ type ListProceduresRow struct {
 	PromsPlan                json.RawMessage `json:"promsPlan"`
 	Retired                  bool            `json:"retired"`
 	UpdatedAt                time.Time       `json:"updatedAt"`
+	InfoItems                json.RawMessage `json:"infoItems"`
 }
 
 // The trust's procedure list (PRC-01, S19). hospital_id NULL: offered at every hospital of the
@@ -167,6 +177,7 @@ func (q *Queries) ListProcedures(ctx context.Context, arg ListProceduresParams) 
 			&i.PromsPlan,
 			&i.Retired,
 			&i.UpdatedAt,
+			&i.InfoItems,
 		); err != nil {
 			return nil, err
 		}
@@ -253,21 +264,22 @@ func (q *Queries) OfferedProcedureName(ctx context.Context, arg OfferedProcedure
 const updateProcedure = `-- name: UpdateProcedure :exec
 UPDATE procedures
 SET hospital_id = $1, name = $2, code = $3, specialty = $4,
-    default_questionnaire_id = $5, retired = $6,
-    updated_by = $7, updated_at = now()
-WHERE id = $8 AND org_id = $9
+    default_questionnaire_id = $5, info_content = $6, retired = $7,
+    updated_by = $8, updated_at = now()
+WHERE id = $9 AND org_id = $10
 `
 
 type UpdateProcedureParams struct {
-	HospitalID             uuid.NullUUID `json:"hospitalId"`
-	Name                   string        `json:"name"`
-	Code                   string        `json:"code"`
-	Specialty              string        `json:"specialty"`
-	DefaultQuestionnaireID uuid.NullUUID `json:"defaultQuestionnaireId"`
-	Retired                bool          `json:"retired"`
-	UpdatedBy              uuid.NullUUID `json:"updatedBy"`
-	ID                     uuid.UUID     `json:"id"`
-	OrgID                  uuid.UUID     `json:"orgId"`
+	HospitalID             uuid.NullUUID   `json:"hospitalId"`
+	Name                   string          `json:"name"`
+	Code                   string          `json:"code"`
+	Specialty              string          `json:"specialty"`
+	DefaultQuestionnaireID uuid.NullUUID   `json:"defaultQuestionnaireId"`
+	InfoContent            json.RawMessage `json:"infoContent"`
+	Retired                bool            `json:"retired"`
+	UpdatedBy              uuid.NullUUID   `json:"updatedBy"`
+	ID                     uuid.UUID       `json:"id"`
+	OrgID                  uuid.UUID       `json:"orgId"`
 }
 
 func (q *Queries) UpdateProcedure(ctx context.Context, arg UpdateProcedureParams) error {
@@ -277,6 +289,7 @@ func (q *Queries) UpdateProcedure(ctx context.Context, arg UpdateProcedureParams
 		arg.Code,
 		arg.Specialty,
 		arg.DefaultQuestionnaireID,
+		arg.InfoContent,
 		arg.Retired,
 		arg.UpdatedBy,
 		arg.ID,
