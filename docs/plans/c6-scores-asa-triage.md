@@ -51,4 +51,18 @@
 
 ## Status
 
-Not started.
+**Split into sessions on 26 Oct 2026; not started.** The briefs are in [docs/sessions/](../sessions/README.md); their "Ask Rahul first" questions (12) are open.
+- **S38:** scores that use answers from earlier Question Sets, and points for age, sex and BMI (SCR-01/02; most of SCR-01 was already built);
+- **S39:** each code's usual ASA grade, and the suggested ASA for the whole HQ with its reasons (ASA-01);
+- **S40:** the rules on the HQ: defaults, the Rules page, preview and test cases (ASA-02/03/04); J11 starts;
+- **S41:** the `evaluate` service run locally (`npm run evaluate`, behind Go's `Evaluator` interface with a fake in tests); on send Go stores the result in `form_outputs`; it fails safe; publish re-checks through it;
+- **S42:** auto-triage on send, the Auto-triaged worklist; J11;
+- **S43:** rule-made tasks, flags, the anaesthetist's ASA requirement, suggested statuses; J11b;
+- **S44:** the server refuses an incomplete send and an unchecked Complete review (two pending.md gaps);
+- **S45 (AWS phase):** the Lambda, its permissions and its alarm on QA.
+
+Proposed in the briefs, differing from or adding to this plan (for Rahul to confirm when the sessions start):
+- **Rules are stored in a new `questionnaire_versions.rules` column**, since a version has no JSON of its own; Go holds the platform defaults as a file and checks only the shape.
+- **Go's publish asks the evaluator for every browser publish check** (not only test cases), and refuses publishing while the evaluator can't be reached (S41).
+- **The evaluator also runs on Complete review**, only to check that every shown set is validated (S44, as §10 of saas-requirements says).
+- **The validated score library (SCR-04) moves to C7** if Rahul agrees (S38 question 2).

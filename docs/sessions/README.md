@@ -10,7 +10,7 @@ Plans F1–F4 and C1–C2 split into **17 sessions** (plus S02a, a bug fix). Tog
 
 Each session is small enough for one Claude session, and ends with something a tester can try in a browser.
 
-Plan C3 is split into **S18–S22** (20 Oct), plan C4 into **S23–S26** (21 Oct), and plan C5 into **S31–S36** (25 Oct). Plans C6–C10 get split the same way when we reach them.
+Plan C3 is split into **S18–S22** (20 Oct), plan C4 into **S23–S26** (21 Oct), plan C5 into **S31–S36** (25 Oct), and plan C6 into **S38–S45** (26 Oct). Plans C7–C10 get split the same way when we reach them.
 
 ## How a session runs
 
@@ -181,5 +181,20 @@ Split on 25 Oct. Local like C3 and C4, with messages captured. Journey J10 start
 | [S35](S35-information-element/brief.md) | C5 | The Information element (INF-03): formatted text with links and pictures, cleaned before display (the plan's Tiptap-or-Markdown choice) | Answered 25 Oct ([answers.md](S35-information-element/answers.md)) | **Verified** (26 Oct, [verification 2](S35-information-element/verify.md); [build notes](S35-information-element/build-notes.md)) |
 | [S36](S36-patient-information-time/brief.md) | C5 | The patient's Information per episode (INF-04: the procedure's videos and leaflets, a clinician's additions, the hospital's contacts) and each Question Set's estimated time (PX-10) | Answered 25 Oct ([answers.md](S36-patient-information-time/answers.md)) | **Verified** (26 Oct, [verification 1](S36-patient-information-time/verify.md); [build notes](S36-patient-information-time/build-notes.md)) |
 | [S37](S37-summary-no-conditions/brief.md) | — | No conditions on summary boxes (Rahul, 26 Oct): the editor offers no Logic on a summary, and Publish refuses one with a condition | Nothing to ask | **Verified** (26 Oct, [verification 1](S37-summary-no-conditions/verify.md); [test report 1](S37-summary-no-conditions/test-report-1.md) all passed, 17 of 17; [build notes](S37-summary-no-conditions/build-notes.md)) |
+
+### Plan C6: scores, ASA and auto-triage (local, run in this order)
+
+Split on 26 Oct. S38–S44 run locally like C5, with messages captured; the `evaluate` service runs on the Mac (`npm run evaluate`, started by `make dev`) behind a Go interface, with a fake in the integration tests. **S45 is AWS phase** (the Lambda, with Rahul there): it never runs automatically unless named. Journey J11 starts in S40 (authoring), gets its patient half in S42, and J11b comes in S43. **Pushing:** S41's question 1.
+
+| ID | Plan | Builds | Needs from you first | Status |
+| --- | --- | --- | --- | --- |
+| [S38](S38-scores-across-sets/brief.md) | C6 | Scores that use answers from earlier Question Sets, and points for age, sex and BMI (SCR-01/02) | Answered 26 Oct ([answers.md](S38-scores-across-sets/answers.md)) | Not started |
+| [S39](S39-suggested-asa/brief.md) | C6 | Each code's usual ASA grade filling in the disclosure; the suggested ASA for the whole HQ with its reasons, on the POA Summary and Validate (ASA-01) | Answered 26 Oct ([answers.md](S39-suggested-asa/answers.md)) | Not started |
+| [S40](S40-asa-rules/brief.md) | C6 | ASA rules on the HQ: the default rules, the Rules page, rules in the preview and test cases (ASA-02/03/04); J11 starts. Nothing acts on them yet | Answered 26 Oct ([answers.md](S40-asa-rules/answers.md)) | Not started |
+| [S41](S41-evaluate-service/brief.md) | C6 | The `evaluate` service, run locally: Go calls it on send and stores the result (`form_outputs`), fails safe, and re-checks publishing (D-1) | Answered 26 Oct ([answers.md](S41-evaluate-service/answers.md)) | Not started |
+| [S42](S42-auto-triage/brief.md) | C6 | Auto-triage on send, the Auto-triaged worklist, Checked, re-open; J11 | Answered 26 Oct ([answers.md](S42-auto-triage/answers.md)) | Not started |
+| [S43](S43-rule-actions/brief.md) | C6 | Rule-made tasks, flags, "anaesthetist's ASA required" before Ready for admission, suggested statuses; J11b | Answered 26 Oct ([answers.md](S43-rule-actions/answers.md)) | Not started |
+| [S44](S44-server-checks/brief.md) | C6 | The server refuses an incomplete send and a Complete review with a set not validated (two pending.md gaps) | Nothing to ask | Not started |
+| [S45](S45-evaluate-lambda/brief.md) | C6 (AWS phase) | The `evaluate` Lambda, its permissions and its failure alarm on QA | Nothing to ask; Rahul there | Not started (AWS phase: run with Rahul, only when named) |
 
 **Why this order:** nothing needs AWS until someone outside your laptop has to use the app. Building locally first lets the automatic run go without AWS stops. The cost is that the AWS hosting setup and its near-£0 idle cost are proven later (decided 12 Oct; [decisions.md](../decisions.md)).
