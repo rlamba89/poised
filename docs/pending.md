@@ -139,6 +139,31 @@ docker compose up -d --force-recreate db
 - ~~**J8 is flaky on a long-lived database:** its mobile is one of 1,000 (`+447700900NNN`), so `captured(mobile)` can find another run's texts. Widen the range or filter by episode.~~ *Rahul, 25 Oct: fix it. Fixed in S30 (tested 25 Oct): J8 counts only texts carrying a link this episode's emails carry.*
 - `EpisodeList.tsx` uses `openTaskCount` only as a truthiness check and renders `e.openTasks` directly (tidy-up).
 
+### From S40's build (26 Oct; none blocking; [build notes](sessions/S40-asa-rules/build-notes.md))
+
+- **Go's publish doesn't check the rules or their whole-HQ test cases** (the browser's `publishProblems` does): the API alone can publish a version whose rule test case fails. **S41** makes the server check through the evaluate service; it must pass the version's rules (and each set's audience) to `publishProblems(sets, rules)`.
+- **A rule naming a procedure offered only at another hospital** of the trust shows the procedure's id, not its name, on the Rules page of a hospital that doesn't offer it (the page reads this hospital's offered list).
+- **A whole-HQ test case keeps its answers by question key**: renaming a key with "Same as…" after saving it leaves that answer unused, so the case may fail; re-save it.
+- **From S40's verification 1 (not blocking):**
+  - **The Publish window checks the rules loaded when the editor opened** (`ruleSetOf(q.rules)`), and Publish sends no rules revision: with a second tab changing the rules, Publish can be enabled over rules that changed since. As for chapters today; S41/S44's server check closes it.
+  - **The Preview reads the rules of the HQ's latest version** (`GET …/questionnaires/{qid}`), not those of the previewed chapter's version; it matters only when an older version's chapter is previewed by its URL.
+  - `HqTestPage.tsx` filters with `audience === "patient"`, not `isPatientSet` (the same today: every chapter from the API has an audience).
+  - `publishProblems(sets, rules)` runs every whole-HQ case (building SurveyJS models) on each render of the Publish window, unmemoised; the Preview's `setFiredRules` and the test page rebuild models on every answer. Fine at today's sizes.
+  - The held wording ("no auto-triage: no ASA grade") is written in `HqTestPage.tsx` and `PreviewPage.tsx` as well as in `firedLine`.
+- **From S40's verification 2 (not blocking):**
+  - **Test the whole HQ rebuilds the survey after every rules save and every keystroke in the sample patient's name or age** (`HqTestPage.tsx`: `sets` is memoised on the whole `hq`, and the model on `sample`). Answers are kept, but a multi-page set goes back to its first page. Memoise on `hq.sets`, and debounce the sample patient or keep it out of the rebuild.
+  - **The Preview's Rules that fire, in the clinician view, counts the author's answers to clinician-only questions** (`PreviewPage.tsx` passes `model.data` to `setFiredRules`). On send the patient never answers those, so the Preview can show a rule the patient's own answers wouldn't fire. Filter to the patient's answers first.
+  - **The seed gives the rules to demo versions that are already published** (`cmd/seed/main.go`, `ON CONFLICT DO UPDATE SET rules = coalesce(…)`; the builder's decision 10, made-up data). On QA (`make deploy-qa` seeds Neon), S41/S42 will then auto-triage sends on those published versions. That's fine for made-up data, but keep it in mind before any trust's data is seeded.
+  - `HqTestPage.tsx` works out the opened case's pass or fail itself, rather than calling `runHqTestCase`. It's the same today, but the two could drift.
+- **From S40's test report 4 (minor UX, none blocking):**
+  - **Add rule while an Edit form is open drops the unsaved edit without asking** (one form shows at a time). Hide or disable Add rule while a form is open, or ask first.
+  - Enter in the rule form's Name box doesn't save (it does in the test case name box).
+  - Cancel stays enabled while Save rule is saving (harmless: the save still lands).
+- **From S40's test report 3 (cosmetic, authors only):** Test the whole HQ (and probably the Preview) shows SurveyJS's own "The survey doesn't contain any visible elements." for a Question Set with no questions. Set our own words (`emptySurveyText`) if it matters.
+- **From S40's test report 2 (E-8, cosmetic):** New episode's Health questionnaire box is a plain select (no typing to filter); on a long-lived local database with many "E2E …" HQs it means scrolling. Make it `searchable` if real trusts have many HQs.
+- **From S40's test report 1 (E-6, probably not S40's):** in the editor, a Select One question added to a **Clinician** Question Set shows a **PATIENT** badge on its card. Look at what the badge means there.
+- **The local audit CSV is too big for `test_audit.py`** (about 435 MB for Trust A: each "Listed episodes" row names every episode listed, and the local database holds thousands of e2e episodes): `test_another_trusts_admin_sees_nothing_of_trust_a` fails reading it ("Cannot create a string longer than 0x1fffffe8"). Not caused by S40; resetting the local database (decisions.md §4) clears it. *S40 verification 1:* `test_a_list_row_names_ten_patients_and_counts_them_all` fails the same way (the "N patients" tooltip on a row listing thousands of e2e episodes doesn't appear within 15 s). Consider capping what a "Listed episodes" row names, or the e2e test reading the CSV as a stream.
+
 ### From S39's build (26 Oct; for Rahul, none blocking; [build notes](sessions/S39-suggested-asa/build-notes.md))
 
 - **Before go-live (C10): a clinician checks the ASA guide** (`apps/api/internal/asaguide/guide.json`): every example's words and grade against the ASA statement, which codes each covers, and adds the missing ones (only codes in today's seeded list are covered). Codes whose only example is a children's one are left out on purpose.
