@@ -10,6 +10,13 @@ Its third (S28): a Question Set started fresh says so on both tabs, with Validat
 the Patient reported BMI comes from the patient's own height and weight before About you is
 validated, then from the validated ones.
 
+Its fifth (S39): the suggested ASA. The patient smokes (ASA II) and has heart failure (ASA III, from
+the ASA guide's "moderate reduction of ejection fraction"). The episode page says "Suggested ASA III"
+in one line and lists the clinician's Anaesthetic plan, shown only from ASA III. The POA Summary's ASA
+section says it with its reason on both tabs, above the nurse's and anaesthetist's grades; the reason
+opens Validate at its question. Cara corrects heart failure to No: the validated tab drops to ASA II
+(the smoking reason) and the Anaesthetic plan goes, while the patient's tab still says ASA III.
+
 Its fourth (S29): when the server can't be reached, the POA Summary says so plainly ("We couldn't
 reach the server…"), never the browser's "Failed to fetch": a request that fails outright, and a
 gateway's 502 with no body."""
@@ -192,3 +199,64 @@ def test_the_poa_summary_says_plainly_when_the_server_cant_be_reached(page: Page
     notes.get_by_role("button", name="Save comment").click()
     expect(notes.get_by_role("alert")).to_have_text(NETWORK_ERROR)
     expect(page.get_by_text("Something went wrong")).to_have_count(0)
+
+
+HF_REASON = "Heart failure unspecified (I50.9) – Moderate reduction of ejection fraction"
+SMOKER_REASON = "Smoker (77176002) – Current smoker"
+
+
+def test_the_suggested_asa_with_its_reasons_on_both_tabs(page: Page, as_user, patient_link):
+    hq = as_user("Alex Author").published_hq("asa-hq.json", f"E2E J5e {unique()}")
+    cara = as_user("Cara Clinician")
+    episode = cara.episode(hq, f"J5e {unique()}")
+    patient = patient_link(episode)
+    patient.answer("About you", {"q_smokes": "o_yes"})
+    patient.answer("Your heart", {"q_heart_failure": "o_yes"})
+    patient.submit()
+
+    base = sign_in(page.context, "Cara Clinician")
+    path = f"{base}/episodes/{episode['id']}"
+    page.goto(path)
+    line = page.get_by_test_id("suggested-asa-line")
+    expect(line).to_contain_text(f"Suggested ASA III: {HF_REASON}")
+    expect(page.get_by_test_id("hq-set-Anaesthetic plan")).to_be_visible()  # shown from ASA III (S39 answers 2)
+
+    page.goto(f"{path}/poa")
+    asa = page.get_by_role("region", name="Pre operative assessment ASA grades")
+    for tab in ("Validated summary", "Patient answers"):
+        page.get_by_role("tab", name=tab).click()
+        suggested = asa.get_by_test_id("suggested-asa")
+        expect(suggested).to_contain_text("Suggested ASA III")
+        expect(suggested).to_contain_text(HF_REASON)
+        expect(suggested).not_to_contain_text(SMOKER_REASON)  # only the top grade's disclosures
+    expect(asa.get_by_label("Nurse ASA grade")).to_have_count(0)  # the grades are on the validated tab only
+    page.get_by_role("tab", name="Validated summary").click()
+    expect(asa.get_by_label("Nurse ASA grade")).to_be_visible()
+
+    # The reason is a link to its question on Validate.
+    asa.get_by_role("link", name=HF_REASON).click()
+    expect(page).to_have_url(re.compile(rf"/sets/{hq['chapters']['Your heart']}\?q=q_heart_failure$"))
+    page.go_back()
+
+    # Cara corrects heart failure to No: the validated suggestion drops to ASA II, the patient's doesn't.
+    cara.validate(episode, "About you", {"q_smokes": "o_yes"})
+    cara.validate(episode, "Your heart", {"q_heart_failure": "o_no"})
+    page.reload()
+    page.get_by_role("tab", name="Validated summary").click()
+    expect(asa.get_by_test_id("suggested-asa")).to_contain_text("Suggested ASA II")
+    expect(asa.get_by_test_id("suggested-asa")).to_contain_text(SMOKER_REASON)
+    page.get_by_role("tab", name="Patient answers").click()
+    expect(asa.get_by_test_id("suggested-asa")).to_contain_text("Suggested ASA III")
+    expect(asa.get_by_test_id("suggested-asa")).to_contain_text(HF_REASON)
+
+    page.goto(path)
+    expect(line).to_contain_text(f"Suggested ASA II: {SMOKER_REASON}")
+    expect(page.get_by_test_id("hq-set-Your heart")).to_be_visible()
+    expect(page.get_by_test_id("hq-set-Anaesthetic plan")).to_have_count(0)
+
+    # Smoking corrected too: no answer gives a grade, and the page says so plainly.
+    cara.validate(episode, "About you", {"q_smokes": "o_no"})
+    page.reload()
+    expect(line).to_contain_text("No suggested ASA")
+    page.goto(f"{path}/poa")
+    expect(asa.get_by_test_id("suggested-asa")).to_have_text("No suggested ASA: no answer gives an ASA grade.")

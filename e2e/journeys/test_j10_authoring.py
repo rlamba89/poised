@@ -35,7 +35,13 @@ over 40" from the Patient menu, with Low and High bands, High carrying a disclos
 says the earlier answers count as unanswered (the score is Incomplete) until they're given there. The
 patient (46, on a phone) answers both sets; Cara's Validate shows "3 (High)" and the disclosure in the
 set's summary box, and the POA Summary lists it. Then a ready-made STOP-Bang: inserted with the BMI
-from the first set, its questions locked as published; changing it isn't offered."""
+from the first set, its questions locked as published; changing it isn't offered.
+
+S39: the ASA guide. Alex adds Type 2 diabetes (E11.9) to a disclosure: the ASA guide offers its examples
+(well controlled II, poorly controlled III, and the children's), fills in nothing, and Save asks for a
+choice; "poorly controlled" gives ASA III with that reason, kept after a reload. COPD (one example)
+fills in ASA III by itself; changing the grade by hand is kept. The clinician's Anaesthetic plan set
+shows its condition as "Suggested ASA is at least III"; a patient set's condition doesn't offer it."""
 
 from playwright.sync_api import BrowserContext, Page, expect
 
@@ -585,3 +591,105 @@ def test_a_set_shown_by_a_score_follows_a_changed_earlier_answer(phone: BrowserC
     patient.reload()
     expect(patient.get_by_test_id("set-Sleep follow-up")).to_be_visible()
     expect(patient.get_by_role("button", name="Send my answers")).to_be_disabled()
+
+
+def test_the_asa_guide_fills_in_or_asks_for_the_grade(page: Page, as_user):
+    alex = as_user("Alex Author")
+    hq = alex.draft_hq("asa-hq.json", f"E2E J10 ASA {unique()}")
+    base = sign_in(page.context, "Alex Author")
+    page.goto(f"{base}/questionnaires/{hq['id']}")
+    page.get_by_role("complementary").get_by_text("Your heart").click()
+    page.get_by_role("complementary").get_by_text("Heart", exact=True).click()
+    main = page.get_by_role("main")
+    main.get_by_test_id("card-q_heart_failure").click()
+    page.get_by_role("tab", name="Disclosures").click()
+    page.get_by_role("tabpanel", name="Disclosures").get_by_role("button", name="Add").last.click()  # the "No" option
+    modal = page.get_by_role("dialog")
+    modal.get_by_role("button", name="+ Add disclosure").click()
+
+    # Diabetes: the grade depends on control, so the guide asks and fills in nothing.
+    modal.get_by_text("ICD10", exact=True).click()
+    modal.get_by_placeholder("Search ICD10 by code or description").fill("E11.9")
+    modal.get_by_role("button", name=re.compile(r"^E11\.9 Type 2 diabetes")).click()
+    guide = modal.get_by_test_id("asa-guide")
+    expect(guide.get_by_role("radio", name="ASA II: Well-controlled diabetes (Adults)")).to_be_visible()
+    expect(guide.get_by_role("radio", name="ASA III: Poorly controlled diabetes (Adults)")).to_be_visible()
+    expect(guide.get_by_role("radio", name="ASA II: Non-insulin-dependent diabetes (Children)")).to_be_visible()
+    expect(modal.get_by_label("ASA grade", exact=True)).to_have_value("")
+    modal.get_by_role("button", name="Save output").click()
+    expect(modal.get_by_role("alert")).to_contain_text("Choose the ASA grade from the ASA guide, or No ASA grade.")
+    guide.get_by_role("radio", name="ASA III: Poorly controlled diabetes (Adults)").check()
+    expect(modal.get_by_label("ASA grade", exact=True)).to_have_value("III")
+    expect(modal.get_by_test_id("asa-reason")).to_contain_text("“Poorly controlled diabetes”")
+    modal.get_by_role("button", name="Save output").click()
+    expect(modal).to_contain_text("ASA III")
+    expect(modal).to_contain_text("(Poorly controlled diabetes)")
+
+    # COPD: one example, so ASA III fills in by itself; a grade changed by hand is kept, without the reason.
+    modal.get_by_role("button", name="+ Add disclosure").click()
+    modal.get_by_placeholder("Search SNOMED by code or description").fill("13645005")
+    modal.get_by_role("button", name=re.compile(r"^13645005 Chronic obstructive")).click()
+    expect(modal.get_by_label("ASA grade", exact=True)).to_have_value("III")
+    expect(modal.get_by_test_id("asa-reason")).to_contain_text("“COPD”")
+    modal.get_by_label("ASA grade", exact=True).click()
+    page.get_by_role("option", name="IV", exact=True).click()
+    expect(modal.get_by_test_id("asa-reason")).to_have_count(0)
+    modal.get_by_role("button", name="Save output").click()
+    expect(modal).to_contain_text("ASA IV")
+    modal.get_by_role("button", name="Done").click()
+    expect(page.get_by_test_id("save-status")).to_have_text("All changes saved")
+
+    # Kept after a reload: the grade and the guide's words are copied into the HQ.
+    page.reload()
+    page.get_by_role("complementary").get_by_text("Heart", exact=True).click()
+    main.get_by_test_id("card-q_heart_failure").click()
+    page.get_by_role("tab", name="Disclosures").click()
+    page.get_by_role("tabpanel", name="Disclosures").get_by_role("button", name="2").click()  # the "No" option's two
+    expect(modal).to_contain_text("(Poorly controlled diabetes)")
+    expect(modal).to_contain_text("ASA IV")
+
+    # Editing it later still offers the guide's examples for its code, the chosen one selected (test report 1, F2).
+    modal.get_by_role("button", name="Edit").first.click()
+    guide = modal.get_by_test_id("asa-guide")
+    expect(guide.get_by_role("radio", name="ASA III: Poorly controlled diabetes (Adults)")).to_be_checked()
+    guide.get_by_role("radio", name="ASA II: Well-controlled diabetes (Adults)").check()
+    expect(modal.get_by_test_id("asa-reason")).to_contain_text("“Well-controlled diabetes”")
+    modal.get_by_role("button", name="Cancel").click()
+
+    # Removing the code a grade came from takes the grade and its words with it (test report 1, F1).
+    modal.get_by_role("button", name="+ Add disclosure").click()
+    modal.get_by_placeholder("Search SNOMED by code or description").fill("13645005")
+    modal.get_by_role("button", name=re.compile(r"^13645005 Chronic obstructive")).click()
+    modal.get_by_placeholder("Search SNOMED by code or description").fill("77176002")
+    modal.get_by_role("button", name=re.compile(r"^77176002 Smoker")).click()
+    expect(modal.get_by_label("ASA grade", exact=True)).to_have_value("III")  # a grade already there is kept
+    modal.get_by_role("button", name="Remove 13645005").click()
+    expect(modal.get_by_label("ASA grade", exact=True)).to_have_value("II")  # Smoker's only example now
+    expect(modal.get_by_test_id("asa-reason")).to_contain_text("“Current smoker”")
+    modal.get_by_role("button", name="Cancel").click()
+
+    # "No ASA grade" stands when another code is added: the declined grade doesn't come back (verification 1, F1).
+    modal.get_by_role("button", name="+ Add disclosure").click()
+    modal.get_by_placeholder("Search SNOMED by code or description").fill("13645005")
+    modal.get_by_role("button", name=re.compile(r"^13645005 Chronic obstructive")).click()
+    guide = modal.get_by_test_id("asa-guide")
+    guide.get_by_role("radio", name="No ASA grade").check()
+    modal.get_by_placeholder("Search SNOMED by code or description").fill("49727002")
+    modal.get_by_role("button", name=re.compile(r"^49727002 Cough")).click()
+    expect(modal.get_by_label("ASA grade", exact=True)).to_have_value("")
+    expect(guide.get_by_role("radio", name="No ASA grade")).to_be_checked()
+    expect(modal.get_by_test_id("asa-reason")).to_have_count(0)
+    modal.get_by_role("button", name="Cancel").click()
+    modal.get_by_role("button", name="Done").click()
+
+    # The clinician set's condition, in words; a patient set's condition doesn't offer the suggested ASA.
+    page.reload()  # nothing selected: the Question Sets are listed again
+    page.get_by_role("complementary").get_by_text("Anaesthetic plan").click()
+    expect(main.get_by_label("Question", exact=True)).to_have_value("Suggested ASA")
+    expect(main.get_by_label("Comparison", exact=True)).to_have_value("is at least")
+    expect(main.get_by_label("Value", exact=True)).to_have_value("III")
+    page.get_by_role("complementary").get_by_text("Your heart").click()
+    main.get_by_role("radio", name="Conditionally").check()
+    main.get_by_label("Question", exact=True).click()
+    expect(page.get_by_role("option", name="Patient's age")).to_be_visible()
+    expect(page.get_by_role("option", name="Suggested ASA")).to_have_count(0)

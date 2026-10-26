@@ -1,0 +1,79 @@
+{
+  "description": "Made-up HQ for J5's suggested ASA (S39): smoking suggests ASA II, heart failure ASA III (each with its ASA guide example as the reason); the clinician's Anaesthetic plan is shown only when the suggested ASA is III or more.",
+  "chapters": [
+    {
+      "name": "About you",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_smoking",
+            "title": "Smoking",
+            "elements": [
+              {
+                "type": "radiogroup", "name": "q_smokes", "title": "Do you smoke?", "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes", "text": "Yes",
+                    "clinicalOutputs": [
+                      {
+                        "id": "out_smoker", "codes": [{ "set": "SNOMED", "code": "77176002", "display": "Smoker" }],
+                        "note": { "text": "Smoker", "category": "Lifestyle" },
+                        "asa": { "grade": "II", "emergency": false, "reason": "Current smoker" }
+                      }
+                    ]
+                  },
+                  { "value": "o_no", "text": "No" }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Your heart",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_heart",
+            "title": "Heart",
+            "elements": [
+              {
+                "type": "radiogroup", "name": "q_heart_failure", "title": "Have you been told you have heart failure?", "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes", "text": "Yes",
+                    "clinicalOutputs": [
+                      {
+                        "id": "out_hf", "codes": [{ "set": "ICD10", "code": "I50.9", "display": "Heart failure unspecified" }],
+                        "note": { "text": "Heart failure", "category": "Cardiac" },
+                        "asa": { "grade": "III", "emergency": false, "reason": "Moderate reduction of ejection fraction" }
+                      }
+                    ]
+                  },
+                  { "value": "o_no", "text": "No" }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Anaesthetic plan",
+      "audience": "clinician",
+      "content": {
+        "chapterVisibleIf": "{suggestedAsa} >= 3",
+        "pages": [
+          {
+            "name": "p_plan",
+            "title": "Plan",
+            "elements": [{ "type": "comment", "name": "q_plan", "title": "Anaesthetic plan" }]
+          }
+        ]
+      }
+    }
+  ]
+}
