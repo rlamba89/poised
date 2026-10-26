@@ -1,0 +1,122 @@
+{
+  "about": "The ASA guide (S39): the ASA Physical Status Classification's own published examples (ASA statement approved 15 Oct 2014, last amended 13 Dec 2020, which added the children's and pregnancy examples), each with the codes in the seeded code list (db/seed/codes/codes.csv) it covers. When an author adds one of these codes to a disclosure, the editor offers the examples as the disclosure's ASA grade: one example fills it in, several (where the grade depends on severity or control) ask the author to choose. The grade and the example are copied into the disclosure, so a published HQ never changes when this file does. The examples are guides, 'including but not limited to'; the anaesthetist gives the final grade. MADE UP FOR TESTING ONLY: a clinician must check every line, and add any missing ones, before go-live (plan C10).",
+  "source": "ASA Statement on ASA Physical Status Classification System (13 Dec 2020), as reproduced with permission by the Canadian Anesthesiologists' Society (Appendix 2, 2025). See docs/research/c6-scores-asa.md, section 3.",
+  "examples": [
+    {
+      "id": "adult-smoker", "grade": "II", "group": "Adults", "example": "Current smoker",
+      "codes": [["SNOMED", "77176002"], ["ICD10", "F17.1"]]
+    },
+    {
+      "id": "adult-social-drinker", "grade": "II", "group": "Adults", "example": "Social alcohol drinker",
+      "codes": [["SNOMED", "897148007"], ["ICD10", "Z72.1"]]
+    },
+    {
+      "id": "adult-alcohol-dependence", "grade": "III", "group": "Adults", "example": "Alcohol dependence or abuse",
+      "codes": [["SNOMED", "897148007"], ["ICD10", "Z72.1"]]
+    },
+    {
+      "id": "adult-diabetes-well-controlled", "grade": "II", "group": "Adults", "example": "Well-controlled diabetes",
+      "codes": [["SNOMED", "73211009"], ["SNOMED", "46635009"], ["SNOMED", "44054006"], ["SNOMED", "170745003"],
+        ["ICD10", "E10"], ["ICD10", "E10.8"], ["ICD10", "E10.9"], ["ICD10", "E11"], ["ICD10", "E11.8"], ["ICD10", "E11.9"]]
+    },
+    {
+      "id": "adult-diabetes-poorly-controlled", "grade": "III", "group": "Adults", "example": "Poorly controlled diabetes",
+      "codes": [["SNOMED", "73211009"], ["SNOMED", "46635009"], ["SNOMED", "44054006"], ["SNOMED", "170745003"],
+        ["ICD10", "E10"], ["ICD10", "E10.8"], ["ICD10", "E10.9"], ["ICD10", "E11"], ["ICD10", "E11.8"], ["ICD10", "E11.9"]]
+    },
+    {
+      "id": "child-diabetes-non-insulin", "grade": "II", "group": "Children", "example": "Non-insulin-dependent diabetes",
+      "codes": [["SNOMED", "44054006"], ["SNOMED", "170745003"], ["ICD10", "E11"], ["ICD10", "E11.8"], ["ICD10", "E11.9"]]
+    },
+    {
+      "id": "child-diabetes-insulin", "grade": "III", "group": "Children", "example": "Insulin-dependent diabetes",
+      "codes": [["SNOMED", "46635009"], ["ICD10", "E10"], ["ICD10", "E10.8"], ["ICD10", "E10.9"]]
+    },
+    {
+      "id": "adult-hypertension-well-controlled", "grade": "II", "group": "Adults", "example": "Well-controlled hypertension",
+      "codes": [["SNOMED", "38341003"], ["SNOMED", "161501007"], ["ICD10", "I10"]]
+    },
+    {
+      "id": "adult-hypertension-poorly-controlled", "grade": "III", "group": "Adults", "example": "Poorly controlled hypertension",
+      "codes": [["SNOMED", "38341003"], ["SNOMED", "161501007"], ["ICD10", "I10"]]
+    },
+    {
+      "id": "adult-mild-lung-disease", "grade": "II", "group": "Adults", "example": "Mild lung disease",
+      "codes": [["SNOMED", "195967001"], ["SNOMED", "370218001"], ["SNOMED", "370219009"], ["SNOMED", "370221004"],
+        ["ICD10", "J45.30"], ["ICD10", "J45.40"], ["ICD10", "J45.50"], ["ICD10", "J45.998"],
+        ["SNOMED", "32398004"], ["ICD10", "J40"], ["SNOMED", "63480004"], ["ICD10", "J42"], ["SNOMED", "12295008"], ["ICD10", "J47.9"]]
+    },
+    {
+      "id": "child-asthma-without-exacerbation", "grade": "II", "group": "Children", "example": "Asthma without exacerbation",
+      "codes": [["SNOMED", "195967001"], ["SNOMED", "370218001"], ["SNOMED", "370219009"], ["SNOMED", "370221004"],
+        ["ICD10", "J45.30"], ["ICD10", "J45.40"], ["ICD10", "J45.50"], ["ICD10", "J45.998"]]
+    },
+    {
+      "id": "child-asthma-with-exacerbation", "grade": "III", "group": "Children", "example": "Asthma with exacerbation",
+      "codes": [["SNOMED", "195967001"], ["SNOMED", "370218001"], ["SNOMED", "370219009"], ["SNOMED", "370221004"],
+        ["ICD10", "J45.30"], ["ICD10", "J45.40"], ["ICD10", "J45.50"], ["ICD10", "J45.998"]]
+    },
+    {
+      "id": "adult-copd", "grade": "III", "group": "Adults", "example": "COPD",
+      "codes": [["SNOMED", "13645005"], ["ICD10", "J44.9"], ["SNOMED", "63480004"], ["ICD10", "J42"]]
+    },
+    {
+      "id": "adult-active-hepatitis", "grade": "III", "group": "Adults", "example": "Active hepatitis",
+      "codes": [["SNOMED", "76783007"], ["ICD10", "K73.9"]]
+    },
+    {
+      "id": "adult-pacemaker", "grade": "III", "group": "Adults", "example": "Implanted pacemaker",
+      "codes": [["SNOMED", "14106009"], ["SNOMED", "441509002"], ["SNOMED", "275531008"], ["ICD10", "Z95.0"]]
+    },
+    {
+      "id": "adult-ef-moderately-reduced", "grade": "III", "group": "Adults", "example": "Moderate reduction of ejection fraction",
+      "codes": [["SNOMED", "84114007"], ["SNOMED", "42343007"], ["SNOMED", "161505003"], ["ICD10", "I50.9"], ["ICD10", "150.9"]]
+    },
+    {
+      "id": "adult-ef-severely-reduced", "grade": "IV", "group": "Adults", "example": "Severe reduction of ejection fraction",
+      "codes": [["SNOMED", "84114007"], ["SNOMED", "42343007"], ["SNOMED", "161505003"], ["ICD10", "I50.9"], ["ICD10", "150.9"]]
+    },
+    {
+      "id": "child-heart-failure", "grade": "IV", "group": "Children", "example": "Congestive heart failure",
+      "codes": [["SNOMED", "84114007"], ["SNOMED", "42343007"], ["ICD10", "I50.9"], ["ICD10", "150.9"]]
+    },
+    {
+      "id": "adult-mi-cva-tia-cad-over-3-months", "grade": "III", "group": "Adults",
+      "example": "History (more than 3 months) of MI, CVA, TIA, or CAD/stents",
+      "codes": [["SNOMED", "1755008"], ["ICD10", "I25.2"], ["SNOMED", "275526006"], ["SNOMED", "266257000"], ["SNOMED", "161511000"],
+        ["ICD10", "G45.9"], ["ICD10", "Z86.73"], ["ICD10", "Z86.74"], ["ICD10", "Z95.5"], ["SNOMED", "473155009"],
+        ["SNOMED", "194828000"], ["SNOMED", "233819005"], ["SNOMED", "161504004"], ["ICD10", "I20.9"]]
+    },
+    {
+      "id": "adult-mi-cva-tia-cad-within-3-months", "grade": "IV", "group": "Adults",
+      "example": "Recent (less than 3 months) MI, CVA, TIA, or CAD/stents",
+      "codes": [["SNOMED", "1755008"], ["ICD10", "I25.2"], ["SNOMED", "275526006"], ["SNOMED", "266257000"], ["SNOMED", "161511000"],
+        ["ICD10", "G45.9"], ["ICD10", "Z86.73"], ["ICD10", "Z86.74"], ["ICD10", "Z95.5"], ["SNOMED", "473155009"]]
+    },
+    {
+      "id": "adult-ongoing-cardiac-ischaemia", "grade": "IV", "group": "Adults", "example": "Ongoing cardiac ischaemia",
+      "codes": [["SNOMED", "194828000"], ["SNOMED", "233819005"], ["SNOMED", "161504004"], ["ICD10", "I20.9"],
+        ["SNOMED", "4557003"], ["ICD10", "I20"]]
+    },
+    {
+      "id": "adult-sepsis", "grade": "IV", "group": "Adults", "example": "Sepsis",
+      "codes": [["SNOMED", "91302008"], ["ICD10", "A41.9"]]
+    },
+    {
+      "id": "child-epilepsy-well-controlled", "grade": "II", "group": "Children", "example": "Well-controlled epilepsy",
+      "codes": [["SNOMED", "84757009"], ["SNOMED", "161480008"], ["ICD10", "G40.9"], ["ICD10", "G40.901"], ["ICD10", "G40.909"]]
+    },
+    {
+      "id": "child-epilepsy-poorly-controlled", "grade": "III", "group": "Children", "example": "Poorly controlled epilepsy",
+      "codes": [["SNOMED", "84757009"], ["SNOMED", "161480008"], ["ICD10", "G40.9"], ["ICD10", "G40.901"], ["ICD10", "G40.909"]]
+    },
+    {
+      "id": "child-osa-mild-moderate", "grade": "II", "group": "Children", "example": "Mild or moderate obstructive sleep apnoea",
+      "codes": [["SNOMED", "73430006"], ["ICD10", "G47.33"], ["ICD10", "G47.30"]]
+    },
+    {
+      "id": "child-osa-severe", "grade": "III", "group": "Children", "example": "Severe obstructive sleep apnoea",
+      "codes": [["SNOMED", "73430006"], ["ICD10", "G47.33"], ["ICD10", "G47.30"]]
+    }
+  ]
+}

@@ -84,6 +84,40 @@ func TestSearchCodes(t *testing.T) {
 			t.Errorf("exact code found %v, want 8517006 first", got)
 		}
 	})
+	t.Run("happy path: each code's choices from the ASA guide (S39)", func(t *testing.T) {
+		r := w.author.Do("GET", "/api/codes?set=SNOMED&q="+url.QueryEscape("smok"), nil)
+		r.Want(t, http.StatusOK)
+		var got []struct {
+			Code       string
+			AsaChoices []struct{ Grade, Example, Group string }
+		}
+		r.Decode(t, &got)
+		choices := map[string]string{}
+		for _, c := range got {
+			var s []string
+			for _, ch := range c.AsaChoices {
+				s = append(s, ch.Grade+" "+ch.Example+" ("+ch.Group+")")
+			}
+			choices[c.Code] = strings.Join(s, "; ")
+		}
+		if choices["77176002"] != "II Current smoker (Adults)" {
+			t.Errorf("Smoker's choices = %q", choices["77176002"])
+		}
+		if c, ok := choices["8517006"]; !ok || c != "" {
+			t.Errorf("Ex-smoker's choices = %q (listed: %v), want none", c, ok)
+		}
+		// Severity decides: both, lowest first.
+		r = w.author.Do("GET", "/api/codes?set=SNOMED&q=38341003", nil)
+		r.Want(t, http.StatusOK)
+		if body := string(r.Body); !strings.Contains(body, `"asaChoices":[{"grade":"II","example":"Well-controlled hypertension","group":"Adults"},{"grade":"III","example":"Poorly controlled hypertension","group":"Adults"}]`) {
+			t.Errorf("hypertension's choices: %s", body)
+		}
+		// A code with none sends an empty list, not null.
+		r = w.author.Do("GET", "/api/codes?set=SNOMED&q=8517006", nil)
+		if body := string(r.Body); !strings.Contains(body, `"asaChoices":[]`) {
+			t.Errorf("Ex-smoker: %s", body)
+		}
+	})
 	t.Run("no sign-in", func(t *testing.T) {
 		refused(t, w.anon.Do("GET", "/api/codes?set=SNOMED&q=smok", nil), http.StatusUnauthorized)
 	})
