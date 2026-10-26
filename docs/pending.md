@@ -21,7 +21,7 @@ docker compose up -d --force-recreate db
   - Observations, Investigation results, Assessments
   - Files, and Send to EPR
   - hospital-reported BMI
-  - a suggested ASA from disclosures
+  - ~~a suggested ASA from disclosures~~ *Built in S39 (with its reasons, both tabs).*
 - **Statuses:** recovery (C9) is not built yet. *Admitted, discharged and cancelled: S20. Archived: S22.*
 - **Patients:**
   - accounts, and invitations by email or SMS
@@ -138,6 +138,27 @@ docker compose up -d --force-recreate db
 - **`reportedBmi` builds a model for every shown set** (could skip sets with no BMI, height or weight), and decides "shown" with the clinician's view (a patient-only height would be skipped; no HQ does this).
 - ~~**J8 is flaky on a long-lived database:** its mobile is one of 1,000 (`+447700900NNN`), so `captured(mobile)` can find another run's texts. Widen the range or filter by episode.~~ *Rahul, 25 Oct: fix it. Fixed in S30 (tested 25 Oct): J8 counts only texts carrying a link this episode's emails carry.*
 - `EpisodeList.tsx` uses `openTaskCount` only as a truthiness check and renders `e.openTasks` directly (tidy-up).
+
+### From S39's build (26 Oct; for Rahul, none blocking; [build notes](sessions/S39-suggested-asa/build-notes.md))
+
+- **Before go-live (C10): a clinician checks the ASA guide** (`apps/api/internal/asaguide/guide.json`): every example's words and grade against the ASA statement, which codes each covers, and adds the missing ones (only codes in today's seeded list are covered). Codes whose only example is a children's one are left out on purpose.
+- **A trust's own ASA examples** (research §5.2: they raised agreement from 74% to 91%) need a screen and a table; later.
+- **A score band's disclosure has no codes, so the ASA guide offers nothing there** (e.g. BMI 40 or more → III): the author types the grade by hand. The research suggested BMI bands with ASA in the starter library; the library has no BMI Calculation yet.
+- **A reason no code on the disclosure offers any more is kept** (S39 test report 2, exploring): only a disclosure saved before report 1's F1 fix can be in this state (e.g. "Smoker · ASA III (COPD)" on the tester's draft "MT S39 1750 ASA"). Left as is: dropping a reason silently when a disclosure is opened could also drop one a later guide change no longer lists. The author sees the reason line in the editor and can change it.
+- **From S39's test report 3 (exploring; for Rahul):**
+  - **A saved "No ASA grade" isn't remembered:** reopening such a disclosure shows the guide box with nothing selected, and adding another code with several examples asks again. Nothing wrong is saved. Storing the author's "no grade" (e.g. `asa: null` with a marker) would remember it; not done, as an older disclosure without a grade looks the same.
+  - **"(emergency)" marks only a reason below the top grade:** when the E disclosure is itself at the top grade ("Suggested ASA IIE: Smoker… – Current smoker"), its line doesn't say which one made it E. Mark every E reason if clinicians find it unclear.
+- **From S39's verification 1 (not blocking):**
+  - **`chapterConditionProblems` treats a missing `audience` as a patient set** (fails closed). Every caller passes it today; **S41's evaluate service must pass each set's audience to `publishProblems`**, or a valid clinician set testing the suggested ASA is refused.
+  - **The preview and test cases can't work out the suggested ASA from answers given by hand**, so an earlier clinician set's `{suggestedAsa}` condition is decided as "no grade" (0) there (as an episode with no grade). An earlier set shown only from ASA III is counted hidden in the preview's earlier answers. Narrow: it needs a cross-set score fed by an ASA-conditioned clinician set.
+  - **Removing a code in the half second before its ASA guide examples arrive** (a disclosure opened for editing looks them up, one code search per code) keeps a grade that came from it. The reason line still shows it, and the author can change it.
+  - **An HQ with a `{suggestedAsa}` condition takes `hqSets`' slow path**, so each set's survey is built (and `hqSuggestedAsa` builds them again). Fine for HQs of today's size; have `hqSets` return the outputs if it gets slow.
+  - `SuggestedAsaLine` (the episode page) repeats `suggestedAsaText`'s wording.
+- **From S39's verification 2 (not blocking; for Rahul):**
+  - **A saved test case can change its expected line:** E now comes from any disclosure counted, so an HQ whose answers give ASA IV plus an ASA II emergency now gives "Suggested ASA IVE" where before S39 it gave "IV"; a draft's test case expecting "IV" fails and blocks Publish until re-saved. No published HQ changes (its test cases aren't re-run). Clinically right (E is the case, not one condition), but say if test cases should be re-baselined instead.
+  - **"From the code library" leaves a code with several ASA examples ungraded** (e.g. E11.9): the window tells the author to choose it in the option's disclosure, but nothing makes them, and reopening the disclosure doesn't require a choice. Consider a publish warning for a disclosure whose codes offer examples but which has no grade (and no stored "No ASA grade").
+  - **The episode page's suggested ASA line shows for any status but HQ not complete**, so an episode cancelled before the patient sent shows a suggestion from unsent answers. Gate on `patientSubmittedAt` if that matters.
+- **The suggested ASA isn't on the Validate page itself** (it's on the episode page and the POA Summary), so a clinician correcting an answer sees the change only after going back.
 
 ### From S38's build, test reports 1–5 and verifications 1–2 (26 Oct; for Rahul, none blocking; [build notes](sessions/S38-scores-across-sets/build-notes.md))
 

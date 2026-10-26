@@ -51,7 +51,7 @@
 
 ## Status
 
-**Split into sessions on 26 Oct 2026; in progress: S38 verified (26 Oct, verification 3, after verifications 1–2's fixes); next S39.** The briefs are in [docs/sessions/](../sessions/README.md); Rahul answered their "Ask Rahul first" questions on 26 Oct. S38 also built the ready-made STOP-Bang (his answer to its question 2) and the Incomplete state.
+**Split into sessions on 26 Oct 2026; in progress: S38 verified (26 Oct, verification 3, after verifications 1–2's fixes); S39 verified (26 Oct, verification 2); next S40.** S39 differs from this plan: there's no `codes.asa`; the ASA guide (the ASA's own examples per code, a Go file) gives a code one or several grades, and the author picks where it depends on severity. The briefs are in [docs/sessions/](../sessions/README.md); Rahul answered their "Ask Rahul first" questions on 26 Oct. S38 also built the ready-made STOP-Bang (his answer to its question 2) and the Incomplete state.
 - **S38:** scores that use answers from earlier Question Sets, and points for age, sex and BMI (SCR-01/02; most of SCR-01 was already built);
 - **S39:** each code's usual ASA grade, and the suggested ASA for the whole HQ with its reasons (ASA-01);
 - **S40:** the rules on the HQ: defaults, the Rules page, preview and test cases (ASA-02/03/04); J11 starts;

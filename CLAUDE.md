@@ -93,7 +93,8 @@ npm workspaces monorepo (`apps/web`, `packages/*`), plus a separate Go module in
   - custom properties and stable IDs (`properties.ts`, `ids.ts`);
   - viewer rules (`viewer.ts`);
   - **disclosures and outputs** (`outputs.ts`: `computeOutputs`);
-  - clinical summaries, test cases, translations, publish checks (`publish.ts`), and the POA Summary (`poa.ts`).
+  - clinical summaries, test cases, translations, publish checks (`publish.ts`), and the POA Summary (`poa.ts`);
+  - the suggested ASA with its reasons (`asa.ts`; the whole HQ's is `hqSuggestedAsa` in `respondent.ts`, S39).
   - Most behaviour lives here and is unit-tested with Vitest.
 - **`apps/web`** is a React single-page app: React + Vite + React Router + Mantine (plan F2 replaced Next.js, because Amplify Hosting supports only Next.js ≤ 15).
   - `src/routes.tsx` lists every URL and its page (`src/pages/…`); the real UI is in `src/features/{editor,preview,episodes,patient,outputs,questionnaires}`. See `apps/web/AGENTS.md`.
@@ -106,6 +107,7 @@ npm workspaces monorepo (`apps/web`, `packages/*`), plus a separate Go module in
   - Middleware: `requireUser` (a dev HS256 JWT in an httpOnly cookie), then `requireHospital` for `/api/o/{oid}/h/{hid}/…` or `requireOrg` for `/api/o/{oid}/…`. They re-read the memberships on every request and give non-members a 404. The role ladder is `internal/role` (`clinician < super_clinician < admin`, A-5).
   - `internal/chapter` holds the content rules. `chapter.ForPatient` strips clinician-only elements, `clinicalOutputs` and `testCases` before patient JSON leaves the server, and `FilterAnswers` drops non-patient answer keys.
   - `internal/patient` holds the patient-record rules (matching typed details to the trust's record, the search term, E.164 mobiles); `internal/nationalid` the identifier validators (the NHS number's Modulus 11).
+  - `internal/asaguide` is the ASA guide (S39): the ASA's published examples per code (`guide.json`, embedded), sent with each code by `GET /api/codes` as `asaChoices`; made up for testing until a clinician checks it.
   - `internal/episode` handles episode statuses. `internal/hqimport` + `cmd/import-hq` import an incumbent HQ export.
 - **Content model:**
   - **Tenancy (S08):** questionnaires and option lists belong to a trust (`org_id`; `hospital_id` NULL = every hospital of the trust). Patient records belong to the trust; an episode belongs to one hospital, and a hospital-scoped user sees only their hospital's episodes.
