@@ -139,6 +139,23 @@ docker compose up -d --force-recreate db
 - ~~**J8 is flaky on a long-lived database:** its mobile is one of 1,000 (`+447700900NNN`), so `captured(mobile)` can find another run's texts. Widen the range or filter by episode.~~ *Rahul, 25 Oct: fix it. Fixed in S30 (tested 25 Oct): J8 counts only texts carrying a link this episode's emails carry.*
 - `EpisodeList.tsx` uses `openTaskCount` only as a truthiness check and renders `e.openTasks` directly (tidy-up).
 
+### From S36's verification 1 (26 Oct; Verified; minor, none blocking; [verify.md](sessions/S36-patient-information-time/verify.md))
+
+- **Question for Rahul: what "copied onto the episode" means (S36 answers 2).** The episode gets a copy of the procedure's **list** (which items), so changing the procedure's list later leaves booked patients alone. But each copied row still points at the library item, so **editing** an item (its title or link) reaches booked patients, and **retiring** one hides it from every patient (the brief's "Retired items stop showing", manual-test focus 4). The alternative is freezing each item's title and link onto the episode, so a retired or edited item stays as it was for booked patients. Keep as built (recommended: a fixed link or a withdrawn leaflet should reach everyone), or freeze?
+- **The estimate counts questions inside a hidden Group or page** (`visible: false`): `packages/clinical/src/estimate.ts` skips the element itself but walks its children, and checks only `clinicianOnly` on pages. Rare (conditions use `visibleIf`, which counts on purpose); skip hidden containers' children when next there.
+- **`telHref` keeps a trunk 0 after a country code** (`apps/web/src/features/information/info.ts`): "+44 (0)20 7946 0000" links to `tel:+4402079460000`. Drop a "(0)" before taking the digits.
+- **The Procedures table's Information summary counts retired items** ("1 video, 1 leaflet" when the leaflet is retired), which patients don't see (`ProceduresPage.tsx`). Count active ones, or add "(1 retired)".
+- **Adding or removing an episode's Information reads its status before writing, without a lock** (`information.go`): a cancel committed in between lets one change through. Low impact.
+- **Changing an episode's procedure swaps its copied Information without a General notes line** saying so (`episodes.go`, `swapProcedureInfo`).
+- Cleanups: one shared picker for the procedure and episode forms (`EpisodeInformation.tsx`, `ProceduresPage.tsx`); `estimateText(estimatedMinutes(...))` computed once per render (`Canvas.tsx`, `PatientHQ.tsx`).
+
+### From S36's test report 1 (26 Oct; all passed, 28 of 28; cosmetic, no code change)
+
+- **A Question Set with nothing to answer** (empty, or only an Information block) still says "About 1 minute", in the editor and on the patient's tile: the "at least 1 minute" rule (S36 answers 3). For Rahul: hide the estimate when a set has no questions and no video, or keep it.
+- **A cancelled or closed card on the patient's home** says "Please contact them if you have any questions", but the hospital's phone and email are only under Information, which those cards don't offer. Consider showing the hospital's contact details on those cards.
+- **The episode's Information card on a cancelled or archived episode** loses its Remove buttons and picker without saying why (the Tasks card says "This episode is cancelled, so its tasks can't be changed"), and still says "changes here are for this patient only".
+- *Fixed after the report (wording only):* the Content library's intro said a retired item's users "keep their copy"; it now says questionnaires keep their own copy of a video, but the item disappears from every patient's Information.
+
 ### From S35's verification 2 (25 Oct; Verified; minor, none blocking; [verify.md](sessions/S35-information-element/verify.md))
 
 - **Editing an old statement reads its lines as marks.** An old statement opens as its plain lines; once edited, a line such as `# of tablets`, `1. Stop aspirin` or `*note*` becomes a heading, a numbered list or italic. The live preview shows it before the author leaves the box, and the editor and the import only ever wrote escaped plain text, so links or bold can't be lost; only hand-made HTML would lose them. A fix: escape a leading `#`, `-`, `1.` and stars when an old statement is first turned into text.
@@ -159,7 +176,7 @@ docker compose up -d --force-recreate db
 
 ### From S35's test report 1 (25 Oct; exploring notes, not S35, no code change)
 
-- **The patient's set list at 390px** cuts the status badge to "COMPL…" and the Review button to "Revie" (also seen after S34; Mantine's Badge hides overflow, see the S33 gotcha).
+- ~~**The patient's set list at 390px** cuts the status badge to "COMPL…" and the Review button to "Revie" (also seen after S34; Mantine's Badge hides overflow, see the S33 gotcha).~~ *Fixed in S36: the tile's row wraps and the badge and button never shrink (`WholeBadge`); J10 checks it at phone size.*
 - **A reload inside a set** takes the patient back to the sections list (the URL doesn't name the set).
 - **Not confirmed:** opening Preview while the header says "Saving…" may show the chapter without the last edit; reopening it shows it.
 - **A question:** the editor's page header says "Clinical Page" above a page of a patient Question Set.
@@ -172,7 +189,7 @@ docker compose up -d --force-recreate db
 
 ### From S34's test report 1 (25 Oct; all passed, 24 of 24; none blocking, no code change)
 
-- **The patient's set list is cut short at 390px (before S34):** on the patient's questionnaire page, a set's status badge reads "PLEASE CHE…" / "IN PROGR…" and the **Continue** button "Continu" when the set's name wraps to two lines ("Question Set 1"). Mantine's Badge hides overflow (the S33 gotcha); use a badge that doesn't shrink, or let the row wrap (`PatientHQ.tsx`).
+- ~~**The patient's set list is cut short at 390px (before S34):** on the patient's questionnaire page, a set's status badge reads "PLEASE CHE…" / "IN PROGR…" and the **Continue** button "Continu" when the set's name wraps to two lines ("Question Set 1"). Mantine's Badge hides overflow (the S33 gotcha); use a badge that doesn't shrink, or let the row wrap (`PatientHQ.tsx`).~~ *Fixed in S36 (above).*
 - **A required "I have watched this video" tick has no marker of its own:** the red asterisk is on the video's title, and an optional tick shows no "(optional)" to the patient (the editor's card does). Consider a "(required)" or asterisk beside the tick.
 - **A link's start time is dropped:** `…watch?v=<id>&t=42s` is accepted, but the player starts at 0:00, because its address is built from the video ID only (by design: nothing from the link but a checked ID reaches the iframe). If authors want start times, add a checked `start=<seconds>`.
 - **YouTube Shorts links (`youtube.com/shorts/<id>`) are refused** (not in the agreed link list, S33). For Rahul: allow them (same 11-character ID) or not.
