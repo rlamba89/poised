@@ -25,6 +25,8 @@ describe("routes", () => {
     ["/p/tok123", "not-found", {}], // the old link (before S14) is gone
     ["/o/o1/h/h1/questionnaires", "questionnaires", { orgId: "o1", hospitalId: "h1" }],
     ["/o/o1/h/h1/questionnaires/q1", "editor", { orgId: "o1", hospitalId: "h1", qid: "q1" }],
+    ["/o/o1/h/h1/questionnaires/q1/rules", "rules", { orgId: "o1", hospitalId: "h1", qid: "q1" }],
+    ["/o/o1/h/h1/questionnaires/q1/rules/test", "rules-test", { orgId: "o1", hospitalId: "h1", qid: "q1" }],
     ["/o/o1/h/h1/chapters/c1/preview", "preview", { orgId: "o1", hospitalId: "h1", cid: "c1" }],
     ["/o/o1/h/h1/episodes", "episodes", { orgId: "o1", hospitalId: "h1" }],
     ["/o/o1/h/h1/episodes/new", "new-episode", { orgId: "o1", hospitalId: "h1" }],
@@ -51,6 +53,8 @@ describe("routes", () => {
   it.each([
     "/o/o1/h/h1/questionnaires",
     "/o/o1/h/h1/questionnaires/q1",
+    "/o/o1/h/h1/questionnaires/q1/rules",
+    "/o/o1/h/h1/questionnaires/q1/rules/test",
     "/o/o1/h/h1/chapters/c1/preview",
     "/o/o1/h/h1/episodes",
     "/o/o1/h/h1/episodes/new",

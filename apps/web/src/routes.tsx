@@ -56,6 +56,17 @@ export const routes: RouteObject[] = [
             lazy: async () => ({ Component: (await import("@/pages/hospital/Editor")).Editor }),
           },
           {
+            // An HQ's ASA rules (S40), and testing them on the whole HQ.
+            id: "rules",
+            path: `${h}/questionnaires/:qid/rules`,
+            lazy: async () => ({ Component: (await import("@/pages/hospital/Rules")).Rules }),
+          },
+          {
+            id: "rules-test",
+            path: `${h}/questionnaires/:qid/rules/test`,
+            lazy: async () => ({ Component: (await import("@/pages/hospital/Rules")).RulesTest }),
+          },
+          {
             id: "preview",
             path: `${h}/chapters/:cid/preview`,
             lazy: async () => ({ Component: (await import("@/pages/hospital/Preview")).Preview }),

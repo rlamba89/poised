@@ -4,16 +4,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { Alert, Anchor, Avatar, Badge, Button, Center, Group, Loader, Menu, Modal, Popover, Stack, Text } from "@mantine/core";
-import { IconAlertTriangle, IconArrowLeft, IconCopyPlus, IconEye, IconLanguage, IconLogout, IconSend } from "@tabler/icons-react";
+import { IconAlertTriangle, IconArrowLeft, IconCopyPlus, IconEye, IconLanguage, IconListCheck, IconLogout, IconSend } from "@tabler/icons-react";
 import {
   addElement, addPage, adoptKey, chapterConditionProblems, combineChapters, copyPage, deleteElement, deletePage, dependentsOf, elementLabel,
-  adoptionLosses, findElement, findPage, insertFromLibrary, insertReadyScore, namesInElement, READY_SCORES, stopBangGroup, logicProblems, optionMapFor, renameReferences, movePage, movePageTo, pageTitle, pagesOf, takenNames, type ChapterJson,
+  adoptionLosses, findElement, findPage, insertFromLibrary, insertReadyScore, namesInElement, READY_SCORES, stopBangGroup, logicProblems, optionMapFor, renameReferences, movePage, movePageTo, pageTitle, pagesOf, ruleSetOf, takenNames, type ChapterJson,
   type ElementJson, type Kind, type Target,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { signOut as signOutStaff } from "@/lib/signin";
 import { atLeast, canChange, useHospital, useMe } from "@/lib/auth";
 import type { Chapter } from "@/features/chapters/types";
+import type { OfferedProcedure } from "@/features/procedures/procedures";
 import { PageCanvas, SetCanvas } from "./Canvas";
 import { EditorContext, type EditorContextValue } from "./context";
 import { DisclosureModal, type DisclosureTarget } from "./DisclosureModal";
@@ -30,7 +31,11 @@ import css from "./editor.module.css";
 
 type Detail = {
   // hospitalId null: the trust's questionnaire, for every hospital.
-  questionnaire: { id: string; hospitalId: string | null; name: string; description: string; versionId: string; versionNo: number; status: string };
+  questionnaire: {
+    id: string; hospitalId: string | null; name: string; description: string; versionId: string; versionNo: number; status: string;
+    /** The version's ASA rules (S40), as stored; null for a version published before rules existed. */
+    rules: unknown;
+  };
   chapters: Chapter[];
 };
 
@@ -98,6 +103,11 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
   useEffect(() => {
     reload();
   }, [reload]);
+  // The procedures here, to name them in the Publish window's line about the rules (S40).
+  const [procedures, setProcedures] = useState<OfferedProcedure[]>([]);
+  useEffect(() => {
+    api<OfferedProcedure[]>(`/o/${here.trust.id}/procedures?hospital=${here.hospital.id}`).then(setProcedures).catch(() => setProcedures([]));
+  }, [here.trust.id, here.hospital.id]);
 
   // Every Question Set is loaded: Question Set conditions test questions in earlier sets (LOG-02).
   useEffect(() => {
@@ -462,6 +472,10 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
               Translate
             </Button>
           )}
+          {/* The HQ's ASA rules (S40): read-only for those who can't change it, and once published. */}
+          <Button size="xs" variant="default" leftSection={<IconListCheck size={14} />} component={Link} to={`${base}/questionnaires/${questionnaireId}/rules`}>
+            Rules
+          </Button>
           {q.status === "draft" && author && (
             <Button size="xs" leftSection={<IconSend size={14} />} onClick={() => setPublishing(true)}>
               Publish
@@ -583,6 +597,8 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
         versionId={q.versionId}
         versionNo={q.versionNo}
         sets={data.chapters.every((c) => store.get(c.id)) ? data.chapters.map((c) => ({ name: c.name, doc: store.get(c.id)!.doc, audience: c.audience })) : null}
+        rules={ruleSetOf(q.rules)}
+        procedures={procedures}
         unsaved={store.overall !== "saved"}
         keyProblems={keysCurrent ? (keys?.problems ?? []) : null}
         onOpen={reloadKeys}

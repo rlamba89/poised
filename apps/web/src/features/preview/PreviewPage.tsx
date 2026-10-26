@@ -13,8 +13,8 @@ import "@/features/video/VideoQuestion"; // draws Video elements (S34)
 import "@/features/information/InformationQuestion"; // draws Information, cleaned (S35)
 import "survey-core/survey-core.css";
 import {
-  applyEarlier, chapterConditionOf, combineChapters, computeOutputs, earlierKeysUsed, forPatient, givenEarlier, showBands, localesIn, refreshClinicalSummaries, registerClinicalProperties,
-  setViewer, withoutSurveyHtml, LANGUAGES, type Answers, type ChapterJson, type ComputedOutputs, type Viewer,
+  actionWords, applyEarlier, chapterConditionOf, combineChapters, computeOutputs, earlierKeysUsed, forPatient, givenEarlier, showBands, localesIn, refreshClinicalSummaries, registerClinicalProperties,
+  ruleSetOf, setFiredRules, setViewer, withoutSurveyHtml, LANGUAGES, type Answers, type ChapterJson, type ComputedOutputs, type FiredRule, type RuleSet, type Viewer,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { clinicianModel } from "./clinicianView";
@@ -157,6 +157,20 @@ function Preview({ base, chapter }: { base: string; chapter: ChapterDetail }) {
     answers.current = {};
     setRestored((n) => n + 1);
   };
+  // The HQ's ASA rules (S40), for "Rules that fire" with this set's answers alone.
+  const [rules, setRules] = useState<RuleSet | null>(null);
+  useEffect(() => {
+    api<{ questionnaire: { rules: unknown } }>(`${base}/questionnaires/${chapter.questionnaireId}`)
+      .then((d) => setRules(ruleSetOf(d.questionnaire.rules)))
+      .catch(() => setRules(null));
+  }, [base, chapter.questionnaireId]);
+  // Worked out as the rules see the answers on send, in the clinician's view, whichever view is shown
+  // (test report 1, F-1: a clinician-only score counts). `result` changes with every answer.
+  const fired = useMemo(
+    () => (rules ? setFiredRules(rules, content, model.data, { name: patient.name, age: sampleAge, sex: patient.sex ?? undefined }, given?.earlier) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rules, result, content, model, sampleAge, patient, given],
+  );
   const locales = localesIn(content);
   const width = DEVICES[device];
   return (
@@ -221,7 +235,7 @@ function Preview({ base, chapter }: { base: string; chapter: ChapterDetail }) {
         <Grid.Col span={{ base: 12, md: 4 }}>
           <Stack>
             <SamplePatientCard value={patient} onChange={setPatient} />
-            <OutputsPanel result={result} />
+            <OutputsPanel result={result} fired={fired} />
             <TestCases
               base={base}
               readOnly={readOnly}
@@ -277,7 +291,8 @@ function SamplePatientCard({ value, onChange }: { value: SamplePatient; onChange
   );
 }
 
-function OutputsPanel({ result }: { result: ComputedOutputs }) {
+/** `fired`: the HQ's rules that fire for these answers alone (S40); null when the version has no rules. */
+function OutputsPanel({ result, fired }: { result: ComputedOutputs; fired: FiredRule[] | null }) {
   const { outputs, suggestedAsa, scores = [] } = result;
   const byCategory = new Map<string, string[]>();
   for (const o of outputs) {
@@ -337,6 +352,18 @@ function OutputsPanel({ result }: { result: ComputedOutputs }) {
             {/* Why (S39): each disclosure at that grade, and any emergency one. */}
             {suggestedAsa.reasons.map((r) => (
               <Text size="xs" c="dimmed" key={r.text}>{r.text}</Text>
+            ))}
+          </div>
+        )}
+        {fired && (
+          <div data-testid="preview-rules">
+            <Text size="sm" fw={600}>Rules that fire</Text>
+            <Text size="xs" c="dimmed">For this Question Set&apos;s answers alone. Test the whole HQ from its Rules page.</Text>
+            {fired.length === 0 && <Text size="sm" c="dimmed">None</Text>}
+            {fired.map((f) => (
+              <Text size="sm" key={f.rule.id}>
+                <b>{f.rule.name}</b>: {[...f.actions.map(actionWords), ...(f.held ? ["no auto-triage: no ASA grade"] : [])].join("; ")}
+              </Text>
             ))}
           </div>
         )}

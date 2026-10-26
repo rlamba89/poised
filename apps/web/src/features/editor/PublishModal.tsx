@@ -1,10 +1,12 @@
 // Publishing a draft (LCY-01). Logic problems and failing test cases in any Question Set
-// block it (SGN-04); review and sign-off come later. So do the question-key checks (S23): a key
+// block it (SGN-04), as do the ASA rules' problems and failing whole-HQ test cases (S40); one line
+// says what the version will auto-triage. Review and sign-off come later. So do the question-key checks (S23): a key
 // used twice in the HQ, or a published question whose answer changed. Those are Go's: the window
 // shows them from GET …/question-keys (fetched again as it opens), and Publish's own 422 the same way.
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Group, List, Modal, Stack, Text } from "@mantine/core";
-import { publishProblems, type ChapterJson, type PublishProblem } from "@poised/clinical";
+import { autoTriageSummary, publishProblems, ruleNames, type ChapterJson, type PublishProblem, type RuleSet } from "@poised/clinical";
+import type { OfferedProcedure } from "@/features/procedures/procedures";
 import { api, ApiError } from "@/lib/api";
 
 type Props = {
@@ -21,9 +23,12 @@ type Props = {
   keyProblems: PublishProblem[] | null;
   /** Called as the window opens and after a refusal, to fetch Go's key problems again. */
   onOpen: () => void;
+  /** The version's ASA rules (S40): their problems and failing whole-HQ test cases block publishing. */
+  rules: RuleSet | null;
+  procedures: OfferedProcedure[];
 };
 
-export function PublishModal({ opened, onClose, onPublished, path, versionId, versionNo, sets, unsaved, keyProblems, onOpen }: Props) {
+export function PublishModal({ opened, onClose, onPublished, path, versionId, versionNo, sets, unsaved, keyProblems, onOpen, rules, procedures }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   // Go's own problems from its last refusal (422), until the dialog is opened again.
@@ -50,7 +55,7 @@ export function PublishModal({ opened, onClose, onPublished, path, versionId, ve
   // The problems are worked out while the dialog is open, and the last ones kept while it fades out,
   // so Cancel doesn't flash the "ready to publish" text (S08 test report 2).
   const shown = useRef<ReturnType<typeof publishProblems>>([]);
-  if (opened) shown.current = sets && keyProblems ? [...publishProblems(sets), ...keyProblems] : [];
+  if (opened) shown.current = sets && keyProblems ? [...publishProblems(sets, rules), ...keyProblems] : [];
   const problems = shown.current.length ? shown.current : refused;
   const checking = !sets || !keyProblems;
   const blocked = checking || unsaved || problems.length > 0 || sets.length === 0;
@@ -93,6 +98,12 @@ export function PublishModal({ opened, onClose, onPublished, path, versionId, ve
         {!blocked && (
           <Text>
             Patients can then be given this version. It becomes read-only: to change it later, create a new version.
+          </Text>
+        )}
+        {/* What this version will do by itself (S40), in one line. */}
+        {!checking && rules && (
+          <Text size="sm" data-testid="publish-rules">
+            {autoTriageSummary(rules, ruleNames(sets.map((s) => s.doc), procedures))}
           </Text>
         )}
         {error && <Alert color="red">{error}</Alert>}
