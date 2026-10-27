@@ -14,31 +14,46 @@ import (
 )
 
 const createChapter = `-- name: CreateChapter :one
+
 INSERT INTO chapters (version_id, position, name, updated_by)
-VALUES ($1, (SELECT coalesce(max(position), 0) + 1 FROM chapters WHERE version_id = $1), $2, $3)
+SELECT v.id, (SELECT coalesce(max(position), 0) + 1 FROM chapters WHERE version_id = v.id), $1, $2
+FROM questionnaire_versions v
+WHERE v.id = $3 AND v.status = 'draft'
+FOR SHARE OF v
 RETURNING id
 `
 
 type CreateChapterParams struct {
-	VersionID uuid.UUID `json:"versionId"`
 	Name      string    `json:"name"`
 	UpdatedBy uuid.UUID `json:"updatedBy"`
+	VersionID uuid.UUID `json:"versionId"`
 }
 
+// Every change to a version's Question Sets is made only into a draft, holding the version's row
+// FOR SHARE (S44a, verification 1): a change waits for a Publish in progress (which holds it FOR
+// UPDATE) and is then refused (no row), so what Publish checks is what it publishes.
 func (q *Queries) CreateChapter(ctx context.Context, arg CreateChapterParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, createChapter, arg.VersionID, arg.Name, arg.UpdatedBy)
+	row := q.db.QueryRow(ctx, createChapter, arg.Name, arg.UpdatedBy, arg.VersionID)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
 }
 
-const deleteChapter = `-- name: DeleteChapter :exec
-DELETE FROM chapters WHERE id = $1
+const deleteChapter = `-- name: DeleteChapter :execrows
+WITH draft AS (
+    SELECT v.id FROM questionnaire_versions v JOIN chapters c ON c.version_id = v.id
+    WHERE c.id = $1 AND v.status = 'draft'
+    FOR SHARE OF v
+)
+DELETE FROM chapters ch WHERE ch.id = $1 AND ch.version_id IN (SELECT draft.id FROM draft)
 `
 
-func (q *Queries) DeleteChapter(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteChapter, id)
-	return err
+func (q *Queries) DeleteChapter(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteChapter, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getChapter = `-- name: GetChapter :one
@@ -281,11 +296,31 @@ func (q *Queries) ListVersionContents(ctx context.Context, versionID uuid.UUID) 
 	return items, nil
 }
 
+const lockDraftVersion = `-- name: LockDraftVersion :one
+SELECT id FROM questionnaire_versions WHERE id = $1 AND status = 'draft' FOR NO KEY UPDATE
+`
+
+// Taken in a transaction that changes several of a draft's Question Sets (the new order): no row
+// once it isn't a draft. NO KEY UPDATE, not SHARE (S44a, verification 2): the transaction then
+// updates this row (TouchVersion), and upgrading a SHARE lock while a content save holds SHARE and
+// waits for a set this transaction moved is a deadlock. It still conflicts with Publish's FOR UPDATE.
+func (q *Queries) LockDraftVersion(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockDraftVersion, id)
+	var id_2 uuid.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
 const saveChapterContent = `-- name: SaveChapterContent :one
-UPDATE chapters
-SET content = $1, revision = revision + 1, updated_by = $2, updated_at = now()
-WHERE id = $3 AND revision = $4
-RETURNING revision
+WITH draft AS (
+    SELECT v.id FROM questionnaire_versions v JOIN chapters c ON c.version_id = v.id
+    WHERE c.id = $3 AND v.status = 'draft'
+    FOR SHARE OF v
+)
+UPDATE chapters ch
+SET content = $1, revision = ch.revision + 1, updated_by = $2, updated_at = now()
+WHERE ch.id = $3 AND ch.revision = $4 AND ch.version_id IN (SELECT draft.id FROM draft)
+RETURNING ch.revision
 `
 
 type SaveChapterContentParams struct {
@@ -295,7 +330,9 @@ type SaveChapterContentParams struct {
 	Revision  int32           `json:"revision"`
 }
 
-// Saves only if nobody saved since the caller loaded `revision` (LCY-04).
+// Saves only if nobody saved since the caller loaded `revision` (LCY-04), and only into a draft:
+// the version's row is taken FOR SHARE (S44a), so a save waits for a Publish in progress (which
+// holds it FOR UPDATE) and is then refused, and Publish waits for a save in progress.
 func (q *Queries) SaveChapterContent(ctx context.Context, arg SaveChapterContentParams) (int32, error) {
 	row := q.db.QueryRow(ctx, saveChapterContent,
 		arg.Content,
@@ -323,29 +360,38 @@ func (q *Queries) SetChapterPosition(ctx context.Context, arg SetChapterPosition
 	return err
 }
 
-const updateChapterMeta = `-- name: UpdateChapterMeta :exec
-UPDATE chapters
-SET name = $2, description = $3, icon = $4, audience = $5, updated_by = $6, updated_at = now()
-WHERE id = $1
+const updateChapterMeta = `-- name: UpdateChapterMeta :execrows
+WITH draft AS (
+    SELECT v.id FROM questionnaire_versions v JOIN chapters c ON c.version_id = v.id
+    WHERE c.id = $6 AND v.status = 'draft'
+    FOR SHARE OF v
+)
+UPDATE chapters ch
+SET name = $1, description = $2, icon = $3, audience = $4,
+    updated_by = $5, updated_at = now()
+WHERE ch.id = $6 AND ch.version_id IN (SELECT draft.id FROM draft)
 `
 
 type UpdateChapterMetaParams struct {
-	ID          uuid.UUID `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Icon        string    `json:"icon"`
 	Audience    string    `json:"audience"`
 	UpdatedBy   uuid.UUID `json:"updatedBy"`
+	ID          uuid.UUID `json:"id"`
 }
 
-func (q *Queries) UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) error {
-	_, err := q.db.Exec(ctx, updateChapterMeta,
-		arg.ID,
+func (q *Queries) UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateChapterMeta,
 		arg.Name,
 		arg.Description,
 		arg.Icon,
 		arg.Audience,
 		arg.UpdatedBy,
+		arg.ID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

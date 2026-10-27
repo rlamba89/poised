@@ -332,8 +332,11 @@ SELECT e.id, e.status, e.procedure_id, coalesce(pr.name, '')::text AS procedure,
        -- S42: the auto-triage while it stands, and who checked it
        e.triage_rule, e.triage_summary, e.triaged_at, e.triage_message_pending, e.triage_checked_at, checker.name AS triage_checked_by_name,
        -- S43: the rule requiring the anaesthetist's ASA grade, and the statuses the rules suggest
-       e.anaesthetist_asa_required_by, e.rule_suggestions
+       e.anaesthetist_asa_required_by, e.rule_suggestions,
+       -- S44a: the hospital's time zone (NULL: the deployment's), for the age on the day of sending
+       h.timezone AS hospital_time_zone
 FROM episodes e
+JOIN hospitals h ON h.id = e.hospital_id
 JOIN patients p ON p.id = e.patient_id
 JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
 JOIN questionnaire_versions v ON v.id = f.version_id
@@ -396,6 +399,7 @@ type GetEpisodeRow struct {
 	TriageCheckedByName       *string            `json:"triageCheckedByName"`
 	AnaesthetistAsaRequiredBy *string            `json:"anaesthetistAsaRequiredBy"`
 	RuleSuggestions           json.RawMessage    `json:"ruleSuggestions"`
+	HospitalTimeZone          *string            `json:"hospitalTimeZone"`
 }
 
 // With its HQ form (S18): the version, the patient's submit and who sent it keep their names
@@ -449,6 +453,7 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 		&i.TriageCheckedByName,
 		&i.AnaesthetistAsaRequiredBy,
 		&i.RuleSuggestions,
+		&i.HospitalTimeZone,
 	)
 	return i, err
 }
@@ -548,6 +553,31 @@ func (q *Queries) GetVersionChapter(ctx context.Context, arg GetVersionChapterPa
 	var i GetVersionChapterRow
 	err := row.Scan(&i.ID, &i.Audience, &i.Content)
 	return i, err
+}
+
+const keepSentAnswers = `-- name: KeepSentAnswers :exec
+UPDATE episode_answers a SET data = $1,
+    updated_by = CASE WHEN $1::jsonb = '{}'::jsonb THEN NULL ELSE a.updated_by END,
+    prefill = CASE WHEN a.prefill IS NULL THEN NULL
+        ELSE coalesce((SELECT jsonb_object_agg(p.key, p.value) FROM jsonb_each(a.prefill) p WHERE $1::jsonb ? p.key), '{}'::jsonb) END
+WHERE a.episode_form_id = $2 AND a.chapter_id = $3 AND a.actor = 'patient'
+`
+
+type KeepSentAnswersParams struct {
+	Data      json.RawMessage `json:"data"`
+	FormID    uuid.UUID       `json:"formId"`
+	ChapterID uuid.UUID       `json:"chapterId"`
+}
+
+// On send (S44a, Rahul 27 Oct): the patient's frozen answers to one Question Set become only what
+// their form showed. Go passes the saved answers less those the evaluate service says a condition
+// hid; where each dropped answer came from (prefill) goes with it ('{}' stays '{}', so `started`
+// doesn't change). The revision stays: a sent form's answers can't be saved again. A set left with
+// no answers names no one who entered them (S44a test report 1, F1: staff filled it in for the
+// patient, but none of it was sent).
+func (q *Queries) KeepSentAnswers(ctx context.Context, arg KeepSentAnswersParams) error {
+	_, err := q.db.Exec(ctx, keepSentAnswers, arg.Data, arg.FormID, arg.ChapterID)
+	return err
 }
 
 const latestUndoable = `-- name: LatestUndoable :one
@@ -1246,6 +1276,7 @@ FROM episode_forms f JOIN episodes e ON e.id = f.episode_id
 WHERE f.id = $5 AND e.status = 'ready_for_review'
   AND $6::int = coalesce((SELECT a.revision FROM episode_answers a
       WHERE a.episode_form_id = f.id AND a.chapter_id = $1 AND a.actor = 'clinician'), 0)
+FOR NO KEY UPDATE OF e
 ON CONFLICT (episode_form_id, chapter_id, actor) DO UPDATE
 SET data = EXCLUDED.data, updated_by = EXCLUDED.updated_by, updated_at = now(), validated_at = EXCLUDED.validated_at,
     revision = episode_answers.revision + 1
@@ -1271,6 +1302,11 @@ type SaveClinicianAnswersParams struct {
 //     there's no row yet. The SELECT checks it against the rows as they were when the statement
 //     started; ON CONFLICT … WHERE checks it again against the row as it is now, so of two saves
 //     sent at once from the same revision, only the first is applied.
+//
+// It takes the episode's row (S44a, S44 verification), so a save waits for a Complete review in
+// progress (which holds it FOR UPDATE) and is then refused, and a Complete review waits for a save
+// in progress and then sees its stamp. NO KEY UPDATE, not SHARE: the touch trigger updates the
+// episode's row in the same statement, and two saves each holding SHARE would deadlock there.
 func (q *Queries) SaveClinicianAnswers(ctx context.Context, arg SaveClinicianAnswersParams) (int32, error) {
 	row := q.db.QueryRow(ctx, saveClinicianAnswers,
 		arg.ChapterID,
@@ -1334,7 +1370,7 @@ SET status = $1, admitted_at = $2, discharged_at = $3,
     triage_rule = CASE WHEN $6::boolean THEN NULL ELSE triage_rule END,
     triage_summary = CASE WHEN $6::boolean THEN NULL ELSE triage_summary END,
     triaged_at = CASE WHEN $6::boolean THEN NULL ELSE triaged_at END,
-    triage_message_pending = triage_message_pending AND NOT $6::boolean,
+    triage_message_pending = false,
     triage_checked_by = CASE WHEN $6::boolean THEN NULL ELSE triage_checked_by END,
     triage_checked_at = CASE WHEN $6::boolean THEN NULL ELSE triage_checked_at END,
     revision = revision + 1
@@ -1356,8 +1392,9 @@ type SetEpisodeStatusParams struct {
 // while the episode is Ready for review). The caller holds LockEpisodeStatus.
 // archived_from: the status it's archived from when archiving (S22), else NULL.
 // A re-open also ends an auto-triage (S42): a person reviews the HQ now, so it leaves the
-// Auto-triaged worklist, its stamp goes, and a message still waiting for Checked never goes. The
-// status history and the General notes keep what happened.
+// Auto-triaged worklist and its stamp goes. Every change by hand ends a message still waiting for
+// Checked (S44a, S42 verification): the change sends its own message if it has one, so Checked
+// never sends a second. The status history and the General notes keep what happened.
 func (q *Queries) SetEpisodeStatus(ctx context.Context, arg SetEpisodeStatusParams) error {
 	_, err := q.db.Exec(ctx, setEpisodeStatus,
 		arg.Status,

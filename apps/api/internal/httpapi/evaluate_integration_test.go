@@ -280,6 +280,106 @@ func TestPublishAsksTheEvaluator(t *testing.T) {
 			t.Errorf("status = %s", s)
 		}
 	})
+	// S41 verification (fixed in S44a): a rules save in progress when Publish is pressed is waited
+	// for, and what's checked is what's published: the version is re-read inside the transaction.
+	t.Run("a rules save in progress: Publish waits for it and checks the rules as saved", func(t *testing.T) {
+		hq := w.fx.DraftHQ(t, w.a, w.alex, "workflow.json")
+		saved := `{"noGradeAutoTriage": true, "rules": [], "testCases": [{"id": "t", "name": "Saved meanwhile", "patient": {"name": "S"}, "answers": {}, "expected": []}]}`
+		r := meanwhile(t, w.db, `UPDATE questionnaire_versions SET rules = $2::jsonb, rules_revision = rules_revision + 1 WHERE id = $1`,
+			[]any{hq.VersionID, saved}, func() *apitest.Resp { return publish(hq) })
+		r.Want(t, http.StatusNoContent)
+		calls := w.anon.Evaluator.Published()
+		if in := calls[len(calls)-1]; !sameJSONText(t, in.Rules, saved) {
+			t.Errorf("checked rules = %s, want the ones saved meanwhile", in.Rules)
+		}
+	})
+	t.Run("a Question Set save while Publish holds the version waits, then is refused", func(t *testing.T) {
+		hq := w.fx.DraftHQ(t, w.a, w.alex, "workflow.json")
+		var rev int32
+		if err := w.db.QueryRow(t.Context(), `SELECT revision FROM chapters WHERE id = $1`, hq.Chapters[0]).Scan(&rev); err != nil {
+			t.Fatal(err)
+		}
+		r := meanwhile(t, w.db, `UPDATE questionnaire_versions SET status = 'published' WHERE id = $1`, []any{hq.VersionID}, func() *apitest.Resp {
+			return w.author.Do("PUT", at(w.a, "/chapters/"+hq.Chapters[0].String()+"/content"),
+				map[string]any{"content": map[string]any{"pages": []any{}}, "revision": rev})
+		})
+		refused(t, r, http.StatusConflict)
+		if want := "Only draft versions can be changed."; r.Message() != want { // verification 1, finding 4: not "someone else changed it"
+			t.Errorf("message = %q, want %q", r.Message(), want)
+		}
+		var content string
+		if err := w.db.QueryRow(t.Context(), `SELECT content::text FROM chapters WHERE id = $1`, hq.Chapters[0]).Scan(&content); err != nil || !strings.Contains(content, "q_smokes") {
+			t.Errorf("the published set's content changed: %s (%v)", content, err)
+		}
+	})
+	// Verification 1, finding 3: every other Question Set change waits for a Publish in progress too.
+	t.Run("a set's audience, name, deletion, a new set or a new order while Publish holds the version: wait, then refused", func(t *testing.T) {
+		for _, c := range []struct {
+			name string
+			req  func(hq apitest.HQ) *apitest.Resp
+		}{
+			{"audience", func(hq apitest.HQ) *apitest.Resp {
+				return w.author.Do("PATCH", at(w.a, "/chapters/"+hq.Chapters[2].String()), map[string]any{"audience": "patient"})
+			}},
+			{"delete", func(hq apitest.HQ) *apitest.Resp { return w.author.Do("DELETE", at(w.a, "/chapters/"+hq.Chapters[2].String()), nil) }},
+			{"add", func(hq apitest.HQ) *apitest.Resp {
+				return w.author.Do("POST", at(w.a, "/questionnaires/"+hq.ID.String()+"/chapters"), map[string]any{"name": "Late set"})
+			}},
+			{"reorder", func(hq apitest.HQ) *apitest.Resp {
+				return w.author.Do("PUT", at(w.a, "/questionnaires/"+hq.ID.String()+"/chapter-order"), []uuid.UUID{hq.Chapters[2], hq.Chapters[1], hq.Chapters[0]})
+			}},
+		} {
+			t.Run(c.name, func(t *testing.T) {
+				hq := w.fx.DraftHQ(t, w.a, w.alex, "workflow.json")
+				r := meanwhile(t, w.db, `UPDATE questionnaire_versions SET status = 'published' WHERE id = $1`, []any{hq.VersionID}, func() *apitest.Resp { return c.req(hq) })
+				refused(t, r, http.StatusConflict)
+				if want := "Only draft versions can be changed."; r.Message() != want {
+					t.Errorf("message = %q, want %q", r.Message(), want)
+				}
+				var sets, nurse int
+				if err := w.db.QueryRow(t.Context(), `SELECT count(*), count(*) FILTER (WHERE audience = 'clinician' AND position = 3) FROM chapters WHERE version_id = $1`,
+					hq.VersionID).Scan(&sets, &nurse); err != nil || sets != 3 || nurse != 1 {
+					t.Errorf("the published version's sets changed: %d sets, %d clinician set last (%v)", sets, nurse, err)
+				}
+			})
+		}
+	})
+	// Verification 2, finding 1: a reorder and a content save in progress (which holds the version
+	// FOR SHARE while it updates its set) used to deadlock, the reorder's touch waiting on the save's
+	// SHARE and the save waiting on the set the reorder had moved. The reorder now waits instead.
+	t.Run("a reorder while a Question Set save holds the version: it waits, then works", func(t *testing.T) {
+		hq := w.fx.DraftHQ(t, w.a, w.alex, "workflow.json")
+		tx, err := w.db.Begin(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(t.Context())
+		if _, err := tx.Exec(t.Context(), `SELECT 1 FROM questionnaire_versions WHERE id = $1 FOR SHARE`, hq.VersionID); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan *apitest.Resp, 1)
+		go func() {
+			done <- w.author.Do("PUT", at(w.a, "/questionnaires/"+hq.ID.String()+"/chapter-order"), []uuid.UUID{hq.Chapters[2], hq.Chapters[1], hq.Chapters[0]})
+		}()
+		const waiting = `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`
+		for deadline := time.Now().Add(5 * time.Second); count(t, w.db, waiting) == 0; time.Sleep(5 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatal("the reorder never waited for the version")
+			}
+		}
+		// The save's own update of its set, then it commits.
+		if _, err := tx.Exec(t.Context(), `UPDATE chapters SET revision = revision + 1 WHERE id = $1`, hq.Chapters[0]); err != nil {
+			t.Fatalf("the save's update: %v", err)
+		}
+		if err := tx.Commit(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		(<-done).Want(t, http.StatusNoContent)
+		var first uuid.UUID
+		if err := w.db.QueryRow(t.Context(), `SELECT id FROM chapters WHERE version_id = $1 ORDER BY position LIMIT 1`, hq.VersionID).Scan(&first); err != nil || first != hq.Chapters[2] {
+			t.Errorf("first set = %v (%v), want the reordered one", first, err)
+		}
+	})
 	t.Run("a version with no rules sends null", func(t *testing.T) {
 		hq := w.fx.DraftHQ(t, w.a, w.alex, "workflow.json") // the same keys, answered the same way
 		publish(hq).Want(t, http.StatusNoContent)

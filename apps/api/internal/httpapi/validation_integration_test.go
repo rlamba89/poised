@@ -318,7 +318,11 @@ func TestCompleteReview(t *testing.T) {
 		}
 	})
 	t.Run("only once", func(t *testing.T) {
-		refused(t, complete(w.clinician, w.a, w.ep), http.StatusConflict)
+		r := complete(w.clinician, w.a, w.ep)
+		refused(t, r, http.StatusConflict)
+		if want := "The HQ review is already complete."; r.Message() != want { // S44a: not a save's wording
+			t.Errorf("message = %q, want %q", r.Message(), want)
+		}
 		if ev := readEvents(t, w, w.ep.ID); len(ev) != 1 {
 			t.Errorf("events = %+v, want still 1", ev)
 		}

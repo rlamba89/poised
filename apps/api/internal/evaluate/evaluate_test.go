@@ -137,6 +137,12 @@ func TestHTTPEvaluate(t *testing.T) {
 	if !reflect.DeepEqual(res.PatientSets, want) {
 		t.Errorf("PatientSets = %+v", res.PatientSets)
 	}
+	// S44a: what the patient's form showed, by patient set: Travel (hidden) gives nothing, Sleep loses q_naps.
+	travel := in.Sets[2].ID
+	if len(res.Sent) != 3 || string(res.Sent[travel]) != "{}" || !sameJSON(t, res.Sent[sleep], []byte(`{"q_tired":"o_y"}`)) ||
+		!sameJSON(t, res.Sent[about], in.Answers[about]) {
+		t.Errorf("Sent = %s", res.Sent)
+	}
 	// S42: each set's scores, which auto-triage reads (an Incomplete one stops it).
 	if len(res.Sets) != 3 || res.Sets[0].ID != about || len(res.Sets[0].Scores) != 1 ||
 		res.Sets[0].Scores[0] != (evaluate.Score{QuestionID: "q_score", Incomplete: false}) {
@@ -282,11 +288,26 @@ func TestRecorder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// By default it answers like the service for an HQ that gives nothing: every set shown.
+	// By default it answers like the service for an HQ that gives nothing: every set shown, and
+	// every answer the patient gave kept as sent (S44a).
 	if res.Evaluator != evaluate.FakeVersion || !reflect.DeepEqual(res.Shown, []uuid.UUID{set}) || len(res.Raw) == 0 {
 		t.Errorf("result = %+v", res)
 	}
-	if got := r.Inputs(); len(got) != 1 || got[0].FormID != in.FormID {
+	in.Answers = map[uuid.UUID]json.RawMessage{set: json.RawMessage(`{"q_a":"o_y","q_b":"x"}`)}
+	if res, _ := r.Evaluate(context.Background(), in); len(res.Sent) != 1 || string(res.Sent[set]) != `{"q_a":"o_y","q_b":"x"}` {
+		t.Errorf("Sent = %s", res.Sent)
+	}
+	// HideAnswers leaves a question's answer out of what was sent, or the whole set's.
+	r.HideAnswers(set, "q_b")
+	if res, _ := r.Evaluate(context.Background(), in); string(res.Sent[set]) != `{"q_a":"o_y"}` {
+		t.Errorf("Sent after HideAnswers(q_b) = %s", res.Sent)
+	}
+	r.HideAnswers(set)
+	if res, _ := r.Evaluate(context.Background(), in); string(res.Sent[set]) != `{}` {
+		t.Errorf("Sent after HideAnswers(set) = %s", res.Sent)
+	}
+	r.ShowAnswers()
+	if got := r.Inputs(); len(got) != 4 || got[0].FormID != in.FormID {
 		t.Errorf("Inputs = %+v", got)
 	}
 	r.Fail(errors.New("down"))
@@ -321,5 +342,17 @@ func TestRecorder(t *testing.T) {
 	r.Fail(errors.New("down"))
 	if _, err := r.Shown(context.Background(), review); err == nil {
 		t.Error("Fail: Shown didn't fail")
+	}
+}
+
+// S44a, verification 1: form_outputs keeps the result without the answers sent.
+func TestStoredLeavesOutSent(t *testing.T) {
+	r := evaluate.Result{Raw: json.RawMessage(`{"evaluator":"x","sent":{"a":{"q":"secret"}},"shown":[]}`)}
+	if got := string(r.Stored()); got != `{"evaluator":"x","shown":[]}` {
+		t.Errorf("Stored = %s", got)
+	}
+	plain := evaluate.Result{Raw: json.RawMessage(`{"evaluator":"x"}`)}
+	if got := string(plain.Stored()); got != `{"evaluator":"x"}` {
+		t.Errorf("Stored = %s", got)
 	}
 }

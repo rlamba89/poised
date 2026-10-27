@@ -78,6 +78,10 @@ func (s *server) addChapter(w http.ResponseWriter, r *http.Request) {
 	}
 	uid := currentUser(r).ID
 	id, err := s.q.CreateChapter(r.Context(), db.CreateChapterParams{VersionID: q.VersionID, Name: in.Name, UpdatedBy: uid})
+	if errors.Is(err, pgx.ErrNoRows) { // published meanwhile (S44a)
+		writeError(w, http.StatusConflict, notDraft)
+		return
+	}
 	if err != nil {
 		serverError(w, "create chapter", err)
 		return
@@ -126,11 +130,15 @@ func (s *server) updateChapter(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
-	err := s.q.UpdateChapterMeta(r.Context(), db.UpdateChapterMetaParams{
+	n, err := s.q.UpdateChapterMeta(r.Context(), db.UpdateChapterMetaParams{
 		ID: c.ID, Name: *in.Name, Description: *in.Description, Icon: *in.Icon, Audience: *in.Audience, UpdatedBy: currentUser(r).ID,
 	})
 	if err != nil {
 		serverError(w, "update chapter", err)
+		return
+	}
+	if n == 0 { // published meanwhile (S44a)
+		writeError(w, http.StatusConflict, notDraft)
 		return
 	}
 	s.touch(r, c.VersionID)
@@ -155,6 +163,13 @@ func (s *server) reorderChapters(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 	qtx := db.New(tx)
+	if _, err := qtx.LockDraftVersion(ctx, q.VersionID); errors.Is(err, pgx.ErrNoRows) { // published meanwhile (S44a)
+		writeError(w, http.StatusConflict, notDraft)
+		return
+	} else if err != nil {
+		serverError(w, "lock version", err)
+		return
+	}
 	current, err := qtx.ListChapters(ctx, q.VersionID)
 	if err != nil {
 		serverError(w, "list chapters", err)
@@ -203,8 +218,13 @@ func (s *server) deleteChapter(w http.ResponseWriter, r *http.Request) {
 	if !ok || !canEdit(w, r, c.OwnerHospitalID, c.VersionStatus) {
 		return
 	}
-	if err := s.q.DeleteChapter(r.Context(), c.ID); err != nil {
+	n, err := s.q.DeleteChapter(r.Context(), c.ID)
+	if err != nil {
 		serverError(w, "delete chapter", err)
+		return
+	}
+	if n == 0 { // published meanwhile (S44a)
+		writeError(w, http.StatusConflict, notDraft)
 		return
 	}
 	s.touch(r, c.VersionID)
@@ -250,6 +270,11 @@ func (s *server) saveContent(w http.ResponseWriter, r *http.Request) {
 		ID: c.ID, Content: in.Content, Revision: in.Revision, UpdatedBy: currentUser(r).ID,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
+		// Published meanwhile (S44a: the save waited for Publish), or someone else saved first.
+		if status, err := s.q.VersionStatus(r.Context(), c.VersionID); err == nil && status != "draft" {
+			writeError(w, http.StatusConflict, notDraft)
+			return
+		}
 		writeError(w, http.StatusConflict, staleRevisionMsg)
 		return
 	}

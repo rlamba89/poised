@@ -221,6 +221,17 @@ func (s *server) publishQuestionnaire(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "lock", err)
 		return
 	}
+	// What's checked is what's published (S44a): the version, its rules and its Question Sets are
+	// read again under the version's lock, which rules and Question Set saves wait for.
+	version, err := q.LockVersionForPublish(ctx, row.VersionID)
+	if err != nil {
+		serverError(w, "lock version", err)
+		return
+	}
+	if version.Status != "draft" {
+		writeError(w, http.StatusConflict, "This version has changed since you opened it. Reload and try again.")
+		return
+	}
 	rows, err := q.ListVersionContents(ctx, row.VersionID)
 	if err != nil {
 		serverError(w, "list contents", err)
@@ -246,7 +257,7 @@ func (s *server) publishQuestionnaire(w http.ResponseWriter, r *http.Request) {
 	for i, c := range rows {
 		sets[i] = evaluate.PublishSet{Name: c.Name, Audience: c.Audience, Content: c.Content}
 	}
-	found, err := s.eval.PublishProblems(ctx, evaluate.PublishInput{Sets: sets, Rules: row.Rules})
+	found, err := s.eval.PublishProblems(ctx, evaluate.PublishInput{Sets: sets, Rules: version.Rules})
 	if err != nil {
 		log.Printf("%s publish checks, version %s: %v", evaluate.FailedMarker, row.VersionID, err)
 		writeError(w, http.StatusServiceUnavailable, "The checks couldn't run. Try again in a minute.")

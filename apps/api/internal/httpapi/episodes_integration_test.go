@@ -3,6 +3,7 @@
 package httpapi_test
 
 import (
+	"context"
 	"maps"
 	"net/http"
 	"reflect"
@@ -463,6 +464,23 @@ func TestGetEpisode(t *testing.T) {
 		e := got.Episode
 		if e.ProcedureID == nil || *e.ProcedureID != w.hip || e.Procedure != "Hip replacement" || e.PlannedDate != nil || e.PoaDate == nil || *e.PoaDate != "2026-10-28" {
 			t.Errorf("episode = %+v", e)
+		}
+	})
+	t.Run("the hospital's time zone, for the age on the day of sending (S44a); null: the deployment's", func(t *testing.T) {
+		var got struct {
+			Episode struct{ HospitalTimeZone *string }
+		}
+		get(w.clinician, w.a).Decode(t, &got)
+		if got.Episode.HospitalTimeZone != nil {
+			t.Errorf("hospitalTimeZone = %q, want null (none set)", *got.Episode.HospitalTimeZone)
+		}
+		if _, err := w.db.Exec(t.Context(), `UPDATE hospitals SET timezone = 'Pacific/Auckland' WHERE id = $1`, w.a.ID); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { w.db.Exec(context.Background(), `UPDATE hospitals SET timezone = NULL WHERE id = $1`, w.a.ID) })
+		get(w.clinician, w.a).Decode(t, &got)
+		if got.Episode.HospitalTimeZone == nil || *got.Episode.HospitalTimeZone != "Pacific/Auckland" {
+			t.Errorf("hospitalTimeZone = %v", got.Episode.HospitalTimeZone)
 		}
 	})
 	t.Run("the HQ's version and submit time come from its form, under the names they had before forms (S18)", func(t *testing.T) {

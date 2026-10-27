@@ -81,7 +81,7 @@ func main() {
 			if err != nil {
 				return fmt.Errorf("create chapter %q: %w", s.Name, err)
 			}
-			if err := dq.UpdateChapterMeta(ctx, db.UpdateChapterMetaParams{
+			if _, err := dq.UpdateChapterMeta(ctx, db.UpdateChapterMetaParams{
 				ID: cid, Name: s.Name, Description: s.Description, Icon: s.Icon, Audience: "patient", UpdatedBy: uid,
 			}); err != nil {
 				return fmt.Errorf("chapter %q: %w", s.Name, err)

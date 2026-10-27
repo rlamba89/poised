@@ -96,6 +96,9 @@ type Querier interface {
 	// same scope and the same arguments. A worklist with none has no row.
 	CountWorklists(ctx context.Context, arg CountWorklistsParams) ([]CountWorklistsRow, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (uuid.UUID, error)
+	// Every change to a version's Question Sets is made only into a draft, holding the version's row
+	// FOR SHARE (S44a, verification 1): a change waits for a Publish in progress (which holds it FOR
+	// UPDATE) and is then refused (no row), so what Publish checks is what it publishes.
 	CreateChapter(ctx context.Context, arg CreateChapterParams) (uuid.UUID, error)
 	// A sign-in link (kind signin) to a contact, or a verification link (kind verify) for an
 	// account's new contact. Both expire.
@@ -138,7 +141,7 @@ type Querier interface {
 	// Its links to confirm a new contact (PAT-10).
 	DeleteAccountLinks(ctx context.Context, accountID uuid.NullUUID) error
 	DeleteAccountSessions(ctx context.Context, accountID uuid.UUID) error
-	DeleteChapter(ctx context.Context, id uuid.UUID) error
+	DeleteChapter(ctx context.Context, id uuid.UUID) (int64, error)
 	// Only the trust's own: the platform's are the seed's.
 	DeleteLibraryQuestion(ctx context.Context, arg DeleteLibraryQuestionParams) (int64, error)
 	DeleteMembership(ctx context.Context, arg DeleteMembershipParams) error
@@ -251,6 +254,13 @@ type Querier interface {
 	// The person's other records, in any trust, not yet joined: the same date of birth, the account's
 	// first name and surname, and one of the contacts they've just proved (a link reached them there).
 	JoinMatchingRecords(ctx context.Context, arg JoinMatchingRecordsParams) ([]JoinMatchingRecordsRow, error)
+	// On send (S44a, Rahul 27 Oct): the patient's frozen answers to one Question Set become only what
+	// their form showed. Go passes the saved answers less those the evaluate service says a condition
+	// hid; where each dropped answer came from (prefill) goes with it ('{}' stays '{}', so `started`
+	// doesn't change). The revision stays: a sent form's answers can't be saved again. A set left with
+	// no answers names no one who entered them (S44a test report 1, F1: staff filled it in for the
+	// patient, but none of it was sent).
+	KeepSentAnswers(ctx context.Context, arg KeepSentAnswersParams) error
 	// The newest change that isn't an undo and hasn't been undone: what an undo would step back
 	// (episode.UndoTarget decides whether it can). No row: none.
 	LatestUndoable(ctx context.Context, episodeID uuid.UUID) (LatestUndoableRow, error)
@@ -390,6 +400,11 @@ type Querier interface {
 	// Accounts are matched by date of birth: one person's records join one at a time, so two first
 	// visits at once (from two trusts' invites) can't make two accounts.
 	LockBirthDate(ctx context.Context, dateOfBirth pgtype.Date) error
+	// Taken in a transaction that changes several of a draft's Question Sets (the new order): no row
+	// once it isn't a draft. NO KEY UPDATE, not SHARE (S44a, verification 2): the transaction then
+	// updates this row (TouchVersion), and upgrading a SHARE lock while a content save holds SHARE and
+	// waits for a set this transaction moved is a deadlock. It still conflicts with Publish's FOR UPDATE.
+	LockDraftVersion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	// Taken before an invite's links are replaced, so two resends at once are applied one after
 	// the other.
 	LockEpisode(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
@@ -424,6 +439,10 @@ type Querier interface {
 	// Rate limits (PAT-11): rate_limit_hits.
 	// Hits on one key are counted and added one request at a time.
 	LockRateKey(ctx context.Context, key string) error
+	// Publish re-reads the version under its lock (S44a, S41 verification): a rules save in progress is
+	// waited for, and one sent meanwhile waits and is then refused (it saves only a draft), so the rules
+	// checked are the ones published. A Question Set save takes this row FOR SHARE for the same reason.
+	LockVersionForPublish(ctx context.Context, id uuid.UUID) (LockVersionForPublishRow, error)
 	// MESSAGING=capture only: the testers' "run as of" runs every hospital's auto-archive (S22).
 	MakeAutoArchivesDue(ctx context.Context, asOf time.Time) error
 	MarkFormPrefilled(ctx context.Context, id uuid.UUID) error
@@ -503,7 +522,9 @@ type Querier interface {
 	// they aren't a member, the hospital isn't in that trust, or either is suspended (ORG-03).
 	// Re-read on every request (STF-04).
 	RolesAtHospital(ctx context.Context, arg RolesAtHospitalParams) ([]RolesAtHospitalRow, error)
-	// Saves only if nobody saved since the caller loaded `revision` (LCY-04).
+	// Saves only if nobody saved since the caller loaded `revision` (LCY-04), and only into a draft:
+	// the version's row is taken FOR SHARE (S44a), so a save waits for a Publish in progress (which
+	// holds it FOR UPDATE) and is then refused, and Publish waits for a save in progress.
 	SaveChapterContent(ctx context.Context, arg SaveChapterContentParams) (int32, error)
 	// The clinician's copy of a Question Set's answers, which is final. `validated` stamps it
 	// ("Validated by … on …"); a later save without it clears the stamp. Returns the new revision, or
@@ -514,6 +535,10 @@ type Querier interface {
 	//     there's no row yet. The SELECT checks it against the rows as they were when the statement
 	//     started; ON CONFLICT … WHERE checks it again against the row as it is now, so of two saves
 	//     sent at once from the same revision, only the first is applied.
+	// It takes the episode's row (S44a, S44 verification), so a save waits for a Complete review in
+	// progress (which holds it FOR UPDATE) and is then refused, and a Complete review waits for a save
+	// in progress and then sees its stamp. NO KEY UPDATE, not SHARE: the touch trigger updates the
+	// episode's row in the same statement, and two saves each holding SHARE would deadlock there.
 	SaveClinicianAnswers(ctx context.Context, arg SaveClinicianAnswersParams) (int32, error)
 	// entered_by is the staff member completing the HQ on the patient's behalf (PAT-09), NULL for the
 	// patient. Once staff have entered a set's answers it stays marked with the last of them, even if
@@ -549,8 +574,9 @@ type Querier interface {
 	// while the episode is Ready for review). The caller holds LockEpisodeStatus.
 	// archived_from: the status it's archived from when archiving (S22), else NULL.
 	// A re-open also ends an auto-triage (S42): a person reviews the HQ now, so it leaves the
-	// Auto-triaged worklist, its stamp goes, and a message still waiting for Checked never goes. The
-	// status history and the General notes keep what happened.
+	// Auto-triaged worklist and its stamp goes. Every change by hand ends a message still waiting for
+	// Checked (S44a, S42 verification): the change sends its own message if it has one, so Checked
+	// never sends a second. The status history and the General notes keep what happened.
 	SetEpisodeStatus(ctx context.Context, arg SetEpisodeStatusParams) error
 	SetHospitalSettings(ctx context.Context, arg SetHospitalSettingsParams) error
 	SetHospitalStatus(ctx context.Context, arg SetHospitalStatusParams) error
@@ -605,7 +631,7 @@ type Querier interface {
 	// The trust's records of the person leave the account, which a later invite makes again (S15).
 	// Returns them, for each trust's audit log and the episodes' notes.
 	UnlinkAccountRecords(ctx context.Context, accountID uuid.NullUUID) ([]UnlinkAccountRecordsRow, error)
-	UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) error
+	UpdateChapterMeta(ctx context.Context, arg UpdateChapterMetaParams) (int64, error)
 	UpdateContentItem(ctx context.Context, arg UpdateContentItemParams) error
 	// The details staff edit (the status has its own routes, S20). Changes nothing if the episode's
 	// revision is no longer the one the caller's page loaded: someone, or the workflow, changed it

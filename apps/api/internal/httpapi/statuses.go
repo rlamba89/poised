@@ -433,6 +433,10 @@ func (s *server) triageChecked(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case now.TriageCheckedAt.Valid && now.Status != episode.Archived && now.Status != episode.Cancelled:
+		// S44a (S42 test report 2): say what happened; "stale", so the page reloads to "Checked by…".
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "Someone checked this while you had it open.", "code": "stale"})
+		return
 	case now.Revision != *in.Revision:
 		writeStale(w)
 		return
@@ -444,9 +448,6 @@ func (s *server) triageChecked(w http.ResponseWriter, r *http.Request) {
 		return
 	case !now.TriagedAt.Valid:
 		writeError(w, http.StatusConflict, "This episode wasn't auto-triaged, so there's nothing to check.")
-		return
-	case now.TriageCheckedAt.Valid:
-		writeError(w, http.StatusConflict, "This auto-triage has already been checked.")
 		return
 	}
 	uid := currentUser(r).ID

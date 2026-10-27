@@ -4,12 +4,14 @@ package httpapi_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -269,4 +271,202 @@ func TestCompleteReviewWhenTheEvaluatorFails(t *testing.T) {
 			t.Errorf("checks-didn't-run notes = %d", all)
 		}
 	})
+}
+
+// S44a (Rahul, 27 Oct): on send, the frozen patient answers are only what the patient's form showed
+// at that moment. The evaluate service (a fake here) says which answers that is; Go drops the rest,
+// with where they were pre-filled from. If the service can't be reached, every answer is kept.
+func TestSendKeepsOnlyWhatTheFormShowed(t *testing.T) {
+	t.Parallel()
+	w := newClinic(t)
+	about, health := w.hq.Chapters[0], w.hq.Chapters[1]
+	type row struct{ data, prefill string }
+	patientRows := func(t *testing.T, e apitest.Episode) map[uuid.UUID]row {
+		t.Helper()
+		rows, err := w.db.Query(t.Context(), `SELECT chapter_id, data::text, coalesce(prefill::text, '') FROM episode_answers
+			WHERE episode_form_id = $1 AND actor = 'patient'`, e.FormID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		out := map[uuid.UUID]row{}
+		for rows.Next() {
+			var id uuid.UUID
+			var r row
+			if err := rows.Scan(&id, &r.data, &r.prefill); err != nil {
+				t.Fatal(err)
+			}
+			out[id] = r
+		}
+		return out
+	}
+	// The patient answers both sets; About you's medicines answer was pre-filled from an earlier HQ.
+	answer := func(t *testing.T, e apitest.Episode) {
+		t.Helper()
+		p := w.anon.AsPatient(t, e.Link, e.DateOfBirth)
+		savedRevision(t, p.Do("PUT", patientPath(e, "/answers/"+about.String()), map[string]any{"data": map[string]any{"q_smokes": "o_yes", "q_meds": "Aspirin"}, "revision": 0}))
+		savedRevision(t, p.Do("PUT", patientPath(e, "/answers/"+health.String()), map[string]any{"data": map[string]any{"q_diabetes": "o_no"}, "revision": 0}))
+		if _, err := w.db.Exec(t.Context(), `UPDATE episode_answers SET prefill = CASE chapter_id
+				WHEN $2 THEN '{"q_smokes": {"value": "o_yes"}, "q_meds": {"value": "Aspirin"}}'::jsonb ELSE '{"q_diabetes": {"value": "o_no"}}'::jsonb END
+			WHERE episode_form_id = $1 AND actor = 'patient'`, e.FormID, about); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("a hidden question's answer and a hidden set's are dropped; what was shown is kept", func(t *testing.T) {
+		e := w.fx.Episode(t, w.hq, w.cara)
+		answer(t, e)
+		w.anon.Evaluator.HideAnswers(about, "q_meds") // a condition hid the medicines question
+		w.anon.Evaluator.HideAnswers(health)          // and the whole of Your health
+		t.Cleanup(w.anon.Evaluator.ShowAnswers)
+		w.anon.AsPatient(t, e.Link, e.DateOfBirth).Do("POST", patientPath(e, "/submit"), nil).Want(t, http.StatusNoContent)
+		got := patientRows(t, e)
+		if !sameJSONText(t, json.RawMessage(got[about].data), `{"q_smokes": "o_yes"}`) || !sameJSONText(t, json.RawMessage(got[about].prefill), `{"q_smokes": {"value": "o_yes"}}`) {
+			t.Errorf("About you = %+v, want only the smoking answer and its pre-fill", got[about])
+		}
+		if !sameJSONText(t, json.RawMessage(got[health].data), `{}`) || !sameJSONText(t, json.RawMessage(got[health].prefill), `{}`) {
+			t.Errorf("Your health = %+v, want nothing", got[health])
+		}
+		// Verification 1, finding 6: the stored result keeps no second copy of the answers sent.
+		if rows := formOutputs(t, w, e.FormID); len(rows) != 1 || strings.Contains(string(rows[0].Result), `"sent"`) || !strings.Contains(string(rows[0].Result), `"evaluator"`) {
+			t.Errorf("form_outputs = %+v, want the result without the answers sent", rows)
+		}
+		if got := readEpisode(t, w, e.ID); got.Status != "ready_for_review" {
+			t.Errorf("status = %s", got.Status)
+		}
+	})
+	t.Run("staff sending for the patient: the same", func(t *testing.T) {
+		e := w.fx.Episode(t, w.hq, w.cara)
+		answer(t, e)
+		w.anon.Evaluator.HideAnswers(health)
+		t.Cleanup(w.anon.Evaluator.ShowAnswers)
+		w.clinician.Do("POST", epPath(w.a, e, "/patient-form/submit"), nil).Want(t, http.StatusNoContent)
+		got := patientRows(t, e)
+		if !sameJSONText(t, json.RawMessage(got[about].data), `{"q_smokes": "o_yes", "q_meds": "Aspirin"}`) || !sameJSONText(t, json.RawMessage(got[health].data), `{}`) {
+			t.Errorf("rows = %+v", got)
+		}
+	})
+	// Test report 1, F1: a set staff filled in whose answers are all dropped holds nothing anyone
+	// entered, so it no longer names who entered it; a set that keeps answers still does.
+	t.Run("filled in by staff: a set left with no answers names no one who entered them", func(t *testing.T) {
+		e := w.fx.Episode(t, w.hq, w.cara)
+		for set, data := range map[uuid.UUID]map[string]any{about: {"q_smokes": "o_yes", "q_meds": "Aspirin"}, health: {"q_diabetes": "o_no"}} {
+			savedRevision(t, w.clinician.Do("PUT", epPath(w.a, e, "/patient-form/answers/"+set.String()), map[string]any{"data": data, "revision": 0}))
+		}
+		w.anon.Evaluator.HideAnswers(about, "q_meds")
+		w.anon.Evaluator.HideAnswers(health)
+		t.Cleanup(w.anon.Evaluator.ShowAnswers)
+		w.clinician.Do("POST", epPath(w.a, e, "/patient-form/submit"), nil).Want(t, http.StatusNoContent)
+		by := func(set uuid.UUID) *uuid.UUID {
+			var id *uuid.UUID
+			if err := w.db.QueryRow(t.Context(), `SELECT updated_by FROM episode_answers WHERE episode_form_id = $1 AND chapter_id = $2 AND actor = 'patient'`,
+				e.FormID, set).Scan(&id); err != nil {
+				t.Fatal(err)
+			}
+			return id
+		}
+		if got := by(health); got != nil {
+			t.Errorf("Your health (no answers left) entered by %v, want no one", *got)
+		}
+		if got := by(about); got == nil || *got != w.cara.ID {
+			t.Errorf("About you (answers kept) entered by %v, want Cara", got)
+		}
+	})
+	t.Run("everything shown: nothing changes", func(t *testing.T) {
+		e := w.fx.Episode(t, w.hq, w.cara)
+		answer(t, e)
+		before := patientRows(t, e)
+		w.anon.AsPatient(t, e.Link, e.DateOfBirth).Do("POST", patientPath(e, "/submit"), nil).Want(t, http.StatusNoContent)
+		if got := patientRows(t, e); !sameRows(before, got) {
+			t.Errorf("rows = %+v, want %+v", got, before)
+		}
+	})
+	t.Run("the evaluator fails: every answer is kept (S41's fail-safe)", func(t *testing.T) {
+		e := w.fx.Episode(t, w.hq, w.cara)
+		answer(t, e)
+		before := patientRows(t, e)
+		w.anon.Evaluator.HideAnswers(health)
+		w.anon.Evaluator.Fail(errors.New("down"))
+		t.Cleanup(func() { w.anon.Evaluator.Fail(nil); w.anon.Evaluator.ShowAnswers() })
+		w.anon.AsPatient(t, e.Link, e.DateOfBirth).Do("POST", patientPath(e, "/submit"), nil).Want(t, http.StatusNoContent)
+		if got := patientRows(t, e); !sameRows(before, got) {
+			t.Errorf("rows = %+v, want %+v", got, before)
+		}
+	})
+	t.Run("a reply naming no set keeps the answers (a service from before S44a)", func(t *testing.T) { // last: Reply stays
+		e := w.fx.Episode(t, w.hq, w.cara)
+		answer(t, e)
+		before := patientRows(t, e)
+		w.anon.Evaluator.Reply(evaluate.Result{Evaluator: evaluate.FakeVersion, Sent: map[uuid.UUID]json.RawMessage{}})
+		w.anon.AsPatient(t, e.Link, e.DateOfBirth).Do("POST", patientPath(e, "/submit"), nil).Want(t, http.StatusNoContent)
+		if got := patientRows(t, e); !sameRows(before, got) {
+			t.Errorf("rows = %+v, want %+v", got, before)
+		}
+	})
+}
+
+func sameRows[K comparable, V comparable](a, b map[K]V) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+// S44 verification (fixed in S44a): a save that clears a validation waits for a Complete review in
+// progress, which holds the episode's row, and is then refused, so the review can't complete over a
+// set no longer validated. The save takes the episode's row itself.
+func TestClinicianSaveWaitsForCompleteReview(t *testing.T) {
+	t.Parallel()
+	w := newClinic(t)
+	about := w.hq.Chapters[0]
+	e := w.fx.Episode(t, w.hq, w.cara)
+	setStatus(t, w, e, "ready_for_review")
+	validateAll(t, w, e)
+	// The review completing, holding the episode's row (as completeReview's LockEpisodeStatus does).
+	r := meanwhile(t, w.db, `UPDATE episodes SET status = 'ready_for_poa', revision = revision + 1 WHERE id = $1`, []any{e.ID}, func() *apitest.Resp {
+		return w.clinician.Do("PUT", epPath(w.a, e, "/answers/"+about.String()), map[string]any{"data": map[string]any{"q_smokes": "o_no"}, "revision": 0})
+	})
+	refused(t, r, http.StatusConflict)
+	if n := count(t, w.db, `SELECT count(*) FROM episode_answers a JOIN episode_forms f ON f.id = a.episode_form_id
+		WHERE f.episode_id = $1 AND a.actor = 'clinician' AND a.validated_at IS NULL`, e.ID); n != 0 {
+		t.Errorf("%d sets lost their validation after the review completed", n)
+	}
+	// And the other order: a save in progress holds the row, so Complete review waits for it, then
+	// sees the set isn't validated.
+	e2 := w.fx.Episode(t, w.hq, w.cara)
+	setStatus(t, w, e2, "ready_for_review")
+	validateAll(t, w, e2)
+	tx, err := w.db.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(t.Context())
+	if _, err := tx.Exec(t.Context(), `UPDATE episode_answers a SET validated_at = NULL FROM episode_forms f
+		WHERE f.id = a.episode_form_id AND f.episode_id = $1 AND a.chapter_id = $2 AND a.actor = 'clinician'`, e2.ID, about); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(t.Context(), `SELECT 1 FROM episodes WHERE id = $1 FOR NO KEY UPDATE`, e2.ID); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan *apitest.Resp, 1)
+	go func() { done <- w.clinician.Do("POST", epPath(w.a, e2, "/complete-review"), nil) }()
+	time.Sleep(100 * time.Millisecond)
+	select {
+	case r := <-done:
+		t.Fatalf("Complete review didn't wait for the save: %s", r)
+	default:
+	}
+	if err := tx.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	r = <-done
+	refused(t, r, http.StatusConflict)
+	if want := "Validate every Question Set first: “About you” isn't validated."; r.Message() != want {
+		t.Errorf("message = %q, want %q", r.Message(), want)
+	}
 }

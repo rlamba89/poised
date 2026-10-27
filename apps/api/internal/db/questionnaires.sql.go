@@ -306,6 +306,25 @@ func (q *Queries) LockOrgQuestionnaires(ctx context.Context, orgID uuid.UUID) er
 	return err
 }
 
+const lockVersionForPublish = `-- name: LockVersionForPublish :one
+SELECT status, rules FROM questionnaire_versions WHERE id = $1 FOR UPDATE
+`
+
+type LockVersionForPublishRow struct {
+	Status string          `json:"status"`
+	Rules  json.RawMessage `json:"rules"`
+}
+
+// Publish re-reads the version under its lock (S44a, S41 verification): a rules save in progress is
+// waited for, and one sent meanwhile waits and is then refused (it saves only a draft), so the rules
+// checked are the ones published. A Question Set save takes this row FOR SHARE for the same reason.
+func (q *Queries) LockVersionForPublish(ctx context.Context, id uuid.UUID) (LockVersionForPublishRow, error) {
+	row := q.db.QueryRow(ctx, lockVersionForPublish, id)
+	var i LockVersionForPublishRow
+	err := row.Scan(&i.Status, &i.Rules)
+	return i, err
+}
+
 const publishVersion = `-- name: PublishVersion :one
 WITH pub AS (
     UPDATE questionnaire_versions qv

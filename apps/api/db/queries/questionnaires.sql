@@ -74,6 +74,12 @@ DELETE FROM questionnaires WHERE id = $1 AND org_id = $2;
 -- name: TouchVersion :exec
 UPDATE questionnaire_versions SET updated_by = $2, updated_at = now() WHERE id = $1;
 
+-- name: LockVersionForPublish :one
+-- Publish re-reads the version under its lock (S44a, S41 verification): a rules save in progress is
+-- waited for, and one sent meanwhile waits and is then refused (it saves only a draft), so the rules
+-- checked are the ones published. A Question Set save takes this row FOR SHARE for the same reason.
+SELECT status, rules FROM questionnaire_versions WHERE id = $1 FOR UPDATE;
+
 -- name: PublishVersion :one
 -- Publishes the draft and retires the version published before it (LCY-01), in one statement.
 -- Returns 0 when the version is no longer a draft.

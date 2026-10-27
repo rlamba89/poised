@@ -75,14 +75,37 @@ type ShownInput struct {
 // Result is what a sent HQ's answers give: the same result the clinician's view shows for them
 // before any validation. Raw is the whole reply, stored as it came; the fields are what Go reads.
 type Result struct {
-	Evaluator    string          `json:"evaluator"` // which build worked it out
-	Shown        []uuid.UUID     `json:"shown"`     // the Question Sets shown, in order
-	Sets         []SetResult     `json:"sets"`      // each shown set's scores (S42: an Incomplete one stops auto-triage); its disclosures are in Raw
-	SuggestedASA *SuggestedASA   `json:"suggestedAsa"`
-	Flags        []Flag          `json:"flags"`       // every red and amber flag
-	Rules        []FiredRule     `json:"rules"`       // the rules that fire, in order (S42, S43 act on them)
-	PatientSets  []PatientSet    `json:"patientSets"` // the sets the patient's own form shows (S44)
-	Raw          json.RawMessage `json:"-"`
+	Evaluator    string        `json:"evaluator"` // which build worked it out
+	Shown        []uuid.UUID   `json:"shown"`     // the Question Sets shown, in order
+	Sets         []SetResult   `json:"sets"`      // each shown set's scores (S42: an Incomplete one stops auto-triage); its disclosures are in Raw
+	SuggestedASA *SuggestedASA `json:"suggestedAsa"`
+	Flags        []Flag        `json:"flags"`       // every red and amber flag
+	Rules        []FiredRule   `json:"rules"`       // the rules that fire, in order (S42, S43 act on them)
+	PatientSets  []PatientSet  `json:"patientSets"` // the sets the patient's own form shows (S44)
+	// Sent is the patient's answers as their form showed them (S44a), by patient set: without the
+	// answers to questions a condition hid, and {} for a set its condition hid. Go keeps only these
+	// in the frozen answers. A set missing from it keeps its answers (a reply from before S44a).
+	Sent map[uuid.UUID]json.RawMessage `json:"sent,omitempty"`
+	Raw  json.RawMessage               `json:"-"`
+}
+
+// Stored is the reply as form_outputs keeps it: whole, but without Sent (S44a, verification 1):
+// the answers sent are frozen in episode_answers, so the result holds no second copy of them. A
+// reply that isn't an object is kept as it came.
+func (r Result) Stored() json.RawMessage {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(r.Raw, &fields) != nil {
+		return r.Raw
+	}
+	if _, ok := fields["sent"]; !ok {
+		return r.Raw
+	}
+	delete(fields, "sent")
+	out, err := json.Marshal(fields)
+	if err != nil {
+		return r.Raw
+	}
+	return out
 }
 
 // SetResult is one shown set's part of the result, as Go reads it.
@@ -264,7 +287,8 @@ const FakeVersion = "fake"
 
 // Recorder is the fake for tests: it records each call and answers as told. By default Evaluate
 // answers like the service for an HQ that gives nothing (every set shown, no disclosures, no rule
-// fires, every patient set complete), PublishProblems finds none and Shown gives every set.
+// fires, every patient set complete, every answer sent: HideAnswers changes that), PublishProblems
+// finds none and Shown gives every set.
 type Recorder struct {
 	mu        sync.Mutex
 	inputs    []Input
@@ -273,7 +297,52 @@ type Recorder struct {
 	result    *Result
 	problems  []Problem
 	hidden    []uuid.UUID
+	unshown   map[uuid.UUID][]string // HideAnswers: a set's keys left out of Sent; nil: all of them
 	err       error
+}
+
+// HideAnswers makes Evaluate leave these keys of a set out of what was sent (S44a), as if a
+// condition hid their questions; no keys: the whole set, as if its condition hid it.
+func (r *Recorder) HideAnswers(set uuid.UUID, keys ...string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.unshown == nil {
+		r.unshown = map[uuid.UUID][]string{}
+	}
+	r.unshown[set] = keys
+}
+
+// ShowAnswers undoes every HideAnswers.
+func (r *Recorder) ShowAnswers() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.unshown = nil
+}
+
+// sent is what the Recorder says was sent: each patient set's answers, less what HideAnswers hid.
+func (r *Recorder) sent(in Input) (map[uuid.UUID]json.RawMessage, error) {
+	out := map[uuid.UUID]json.RawMessage{}
+	for _, s := range in.Sets {
+		if s.Audience != "patient" {
+			continue
+		}
+		keys, hide := r.unshown[s.ID]
+		data := map[string]json.RawMessage{}
+		if raw := in.Answers[s.ID]; len(raw) > 0 && !(hide && keys == nil) {
+			if err := json.Unmarshal(raw, &data); err != nil {
+				return nil, err
+			}
+			for _, k := range keys {
+				delete(data, k)
+			}
+		}
+		raw, err := json.Marshal(data)
+		if err != nil {
+			return nil, err
+		}
+		out[s.ID] = raw
+	}
+	return out, nil
 }
 
 // Hide makes Shown leave these sets out, as if their conditions hid them (none: show all again).
@@ -359,6 +428,13 @@ func (r *Recorder) Evaluate(_ context.Context, in Input) (Result, error) {
 				res.PatientSets = append(res.PatientSets, PatientSet{ID: s.ID, Complete: true})
 			}
 		}
+	}
+	if res.Sent == nil {
+		sent, err := r.sent(in)
+		if err != nil {
+			return Result{}, err
+		}
+		res.Sent = sent
 	}
 	if len(res.Raw) == 0 {
 		raw, err := json.Marshal(res)

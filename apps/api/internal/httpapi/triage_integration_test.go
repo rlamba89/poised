@@ -359,6 +359,22 @@ func TestAutoTriageMessages(t *testing.T) {
 			t.Errorf("texts = %+v", sms)
 		}
 	})
+	// S42 verification (fixed in S44a): a status change by hand ends the wait, so the message goes once.
+	t.Run("On hold, then Ready for admission by hand (which sends it), then Checked: it goes once", func(t *testing.T) {
+		e := send(t, "Twice", "07700 900505")
+		move(t, w, e, episode.OnHold)
+		if s := readTriage(t, w, e.ID); s.MessagePending {
+			t.Error("still pending after a change by hand")
+		}
+		move(t, w, e, episode.ReadyForAdmission)
+		if sms := msgs.To("+447700900505"); len(sms) != 2 {
+			t.Errorf("texts after Ready for admission = %+v", sms)
+		}
+		w.clinician.Do("POST", epPath(w.a, e, "/triage-checked"), map[string]any{"revision": revisionOf(t, w, e.ID)}).Want(t, http.StatusNoContent)
+		if sms := msgs.To("+447700900505"); len(sms) != 2 {
+			t.Errorf("texts after Checked = %+v, want the Ready for admission message once", sms)
+		}
+	})
 	t.Run("re-opened before Checked: none goes, ever", func(t *testing.T) {
 		e := send(t, "Reopened", "07700 900504")
 		w.author.Do("POST", epPath(w.a, e, "/reopen"), map[string]any{"reason": "Look again", "revision": revisionOf(t, w, e.ID)}).
@@ -445,6 +461,19 @@ func TestTriageChecked(t *testing.T) {
 		refused(t, r, http.StatusConflict)
 		if !strings.Contains(r.String(), `"stale"`) || readTriage(t, w, e.ID).CheckedAt != nil {
 			t.Errorf("response = %s", r)
+		}
+	})
+	// S42 test report 2 (S44a): a tab opened before someone else checked it says so, and reloads (stale).
+	t.Run("someone checked it while it was open: 409 saying so", func(t *testing.T) {
+		e := sendForPatient(t, w, lowRisk)
+		opened := rev(e)
+		check(w.author, w.a, e, rev(e)).Want(t, http.StatusNoContent)
+		for _, body := range []map[string]any{opened, rev(e)} { // the stale tab, and a second press with the new revision
+			r := check(w.clinician, w.a, e, body)
+			refused(t, r, http.StatusConflict)
+			if want := "Someone checked this while you had it open."; r.Message() != want || !strings.Contains(r.String(), `"stale"`) {
+				t.Errorf("refusal = %s, want %q (stale, so the page reloads)", r, want)
+			}
 		}
 	})
 	t.Run("only an auto-triaged episode not yet checked: 409 otherwise", func(t *testing.T) {

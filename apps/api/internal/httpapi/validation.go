@@ -126,7 +126,7 @@ func (s *server) completeReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := episode.Check(e.Status, episode.ReadyForPOA, episode.CompleteReview, here(r).Role); err != nil {
-		writeError(w, http.StatusConflict, notInReview(e.Status))
+		writeError(w, http.StatusConflict, reviewNotOpen(e.Status))
 		return
 	}
 	ctx := r.Context()
@@ -144,7 +144,7 @@ func (s *server) completeReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if n == 0 { // moved on meanwhile
-		writeError(w, http.StatusConflict, notInReview(episode.ReadyForPOA))
+		writeError(w, http.StatusConflict, reviewNotOpen(episode.ReadyForPOA))
 		return
 	}
 	// After the move, in its transaction (the episode's row is locked), so the stamps read are the
@@ -166,6 +166,16 @@ func (s *server) completeReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// reviewNotOpen is why Complete review is refused: notInReview's words, but a review already done
+// says only that (S44a, S44 test report 1; "…so the answers can't be changed" is a save's wording).
+func reviewNotOpen(status string) string {
+	switch status {
+	case episode.HQNotComplete, episode.Cancelled, episode.Archived:
+		return notInReview(status)
+	}
+	return "The HQ review is already complete."
 }
 
 func notInReview(status string) string {

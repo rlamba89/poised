@@ -521,8 +521,9 @@ func (s *server) saveForm(w http.ResponseWriter, r *http.Request, f form) {
 // rules may move it straight on (S42, autoTriage).
 // The browser checks every required question (plan 2.1); Go also holds it back while a required
 // video tick every patient sees isn't ticked (S34), and while the evaluate service says a set the
-// patient's form shows isn't complete (S44: nothing is frozen, the status is unchanged). If the
-// service can't be reached the send goes through as before (S41's fail-safe).
+// patient's form shows isn't complete (S44: nothing is frozen, the status is unchanged). What's
+// frozen is only what the patient's form showed (S44a, keepSent). If the service can't be reached
+// the send goes through as before, with every answer kept (S41's fail-safe).
 func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
 	who := role.None // the patient
 	if f.enteredBy != uuid.Nil {
@@ -582,6 +583,10 @@ func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
 	if res != nil {
 		if msg := unfinishedSets(*res, chapters); msg != "" {
 			writeError(w, http.StatusConflict, msg)
+			return
+		}
+		if err := keepSent(ctx, q, f.FormID, chapters, *res); err != nil {
+			serverError(w, "keep what was sent", err)
 			return
 		}
 	}
@@ -747,7 +752,54 @@ func (s *server) evaluateSent(ctx context.Context, q *db.Queries, f form, chapte
 		// Written as automatic, shown "Automatic" like a reminder's (test report 1, F-1), whoever sent it.
 		return nil, q.AddAutomaticEpisodeEventNow(ctx, db.AddAutomaticEpisodeEventNowParams{EpisodeID: f.ID, Text: checksDidntRun})
 	}
-	return &res, q.AddFormOutput(ctx, db.AddFormOutputParams{FormID: f.FormID, Result: res.Raw, EvaluatorVersion: &res.Evaluator})
+	return &res, q.AddFormOutput(ctx, db.AddFormOutputParams{FormID: f.FormID, Result: res.Stored(), EvaluatorVersion: &res.Evaluator})
+}
+
+// keepSent keeps in the frozen patient answers only what the patient's form showed when they sent
+// (S44a, Rahul 27 Oct), as the evaluate service worked it out (res.Sent): the answers to questions
+// a condition hid, and every answer of a set its condition hid, are dropped, with where each was
+// pre-filled from. So a set a clinician's correction brings back later starts empty. Go never
+// evaluates: it only removes the keys the service left out, and never adds or changes an answer. A
+// set the reply doesn't name, or whose answers aren't an object, keeps everything.
+func keepSent(ctx context.Context, q *db.Queries, formID uuid.UUID, chapters []db.ListVersionChaptersRow, res evaluate.Result) error {
+	if len(res.Sent) == 0 {
+		return nil
+	}
+	saved, err := q.ListEpisodeAnswers(ctx, formID)
+	if err != nil {
+		return err
+	}
+	patientSet := map[uuid.UUID]bool{}
+	for _, c := range chapters {
+		patientSet[c.ID] = c.Audience == "patient"
+	}
+	for _, a := range saved {
+		sent, named := res.Sent[a.ChapterID]
+		if a.Actor != "patient" || !named || !patientSet[a.ChapterID] {
+			continue
+		}
+		var keep, data map[string]json.RawMessage
+		if json.Unmarshal(sent, &keep) != nil || keep == nil || json.Unmarshal(a.Data, &data) != nil {
+			continue
+		}
+		n := len(data)
+		for k := range data {
+			if _, ok := keep[k]; !ok {
+				delete(data, k)
+			}
+		}
+		if len(data) == n {
+			continue
+		}
+		raw, err := json.Marshal(data)
+		if err != nil {
+			return err
+		}
+		if err := q.KeepSentAnswers(ctx, db.KeepSentAnswersParams{Data: raw, FormID: formID, ChapterID: a.ChapterID}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // uncheckedTicks is why the HQ can't be sent yet, or "": a required "I have watched this video" tick
