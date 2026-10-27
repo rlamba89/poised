@@ -145,21 +145,27 @@ const testsSuggestedAsa = (doc: ChapterJson) => referencesIn(chapterConditionOf(
  */
 export function hqResult<T extends { id: string; name?: string; content: ChapterJson }>(
   sets: T[], answers: Record<string, Answers | undefined>, viewer: Viewer, patient: SamplePatient,
-): { shown: T[]; outputs: (ProducedOutput & { setId: string })[]; scores: ScoreResult[]; suggestedAsa?: SuggestedAsa } {
+): {
+  shown: T[]; outputs: (ProducedOutput & { setId: string })[]; scores: ScoreResult[]; suggestedAsa?: SuggestedAsa;
+  /** The same, set by set (S41's evaluate service stores each set's own). */
+  sets: { id: string; outputs: ProducedOutput[]; scores: ScoreResult[] }[];
+} {
   registerClinicalProperties();
   const { shown, earlier } = hqSets(sets, answers, viewer, patient);
   const outputs: (ProducedOutput & { setId: string })[] = [];
   const scores: ScoreResult[] = [];
+  const bySet: { id: string; outputs: ProducedOutput[]; scores: ScoreResult[] }[] = [];
   for (const s of shown) {
     const m = modelFor(s.content, viewer, patient, earlier.get(s.id));
     m.data = answers[s.id] ?? {};
     const r = computeOutputs(m);
     for (const o of r.outputs) outputs.push({ ...o, setId: s.id });
     scores.push(...(r.scores ?? []));
+    bySet.push({ id: s.id, outputs: r.outputs, scores: r.scores ?? [] });
     m.dispose();
   }
   const suggestedAsa = suggestAsa(outputs);
-  return { shown, outputs, scores, ...(suggestedAsa ? { suggestedAsa } : {}) };
+  return { shown, outputs, scores, ...(suggestedAsa ? { suggestedAsa } : {}), sets: bySet };
 }
 
 /**

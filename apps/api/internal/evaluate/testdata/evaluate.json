@@ -1,0 +1,286 @@
+{
+  "about": "One HQ sent (S41): Go's evaluate client and packages/clinical's evaluate() both test against this file, so the two sides stay in step. Made-up data only. The patient smokes (ASA II) and has heart failure (ASA III), has chest pain (a red flag) and snores 5 nights (Snore score High). Sleep is shown (it needs snoring over 2), Travel isn't (it needs smoking No). Sleep has a required question unanswered, so it isn't complete. The clinician set's answers are never counted: the rules look at what the patient sends. The default rules: High risk fires.",
+  "input": {
+    "formId": "6f1d2c3b-0000-4000-8000-000000000001",
+    "sets": [
+      {
+        "id": "c1000000-0000-4000-8000-000000000001",
+        "name": "About you",
+        "audience": "patient",
+        "content": {
+          "pages": [{
+            "name": "p_1",
+            "elements": [
+              { "type": "radiogroup", "name": "q_smoke", "title": "Do you smoke?", "isRequired": true, "choices": [
+                { "value": "o_y", "text": "Yes", "clinicalOutputs": [{ "id": "d_smoke", "codes": [{ "set": "SNOMED", "code": "77176002", "display": "Smoker" }], "asa": { "grade": "II", "emergency": false } }] },
+                { "value": "o_n", "text": "No" }
+              ] },
+              { "type": "radiogroup", "name": "q_heart", "title": "Do you have heart failure?", "isRequired": true, "choices": [
+                { "value": "o_y", "text": "Yes", "clinicalOutputs": [{ "id": "d_heart", "codes": [{ "set": "ICD10", "code": "I50.9", "display": "Heart failure unspecified" }], "asa": { "grade": "III", "emergency": false, "reason": "Moderate reduction of ejection fraction" } }] },
+                { "value": "o_n", "text": "No" }
+              ] },
+              { "type": "radiogroup", "name": "q_chest", "title": "Do you get chest pain?", "isRequired": true, "choices": [
+                { "value": "o_y", "text": "Yes", "clinicalOutputs": [{ "id": "d_chest", "codes": [], "note": { "text": "Chest pain", "category": "Heart" }, "flag": "red" }] },
+                { "value": "o_n", "text": "No" }
+              ] },
+              { "type": "text", "inputType": "number", "name": "q_snores", "title": "How many nights a week do you snore?", "isRequired": true },
+              { "type": "expression", "name": "q_score", "title": "Snore score", "expression": "{q_snores}", "bands": [
+                { "id": "b_low", "label": "Low", "max": 2 },
+                { "id": "b_high", "label": "High" }
+              ] }
+            ]
+          }]
+        }
+      },
+      {
+        "id": "c1000000-0000-4000-8000-000000000002",
+        "name": "Sleep",
+        "audience": "patient",
+        "content": {
+          "chapterVisibleIf": "{q_snores} > 2",
+          "pages": [{
+            "name": "p_1",
+            "elements": [
+              { "type": "radiogroup", "name": "q_tired", "title": "Are you tired in the day?", "isRequired": true, "choices": [
+                { "value": "o_y", "text": "Yes", "clinicalOutputs": [{ "id": "d_tired", "codes": [], "note": { "text": "Daytime tiredness", "category": "Sleep" }, "flag": "amber" }] },
+                { "value": "o_n", "text": "No" }
+              ] },
+              { "type": "comment", "name": "q_sleep_more", "title": "Tell us more about your sleep", "isRequired": true }
+            ]
+          }]
+        }
+      },
+      {
+        "id": "c1000000-0000-4000-8000-000000000003",
+        "name": "Travel",
+        "audience": "patient",
+        "content": {
+          "chapterVisibleIf": "{q_smoke} = 'o_n'",
+          "pages": [{ "name": "p_1", "elements": [{ "type": "text", "name": "q_travel", "title": "How will you get to the hospital?", "isRequired": true }] }]
+        }
+      },
+      {
+        "id": "c1000000-0000-4000-8000-000000000004",
+        "name": "Nurse checks",
+        "audience": "clinician",
+        "content": {
+          "pages": [{
+            "name": "p_1",
+            "elements": [
+              { "type": "radiogroup", "name": "q_frail", "title": "Is the patient frail?", "choices": [
+                { "value": "o_y", "text": "Yes", "clinicalOutputs": [{ "id": "d_frail", "codes": [], "note": { "text": "Frail", "category": "General" }, "asa": { "grade": "IV", "emergency": false } }] },
+                { "value": "o_n", "text": "No" }
+              ] }
+            ]
+          }]
+        }
+      }
+    ],
+    "rules": {
+      "noGradeAutoTriage": true,
+      "rules": [
+        { "id": "low_risk", "name": "Low risk",
+          "when": { "asa": { "op": "<=", "grade": 2 }, "noRedFlags": true },
+          "then": [{ "kind": "autoTriage", "target": "ready_for_admission" }] },
+        { "id": "high_risk", "name": "High risk",
+          "when": { "asa": { "op": ">=", "grade": 3 } },
+          "then": [
+            { "kind": "task", "title": "Book anaesthetic review", "team": "anaesthetist" },
+            { "kind": "flag", "name": "Anaesthetic review" },
+            { "kind": "requireAnaesthetistAsa" }
+          ] },
+        { "id": "snorers", "name": "Snorers",
+          "when": { "asa": { "op": ">=", "grade": 1 }, "band": { "score": "q_score", "bands": ["b_high"] } },
+          "then": [{ "kind": "suggestStatus", "status": "ready_for_poa" }] }
+      ],
+      "testCases": []
+    },
+    "answers": {
+      "c1000000-0000-4000-8000-000000000001": { "q_smoke": "o_y", "q_heart": "o_y", "q_chest": "o_y", "q_snores": 5, "q_score": 5 },
+      "c1000000-0000-4000-8000-000000000002": { "q_tired": "o_y" },
+      "c1000000-0000-4000-8000-000000000004": { "q_frail": "o_y" }
+    },
+    "patient": { "age": 54, "sex": "female" },
+    "procedureId": null
+  },
+  "output": {
+    "evaluator": "test",
+    "shown": [
+      "c1000000-0000-4000-8000-000000000001",
+      "c1000000-0000-4000-8000-000000000002",
+      "c1000000-0000-4000-8000-000000000004"
+    ],
+    "sets": [
+      {
+        "id": "c1000000-0000-4000-8000-000000000001",
+        "outputs": [
+          {
+            "questionId": "q_smoke",
+            "questionTitle": "Do you smoke?",
+            "answerId": "o_y",
+            "answerLabel": "Yes",
+            "output": {
+              "id": "d_smoke",
+              "codes": [
+                {
+                  "set": "SNOMED",
+                  "code": "77176002",
+                  "display": "Smoker"
+                }
+              ],
+              "asa": {
+                "grade": "II",
+                "emergency": false
+              }
+            }
+          },
+          {
+            "questionId": "q_heart",
+            "questionTitle": "Do you have heart failure?",
+            "answerId": "o_y",
+            "answerLabel": "Yes",
+            "output": {
+              "id": "d_heart",
+              "codes": [
+                {
+                  "set": "ICD10",
+                  "code": "I50.9",
+                  "display": "Heart failure unspecified"
+                }
+              ],
+              "asa": {
+                "grade": "III",
+                "emergency": false,
+                "reason": "Moderate reduction of ejection fraction"
+              }
+            }
+          },
+          {
+            "questionId": "q_chest",
+            "questionTitle": "Do you get chest pain?",
+            "answerId": "o_y",
+            "answerLabel": "Yes",
+            "output": {
+              "id": "d_chest",
+              "codes": [],
+              "note": {
+                "text": "Chest pain",
+                "category": "Heart"
+              },
+              "flag": "red"
+            },
+            "noteText": "Chest pain"
+          }
+        ],
+        "scores": [
+          {
+            "questionId": "q_score",
+            "title": "Snore score",
+            "value": 5,
+            "incomplete": false,
+            "band": {
+              "id": "b_high",
+              "label": "High"
+            }
+          }
+        ]
+      },
+      {
+        "id": "c1000000-0000-4000-8000-000000000002",
+        "outputs": [
+          {
+            "questionId": "q_tired",
+            "questionTitle": "Are you tired in the day?",
+            "answerId": "o_y",
+            "answerLabel": "Yes",
+            "output": {
+              "id": "d_tired",
+              "codes": [],
+              "note": {
+                "text": "Daytime tiredness",
+                "category": "Sleep"
+              },
+              "flag": "amber"
+            },
+            "noteText": "Daytime tiredness"
+          }
+        ],
+        "scores": []
+      },
+      {
+        "id": "c1000000-0000-4000-8000-000000000004",
+        "outputs": [],
+        "scores": []
+      }
+    ],
+    "suggestedAsa": {
+      "grade": "III",
+      "emergency": false,
+      "reasons": [
+        {
+          "text": "Heart failure unspecified (I50.9) – Moderate reduction of ejection fraction",
+          "questionId": "q_heart",
+          "setId": "c1000000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    "flags": [
+      {
+        "level": "red",
+        "setId": "c1000000-0000-4000-8000-000000000001",
+        "questionId": "q_chest",
+        "text": "Do you get chest pain?: Yes"
+      },
+      {
+        "level": "amber",
+        "setId": "c1000000-0000-4000-8000-000000000002",
+        "questionId": "q_tired",
+        "text": "Are you tired in the day?: Yes"
+      }
+    ],
+    "rules": [
+      {
+        "id": "high_risk",
+        "name": "High risk",
+        "actions": [
+          {
+            "kind": "task",
+            "title": "Book anaesthetic review",
+            "team": "anaesthetist"
+          },
+          {
+            "kind": "flag",
+            "name": "Anaesthetic review"
+          },
+          {
+            "kind": "requireAnaesthetistAsa"
+          }
+        ],
+        "held": false,
+        "line": "Rule fires: High risk (add the task “Book anaesthetic review” for the anaesthetist team; flag “Anaesthetic review”; require the anaesthetist's ASA before Ready for admission)"
+      },
+      {
+        "id": "snorers",
+        "name": "Snorers",
+        "actions": [
+          {
+            "kind": "suggestStatus",
+            "status": "ready_for_poa"
+          }
+        ],
+        "held": false,
+        "line": "Rule fires: Snorers (suggest Ready for POA)"
+      }
+    ],
+    "patientSets": [
+      {
+        "id": "c1000000-0000-4000-8000-000000000001",
+        "complete": true
+      },
+      {
+        "id": "c1000000-0000-4000-8000-000000000002",
+        "complete": false
+      }
+    ]
+  }
+}

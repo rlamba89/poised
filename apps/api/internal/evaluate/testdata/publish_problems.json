@@ -1,0 +1,98 @@
+{
+  "about": "Publish checks through the evaluate service (S41): Go's client and packages/clinical's checkPublish() both test against this file. Each case is a version's Question Sets (with their audience) and its ASA rules, and the problems that block publishing. Made-up data only.",
+  "cases": [
+    {
+      "name": "a failing whole-HQ test case blocks publishing; a clinician set may test the suggested ASA",
+      "input": {
+        "sets": [
+          {
+            "name": "About you",
+            "audience": "patient",
+            "content": {
+              "pages": [{ "name": "p_1", "elements": [
+                { "type": "radiogroup", "name": "q_heart", "title": "Do you have heart failure?", "choices": [
+                  { "value": "o_y", "text": "Yes", "clinicalOutputs": [{ "id": "d_heart", "codes": [{ "set": "ICD10", "code": "I50.9", "display": "Heart failure unspecified" }], "asa": { "grade": "III", "emergency": false } }] },
+                  { "value": "o_n", "text": "No" }
+                ] }
+              ] }]
+            }
+          },
+          {
+            "name": "Anaesthetic review",
+            "audience": "clinician",
+            "content": {
+              "chapterVisibleIf": "{suggestedAsa} >= 3",
+              "pages": [{ "name": "p_1", "elements": [{ "type": "comment", "name": "q_review", "title": "Review notes" }] }]
+            }
+          }
+        ],
+        "rules": {
+          "noGradeAutoTriage": true,
+          "rules": [
+            { "id": "high_risk", "name": "High risk", "when": { "asa": { "op": ">=", "grade": 3 } }, "then": [{ "kind": "flag", "name": "Anaesthetic review" }] }
+          ],
+          "testCases": [
+            { "id": "t_1", "name": "Heart failure is ASA II", "patient": { "name": "Sam Sample", "age": 60, "sex": "male" },
+              "answers": { "q_heart": "o_y" }, "expected": ["Suggested ASA II"] }
+          ]
+        }
+      },
+      "output": { "problems": [{ "set": "Rules", "message": "Test case “Heart failure is ASA II” fails" }] }
+    },
+    {
+      "name": "the same version with a passing test case has no problems",
+      "input": {
+        "sets": [
+          {
+            "name": "About you",
+            "audience": "patient",
+            "content": {
+              "pages": [{ "name": "p_1", "elements": [
+                { "type": "radiogroup", "name": "q_heart", "title": "Do you have heart failure?", "choices": [
+                  { "value": "o_y", "text": "Yes", "clinicalOutputs": [{ "id": "d_heart", "codes": [{ "set": "ICD10", "code": "I50.9", "display": "Heart failure unspecified" }], "asa": { "grade": "III", "emergency": false } }] },
+                  { "value": "o_n", "text": "No" }
+                ] }
+              ] }]
+            }
+          },
+          {
+            "name": "Anaesthetic review",
+            "audience": "clinician",
+            "content": {
+              "chapterVisibleIf": "{suggestedAsa} >= 3",
+              "pages": [{ "name": "p_1", "elements": [{ "type": "comment", "name": "q_review", "title": "Review notes" }] }]
+            }
+          }
+        ],
+        "rules": {
+          "noGradeAutoTriage": true,
+          "rules": [
+            { "id": "high_risk", "name": "High risk", "when": { "asa": { "op": ">=", "grade": 3 } }, "then": [{ "kind": "flag", "name": "Anaesthetic review" }] }
+          ],
+          "testCases": [
+            { "id": "t_1", "name": "Heart failure is ASA III", "patient": { "name": "Sam Sample", "age": 60, "sex": "male" },
+              "answers": { "q_heart": "o_y" }, "expected": ["Suggested ASA III", "Rule fires: High risk (flag “Anaesthetic review”)"] }
+          ]
+        }
+      },
+      "output": { "problems": [] }
+    },
+    {
+      "name": "a version published before rules existed (no rules) checks its Question Sets only",
+      "input": {
+        "sets": [
+          {
+            "name": "About you",
+            "audience": "patient",
+            "content": {
+              "chapterVisibleIf": "{suggestedAsa} >= 3",
+              "pages": [{ "name": "p_1", "elements": [{ "type": "text", "name": "q_name", "title": "Your name" }] }]
+            }
+          }
+        ],
+        "rules": null
+      },
+      "output": { "problems": [{ "set": "About you", "message": "Question Set condition: only a clinician's Question Set can test the suggested ASA" }] }
+    }
+  ]
+}
