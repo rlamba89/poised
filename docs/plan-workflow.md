@@ -176,7 +176,7 @@ Each step is committed on its own, with Go handler tests and Vitest tests as bef
   - An answer that differs from the patient's gets a small "Patient answered: …" note under it.
   - "Validate" saves and stamps the set.
 - **Completing the review:**
-  - "Complete HQ review" is enabled when every visible Question Set is validated.
+  - "Complete HQ review" is enabled when every visible Question Set is validated (and since S44 the server refuses it otherwise, asking the evaluate service which sets are visible).
   - It sets Ready for POA and writes the event "HQ review completed by X".
 
 ### Step 5: the POA Summary

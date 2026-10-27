@@ -43,7 +43,7 @@ docker compose up -d --force-recreate db
 - **Before C1: after a panic, the recover middleware sends headers the handler had already set** (found by S02's verification, 8 Oct).
   - `recoverPanics` writes the 500 without clearing `w.Header()`, so a cookie set before a panic would go out with the error.
   - No handler can do that today: both cookie handlers write straight after `SetCookie`. Fix it test-first before the Cognito session code (C1). Details in [verify.md](sessions/S02-workflow-route-tests/verify.md) item 3.
-- **Complete review isn't checked on the server** (found by S02, 8 Oct). `POST …/complete-review` succeeds while the episode is Ready for review, even if no Question Set is validated. Only the browser disables the button until every visible set is validated. Enforce it on the server in C6, where the `evaluate` Lambda can work out which sets are visible.
+- ~~**Complete review isn't checked on the server** (found by S02, 8 Oct). `POST …/complete-review` succeeds while the episode is Ready for review, even if no Question Set is validated. Only the browser disables the button until every visible set is validated. Enforce it on the server in C6, where the `evaluate` Lambda can work out which sets are visible.~~ *Done in [S44](sessions/S44-server-checks/build-notes.md): Go asks the evaluate service which sets are shown for the answers that count now, and refuses (409) while one has no validated copy; if the service can't be reached it's allowed as before, with an `EVALUATE_FAILED` line.*
 
 ## 2. Waiting on input
 
@@ -55,6 +55,24 @@ docker compose up -d --force-recreate db
 | Saved option lists: copied or linked? | Built as copies: a question keeps its options when the list changes, which protects stable IDs (OPT-02). Confirm that's what's wanted. |
 
 ## 3. Small gaps in what's built
+
+### From S44's test report 1 (27 Oct; all passed, 15 of 15; exploring notes, no code change; [test-report-1.md](sessions/S44-server-checks/test-report-1.md))
+
+- **A repeated Complete review says "The HQ review is already complete, so the answers can't be changed."** (two at once: one 204, the other this 409). The wording suits a save, not a second Complete review; it's `notInReview` in `validation.go`, older than S44. A plainer line for this case would be "The HQ review is already complete."
+- **The "Send your answers?" window's text stays in the page after a send** (`get_page_text` finds it below "Thank you"); it's closed and not visible. Cosmetic, probably older.
+- **Hand check for Rahul:** the patient's form at 390×844 (T-01, T-02, T-05); the tester's window couldn't be resized. S44 adds nothing visible.
+- **Data note:** Trust A's published Demo pre-op HQ in the local database is v5 (23 Oct) with no rules, so its sends aren't auto-triaged; re-seeding doesn't replace it.
+
+### From S44's verification 1 (27 Oct; [verify.md](sessions/S44-server-checks/verify.md), none blocking)
+
+- **A save that clears a validation can slip past Complete review's check.** `SaveClinicianAnswers` checks the episode is Ready for review without taking the row lock that Complete review holds. So if a second clinician re-saves a set without Validate at the same instant, the review can still complete. A `FOR SHARE OF e` in the save would close this.
+- **Complete review's evaluator call holds the episode row** for up to 5 s if the service is slow. The send has done the same since S41. Watch it with S45's Lambda cold starts.
+- **The patient's age at sending:** Go works it out in the hospital's time zone and the browser in the viewer's. They can disagree on a birthday around midnight, so Go could name an age-conditioned set the page doesn't show.
+- **Cleanups:**
+  - `submitForm` reads the answers twice.
+  - `unvalidatedSets` makes an extra query only for the time zone.
+  - The set-building loop is copied in `evaluateSent` and `unvalidatedSets`.
+  - `Recorder.Hide` doesn't clone its slice.
 
 ### From S43's test report 1 (27 Oct; [test-report-1.md](sessions/S43-rule-actions/test-report-1.md), exploring)
 
@@ -642,7 +660,7 @@ docker compose up -d --force-recreate db
   - **`test_audit.py`'s tooltip journey failed once** in a full `make e2e` run (S15 round 1) and passed alone and in the next full run: a hover flake to watch.
   - **No General notes entry when a patient changes their contact:** staff see the new contact on the record, and the trust's audit log has "Patient changed their contact details".
 - **Patient invites and sign-in (S14, [build notes](sessions/S14-patient-invites/build-notes.md), [test report 1](sessions/S14-patient-invites/test-report-1.md)):**
-  - **The API accepts Send with no answers.** `POST /api/p/episodes/{eid}/submit` (and staff's on-behalf submit) doesn't check required answers: the web app keeps "Send my answers" disabled until every section is complete, but Go can't evaluate SurveyJS. **Needs C6's `evaluate` Lambda** to check on the server.
+  - ~~**The API accepts Send with no answers.** `POST /api/p/episodes/{eid}/submit` (and staff's on-behalf submit) doesn't check required answers: the web app keeps "Send my answers" disabled until every section is complete, but Go can't evaluate SurveyJS. **Needs C6's `evaluate` Lambda** to check on the server.~~ *Done in [S44](sessions/S44-server-checks/build-notes.md): both routes refuse (409, naming the set) while the evaluate service says a set the patient's form shows is incomplete; nothing is frozen. If the service can't be reached the send goes through as before (S41's fail-safe).*
   - **Send the full name and age only when a questionnaire uses them.** After the date of birth the HQ includes `{patientName}` (with the surname) and `{patientAge}` for every questionnaire (confirmed by Rahul, answers 2); a later refinement could send them only when the questionnaire's text or conditions use `{patientName}`/`{patientAge}`.
   - **"Entered by" stays on a set the patient changes afterwards** (by design: sticky per Question Set). Part of the set may then be the patient's own.
   - ~~**Cosmetic:** a patient opening someone else's episode address sees only the red "Episode not found." with no Poised bar or Sign out.~~ *Done in S15: inside the Poised bar, with ← Your questionnaires.*
