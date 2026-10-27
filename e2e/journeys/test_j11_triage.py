@@ -1,17 +1,21 @@
-"""J11 Triage, the authoring half (S40): an HQ's ASA rules. Its patient half (auto-triage on send)
-comes in S42.
+"""J11 Triage. The authoring half (S40): an HQ's ASA rules.
 
 A new HQ has the two default rules, in plain words. Alex changes Low risk's target to Ready for POA
 and back; tests the whole HQ as a smoker (ASA II) and saves it as a test case, which passes; the
 Preview of one set shows the rules that fire for its answers alone, and a red flag stops Low risk.
 The Publish window says what the version auto-triages. After Low risk's ASA limit is lowered to I,
-the test case fails and Publish is blocked. Sue Super (one hospital) sees the rules read-only."""
+the test case fails and Publish is blocked. Sue Super (one hospital) sees the rules read-only.
+
+The patient half (S42): a low-risk patient (a smoker, ASA II, no flags) sends the HQ on their phone.
+Cara finds the episode on the Auto-triaged worklist as Ready for admission: the card names the rule,
+every Question Set has the stamp, the history says the rule moved it, and the POA Summary shows the
+patient's own answers. She clicks Checked: who and when are shown, and it leaves the list."""
 
 import re
 
-from playwright.sync_api import Browser, Page, expect
+from playwright.sync_api import Browser, BrowserContext, Page, expect
 
-from support import choose, pick, sign_in, unique
+from support import choose, invite_path, pick, sign_in, unique
 
 LOW_RISK = "When the suggested ASA is I or II and there are no red flags: auto-triage to Ready for admission"
 HIGH_RISK = ("When the suggested ASA is III or more: add the task “Book anaesthetic review” for the anaesthetist team; "
@@ -64,6 +68,10 @@ def test_rules_on_a_new_hq_are_tested_and_block_publish(page: Page, browser: Bro
     # Test the whole HQ as a smoker: ASA II, Low risk fires. Saved as a test case, it passes.
     page.get_by_role("link", name="Test the whole HQ").click()
     choose(page, "Do you smoke?", "Yes")
+    # Unanswered, the snoring question leaves its score Incomplete, which holds the auto-triage as a
+    # real send does (S42, test report 1, E-2).
+    expect(page.get_by_test_id("hq-fired")).to_have_text("Low risk: no auto-triage: a score is Incomplete")
+    choose(page, "How often do you snore?", "Never")
     result = page.get_by_test_id("hq-result")
     expect(result).to_contain_text("Suggested ASA II")
     expect(page.get_by_test_id("hq-fired")).to_have_text("Low risk: auto-triage to Ready for admission")
@@ -81,6 +89,7 @@ def test_rules_on_a_new_hq_are_tested_and_block_publish(page: Page, browser: Bro
     # The Preview of About you: Rules that fire for its answers alone; a red flag stops Low risk.
     page.goto(f"{base}/chapters/{hq['chapters']['About you']}/preview")
     choose(page, "Do you smoke?", "Yes")
+    choose(page, "How often do you snore?", "Never")
     fired = page.get_by_test_id("preview-rules")
     expect(fired).to_contain_text("Low risk: auto-triage to Ready for admission")
     choose(page, "Do you get chest pain when you walk?", "Yes")
@@ -93,7 +102,8 @@ def test_rules_on_a_new_hq_are_tested_and_block_publish(page: Page, browser: Bro
     header.get_by_role("button", name="Publish").click()
     dialog = page.get_by_role("dialog", name="Publish version 1?")
     expect(dialog.get_by_test_id("publish-rules")).to_have_text(
-        "This version auto-triages: ASA I–II, no red flags → Ready for admission. Patients with no ASA grade count as ASA I.")
+        "This version auto-triages: ASA I–II, no red flags → Ready for admission. Patients with no ASA grade count as ASA I. "
+        "Never with a red or amber flag, a score Incomplete, or the anaesthetist's ASA required first.")
     expect(dialog.get_by_role("button", name="Publish")).to_be_enabled()
     dialog.get_by_role("button", name="Cancel").click()
 
@@ -205,3 +215,94 @@ def test_one_change_saves_at_a_time(page: Page, as_user):
     page.reload()
     expect(page.get_by_test_id("rule")).to_have_count(3)
     expect(page.get_by_role("checkbox", name=re.compile("no ASA grade"))).not_to_be_checked()
+
+
+def test_a_low_risk_patient_is_auto_triaged_and_checked(page: Page, phone: BrowserContext, as_user):
+    hq = as_user("Alex Author").published_hq("rules-hq.json", f"E2E J11 send {unique()}", auto_triage=True)
+    episode = as_user("Cara Clinician").episode(hq, f"J11 {unique()}")
+
+    # The patient, on their phone: a smoker with no chest pain or heart failure, who answers the
+    # snoring question too (an unanswered one would leave its score Incomplete, which stops auto-triage).
+    patient = phone.new_page()
+    patient.goto(invite_path(episode["email"]))
+    patient.get_by_role("button", name="Continue").click()
+    patient.get_by_label("Day").fill("17")
+    patient.get_by_label("Month").fill("5")
+    patient.get_by_label("Year").fill("1980")
+    patient.get_by_role("button", name="Continue").click()
+    patient.get_by_test_id("set-About you").get_by_role("button", name="Start").click()
+    choose(patient, "Do you smoke?", "Yes")
+    choose(patient, "Do you get chest pain when you walk?", "No")
+    choose(patient, "How often do you snore?", "Never")
+    patient.get_by_role("button", name="Finish this section").click()
+    patient.get_by_test_id("set-Your heart").get_by_role("button", name="Start").click()
+    choose(patient, "Have you been told you have heart failure?", "No")
+    patient.get_by_role("button", name="Finish this section").click()
+    assert patient.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    patient.get_by_role("button", name="Send my answers").click()
+    patient.get_by_role("dialog", name="Send your answers?").get_by_role("button", name="Send my answers").click()
+    expect(patient.get_by_role("heading", name="Thank you, Sam")).to_be_visible()
+
+    # Cara: on Auto-triaged, as Ready for admission.
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes")
+    page.get_by_test_id("worklist-auto_triaged").click()
+    expect(page).to_have_url(f"{base}/episodes?worklist=auto_triaged")
+    expect(page.get_by_test_id("worklist-help")).to_have_text("Moved on automatically by the HQ's rules; not yet checked by a clinician.")
+    row = page.get_by_role("row").filter(has_text=episode["name"])
+    expect(row).to_contain_text("Ready for admission")
+    row.click()
+
+    # The episode: the card names the rule, each set has the stamp, the history names the rule.
+    card = page.get_by_test_id("auto-triage")
+    expect(card).to_contain_text("Auto-triaged by the rule “Low risk”")
+    expect(card).to_contain_text("Moved to Ready for admission automatically when the patient sent the HQ (ASA II, no red or amber flags)")
+    expect(card).to_contain_text("Not yet checked by a clinician.")
+    expect(page.get_by_test_id("triage-stamp")).to_have_count(3)  # About you, Your heart, Nurse checks
+    expect(page.get_by_test_id("triage-stamp").first).to_have_text("Auto-triaged (ASA II, no red or amber flags)")
+    history = page.get_by_test_id("status-history-row").filter(has_text="Auto-triaged")
+    expect(history).to_contain_text("Auto-triaged: Ready for review → Ready for admission")
+    expect(history).to_contain_text("Automatic (Low risk)")
+    expect(page.get_by_text("Auto-triaged by the rule “Low risk”: ASA II, no red or amber flags → Ready for admission")).to_be_visible()
+
+    # The POA Summary: the patient's answers, with the stamp.
+    page.get_by_role("link", name="POA Summary").click()
+    expect(page.get_by_test_id("poa-auto-triaged")).to_contain_text("No clinician validated these answers")
+    expect(page.get_by_test_id("poa-set-About you")).to_contain_text("Auto-triaged (ASA II, no red or amber flags) · Patient on")
+    expect(page.get_by_test_id("poa-set-About you")).to_contain_text("Smoker")
+    page.go_back()
+
+    # Checked: who and when, and it leaves the list.
+    card.get_by_role("button", name="Checked").click()
+    expect(page.get_by_test_id("triage-checked")).to_contain_text("Checked by Cara Clinician on")
+    expect(card.get_by_role("button", name="Checked")).to_have_count(0)
+    page.reload()
+    expect(page.get_by_test_id("triage-checked")).to_be_visible()
+    page.goto(f"{base}/episodes?worklist=auto_triaged")
+    expect(page.get_by_test_id("worklist-help")).to_be_visible()
+    expect(page.get_by_role("row").filter(has_text=episode["name"])).to_have_count(0)
+
+
+def test_a_second_tabs_checked_is_refused_in_plain_words(page: Page, as_user, patient_link):
+    """Test report 1, F-1: Checked clicked in a tab opened before someone else checked it says so, and
+    the card shows who checked it."""
+    hq = as_user("Alex Author").published_hq("rules-hq.json", f"E2E J11 two tabs {unique()}", auto_triage=True)
+    episode = as_user("Cara Clinician").episode(hq, f"J11 tabs {unique()}")
+    p = patient_link(episode)
+    p.answer("About you", {"q_smokes": "o_yes", "q_chest_pain": "o_no", "q_snore": "o_never"})
+    p.answer("Your heart", {"q_heart_failure": "o_no"})
+    p.submit()
+
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}")
+    second = page.context.new_page()
+    second.goto(f"{base}/episodes/{episode['id']}")
+    expect(second.get_by_test_id("auto-triage").get_by_role("button", name="Checked")).to_be_visible()
+    page.get_by_test_id("auto-triage").get_by_role("button", name="Checked").click()
+    expect(page.get_by_test_id("triage-checked")).to_be_visible()
+
+    second.get_by_test_id("auto-triage").get_by_role("button", name="Checked").click()
+    card = second.get_by_test_id("auto-triage")
+    expect(card.get_by_test_id("triage-check-error")).to_contain_text("This episode changed since you opened it")
+    expect(card.get_by_test_id("triage-checked")).to_contain_text("Checked by Cara Clinician on")
+    expect(card.get_by_role("button", name="Checked")).to_have_count(0)

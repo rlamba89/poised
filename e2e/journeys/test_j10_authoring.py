@@ -53,6 +53,7 @@ from support import block_video_sites, choose, invite_path, pick, sign_in, uniqu
 def test_two_clinical_summaries_from_the_editor_to_the_poa_summary(page: Page, phone: BrowserContext, as_user):
     alex = as_user("Alex Author")
     hq = alex.draft_hq("summaries-hq.json", f"E2E J10 {unique()}")
+    alex.without_auto_triage(hq)  # Cara validates it by hand (S42)
     base = sign_in(page.context, "Alex Author")
     page.goto(f"{base}/questionnaires/{hq['id']}")
     page.get_by_role("complementary").get_by_text("About you").click()
@@ -453,6 +454,7 @@ def test_a_score_across_question_sets(page: Page, phone: BrowserContext, as_user
     expect(scores).to_contain_text("Sleep risk: 3 (High)")
 
     # Published, the patient (46, on a phone) answers both sets: Yes, No, then Yes.
+    alex.without_auto_triage(hq)  # Cara validates it by hand (S42)
     alex.call("POST", alex.h(f"/questionnaires/{hq['id']}/publish"), {"versionId": hq["versionId"]})
     episode = as_user("Cara Clinician").episode(hq, f"J10 Scores {u}")
     patient = phone.new_page()

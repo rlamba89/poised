@@ -339,10 +339,36 @@ class Api:
         version_id = self.call("GET", self.h(f"/questionnaires/{qid}"))["questionnaire"]["versionId"]
         return {"id": qid, "name": name, "versionId": version_id, "chapters": chapters}
 
-    def published_hq(self, data_file: str, name: str) -> dict:
+    def published_hq(self, data_file: str, name: str, auto_triage: bool = False) -> dict:
+        """Publishes a draft from e2e/data/<data_file>. From S42 the default rules auto-triage a
+        low-risk patient on send, so unless `auto_triage`, the rules' auto-triage actions are taken
+        out first (a rule left with none goes): the journeys written before S42 check the review by
+        hand, Ready for review after the send. J11 asks for them."""
         hq = self.draft_hq(data_file, name)
+        if not auto_triage:
+            self.without_auto_triage(hq)
         self.call("POST", self.h(f"/questionnaires/{hq['id']}/publish"), {"versionId": hq["versionId"]})
         return hq
+
+    def without_auto_triage(self, hq: dict) -> None:
+        """Takes the auto-triage actions out of a draft's rules (a rule left with none goes), for a
+        journey that publishes in the browser and then reviews the HQ by hand (S42)."""
+        path = self.h(f"/questionnaires/{hq['id']}")
+        q = self.call("GET", path)["questionnaire"]
+        rules = q["rules"]
+        for r in rules["rules"]:
+            r["then"] = [a for a in r["then"] if a["kind"] != "autoTriage"]
+        rules["rules"] = [r for r in rules["rules"] if r["then"]]
+        self.call("PUT", f"{path}/rules", {"rules": rules, "revision": q["rulesRevision"], "versionId": q["versionId"]})
+
+    def review_by_hand(self, episode: dict) -> None:
+        """Re-opens the HQ review of a sent episode the HQ's rules auto-triaged (S42; e.g. on a seeded
+        demo HQ, whose default rules auto-triage a patient with no ASA grade), so a journey can
+        validate it. Needs a super clinician; does nothing if it's Ready for review already."""
+        path = self.h(f"/episodes/{episode['id']}")
+        e = self.call("GET", path)["episode"]
+        if e["status"] != "ready_for_review":
+            self.call("POST", f"{path}/reopen", {"reason": "E2E: review by hand", "revision": e["revision"]})
 
     # Episodes
 

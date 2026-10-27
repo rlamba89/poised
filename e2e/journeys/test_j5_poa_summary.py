@@ -158,6 +158,7 @@ def test_a_set_started_fresh_says_so_and_the_bmi_comes_from_the_patients_answers
 
     # Sent, then validated with another weight: the validated one counts.
     cara.call("POST", f"{form}/submit")
+    as_user("Alex Author").review_by_hand(second)  # the seeded follow-up HQ's rules auto-triage it (S42)
     cara.validate(second, "About you", {"height": 170, "weight": 90})
     page.reload()
     expect(page.get_by_test_id("poa-detail-Patient reported BMI")).to_contain_text("31.1")
