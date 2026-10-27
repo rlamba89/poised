@@ -50,9 +50,21 @@ docker compose up -d --force-recreate db
 | Item | Detail |
 | --- | --- |
 | Real HJE Full HQ export | Today's copy has only Question Sets 1–4, transcribed from screenshots, with no disclosures. Run `tools/export-hq.js` in the incumbent's authoring tool and import the file with `go run ./cmd/import-hq` to get all 11 sets and their disclosure codes (EXP-04). |
+| When should "The HQ's rules suggest: …" show? (S43, verification 1, finding 5) | Built to show always, as a record of what the rules suggested; an admitted, cancelled or archived episode still says e.g. "The HQ's rules suggest: Ready for POA". Options: (a) **recommended:** only before admission, and not once cancelled or archived; (b) only until the episode reaches or passes the suggested status; (c) always, as now. A one-line change in `StatusControl.tsx` either way. |
+| The anaesthetist's ASA grade cleared after Ready for admission (S43, verification 2, finding 1) | The requirement is checked only on a move *into* Ready for admission. Once there, the grade can still be cleared on the POA Summary (the episode PATCH accepts it), and **Admit** is then still offered and accepted; the red requirement line shows, but nothing stops it. Archive then un-archive also restores Ready for admission unchecked (builder's decision 3). And if such an episode is then cancelled, the Undo back to Ready for admission is greyed out while a cancelled episode's grade can't be added, so the cancel can't be undone. Seen in the browser on 27 Oct (episode `48304c87…`, the grade put back after). Options: (a) **recommended:** refuse clearing the anaesthetist's grade while a rule requires it and the episode is at Ready for admission or later (one check in `updateEpisode`); (b) also refuse **Admit** while the requirement is unmet; (c) leave it: clearing the grade is a deliberate act and the red line says why. |
 | Saved option lists: copied or linked? | Built as copies: a question keeps its options when the list changes, which protects stable IDs (OPT-02). Confirm that's what's wanted. |
 
 ## 3. Small gaps in what's built
+
+### From S43's test report 1 (27 Oct; [test-report-1.md](sessions/S43-rule-actions/test-report-1.md), exploring)
+
+- **Cosmetic, narrow windows (about 500 px):** a long flag name (up to 100 characters) squeezes the Flags card's **Clear** button to "Cle"; the greyed "Undo: back to Ready for admission (add the anaesthetist's ASA grade first)" is cut off (the red line under it still says why). ([test report 3](sessions/S43-rule-actions/test-report-3.md), notes 1–2)
+- **One send's flags and tasks list in a random order:** they share one `created_at`, so `ORDER BY created_at, id` falls back to the UUIDs. The rules' order would read better (e.g. a sequence column, or ordering by insert). Nothing is wrong or missing. (Note 3)
+- **Accessibility:** two rule tasks with the same title for different teams both have the button name "Complete: Book anaesthetic review"; the name could include the team. (Note 4)
+- **S20's Undo chain, to confirm:** after an Undo back to Ready for admission, the next Undo offered goes back to the change before the undone one ("back to Ready for POA"), not to the status just left (On hold). Probably intended (undo walks back through the history); not S43's. (Note 5)
+- **The General notes word ASA grades as numbers** ("Anaesthetist ASA grade set to 3", S20's wording) while the page says "ASA III" everywhere else. Cosmetic; changing it means changing the older tests that check the line.
+- **From verification 2 (minor):** the red "… Add it on the POA Summary." line also shows on a cancelled or archived episode, whose grades can't be changed (`StatusControl.tsx`). The requirement is checked in four places (`applyStatus`, `statusView`'s moves and undo, `autoTriage`), not in `internal/episode`'s table; folding it into `episode.Check`/`Options` would cover any new path into Ready for admission. `ActionsOf`'s flag-name check copies `asarules.Check`'s instead of sharing a helper.
+- **Test fix in verification 2:** `TestRuleActionsOnSend`'s two-teams case assumed the tasks' order, which is random within one send (note 3 above), so it failed about half the time; it now compares the teams as a set.
 
 ### From S26's test report 1 (23 Oct; [test-report-1.md](sessions/S26-prefill-clinician-cross-trust/test-report-1.md), exploring)
 
