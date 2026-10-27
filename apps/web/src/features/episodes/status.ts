@@ -2,18 +2,24 @@
 // (apps/api/internal/episode); the API sends the moves this user may make from here (`moves`),
 // the undo if there is one (`undo`), and the history (`statusHistory`). This file only turns a
 // filled-in form into the request to send, and words the history.
-import type { EpisodeStatus } from "./types";
+import { STATUS_LABELS, type EpisodeStatus, type RuleSuggestion } from "./types";
 
 /** internal/episode's Move: the kind of a status change. */
 export type StatusMove = "create" | "submit" | "complete_review" | "set" | "admit" | "discharge" | "cancel" | "reopen" | "undo"
   | "archive" | "unarchive" // S22
   | "auto_triage"; // S42: the HQ's rules, never a person
 
-/** A move the status control offers (episode.Option). */
-export type StatusOption = { to: EpisodeStatus; label: string; move: StatusMove; needsReason: boolean; needsDate: boolean };
+/**
+ * A move the status control offers (episode.Option). `blocked` (S43): why it's refused for now,
+ * though the table allows it (a rule requires the anaesthetist's ASA grade before Ready for admission).
+ */
+export type StatusOption = { to: EpisodeStatus; label: string; move: StatusMove; needsReason: boolean; needsDate: boolean; blocked?: string };
 
-/** The undo, if there's one: back to `to` (S20 answers 2). Also the un-archive (S22): back to the status it was archived from. */
-export type UndoOption = { to: EpisodeStatus; label: string } | null;
+/**
+ * The undo, if there's one: back to `to` (S20 answers 2). Also the un-archive (S22): back to the status it was archived from.
+ * `blocked` (S43): why the undo is refused for now (back to Ready for admission while the anaesthetist's ASA is required).
+ */
+export type UndoOption = { to: EpisodeStatus; label: string; blocked?: string } | null;
 
 /** One change in the status history (EPI-03). userName is null for the patient's submit and automatic changes. */
 export type StatusEvent = {
@@ -120,3 +126,27 @@ export const triageStamp = (e: Triage): string | null => (e.triagedAt && e.triag
 
 /** Whether the episode waits for a clinician's Checked (S42 answers 1): on the Auto-triaged worklist, as Go's in_worklist. */
 export const awaitingCheck = (e: Triage): boolean => !!e.triagedAt && !e.triageCheckedAt && e.status !== "cancelled" && e.status !== "archived";
+
+/** The status dropdown's label for a move: a blocked one says why, e.g. "Ready for admission (add the anaesthetist's ASA grade first)". */
+export const pickLabel = (m: { label: string; blocked?: string }): string =>
+  m.blocked ? `${m.label} (${m.blocked.charAt(0).toLowerCase()}${m.blocked.slice(1).replace(/\.$/, "")})` : m.label;
+
+/**
+ * A rule's requirement of the anaesthetist's ASA grade before Ready for admission (S43), in words,
+ * or null when no rule asked for it. It's met once an anaesthetist's grade is saved.
+ */
+export function asaRequirement(e: { anaesthetistAsaRequiredBy: string | null; anaesthetistAsa: number | null }): { met: boolean; text: string } | null {
+  const rule = e.anaesthetistAsaRequiredBy;
+  if (!rule) return null;
+  return e.anaesthetistAsa
+    ? { met: true, text: `The anaesthetist's ASA grade is added, as the rule “${rule}” asks.` }
+    : { met: false, text: `Ready for admission needs the anaesthetist's ASA grade first (the rule “${rule}”).` };
+}
+
+/** The statuses the HQ's rules suggest (S43), one line each: they're only shown; nothing moves by itself. */
+export const suggestionLines = (suggestions: RuleSuggestion[]): { text: string; rule: string }[] =>
+  suggestions.map((s) => ({ text: `The HQ's rules suggest: ${STATUS_LABELS[s.status] ?? s.status}`, rule: s.rule }));
+
+/** The standing flags' names (S43), each once in the order added: two rules may add the same flag (verification 1, finding 4). */
+export const standingFlagNames = (flags: { name: string; clearedAt: string | null }[] | undefined): string[] =>
+  [...new Set((flags ?? []).filter((f) => !f.clearedAt).map((f) => f.name))];

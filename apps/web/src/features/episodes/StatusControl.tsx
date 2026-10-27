@@ -15,7 +15,9 @@ import { ApiError, api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { EpisodeDetail } from "./EpisodePage";
 import { partlyTypedDate } from "./dates";
-import { CANCEL_REASONS, historyText, historyWho, pickOptions, statusRequest, type StatusEvent, type StatusForm } from "./status";
+import {
+  CANCEL_REASONS, asaRequirement, historyText, historyWho, pickLabel, pickOptions, statusRequest, suggestionLines, type StatusEvent, type StatusForm,
+} from "./status";
 import { STATUS_LABELS } from "./types";
 
 /** The longest reason the API takes (statuses.go maxReasonLen). */
@@ -46,6 +48,7 @@ export function SaveError({ error, stale, onReload }: { error: string; stale: bo
 export function StatusControl({ path, detail, onChanged }: { path: string; detail: EpisodeDetail; onChanged: () => void }) {
   const e = detail.episode;
   const picks = pickOptions(detail.moves);
+  const requirement = asaRequirement(e);
   const can = (move: string) => detail.moves.some((m) => m.move === move);
   const [form, setForm] = useState<StatusForm | null>(null);
   const [error, setError] = useState("");
@@ -118,7 +121,8 @@ export function StatusControl({ path, detail, onChanged }: { path: string; detai
         <Text size="sm" fw={600}>Episode status:</Text>
         <Select
           aria-label="Episode status"
-          data={[{ value: e.status, label: STATUS_LABELS[e.status], disabled: true }, ...picks.map((m) => ({ value: m.to, label: m.label }))]}
+          data={[{ value: e.status, label: STATUS_LABELS[e.status], disabled: true },
+            ...picks.map((m) => ({ value: m.to, label: pickLabel(m), disabled: !!m.blocked }))]}
           value={e.status}
           onChange={(v) => {
             const to = picks.find((m) => m.to === v);
@@ -129,7 +133,12 @@ export function StatusControl({ path, detail, onChanged }: { path: string; detai
           w={240}
         />
         {can("reopen") && <Button size="xs" variant="default" onClick={() => open({ kind: "reopen" })}>Re-open HQ review</Button>}
-        {detail.undo && <Button size="xs" variant="default" onClick={() => open({ kind: "undo" })}>Undo: back to {detail.undo.label}</Button>}
+        {detail.undo && (
+          // S43: greyed out, with why, while the move back is refused (verification 1, finding 2).
+          <Button size="xs" variant="default" onClick={() => open({ kind: "undo" })} disabled={!!detail.undo.blocked} title={detail.undo.blocked}>
+            Undo: back to {pickLabel(detail.undo)}
+          </Button>
+        )}
         {can("cancel") && <Button size="xs" variant="light" color="red" onClick={() => open({ kind: "cancel" })}>Cancel episode</Button>}
         {can("archive") && <Button size="xs" variant="default" onClick={() => open({ kind: "archive" })}>Archive episode</Button>}
         {detail.unarchive && (
@@ -137,6 +146,14 @@ export function StatusControl({ path, detail, onChanged }: { path: string; detai
         )}
       </Group>
       {notice && <Text size="sm" c="orange.8" data-testid="status-notice">{notice}</Text>}
+      {/* S43: a rule asked for the anaesthetist's ASA grade before Ready for admission. */}
+      {requirement && !requirement.met && <Text size="sm" c="red.8" data-testid="asa-required">{requirement.text} Add it on the POA Summary.</Text>}
+      {/* S43: the statuses the HQ's rules suggest; nothing moves by itself. */}
+      {suggestionLines(e.ruleSuggestions ?? []).map((l) => (
+        <Text key={l.text + l.rule} size="sm" c="blue.8" data-testid="rule-suggestion">
+          {l.text} <Text span size="xs" c="dimmed">(the rule “{l.rule}”)</Text>
+        </Text>
+      ))}
       {(e.status === "hq_not_complete" || e.status === "ready_for_review") && (
         <Text size="xs" c="dimmed">The status can be changed by hand once the HQ review is complete.</Text>
       )}

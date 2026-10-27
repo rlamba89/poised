@@ -27,7 +27,7 @@ import { allCurrentAnswers, hqPatient, useEpisodeHQ, type EpisodeHQ } from "./hq
 import { restoreSpot, saveSpot, takeSpot, validateAt } from "./jump";
 import { sessionStore } from "@/lib/chunkError";
 import { SaveError, isStale, StatusControl } from "./StatusControl";
-import { triageStamp } from "./status";
+import { asaRequirement, triageStamp } from "./status";
 import { patientName, type Episode, type EpisodeEvent } from "./types";
 
 type Tab = "validated" | "patient";
@@ -335,6 +335,7 @@ const asaLabel = (n: number | null) => (n ? `ASA ${ASA[n - 1]}` : "Not recorded"
  * After a reload, a grade nobody is changing here shows the saved one.
  */
 function AsaGrades({ episode, path, onSaved, readOnly }: { episode: Episode; path: string; onSaved: () => void; readOnly: boolean }) {
+  const requirement = asaRequirement(episode);
   const saved = { nurseAsa: episode.nurseAsa ? String(episode.nurseAsa) : null, anaesthetistAsa: episode.anaesthetistAsa ? String(episode.anaesthetistAsa) : null };
   // A grade being changed here (`value`), or null: it shows the saved one.
   const [editing, setEditing] = useState<{ nurseAsa: string | null | undefined; anaesthetistAsa: string | null | undefined }>({
@@ -360,6 +361,8 @@ function AsaGrades({ episode, path, onSaved, readOnly }: { episode: Episode; pat
   return (
     <Stack>
       {!episode.nurseAsa && !episode.anaesthetistAsa && <Text size="sm">No ASA grades have been added.</Text>}
+      {/* S43: a rule asked for the anaesthetist's grade before Ready for admission. */}
+      {requirement && <Text size="sm" c={requirement.met ? "dimmed" : "red.8"} data-testid="poa-asa-required">{requirement.text}</Text>}
       <SaveError error={error} stale={stale} onReload={() => { setError(""); onSaved(); }} />
       <Group align="flex-end">
         {/* A cancelled (S20) or archived (S22) episode's grades are shown, not changed: the API refuses them. */}

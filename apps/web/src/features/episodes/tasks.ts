@@ -39,7 +39,7 @@ export const MAX_TASK_TITLE = 200;
  * "Completed by …" or, for one that was re-opened, "Re-opened by …".
  */
 export function taskHistory(t: Task): string[] {
-  const out = [`Added by ${t.createdByName ?? `rule ${t.createdByRule ?? ""}`.trim()} on ${formatDateTime(t.createdAt)}`];
+  const out = [`Added by ${t.createdByName ?? `rule: ${t.createdByRule ?? ""}`.trim()} on ${formatDateTime(t.createdAt)}`]; // S43: "Added by rule: High risk"
   if (t.doneAt) out.push(`Completed by ${t.doneByName ?? "someone"} on ${formatDateTime(t.doneAt)}`);
   else if (t.reopenedAt) out.push(`Re-opened by ${t.reopenedByName ?? "someone"} on ${formatDateTime(t.reopenedAt)}`);
   return out;

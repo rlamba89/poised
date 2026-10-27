@@ -64,6 +64,24 @@ export type Episode = EpisodeRow & {
   triageMessagePending: boolean;
   triageCheckedAt: string | null;
   triageCheckedByName: string | null;
+  /** S43: the rule requiring the anaesthetist's ASA grade before Ready for admission (null: none); met once anaesthetistAsa is set. */
+  anaesthetistAsaRequiredBy: string | null;
+  /** S43: the statuses the latest send's rules suggest; shown only. */
+  ruleSuggestions: RuleSuggestion[];
+};
+
+/** A status a rule suggests (S43; Go: triage.Suggestion). */
+export type RuleSuggestion = { rule: string; status: EpisodeStatus };
+
+/** A rule's flag on the episode (S43; Go: ListEpisodeFlags): standing until a clinician clears it with a reason. */
+export type EpisodeFlag = {
+  id: string;
+  name: string;
+  rule: string;
+  createdAt: string;
+  clearedAt: string | null;
+  clearedByName: string | null;
+  clearedReason: string | null;
 };
 
 /** The patient's working invite (S14), or null before one is sent: when, and whether five wrong dates of birth locked it. */

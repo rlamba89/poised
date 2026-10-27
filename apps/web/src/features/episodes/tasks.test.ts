@@ -24,8 +24,8 @@ describe("taskHistory", () => {
     expect(taskHistory(doneAgain)).toHaveLength(2);
     expect(taskHistory(doneAgain)[1]).toMatch(/^Completed by Cara Clinician/);
   });
-  it("names a rule's task by its rule (C6)", () => {
-    expect(taskHistory(task({ createdByName: null, createdByRule: "Anaesthetic review" }))[0]).toMatch(/^Added by rule Anaesthetic review on /);
+  it("names a rule's task by its rule (C6, S43: \"Added by rule: High risk\")", () => {
+    expect(taskHistory(task({ createdByName: null, createdByRule: "High risk" }))[0]).toBe(`Added by rule: High risk on ${formatDateTime("2026-10-21T09:00:00Z")}`);
   });
 });
 

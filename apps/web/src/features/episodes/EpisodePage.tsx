@@ -1,10 +1,10 @@
 // One episode: the patient, the procedure, the patient's invite (S14: resend it, or fill in the HQ
 // on their behalf), the Question Sets to validate (Step 4 of plan-workflow.md), the status and the
 // General notes, and the patient's Information (S36).
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import {
-  Alert, Anchor, Badge, Button, Card, Center, Group, Loader, SimpleGrid, Stack, Table, Text, Title,
+  Alert, Anchor, Badge, Button, Card, Center, Group, Loader, SimpleGrid, Stack, Table, Text, TextInput, Title,
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { ageFrom, hqSuggestedAsa, shownSets } from "@poised/clinical";
@@ -14,15 +14,15 @@ import { nationalIdLabel } from "@/lib/config";
 import { formatDate, formatDateTime, formatOptionalDate } from "@/lib/format";
 import { EpisodeInformation } from "@/features/information/EpisodeInformation";
 import { EditProcedure } from "./EditProcedure";
-import { StatusBadge } from "./EpisodeList";
+import { FlagBadge, StatusBadge } from "./EpisodeList";
 import { GeneralNotes } from "./GeneralNotes";
 import { allCurrentAnswers, hqPatient, useEpisodeHQ } from "./hq";
-import { awaitingCheck, historyWho, notResponding, triageStamp, type StatusEvent, type StatusOption, type UndoOption } from "./status";
+import { awaitingCheck, historyWho, notResponding, standingFlagNames, triageStamp, type StatusEvent, type StatusOption, type UndoOption } from "./status";
 import { StatusControl, StatusHistory } from "./StatusControl";
-import { isStale } from "./StatusControl";
+import { isStale, SaveError } from "./StatusControl";
 import { SuggestedAsaLine } from "./SuggestedAsa";
 import { TasksPanel } from "./TasksPanel";
-import { patientName, STATUS_LABELS, type Episode, type EpisodeEvent, type EpisodeInvite } from "./types";
+import { patientName, STATUS_LABELS, type Episode, type EpisodeEvent, type EpisodeFlag, type EpisodeInvite } from "./types";
 import { inviteUndelivered, statusUndelivered, undeliveredText, type Undelivered } from "./undelivered";
 
 /**
@@ -39,6 +39,8 @@ export type EpisodeDetail = {
   undo: UndoOption;
   unarchive: UndoOption;
   statusHistory: StatusEvent[];
+  /** S43: the rules' flags, standing and cleared, oldest first. */
+  flags: EpisodeFlag[];
 };
 
 /** Loads an episode and its events; `reload` refetches both. */
@@ -88,6 +90,7 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
             // EPI-02 (S16): the HQ wasn't sent by the hospital's "not responding" day; hidden once archived (S27).
             <Badge color="red" variant="light" data-testid="not-responding">Not responding</Badge>
           )}
+          {standingFlagNames(data.flags).map((name) => <FlagBadge key={name} name={name} />)}
           {inviteFailed.length > 0 && !e.patientSubmittedAt && (
             // OPS-05 (S17): a text or email of the latest invite, or a later reminder, didn't reach the patient.
             <Badge color="red" variant="light" data-testid="undelivered-badge">Invite not delivered</Badge>
@@ -110,6 +113,8 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
       )}
 
       {e.triagedAt && <AutoTriage path={path} episode={e} history={data.statusHistory} onChecked={reload} />}
+
+      {(data.flags ?? []).length > 0 && <RuleFlags path={path} episode={e} flags={data.flags} onChanged={reload} />}
 
       <Card withBorder>
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
@@ -290,6 +295,99 @@ function AutoTriage({ path, episode: e, history, onChecked }: { path: string; ep
         </Stack>
       )}
     </Alert>
+  );
+}
+
+/**
+ * The flags the HQ's rules added when the patient sent it (S43), e.g. "Anaesthetic review". Any
+ * clinician at the hospital clears one with a short reason (S43 answers 1); who, when and why stay
+ * with it. A later send that fires the rule again adds it again. A cancelled or archived episode's
+ * flags are shown, not cleared (the API refuses).
+ */
+function RuleFlags({ path, episode: e, flags, onChanged }: { path: string; episode: Episode; flags: EpisodeFlag[]; onChanged: () => void }) {
+  const [clearing, setClearing] = useState<string | null>(null); // the flag whose form is open
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const [stale, setStale] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const readOnly = e.status === "cancelled" || e.status === "archived";
+  // After a reload (e.g. Reload on a stale refusal), a form whose flag is no longer standing closes:
+  // someone else cleared it (test report 1, F-1).
+  const formFlag = flags.find((f) => f.id === clearing);
+  useEffect(() => {
+    if (clearing && (!formFlag || formFlag.clearedAt || readOnly)) {
+      setClearing(null);
+      setError("");
+      setStale(false);
+    }
+  }, [clearing, formFlag, readOnly]);
+  const open = (id: string) => {
+    setClearing(id);
+    setReason("");
+    setError("");
+    setStale(false);
+  };
+  const send = async (ev?: FormEvent) => {
+    ev?.preventDefault(); // Enter in the reason sends the form
+    if (!clearing || saving) return;
+    if (!reason.trim()) {
+      setError("Say why the flag is cleared.");
+      setStale(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await api(`${path}/flags/${clearing}/clear`, { method: "POST", body: JSON.stringify({ reason: reason.trim(), revision: e.revision }) });
+      setClearing(null);
+      setError("");
+      onChanged();
+    } catch (err) {
+      setError((err as Error).message);
+      setStale(isStale(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Card withBorder data-testid="flags">
+      <Title order={4} mb="xs">Flags</Title>
+      <Stack gap="xs">
+        {flags.map((f) => (
+          <div key={f.id} data-testid="flag" data-cleared={f.clearedAt ? "true" : "false"}>
+            <Group justify="space-between" wrap="nowrap" align="flex-start">
+              <div>
+                <Group gap="xs">
+                  <Badge color={f.clearedAt ? "gray" : "red"} variant={f.clearedAt ? "outline" : "filled"}>{f.name}</Badge>
+                  {f.clearedAt && <Text size="xs" c="dimmed">Cleared</Text>}
+                </Group>
+                <Text size="xs" c="dimmed" mt={2}>Added by the rule “{f.rule}” on {formatDateTime(f.createdAt)}</Text>
+                {f.clearedAt && (
+                  <Text size="xs" c="dimmed" data-testid="flag-cleared">
+                    Cleared by {f.clearedByName ?? "someone"} on {formatDateTime(f.clearedAt)}: {f.clearedReason}
+                  </Text>
+                )}
+              </div>
+              {!f.clearedAt && !readOnly && clearing !== f.id && (
+                <Button size="xs" variant="light" onClick={() => open(f.id)} aria-label={`Clear the flag ${f.name}`}>Clear</Button>
+              )}
+            </Group>
+            {clearing === f.id && (
+              <Card withBorder component="form" onSubmit={send} noValidate mt="xs" bg="gray.0" data-testid="flag-form">
+                <Stack gap="sm">
+                  {/* Focused on open, so typing goes into it (test report 1, exploring note 3). */}
+                  <TextInput label="Why is it cleared?" maxLength={1000} value={reason} onChange={(ev) => setReason(ev.currentTarget.value)} autoFocus />
+                  <SaveError error={error} stale={stale} onReload={() => { setError(""); setStale(false); onChanged(); }} />
+                  <Group gap="xs">
+                    <Button type="submit" loading={saving}>Clear flag</Button>
+                    <Button variant="default" onClick={() => setClearing(null)}>Back</Button>
+                  </Group>
+                </Stack>
+              </Card>
+            )}
+          </div>
+        ))}
+      </Stack>
+    </Card>
   );
 }
 

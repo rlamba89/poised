@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  awaitingCheck, historyText, historyWho, notResponding, pickOptions, statusRequest, triageStamp, type StatusEvent, type StatusOption,
+  asaRequirement, awaitingCheck, historyText, pickLabel, standingFlagNames, suggestionLines, historyWho, notResponding, pickOptions, statusRequest, triageStamp, type StatusEvent, type StatusOption,
 } from "./status";
 import { STATUS_LABELS } from "./types";
 
@@ -101,5 +101,52 @@ describe("auto-triage", () => {
     expect(awaitingCheck({ ...triaged, triagedAt: null, triageRule: null, triageSummary: null })).toBe(false);
     expect(awaitingCheck({ ...triaged, status: "cancelled" })).toBe(false);
     expect(awaitingCheck({ ...triaged, status: "archived" })).toBe(false);
+  });
+});
+
+// S43: the rules' requirement of the anaesthetist's ASA grade, their suggestions, and the status control's blocked move.
+describe("asaRequirement", () => {
+  it("is null when no rule requires the anaesthetist's grade", () => {
+    expect(asaRequirement({ anaesthetistAsaRequiredBy: null, anaesthetistAsa: null })).toBeNull();
+  });
+  it("says what's needed while it's unmet", () => {
+    expect(asaRequirement({ anaesthetistAsaRequiredBy: "High risk", anaesthetistAsa: null })).toEqual({
+      met: false,
+      text: "Ready for admission needs the anaesthetist's ASA grade first (the rule “High risk”).",
+    });
+  });
+  it("says it's met once the grade is saved", () => {
+    expect(asaRequirement({ anaesthetistAsaRequiredBy: "High risk", anaesthetistAsa: 3 })).toEqual({
+      met: true,
+      text: "The anaesthetist's ASA grade is added, as the rule “High risk” asks.",
+    });
+  });
+});
+
+describe("suggestionLines", () => {
+  it("words each status the rules suggest, with its rule", () => {
+    expect(suggestionLines([{ rule: "Fit", status: "ready_for_poa" }, { rule: "Wait", status: "on_hold" }])).toEqual([
+      { text: "The HQ's rules suggest: Ready for POA", rule: "Fit" },
+      { text: "The HQ's rules suggest: On hold", rule: "Wait" },
+    ]);
+    expect(suggestionLines([])).toEqual([]);
+  });
+});
+
+describe("pickLabel", () => {
+  it("adds why a blocked move is refused for now", () => {
+    const rfa: StatusOption = { to: "ready_for_admission", label: "Ready for admission", move: "set", needsReason: false, needsDate: false };
+    expect(pickLabel(rfa)).toBe("Ready for admission");
+    expect(pickLabel({ ...rfa, blocked: "Add the anaesthetist's ASA grade first." })).toBe("Ready for admission (add the anaesthetist's ASA grade first)");
+  });
+});
+
+// Verification 1, finding 4: two rules may add the same flag; the header shows each standing name once.
+describe("standingFlagNames", () => {
+  const flag = (name: string, clearedAt: string | null = null) => ({ name, clearedAt });
+  it("lists the standing flags' names, each once, in order", () => {
+    expect(standingFlagNames([flag("Anaesthetic review"), flag("Airway", "2026-10-27T09:00:00Z"), flag("Anaesthetic review"), flag("Diabetes")]))
+      .toEqual(["Anaesthetic review", "Diabetes"]);
+    expect(standingFlagNames(undefined)).toEqual([]);
   });
 });

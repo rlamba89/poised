@@ -20,8 +20,8 @@ import { formatDateTime, formatOptionalDate } from "@/lib/format";
 import { openTaskCount } from "./tasks";
 import { patientName, STATUS_COLORS, STATUS_LABELS, type EpisodeRow, type EpisodeStatus } from "./types";
 
-/** openTasks: how many of its tasks are open (S21). */
-type ListRow = EpisodeRow & { hospitalId: string; hospitalName: string; openTasks: number };
+/** openTasks: how many of its tasks are open (S21); flags: the rules' standing flags (S43). */
+type ListRow = EpisodeRow & { hospitalId: string; hospitalName: string; openTasks: number; flags: string[] };
 
 /** One worklist tab (Go: worklistCount in internal/httpapi/worklists.go). */
 type WorklistTab = { key: string; label: string; help: string; count: number };
@@ -130,6 +130,12 @@ export function EpisodeList({ base }: { base: string }) {
                 <Table.Td>
                   <Text fw={700}>{patientName(e)}</Text>
                   {e.hospitalNumber && <Text size="sm" c="dimmed">{e.hospitalNumber}</Text>}
+                  {e.flags?.length > 0 && (
+                    <Group gap={4} mt={2}>
+                      {/* Go sends each standing name once (verification 1, finding 4). */}
+                      {e.flags.map((f) => <FlagBadge key={f} name={f} size="sm" />)}
+                    </Group>
+                  )}
                 </Table.Td>
                 {all && <Table.Td>{e.hospitalName}</Table.Td>}
                 <Table.Td>{e.procedure || "—"}</Table.Td>
@@ -154,4 +160,9 @@ export function EpisodeList({ base }: { base: string }) {
 
 export function StatusBadge({ status }: { status: EpisodeStatus }) {
   return <Badge variant="light" color={STATUS_COLORS[status]}>{STATUS_LABELS[status]}</Badge>;
+}
+
+/** A rule's standing flag (S43), as the episode page's header and the list's rows show it. */
+export function FlagBadge({ name, size }: { name: string; size?: "sm" | "md" }) {
+  return <Badge color="red" variant="filled" size={size} data-testid="flag-badge">{name}</Badge>;
 }
