@@ -51,7 +51,8 @@ Requires Docker, Go 1.26+ and Node 22.22+.
 ```sh
 docker compose up -d db     # Postgres 17 on :5432 (user/password/db: sj)
 make migrate seed           # goose migrations, then incumbent codes + demo hospitals/users (idempotent)
-make dev                    # Go API on :8080 + web (Vite) on :3000 (web proxies /api/* to the API); Ctrl-C stops both
+make dev                    # Go API on :8080 + web (Vite) on :3000 (web proxies /api/* to the API) + the evaluate service on :8090 (S41); Ctrl-C stops all three
+make evaluate               # the evaluate service alone (npm run evaluate; EVALUATE_URL's port)
 make patient-api            # one API function alone, as on AWS (ADDR=:8081 default); also make staff-api
 make test                   # go test ./... + Vitest in every workspace + the CDK tests (no database needed)
 make test-integration       # API → database tests (-tags integration): a fresh database per test
@@ -85,7 +86,7 @@ make migrate-down           # roll back the last migration
 
 ## Architecture
 
-npm workspaces monorepo (`apps/web`, `packages/*`), plus a separate Go module in `apps/api`.
+npm workspaces monorepo (`apps/web`, `apps/evaluate`, `packages/*`), plus a separate Go module in `apps/api`.
 
 - **`packages/clinical`** is plain TypeScript with no React. It holds the domain logic on top of SurveyJS JSON, used by the editor, the preview and the clinician and patient views:
   - the editor model (`doc.ts`);
@@ -122,8 +123,8 @@ npm workspaces monorepo (`apps/web`, `packages/*`), plus a separate Go module in
 - **ASA rules (S40):** each questionnaire version holds its rules (`questionnaire_versions.rules`, one JSON object: the rules, `noGradeAutoTriage`, whole-HQ test cases; `rules_revision` for stale saves). A new HQ and a new version of one without rules get the platform defaults (`internal/asarules/defaults.json`); Go checks only the shape. Which rules fire is `packages/clinical`'s `rules.ts` (preview, test cases, and from S41 the evaluate service); nothing acts on them until S42–S43.
 - **Content library (S33):** `content_items` (`org_id` NULL = Preopsis's, seen by every trust): videos (YouTube or Vimeo links only, A-6, checked by `internal/content`; length typed by hand) and leaflets (an https link until C8), with free tags and PX-13's checklist topics. Platform admins manage Preopsis's (`/api/admin/content`), a trust's whole-trust admins its own (`/api/o/{oid}/content`); authors search the active ones (`…/content/search`). Items are retired, never deleted. A platform admin can also retire a starter library question (`library_questions.retired`): it's no longer offered, but questions already inserted keep working.
 - **Scores (S38):** a Calculation's score adds up option points from its own and **earlier** Question Sets (by key) and "Add N points when…" lines (age, sex, BMI, earlier answers, another score's band), built from menus, never typed; a missing input makes it **Incomplete** (no band). One helper, `packages/clinical`'s `earlierContexts`, gives each set's survey the earlier shown sets' answers, in every view. **STOP-Bang** is ready-made and locked (`ready.ts`); its published scoring is `ready.test.ts`.
-- **Key rule (with one planned exception):** Go never evaluates SurveyJS expressions, because no non-JS evaluator exists. Outputs are computed in the browser from `packages/clinical`, and Go only stores and enforces.
-  - **Exception (agreed 2 Oct, plan C6):** a small Node `evaluate` Lambda will run `packages/clinical` on the server when a patient submits, so auto-triage can be trusted.
+- **Key rule (with one exception):** Go never evaluates SurveyJS expressions, because no non-JS evaluator exists. Outputs are computed in the browser from `packages/clinical`, and Go only stores and enforces.
+  - **Exception (agreed 2 Oct, plan C6; built in S41):** the **evaluate service** runs `packages/clinical` on the server. `packages/clinical/src/evaluate.ts` holds its two pure functions (`evaluate`: what a sent HQ's answers give, as the clinician's view shows them before validation; `checkPublish`: the browser's publish checks); `apps/evaluate` serves them over HTTP on 127.0.0.1 (`npm run evaluate`, started by `make dev`; built with esbuild, its version the git commit). Go calls it through `internal/evaluate` (`Evaluator`; `HTTP` at `EVALUATE_URL`; `Recorder`, the fake in `internal/apitest`). On send (both submit routes) Go stores the reply in `form_outputs`, acting on nothing yet (S42); if the call fails the send still works, the error is stored, an `EVALUATE_FAILED` line is logged (no answers) and the General notes say "The automatic checks didn't run. Review this HQ by hand." Publish asks it for the publish checks too (422 with the problems; 503 if it can't be reached). The shared fixtures `apps/api/internal/evaluate/testdata/*.json` keep both sides in step. S45 puts it in a Lambda.
   - Go may walk the JSON (for example, to strip clinician-only content), but it never evaluates.
 
 ## Target architecture (plans F3–F4, C1+)
