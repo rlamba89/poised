@@ -64,7 +64,7 @@ type HQ = {
   hospital: string;
   questionnaireName: string;
   submitted: boolean;
-  /** The episode is archived (S28): its sent answers' View no longer says the team will review them. */
+  /** The episode is archived (S28): its sent answers' View no longer says the hospital will be in touch. */
   archived?: boolean;
   chapters: QuestionSet[];
   answers: Record<string, Answers>;
@@ -314,7 +314,8 @@ export default function PatientHQ({ path, onBehalf }: Props) {
             <IconCircleCheck size={48} color="var(--mantine-color-green-6)" style={{ margin: "0 auto" }} />
             <Title order={3} mt="sm">Thank you, {hq.patient.firstName}</Title>
             <Text mt="xs">
-              Your answers have been sent to the hospital.{hq.archived ? "" : " A member of the team will review them."}
+              {/* S44a: one neutral wording for every send (the HQ's rules may move it on, so no review is promised). */}
+              Your answers have been sent to the hospital.{hq.archived ? "" : " We'll contact you about what happens next."}
             </Text>
           </Card>
         ) : open ? (

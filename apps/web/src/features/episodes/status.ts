@@ -143,9 +143,34 @@ export function asaRequirement(e: { anaesthetistAsaRequiredBy: string | null; an
     : { met: false, text: `Ready for admission needs the anaesthetist's ASA grade first (the rule “${rule}”).` };
 }
 
-/** The statuses the HQ's rules suggest (S43), one line each: they're only shown; nothing moves by itself. */
-export const suggestionLines = (suggestions: RuleSuggestion[]): { text: string; rule: string }[] =>
-  suggestions.map((s) => ({ text: `The HQ's rules suggest: ${STATUS_LABELS[s.status] ?? s.status}`, rule: s.rule }));
+/** The main path an episode follows (S44a): a status later on it has passed the ones before. */
+const MAIN_PATH: EpisodeStatus[] = ["hq_not_complete", "ready_for_review", "ready_for_poa", "poa_complete", "ready_for_admission", "admitted", "discharged"];
+/** Where the rules' suggestions no longer matter (S44a): over, or out of the clinic's hands. */
+const SUGGESTIONS_DONE: EpisodeStatus[] = ["cancelled", "archived", "admitted", "discharged"];
+
+/**
+ * Whether an episode has reached or passed a status (S44a, Rahul 27 Oct). On the main path, by its
+ * place there; for On hold and Not ready (off it), by the history: has it ever been at the status
+ * (a change undone doesn't count), or on the main path past it?
+ */
+export function reachedOrPassed(status: EpisodeStatus, history: Pick<StatusEvent, "toStatus" | "undoneAt">[], target: EpisodeStatus): boolean {
+  if (status === target) return true;
+  const rank = (x: EpisodeStatus) => MAIN_PATH.indexOf(x);
+  if (rank(status) >= 0 && rank(target) >= 0) return rank(status) > rank(target);
+  return history.some((h) => !h.undoneAt && (h.toStatus === target || (rank(target) >= 0 && rank(h.toStatus) > rank(target))));
+}
+
+/**
+ * The statuses the HQ's rules suggest (S43), one line each: they're only shown; nothing moves by
+ * itself. A suggestion shows until the episode reaches or passes it, and none once it's cancelled,
+ * archived or admitted (S44a, Rahul 27 Oct); the history keeps what the rules suggested.
+ */
+export const suggestionLines = (
+  suggestions: RuleSuggestion[], episode?: { status: EpisodeStatus }, history: Pick<StatusEvent, "toStatus" | "undoneAt">[] = [],
+): { text: string; rule: string }[] =>
+  suggestions
+    .filter((s) => !episode || (!SUGGESTIONS_DONE.includes(episode.status) && !reachedOrPassed(episode.status, history, s.status)))
+    .map((s) => ({ text: `The HQ's rules suggest: ${STATUS_LABELS[s.status] ?? s.status}`, rule: s.rule }));
 
 /** The standing flags' names (S43), each once in the order added: two rules may add the same flag (verification 1, finding 4). */
 export const standingFlagNames = (flags: { name: string; clearedAt: string | null }[] | undefined): string[] =>

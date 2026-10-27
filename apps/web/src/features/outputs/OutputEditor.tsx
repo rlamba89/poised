@@ -31,7 +31,8 @@ export function OutputEditor(props: {
   // still has to choose one: a code was added with several and no grade has been picked since.
   const [guideByCode, setGuideByCode] = useState<Record<string, AsaChoice[]>>({});
   const [pending, setPending] = useState(false);
-  const [noGrade, setNoGrade] = useState(false);
+  // A deliberate "No ASA grade" is saved (asaNone, S44a), so it's remembered when the disclosure is opened again.
+  const [noGrade, setNoGrade] = useState(props.initial.asaNone === true && !props.initial.asa);
   const [flag, setFlag] = useState<string>(props.initial.flag ?? "none");
   const [problems, setProblems] = useState<string[]>([]);
 
@@ -101,6 +102,7 @@ export function OutputEditor(props: {
     codes,
     ...(noteText.trim() ? { note: { text: noteText.trim(), category: category ?? "" } } : {}),
     ...(asa ? { asa: { grade: asa.grade, emergency: asa.emergency, ...(asa.reason ? { reason: asa.reason } : {}) } } : {}),
+    ...(!asa && noGrade ? { asaNone: true as const } : {}),
     ...(flag !== "none" ? { flag: flag as ReviewFlag } : {}),
   });
 

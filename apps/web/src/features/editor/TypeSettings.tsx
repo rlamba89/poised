@@ -5,10 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import { ActionIcon, Button, Group, MultiSelect, NumberInput, Paper, Radio, SegmentedControl, Select, Stack, Switch, Text } from "@mantine/core";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import {
-  DATE_FORMATS, TEXT_FORMATS, allElements, bandsOf, calcFormOf, calcPatch, choiceDisplayOf, emptyCalc, dateSettingsOf, formatCalc, isValidExpression,
+  DATE_FORMATS, TEXT_FORMATS, allElements, bandWhenSubjects, bandsOf, calcFormOf, describeLogic, formatBandWhen, parseBandWhen, calcPatch, choiceDisplayOf, emptyCalc, dateSettingsOf, formatCalc, isValidExpression,
   kindOf, linesToSave, newId, numberSettingsOf, optionsOf, pointsSubjects, scoredQuestions, repeatSettingsOf, setChoiceDisplay, setDateSettings, setNumberSettings,
   setRepeating, setTextFormat, textFormatOf, textOf, unknownReferences, updateElement, type Band, type CalcForm, type ChapterJson,
-  type DateFormat, type DateRange, type ElementJson, type PointsLine, type ScoreForm, type TextFormat,
+  type DateFormat, type DateRange, type ElementJson, type PointsLine, type Rule, type ScoreForm, type TextFormat,
 } from "@poised/clinical";
 import { RuleRow } from "./ConditionBuilder";
 import { BlurNumber, BlurText, BlurTextarea } from "./inputs";
@@ -301,7 +301,7 @@ function CalculationSettings(props: Props) {
             onChange={(questions) => set({ ...form, questions })}
           />
           <PointsLines {...props} form={form} onChange={(lines) => set({ ...form, lines })} />
-          <Text size="xs" c="dimmed">Incomplete until every question it adds up and every line has an answer: an Incomplete score has no band.</Text>
+          <Text size="xs" c="dimmed">Incomplete until every question it adds up and every line has an answer: an Incomplete score has no band. A question a condition hides (or its whole Question Set) adds 0, and a line testing it adds nothing.</Text>
         </>
       )}
       {form.kind === "years" && <Select label="Date" data={dates} value={form.question || null} disabled={readOnly} onChange={(q) => set({ kind: "years", question: q ?? "" })} />}
@@ -436,11 +436,68 @@ function BandsEditor(props: Props) {
               </ActionIcon>
             )}
           </Group>
-          {/* A ready-made score's "also when" rule (S38). */}
-          {b.when && <Text size="xs" c="dimmed" mt={2}>Also {b.label} when: {b.whenText ?? b.when}</Text>}
+          {/* "Also when" (S44a): an author's own, from menus; a ready-made score's (S38) is shown as words. */}
+          <BandWhen {...props} band={b} onSave={(when) => save(bands.map((x) => (x.id === b.id ? withWhen(x, when) : x)))} />
           </div>
         ))}
       </Stack>
+    </div>
+  );
+}
+
+const withWhen = (b: Band, when: string | undefined): Band => {
+  const { when: _w, whenText: _t, ...rest } = b;
+  return when ? { ...rest, when } : rest;
+};
+
+/**
+ * A band's "also when" (S44a, Rahul 27 Oct): the band applies whatever the score's limits when every
+ * line holds, e.g. High also when the score is 2 or more and the patient is male. Each line is picked
+ * from menus (the score itself, then what an "Add N points when…" line can test), never typed;
+ * complete lines are saved at once. A ready-made score's rule (with "or") is shown as words.
+ */
+function BandWhen(props: Props & { band: Band; onSave: (when: string | undefined) => void }) {
+  const { doc, el, readOnly, earlier, band, onSave } = props;
+  const parsed = parseBandWhen(band.when);
+  const subjects = useMemo(() => bandWhenSubjects(doc, earlier, el.name), [doc, earlier, el.name]);
+  const [draft, setDraft] = useState<Rule[]>(parsed ?? []);
+  const key = band.when ?? "";
+  useEffect(() => {
+    if (formatBandWhen(draft) !== band.when) setDraft(parseBandWhen(band.when) ?? []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  if (!parsed) {
+    const words = describeLogic({ pages: [...(doc.pages ?? []), ...(earlier?.pages ?? [])] }, band.when);
+    const text = band.whenText ?? (words && "parts" in words ? words.parts.map((p) => p.text).join(" ") : band.when);
+    return <Text size="xs" c="dimmed" mt={2}>Also {band.label} when: {text}</Text>;
+  }
+  const update = (next: Rule[]) => {
+    setDraft(next);
+    const when = formatBandWhen(next);
+    if (when !== band.when) onSave(when);
+  };
+  return (
+    <div data-testid="band-when">
+      {draft.length > 0 && <Text size="xs" mt={4}>Also {band.label} when all of these hold:</Text>}
+      <Stack gap={4} mt={2}>
+        {draft.map((rule, i) => (
+          <RuleRow
+            key={i}
+            subjects={subjects}
+            rule={rule}
+            readOnly={readOnly}
+            answered={false}
+            placeholder="Select…"
+            removeLabel="Remove line"
+            onChange={(r) => update(r ? draft.map((x, j) => (j === i ? r : x)) : draft.filter((_, j) => j !== i))}
+          />
+        ))}
+      </Stack>
+      {!readOnly && (
+        <Button size="compact-xs" variant="subtle" mt={2} leftSection={<IconPlus size={14} />} onClick={() => setDraft([...draft, { left: "", op: "eq" }])}>
+          {draft.length ? "Add line" : `Also ${band.label} when…`}
+        </Button>
+      )}
     </div>
   );
 }

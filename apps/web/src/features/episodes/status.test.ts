@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   asaRequirement, awaitingCheck, historyText, pickLabel, standingFlagNames, suggestionLines, historyWho, notResponding, pickOptions, statusRequest, triageStamp, type StatusEvent, type StatusOption,
 } from "./status";
-import { STATUS_LABELS } from "./types";
+import { STATUS_LABELS, type EpisodeStatus } from "./types";
 
 const onHold: StatusOption = { to: "on_hold", label: "On hold", move: "set", needsReason: false, needsDate: false };
 const admit: StatusOption = { to: "admitted", label: "Admitted", move: "admit", needsReason: false, needsDate: true };
@@ -130,6 +130,35 @@ describe("suggestionLines", () => {
       { text: "The HQ's rules suggest: On hold", rule: "Wait" },
     ]);
     expect(suggestionLines([])).toEqual([]);
+  });
+
+  // S44a (Rahul, 27 Oct): until the episode reaches or passes the status; never once it's over.
+  const poa = [{ rule: "Fit", status: "ready_for_poa" as const }];
+  const ev = (toStatus: EpisodeStatus, undoneAt: string | null = null) => ({ toStatus, undoneAt });
+  it("shows a suggestion until the episode reaches or passes it on the main path", () => {
+    expect(suggestionLines(poa, { status: "ready_for_review" })).toHaveLength(1);
+    expect(suggestionLines(poa, { status: "ready_for_poa" })).toEqual([]);
+    expect(suggestionLines(poa, { status: "poa_complete" })).toEqual([]);
+    expect(suggestionLines(poa, { status: "ready_for_admission" })).toEqual([]);
+  });
+  it("shows none once cancelled, archived, admitted or discharged", () => {
+    for (const status of ["cancelled", "archived", "admitted", "discharged"] as const) {
+      expect(suggestionLines(poa, { status }, [ev("ready_for_review")])).toEqual([]);
+    }
+  });
+  it("uses the history for On hold and Not ready", () => {
+    // On hold straight after the review: it never reached Ready for POA, so the suggestion stands.
+    expect(suggestionLines(poa, { status: "on_hold" }, [ev("ready_for_review"), ev("on_hold")])).toHaveLength(1);
+    // It was at Ready for POA (or past it) before going on hold.
+    expect(suggestionLines(poa, { status: "on_hold" }, [ev("ready_for_review"), ev("ready_for_poa"), ev("on_hold")])).toEqual([]);
+    expect(suggestionLines(poa, { status: "not_ready" }, [ev("ready_for_review"), ev("ready_for_admission"), ev("not_ready")])).toEqual([]);
+    // A change undone doesn't count.
+    expect(suggestionLines(poa, { status: "on_hold" }, [ev("ready_for_review"), ev("ready_for_poa", "2026-10-27T10:00:00Z"), ev("on_hold")])).toHaveLength(1);
+    // A suggested On hold: shown until the episode has been on hold.
+    const hold = [{ rule: "Wait", status: "on_hold" as const }];
+    expect(suggestionLines(hold, { status: "ready_for_poa" }, [ev("ready_for_review"), ev("ready_for_poa")])).toHaveLength(1);
+    expect(suggestionLines(hold, { status: "on_hold" }, [ev("on_hold")])).toEqual([]);
+    expect(suggestionLines(hold, { status: "ready_for_poa" }, [ev("on_hold"), ev("ready_for_poa")])).toEqual([]);
   });
 });
 

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { patientVariables, type Answers, type ChapterJson, type PrefillChoice, type PrefillEntry, type SamplePatient, type SetPrefill } from "@poised/clinical";
 import type { Audience } from "@/features/chapters/types";
 import { api } from "@/lib/api";
+import { deploymentTimeZone } from "@/lib/config";
 
 export type HQSet = { id: string; name: string; description: string; icon: string; audience: Audience; content: ChapterJson };
 export type AnswerRow = {
@@ -42,8 +43,11 @@ export const allCurrentAnswers = (hq: EpisodeHQ): Record<string, Answers> => Obj
  * The patient as the HQ's rules see them: their age on the day they sent their answers, so a score
  * never changes later (S38: "over 50" stays as it was), or today's while they haven't sent them.
  */
-export const hqPatient = (e: { firstName: string; lastName: string; dateOfBirth: string; sex: string; patientSubmittedAt: string | null }): SamplePatient =>
-  patientVariables(e, e.patientSubmittedAt ? new Date(e.patientSubmittedAt) : undefined);
+export const hqPatient = (e: {
+  firstName: string; lastName: string; dateOfBirth: string; sex: string; patientSubmittedAt: string | null; hospitalTimeZone?: string | null;
+}): SamplePatient =>
+  // S44a: the day of sending at the hospital (its time zone, else the deployment's: A-20), as Go works it out.
+  patientVariables(e, e.patientSubmittedAt ? new Date(e.patientSubmittedAt) : undefined, e.hospitalTimeZone ?? deploymentTimeZone());
 
 export function useEpisodeHQ(base: string, episodeId: string) {
   const [hq, setHq] = useState<EpisodeHQ | null>(null);

@@ -9,7 +9,7 @@ import {
 import { IconArrowLeft } from "@tabler/icons-react";
 import { ageFrom, hqSuggestedAsa, shownSets } from "@poised/clinical";
 import { AUDIENCE_LABELS } from "@/features/chapters/types";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { nationalIdLabel } from "@/lib/config";
 import { formatDate, formatDateTime, formatOptionalDate } from "@/lib/format";
 import { EpisodeInformation } from "@/features/information/EpisodeInformation";
@@ -406,10 +406,12 @@ function QuestionSets({ base, episode, onReviewed }: { base: string; episode: Ep
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState("");
   // S39: from the answers that count now (the clinician's where they've started, else the patient's);
-  // worked out once per load, and only once the patient has sent (verification 1).
+  // worked out once per load, and only once the patient has sent (S44a: by the send itself, so an
+  // episode cancelled before sending shows none).
+  const sent = !!episode.patientSubmittedAt;
   const asa = useMemo(
-    () => (hq && episode.status !== "hq_not_complete" ? hqSuggestedAsa(hq.chapters, allCurrentAnswers(hq), "clinician", hqPatient(episode)) : undefined),
-    [hq, episode],
+    () => (hq && sent ? hqSuggestedAsa(hq.chapters, allCurrentAnswers(hq), "clinician", hqPatient(episode)) : undefined),
+    [hq, episode, sent],
   );
   if (error) return <Alert color="red">{error}</Alert>;
   if (!hq) return null;
@@ -429,6 +431,12 @@ function QuestionSets({ base, episode, onReviewed }: { base: string; episode: Ep
       reload();
     } catch (e) {
       setCompleteError((e as Error).message);
+      // Refused because the episode moved on meanwhile (e.g. another tab completed it): show it as
+      // it is now, keeping the message (S44a test report 1, E4; a refused Checked does the same).
+      if (e instanceof ApiError && e.status === 409) {
+        onReviewed();
+        reload();
+      }
     } finally {
       setCompleting(false);
     }
@@ -443,7 +451,7 @@ function QuestionSets({ base, episode, onReviewed }: { base: string; episode: Ep
         )}
       </Group>
       {waiting && <Text size="sm" c="dimmed" mb="xs">Waiting for the patient to send their answers. Validation starts once they have.</Text>}
-      {!waiting && <SuggestedAsaLine asa={asa} />}
+      {sent && <SuggestedAsaLine asa={asa} />}
       {reviewing && !allValidated && <Text size="sm" c="dimmed" mb="xs">Validate every Question Set to complete the HQ review.</Text>}
       {episode.patientSubmittedByName && (
         <Text size="sm" mb="xs">Sent by {episode.patientSubmittedByName} on the patient&apos;s behalf on {formatDateTime(episode.patientSubmittedAt ?? "")}.</Text>

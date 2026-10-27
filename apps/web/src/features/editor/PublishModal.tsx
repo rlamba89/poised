@@ -1,11 +1,12 @@
 // Publishing a draft (LCY-01). Logic problems and failing test cases in any Question Set
 // block it (SGN-04), as do the ASA rules' problems and failing whole-HQ test cases (S40); one line
-// says what the version will auto-triage. Review and sign-off come later. So do the question-key checks (S23): a key
+// says what the version will auto-triage, and warnings that don't block are listed (S44a). Review and sign-off come later. So do the question-key checks (S23): a key
 // used twice in the HQ, or a published question whose answer changed. Those are Go's: the window
 // shows them from GET …/question-keys (fetched again as it opens), and Publish's own 422 the same way.
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Group, List, Modal, Stack, Text } from "@mantine/core";
-import { autoTriageSummary, publishProblems, ruleNames, type ChapterJson, type PublishProblem, type RuleSet } from "@poised/clinical";
+import { autoTriageSummary, codesIn, publishProblems, publishWarnings, ruleNames, type AsaChoice, type ChapterJson, type PublishProblem, type RuleSet } from "@poised/clinical";
+import { asaChoicesOf } from "@/features/outputs/CodePicker";
 import type { OfferedProcedure } from "@/features/procedures/procedures";
 import { api, ApiError } from "@/lib/api";
 
@@ -57,6 +58,24 @@ export function PublishModal({ opened, onClose, onPublished, path, versionId, ve
   const shown = useRef<ReturnType<typeof publishProblems>>([]);
   if (opened) shown.current = sets && keyProblems ? [...publishProblems(sets, rules), ...keyProblems] : [];
   const problems = shown.current.length ? shown.current : refused;
+  // S44a: the ASA guide's examples for every code in the HQ, fetched as the window opens, so a code
+  // it grades left without a grade can be named. Until they arrive (or if they can't be fetched),
+  // that warning just isn't shown.
+  const [guide, setGuide] = useState<Map<string, AsaChoice[]> | null>(null);
+  const codesKey = sets ? JSON.stringify(codesIn(sets.map((s) => s.doc))) : "";
+  useEffect(() => {
+    if (!opened || !codesKey) return;
+    let current = true;
+    const codes = JSON.parse(codesKey) as ReturnType<typeof codesIn>;
+    Promise.all(codes.map(async (c) => [`${c.set}:${c.code}`, await asaChoicesOf(c)] as const))
+      .then((found) => current && setGuide(new Map(found)))
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [opened, codesKey]);
+  // Worth knowing, but they don't block Publish: auto-triage that can't work; a code's ASA grade not chosen.
+  const warnings = opened && sets ? publishWarnings(sets, rules, guide ? (c) => guide.get(`${c.set}:${c.code}`) : undefined) : [];
   const checking = !sets || !keyProblems;
   const blocked = checking || unsaved || problems.length > 0 || sets.length === 0;
 
@@ -92,6 +111,13 @@ export function PublishModal({ opened, onClose, onPublished, path, versionId, ve
                   <b>{p.set}</b> · {p.message}
                 </List.Item>
               ))}
+            </List>
+          </Alert>
+        )}
+        {warnings.length > 0 && (
+          <Alert color="yellow" title="Before you publish (these don't stop it)">
+            <List size="sm" data-testid="publish-warnings">
+              {warnings.map((w) => <List.Item key={w}>{w}</List.Item>)}
             </List>
           </Alert>
         )}

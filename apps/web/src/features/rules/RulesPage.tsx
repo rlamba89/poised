@@ -7,7 +7,7 @@ import { Link } from "react-router";
 import { ActionIcon, Alert, Anchor, Badge, Box, Button, Card, Center, Checkbox, Group, Loader, Stack, Text, Title, Tooltip } from "@mantine/core";
 import { IconArrowDown, IconArrowUp, IconPencil, IconTrash } from "@tabler/icons-react";
 import {
-  codesIn, newId, ruleProblems, ruleWords, runHqTestCase, scoresWithBands, type AsaRule, type RuleSet,
+  autoTriageWarnings, codesIn, newId, ruleProblems, ruleWords, runHqTestCase, scoresWithBands, type AsaRule, type RuleSet,
 } from "@poised/clinical";
 import { RuleForm } from "./RuleForm";
 import { useHq } from "./useHq";
@@ -55,6 +55,8 @@ export function RulesPage({ base, questionnaireId }: { base: string; questionnai
     return problem;
   };
   const problems = rules ? ruleProblems(rules, hq.sets) : [];
+  // S44a: a score needing a clinician's answers is Incomplete on send, so auto-triage can't happen (a warning only).
+  const warnings = autoTriageWarnings(hq.sets.map((s) => ({ name: s.name, doc: s.content, audience: s.audience })), rules);
   const failed = rules ? rules.testCases.filter((tc) => results[tc.id] && !results[tc.id].pass).length : 0;
 
   return (
@@ -102,6 +104,11 @@ export function RulesPage({ base, questionnaireId }: { base: string; questionnai
               <Title order={4}>Rules</Title>
               {!readOnly && editing !== "new" && <Button size="xs" disabled={busy} onClick={() => setEditing("new")}>Add rule</Button>}
             </Group>
+            {warnings.length > 0 && (
+              <Alert color="yellow" mb="sm" p="xs" title="Auto-triage won't work for this HQ (you can still publish)" data-testid="rules-warnings">
+                {warnings.map((w) => <Text key={w} size="sm">· {w}</Text>)}
+              </Alert>
+            )}
             {problems.length > 0 && (
               <Alert color="orange" mb="sm" p="xs" title="These rules can't fire, and block Publish">
                 {problems.map((p) => <Text key={p} size="sm">· {p}</Text>)}

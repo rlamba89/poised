@@ -28,6 +28,8 @@ export type Episode = EpisodeRow & {
   nurseAsa: number | null;
   anaesthetistAsa: number | null;
   patientSubmittedAt: string | null;
+  /** The hospital's time zone (S44a), or null: the deployment's. The age on the day of sending is worked out there. */
+  hospitalTimeZone?: string | null;
   /** Who sent the HQ on the patient's behalf (PAT-09), or null: the patient did. */
   patientSubmittedByName: string | null;
   reviewCompletedAt: string | null;

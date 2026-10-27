@@ -148,8 +148,8 @@ export function StatusControl({ path, detail, onChanged }: { path: string; detai
       {notice && <Text size="sm" c="orange.8" data-testid="status-notice">{notice}</Text>}
       {/* S43: a rule asked for the anaesthetist's ASA grade before Ready for admission. */}
       {requirement && !requirement.met && <Text size="sm" c="red.8" data-testid="asa-required">{requirement.text} Add it on the POA Summary.</Text>}
-      {/* S43: the statuses the HQ's rules suggest; nothing moves by itself. */}
-      {suggestionLines(e.ruleSuggestions ?? []).map((l) => (
+      {/* S43: the statuses the HQ's rules suggest; nothing moves by itself. Gone once reached or passed (S44a). */}
+      {suggestionLines(e.ruleSuggestions ?? [], e, detail.statusHistory).map((l) => (
         <Text key={l.text + l.rule} size="sm" c="blue.8" data-testid="rule-suggestion">
           {l.text} <Text span size="xs" c="dimmed">(the rule “{l.rule}”)</Text>
         </Text>

@@ -17,13 +17,14 @@ import "@/features/video/VideoQuestion"; // draws Video elements (S34)
 import "@/features/information/InformationQuestion"; // draws Information, cleaned (S35)
 import "survey-core/survey-core.css";
 import {
-  answerSaver, earlierContexts, prefillChoiceText, prefilledAnswers, prefillMarks, refreshClinicalSummaries, registerClinicalProperties, sameAnswer, startedFreshText,
-  type Answers,
+  answerSaver, earlierContexts, hqSuggestedAsa, prefillChoiceText, prefilledAnswers, prefillMarks, refreshClinicalSummaries, registerClinicalProperties, sameAnswer,
+  startedFreshText, type Answers,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { formatDateTime, formatDay } from "@/lib/format";
 import { clinicianModel } from "@/features/preview/clinicianView";
 import { showCorrections } from "./corrections";
+import { SuggestedAsaLine } from "./SuggestedAsa";
 import { showPrefillOrigins } from "./prefillOrigins";
 import { highlightQuestion, questionOf } from "./jump";
 import { useEpisode } from "./EpisodePage";
@@ -89,6 +90,19 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
     // Built once: answers then live in the model.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [set.id]);
+
+  // S44a: the suggested ASA for the whole HQ, from the answers that count now with this set's as on
+  // screen, so it changes as the clinician corrects an answer. Only once the patient has sent.
+  const [live, setLive] = useState<Answers>(() => currentAnswers(hq, set.id));
+  useEffect(() => {
+    const changed = () => setLive({ ...(model.data as Answers) });
+    model.onValueChanged.add(changed);
+    return () => model.onValueChanged.remove(changed);
+  }, [model]);
+  const asa = useMemo(
+    () => (episode.patientSubmittedAt ? hqSuggestedAsa(hq.chapters, { ...allCurrentAnswers(hq), [set.id]: live }, "clinician", hqPatient(episode)) : undefined),
+    [episode, hq, set.id, live],
+  );
 
   // The set's pre-filled answers shown when it opened (S26), for the line above it.
   const prefilled = useMemo(() => (patient ? prefillMarks(model, prefilledAnswers(prefill), patient) : []), [model, patient, prefill]);
@@ -214,6 +228,7 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
         </Alert>
       )}
       {error && <Alert color="red">{error}</Alert>}
+      {episode.patientSubmittedAt && <SuggestedAsaLine asa={asa} />}
       <Card withBorder padding={0} className="sj-clinician-layout">
         <Survey model={model} />
       </Card>

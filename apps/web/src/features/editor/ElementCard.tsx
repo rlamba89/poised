@@ -258,7 +258,7 @@ function ElementCard(props: { el: ElementJson; index: number; count: number; tar
 }
 
 /**
- * A score in words (S38): "Total of the scores of 3 questions (2 in earlier Question Sets), plus 2 points lines".
+ * A score in words (S38): "Total of the scores of 3 questions (2 in earlier Question Sets), plus 2 lines adding points".
  */
 function scoreSummary(f: { questions: string[]; lines?: unknown[] }, doc: ChapterJson): string {
   const n = f.questions.length;
@@ -266,7 +266,7 @@ function scoreSummary(f: { questions: string[]; lines?: unknown[] }, doc: Chapte
   const lines = f.lines?.length ?? 0;
   const parts = [
     ...(n ? [`Total of the scores of ${n} question${n === 1 ? "" : "s"}${earlier ? ` (${earlier} in earlier Question Sets)` : ""}`] : []),
-    ...(lines ? [`${n ? "plus " : ""}${lines} points line${lines === 1 ? "" : "s"}`] : []),
+    ...(lines ? [`${n ? "plus " : ""}${lines} line${lines === 1 ? "" : "s"} adding points`] : []), // S44a test report 1, E1
   ];
   return parts.join(", ") || "Total of the scores of 0 questions";
 }
