@@ -21,16 +21,29 @@ import io
 from support import invite_path, sign_in, unique
 from test_j16_prefill import published, with_sets
 
+# Every required answer of Trust B's Demo pre-op HQ, so it can be sent (S44: the server refuses a
+# send with a shown set incomplete). A journey's own answers go on top.
+DEMO_PRE_OP_SENDABLE = {
+    "About you": {"smoker": "never", "alcohol_units": 0, "height": 165, "weight": 60},
+    "Your health": {"q_diabetes": "o_no", "snoring": "no", "pregnant": "no", "ponv_history": "no",
+                    "anaesthetic_problems": "no", "family_anaesthetic_problems": "no"},
+}
+
+
+def sendable(answers: dict) -> dict:
+    """The journey's answers by set, completed with DEMO_PRE_OP_SENDABLE's for the rest."""
+    return {name: {**values, **answers.get(name, {})} for name, values in DEMO_PRE_OP_SENDABLE.items()}
+
 
 def trust_b_then_trust_a(as_user, patient_link, answers: dict) -> tuple[dict, dict, object, datetime]:
-    """Trust B's Demo pre-op HQ answered (answers by set) and sent; then Trust A's follow-up HQ for
+    """Trust B's Demo pre-op HQ answered (answers by set, completed so it can be sent) and sent; then Trust A's follow-up HQ for
     the same person (the same name, date of birth and email: a record of Trust A's own, which joins
     the same account when they prove their date of birth). Returns both episodes, Cara and when it was sent."""
     last_name = f"J16b {unique()}"
     bea = as_user("Bea Author", "Hospital B1")
     first = with_sets(bea, bea.episode(published(bea, "Demo pre-op HQ"), last_name))
     p = patient_link(first)
-    for set_name, values in answers.items():
+    for set_name, values in sendable(answers).items():
         p.answer(set_name, values)
     p.submit()
     sent_on = datetime.now()
@@ -182,7 +195,8 @@ def test_on_behalf_one_detail_different_gets_nothing_from_trust_b(page: Page, as
     bea = as_user("Bea Author", "Hospital B1")
     first = with_sets(bea, bea.episode(published(bea, "Demo pre-op HQ"), last_name))
     p = patient_link(first)
-    p.answer("Your health", {"q_diabetes": "o_no", "snoring": "yes"})
+    for set_name, values in sendable({"Your health": {"snoring": "yes"}}).items():
+        p.answer(set_name, values)
     p.submit()
     cara = as_user("Cara Clinician")
     # The same person to the eye, but another surname spelling at Trust A.

@@ -156,7 +156,14 @@ def test_a_set_started_fresh_says_so_and_the_bmi_comes_from_the_patients_answers
         expect(page.get_by_role("region", name="Your health").get_by_test_id("poa-started-fresh")).to_contain_text(fresh)
         expect(page.get_by_test_id("poa-detail-Patient reported BMI")).to_contain_text("28.4")  # 82 / 1.70²
 
-    # Sent, then validated with another weight: the validated one counts.
+    # Sent, then validated with another weight: the validated one counts. Every required answer
+    # first (S44: the server refuses a send with a set incomplete), Your health given again.
+    now = cara.call("GET", form)
+    cara.call("PUT", f"{form}/answers/{about}", {"data": {**now["answers"].get(about, {}), "smoker": "never", "alcohol_units": 0,
+                                                          "height": 170, "weight": 82, "fu_stairs": "yes"},
+                                                 "revision": now["revisions"].get(about, 0)})
+    cara.call("PUT", f"{form}/answers/{health}", {"data": {"snoring": "no", "pregnant": "no", "ponv_history": "no", "anaesthetic_problems": "no"},
+                                                  "revision": now["revisions"].get(health, 0)})
     cara.call("POST", f"{form}/submit")
     as_user("Alex Author").review_by_hand(second)  # the seeded follow-up HQ's rules auto-triage it (S42)
     cara.validate(second, "About you", {"height": 170, "weight": 90})

@@ -102,7 +102,9 @@ def test_j8_reminders_then_not_responding(page: Page, phone: BrowserContext, as_
     expect(page.get_by_text("Not responding: the HQ hasn't been sent 7 days after the invite.", exact=True)).to_be_visible()
     assert len(messages()) == 2  # marking it sends the patient nothing
 
-    # Once they send their answers, the flag goes.
+    # Once they send their answers, the flag goes (every required one: S44).
+    p.answer("About you", {"q_smokes": "o_no", "q_alcohol": "o_never"})
+    p.answer("Your health", {"q_diabetes": "o_no"})
     p.submit()
     page.reload()
     expect(page.get_by_role("heading", name=episode["name"])).to_be_visible()
