@@ -413,9 +413,7 @@ func TestReopenReview(t *testing.T) {
 		saveAnswers(t, w, e, w.hq.Chapters[0], nil, `{"q_smokes": "o_yes"}`)
 		setStatus(t, w, e, episode.ReadyForReview)
 		saveAnswers(t, w, e, w.hq.Chapters[0], &w.cara, `{"q_smokes": "o_no"}`)
-		if _, err := w.db.Exec(t.Context(), `UPDATE episode_answers SET validated_at = now() WHERE episode_form_id = $1 AND actor = 'clinician'`, e.FormID); err != nil {
-			t.Fatal(err)
-		}
+		validateAll(t, w, e) // S44: every set shown is validated first
 		w.clinician.Do("POST", epPath(w.a, e, "/complete-review"), nil).Want(t, http.StatusNoContent)
 		w.clinician.Do("PATCH", epPath(w.a, e, "/status"), map[string]any{"to": episode.OnHold, "revision": revisionOf(t, w, e.ID)}).Want(t, http.StatusNoContent)
 		return e
@@ -463,7 +461,7 @@ func TestReopenReview(t *testing.T) {
 		var validated bool
 		var rev int32
 		if err := w.db.QueryRow(t.Context(), `SELECT data::text, validated_at IS NOT NULL, revision FROM episode_answers
-			WHERE episode_form_id = $1 AND actor = 'clinician'`, e.FormID).Scan(&data, &validated, &rev); err != nil {
+			WHERE episode_form_id = $1 AND actor = 'clinician' AND chapter_id = $2`, e.FormID, w.hq.Chapters[0]).Scan(&data, &validated, &rev); err != nil {
 			t.Fatal(err)
 		}
 		if !strings.Contains(data, "o_no") || !validated {
@@ -516,6 +514,7 @@ func TestUndoStatus(t *testing.T) {
 	}
 	e := w.fx.Episode(t, w.hq, w.cara)
 	setStatus(t, w, e, episode.ReadyForReview)
+	validateAll(t, w, e)
 	w.clinician.Do("POST", epPath(w.a, e, "/complete-review"), nil).Want(t, http.StatusNoContent)
 	set(e, episode.OnHold, "")
 	set(e, episode.ReadyForAdmission, "")
@@ -642,6 +641,7 @@ func TestEpisodeStatusView(t *testing.T) {
 		t.Fatalf("new episode: %+v", v)
 	}
 	w.clinician.Do("POST", epPath(w.a, e, "/patient-form/submit"), nil).Want(t, http.StatusNoContent) // staff for the patient
+	validateAll(t, w, e)
 	w.clinician.Do("POST", epPath(w.a, e, "/complete-review"), nil).Want(t, http.StatusNoContent)
 	v = read(w.clinician)
 	if !slices.Equal(targets(v), []string{"set:poa_complete", "set:on_hold", "set:not_ready", "set:ready_for_admission", "cancel:cancelled"}) {

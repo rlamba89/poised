@@ -665,6 +665,7 @@ func TestUpdateEpisodeKeepsAStatusThatJustChanged(t *testing.T) {
 			setStatus(t, w, e, race.from)
 			loaded := revisionOf(t, w, e.ID) // the page loads
 			if race.from == "ready_for_review" {
+				validateAll(t, w, e)
 				w.clinician.Do("POST", epPath(w.a, e, "/complete-review"), nil).Want(t, http.StatusNoContent)
 			} else {
 				w.clinician.Do("POST", epPath(w.a, e, "/patient-form/submit"), nil).Want(t, http.StatusNoContent)

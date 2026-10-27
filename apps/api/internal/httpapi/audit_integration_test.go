@@ -273,6 +273,7 @@ func TestAuditRowsWritten(t *testing.T) {
 			return w.clinician.Do("PUT", epPath(w.a, w.ep, "/answers/"+nurse.String()), save)
 		}, 200).
 			touched(t, ids(pat), ids(ep))
+		validateAll(t, w.clinic, w.ep) // S44: every set shown is validated first
 		oneAudit(t, w.clinic, "review.complete", func() *apitest.Resp { return w.clinician.Do("POST", epPath(w.a, w.ep, "/complete-review"), nil) }, 204).
 			at(t, w.a.Org, &a, &w.cara)
 	})

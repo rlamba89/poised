@@ -18,9 +18,10 @@ import (
 )
 
 // The clinician validates each Question Set, then completes the HQ review (plan-workflow.md
-// Step 4). Two rules are the browser's, not the server's (decisions.md, 8 Oct): it pre-fills the
-// clinician's answers from the patient's, and it enables "Complete HQ review" once every visible
-// set is validated. S03's journey J4 covers them. These tests cover what the server enforces.
+// Step 4). The browser pre-fills the clinician's answers from the patient's (decisions.md, 8 Oct;
+// S03's journey J4 covers it), and enables "Complete HQ review" once every visible set is
+// validated, which the server checks too since S44 (server_checks_integration_test.go). These
+// tests cover what the server enforces.
 
 // clinicianRow is the clinician's answers row for a Question Set; Data is "" if there isn't one.
 type clinicianRow struct {
@@ -305,6 +306,7 @@ func TestCompleteReview(t *testing.T) {
 	}
 
 	t.Run("happy path: Ready for POA, stamped, with an event", func(t *testing.T) {
+		validateAll(t, w, w.ep) // S44: every set shown is validated first (server_checks_integration_test.go)
 		complete(w.clinician, w.a, w.ep).Want(t, http.StatusNoContent)
 		e := readEpisode(t, w, w.ep.ID)
 		if e.Status != "ready_for_poa" || e.ReviewCompleted == nil || e.ReviewCompletedBy == nil || *e.ReviewCompletedBy != w.cara.ID {

@@ -1,9 +1,12 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -11,6 +14,7 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/chapter"
 	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/episode"
+	"github.com/rlamba89/poised/apps/api/internal/evaluate"
 )
 
 // Step 4 of plan-workflow.md: the clinician validates each Question Set, correcting the
@@ -112,8 +116,10 @@ func (s *server) saveClinicianAnswers(w http.ResponseWriter, r *http.Request) {
 }
 
 // completeReview moves the episode to Ready for POA, through the transition table (S20). The
-// browser enables it once every Question Set shown is validated (plan 2.1: Go doesn't evaluate
-// Question Set conditions).
+// browser enables it once every Question Set shown is validated; Go checks the same (S44): it asks
+// the evaluate service which sets are shown for the answers that count now, and refuses while one
+// has no validated copy. If the service can't be reached, it's allowed as before S44 (the browser's
+// check stands), with an EVALUATE_FAILED line logged.
 func (s *server) completeReview(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.loadEpisode(w, r)
 	if !ok {
@@ -141,6 +147,15 @@ func (s *server) completeReview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, notInReview(episode.ReadyForPOA))
 		return
 	}
+	// After the move, in its transaction (the episode's row is locked), so the stamps read are the
+	// ones the review completes on; a refusal rolls the move back.
+	if msg, err := s.unvalidatedSets(ctx, q, e); err != nil {
+		serverError(w, "check validated", err)
+		return
+	} else if msg != "" {
+		writeError(w, http.StatusConflict, msg)
+		return
+	}
 	note := "HQ review completed by " + currentUser(r).Name
 	if err := recordStatus(ctx, q, e.ID, episode.CompleteReview, episode.ReadyForReview, episode.ReadyForPOA, "", uid, note); err != nil {
 		serverError(w, "status history", err)
@@ -163,4 +178,63 @@ func notInReview(status string) string {
 		return archivedMsg
 	}
 	return "The HQ review is already complete, so the answers can't be changed."
+}
+
+// unvalidatedSets is why the review can't be completed yet, or "": a Question Set shown for the
+// answers that count now (the clinician's copy where there is one, else the patient's: the episode
+// page's allCurrentAnswers) has no validated copy (S44). Which sets are shown is the evaluate
+// service's to say (Go never evaluates a condition); the patient is as on the day they sent, as
+// the episode page's hqPatient. "" too when the service can't be reached (logged).
+func (s *server) unvalidatedSets(ctx context.Context, q *db.Queries, e db.GetEpisodeRow) (string, error) {
+	f, err := q.GetEpisodeForm(ctx, e.ID)
+	if err != nil {
+		return "", err
+	}
+	chapters, err := q.ListVersionChapters(ctx, e.VersionID)
+	if err != nil {
+		return "", err
+	}
+	saved, err := q.ListEpisodeAnswers(ctx, e.HqFormID)
+	if err != nil {
+		return "", err
+	}
+	sent := s.clock.Now()
+	if f.PatientSubmittedAt.Valid {
+		sent = f.PatientSubmittedAt.Time
+	}
+	in := evaluate.ShownInput{FormID: e.HqFormID, Answers: map[uuid.UUID]json.RawMessage{},
+		Patient: evaluate.Patient{Age: ageOn(e.DateOfBirth, s.inZone(f.Timezone, sent)), Sex: e.Sex}}
+	for _, c := range chapters {
+		in.Sets = append(in.Sets, evaluate.Set{ID: c.ID, Name: c.Name, Audience: c.Audience, Content: c.Content})
+	}
+	validated := map[uuid.UUID]bool{}
+	for _, a := range saved {
+		switch a.Actor {
+		case "clinician":
+			in.Answers[a.ChapterID] = a.Data
+			validated[a.ChapterID] = a.ValidatedAt.Valid
+		case "patient":
+			if _, ok := in.Answers[a.ChapterID]; !ok {
+				in.Answers[a.ChapterID] = a.Data
+			}
+		}
+	}
+	shown, err := s.eval.Shown(ctx, in)
+	if err != nil {
+		log.Printf("%s complete review, form %s: %v", evaluate.FailedMarker, e.HqFormID, err)
+		return "", nil
+	}
+	var names []string
+	for _, c := range chapters {
+		if slices.Contains(shown, c.ID) && !validated[c.ID] {
+			names = append(names, c.Name)
+		}
+	}
+	switch len(names) {
+	case 0:
+		return "", nil
+	case 1:
+		return "Validate every Question Set first: " + quotedList(names) + " isn't validated.", nil
+	}
+	return "Validate every Question Set first: " + quotedList(names) + " aren't validated.", nil
 }

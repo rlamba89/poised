@@ -428,6 +428,11 @@ func (s *server) writeForm(w http.ResponseWriter, r *http.Request, f form) {
 
 // today is the date now at the hospital (its time zone, or the deployment's: A-20).
 func (s *server) today(zone *string) time.Time {
+	return s.inZone(zone, s.clock.Now())
+}
+
+// inZone is t at the hospital (its time zone, or the deployment's: A-20).
+func (s *server) inZone(zone *string, t time.Time) time.Time {
 	name := s.cfg.Country.TimeZone
 	if zone != nil {
 		name = *zone
@@ -436,7 +441,7 @@ func (s *server) today(zone *string) time.Time {
 	if err != nil { // checked when set; the deployment's was checked at start-up
 		loc = time.UTC
 	}
-	return s.clock.Now().In(loc)
+	return t.In(loc)
 }
 
 // ageOn is the age in whole years on the day today.
@@ -514,8 +519,10 @@ func (s *server) saveForm(w http.ResponseWriter, r *http.Request, f form) {
 // submitForm submits the HQ form, freezing the patient's answers, and moves the episode to Ready
 // for review (triage), through the transition table (S20), recording the change. Then the HQ's
 // rules may move it straight on (S42, autoTriage).
-// The browser has checked every required question (plan 2.1); Go also holds it back while a
-// required video tick every patient sees isn't ticked (S34).
+// The browser checks every required question (plan 2.1); Go also holds it back while a required
+// video tick every patient sees isn't ticked (S34), and while the evaluate service says a set the
+// patient's form shows isn't complete (S44: nothing is frozen, the status is unchanged). If the
+// service can't be reached the send goes through as before (S41's fail-safe).
 func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
 	who := role.None // the patient
 	if f.enteredBy != uuid.Nil {
@@ -533,7 +540,12 @@ func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
 	}
 	defer tx.Rollback(ctx)
 	q := db.New(tx)
-	if msg, err := uncheckedTicks(ctx, q, f); err != nil {
+	chapters, err := q.ListVersionChapters(ctx, f.VersionID)
+	if err != nil {
+		serverError(w, "list chapters", err)
+		return
+	}
+	if msg, err := uncheckedTicks(ctx, q, f, chapters); err != nil {
 		serverError(w, "check ticks", err)
 		return
 	} else if msg != "" {
@@ -559,10 +571,19 @@ func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
 		serverError(w, "status history", err)
 		return
 	}
-	res, err := s.evaluateSent(ctx, q, f)
+	// One call does both (S44): the check here, and the result stored and acted on below. It's made
+	// after the freeze, in the same transaction, so the answers checked are the ones frozen; a
+	// refusal rolls it all back.
+	res, err := s.evaluateSent(ctx, q, f, chapters)
 	if err != nil {
 		serverError(w, "store outputs", err)
 		return
+	}
+	if res != nil {
+		if msg := unfinishedSets(*res, chapters); msg != "" {
+			writeError(w, http.StatusConflict, msg)
+			return
+		}
 	}
 	message := "" // the status the patient is told about now, if any (EPI-08)
 	if res != nil {
@@ -698,11 +719,7 @@ const checksDidntRun = "The automatic checks didn't run. Review this HQ by hand.
 // and the error, never an answer) and the General notes ask for the HQ to be reviewed by hand.
 //
 // It returns the result, or nil when the call failed (S42 then leaves the episode Ready for review).
-func (s *server) evaluateSent(ctx context.Context, q *db.Queries, f form) (*evaluate.Result, error) {
-	chapters, err := q.ListVersionChapters(ctx, f.VersionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *server) evaluateSent(ctx context.Context, q *db.Queries, f form, chapters []db.ListVersionChaptersRow) (*evaluate.Result, error) {
 	saved, err := q.ListEpisodeAnswers(ctx, f.FormID)
 	if err != nil {
 		return nil, err
@@ -736,11 +753,7 @@ func (s *server) evaluateSent(ctx context.Context, q *db.Queries, f form) (*eval
 // uncheckedTicks is why the HQ can't be sent yet, or "": a required "I have watched this video" tick
 // (S34, INF-02) that every patient sees isn't ticked. The browser checks every required question
 // first (plan 2.1); this holds back only what Go can know without evaluating a condition.
-func uncheckedTicks(ctx context.Context, q *db.Queries, f form) (string, error) {
-	rows, err := q.ListVersionChapters(ctx, f.VersionID)
-	if err != nil {
-		return "", err
-	}
+func uncheckedTicks(ctx context.Context, q *db.Queries, f form, rows []db.ListVersionChaptersRow) (string, error) {
 	saved, err := q.ListEpisodeAnswers(ctx, f.FormID)
 	if err != nil {
 		return "", err
@@ -770,6 +783,40 @@ func uncheckedTicks(ctx context.Context, q *db.Queries, f form) (string, error) 
 		return "", nil
 	}
 	return "Please tick “I have watched this video” for " + strings.Join(titles, ", ") + " before sending your answers.", nil
+}
+
+// unfinishedSets is why the HQ can't be sent yet, or "": the evaluate service says a Question Set
+// the patient's form shows isn't complete (S44), named as the patient sees it.
+func unfinishedSets(res evaluate.Result, chapters []db.ListVersionChaptersRow) string {
+	var names []string
+	for _, ps := range res.PatientSets {
+		if ps.Complete {
+			continue
+		}
+		name := "a Question Set"
+		for _, c := range chapters {
+			if c.ID == ps.ID {
+				name = c.Name
+			}
+		}
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return "Please finish " + quotedList(names) + " before sending your answers."
+}
+
+// quotedList is “A”, “B” and “C”.
+func quotedList(names []string) string {
+	q := make([]string, len(names))
+	for i, n := range names {
+		q[i] = "“" + n + "”"
+	}
+	if len(q) == 1 {
+		return q[0]
+	}
+	return strings.Join(q[:len(q)-1], ", ") + " and " + q[len(q)-1]
 }
 
 // The patient's routes: GET, PUT …/answers/{cid} and POST …/submit on /api/p/episodes/{eid}.
