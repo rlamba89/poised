@@ -247,8 +247,14 @@ func (s *server) getEpisode(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "status", err)
 		return
 	}
+	// The rules' flags (S43), standing and cleared.
+	flags, err := s.q.ListEpisodeFlags(r.Context(), e.ID)
+	if err != nil {
+		serverError(w, "flags", err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"episode": e, "events": events, "invite": invite, "undelivered": undelivered,
-		"moves": status.Moves, "undo": status.Undo, "unarchive": status.Unarchive, "statusHistory": status.History})
+		"moves": status.Moves, "undo": status.Undo, "unarchive": status.Unarchive, "statusHistory": status.History, "flags": flags})
 }
 
 // episodeChange is what updateEpisode changes. A field sent as null decodes to a nil pointer;

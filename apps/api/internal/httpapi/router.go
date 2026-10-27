@@ -235,6 +235,8 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/tasks", hosp(s.audited("task.list", s.listTasks)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/tasks", hosp(s.audited("task.create", s.createTask)))
 	mux.HandleFunc("PATCH /api/o/{oid}/h/{hid}/episodes/{eid}/tasks/{tid}", hosp(s.audited("task.update", s.updateTask)))
+	// A rule's flag (S43): any clinician at the hospital clears it with a reason (flags.go).
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/flags/{fid}/clear", hosp(s.audited("flag.clear", s.clearFlag)))
 	// The patient's Information for the episode (S36, INF-04): its videos and leaflets, copied from
 	// its procedure and added to by anyone at the hospital (information.go).
 	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/information", hosp(s.audited("information.list", s.listEpisodeInfo)))

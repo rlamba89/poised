@@ -155,6 +155,9 @@ type Option struct {
 	Move        Move   `json:"move"`
 	NeedsReason bool   `json:"needsReason"`
 	NeedsDate   bool   `json:"needsDate"`
+	// Blocked: why the move is refused for now, though the table allows it (S43: a rule requires
+	// the anaesthetist's ASA grade before Ready for admission); "" when it isn't.
+	Blocked string `json:"blocked,omitempty"`
 }
 
 // Options are the moves someone with role who may make by hand from here, in status order. The

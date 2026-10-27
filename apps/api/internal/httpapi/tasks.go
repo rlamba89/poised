@@ -62,7 +62,7 @@ func (s *server) createTask(w http.ResponseWriter, r *http.Request) {
 	}
 	var id uuid.UUID
 	note := "Task added for the " + in.Team + " team: " + title
-	if !s.changeTasks(w, r, e, *in.Revision, note, func(q *db.Queries) (bool, error) {
+	if !s.changeEpisode(w, r, e, *in.Revision, note, func(q *db.Queries) (bool, error) {
 		var err error
 		id, err = q.CreateTask(r.Context(), db.CreateTaskParams{EpisodeID: e.ID, Title: title, Team: in.Team,
 			CreatedBy: uuid.NullUUID{UUID: currentUser(r).ID, Valid: true}})
@@ -113,7 +113,7 @@ func (s *server) updateTask(w http.ResponseWriter, r *http.Request) {
 			return q.ReopenTask(r.Context(), db.ReopenTaskParams{ID: tid, ReopenedBy: who})
 		}
 	}
-	if !s.changeTasks(w, r, e, *in.Revision, note, func(q *db.Queries) (bool, error) {
+	if !s.changeEpisode(w, r, e, *in.Revision, note, func(q *db.Queries) (bool, error) {
 		n, err := change(q)
 		if err == nil && n == 0 {
 			writeError(w, http.StatusConflict, already)
@@ -125,11 +125,11 @@ func (s *server) updateTask(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// changeTasks makes one change to the episode's tasks in a transaction: the episode is locked, its
+// changeEpisode makes one change to the episode's tasks (or, S43, its flags) in a transaction: the episode is locked, its
 // revision checked (409 stale) and that it isn't cancelled (409), then change runs, then the
 // revision is bumped and the General notes line written. change returns false (having answered
-// itself) to stop. changeTasks answers every refusal and error; true means the change was made.
-func (s *server) changeTasks(w http.ResponseWriter, r *http.Request, e db.GetEpisodeRow, revision int32, note string,
+// itself) to stop. changeEpisode answers every refusal and error; true means the change was made.
+func (s *server) changeEpisode(w http.ResponseWriter, r *http.Request, e db.GetEpisodeRow, revision int32, note string,
 	change func(q *db.Queries) (bool, error)) bool {
 	ctx := r.Context()
 	tx, err := s.pool.Begin(ctx)
@@ -154,7 +154,7 @@ func (s *server) changeTasks(w http.ResponseWriter, r *http.Request, e db.GetEpi
 	}
 	ok, err := change(q)
 	if err != nil {
-		serverError(w, "change task", err)
+		serverError(w, "change episode", err)
 		return false
 	}
 	if !ok {

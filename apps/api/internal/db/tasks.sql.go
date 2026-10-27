@@ -42,6 +42,36 @@ func (q *Queries) CompleteTask(ctx context.Context, arg CompleteTaskParams) (int
 	return result.RowsAffected(), nil
 }
 
+const createRuleTask = `-- name: CreateRuleTask :execrows
+INSERT INTO tasks (episode_id, title, team, created_by_rule)
+SELECT $1, $2, $3, $4::text
+WHERE NOT EXISTS (SELECT 1 FROM tasks t WHERE t.episode_id = $1 AND t.created_by_rule = $4::text
+                  AND t.title = $2 AND t.team = $3 AND t.done_at IS NULL)
+`
+
+type CreateRuleTaskParams struct {
+	EpisodeID uuid.UUID `json:"episodeId"`
+	Title     string    `json:"title"`
+	Team      string    `json:"team"`
+	Rule      string    `json:"rule"`
+}
+
+// A task a rule made on a send (S43), naming its rule. No row: the episode already has this rule's
+// task for this team open (the rule fired again on a later send), so it isn't added twice. The
+// same title for another team is another task (verification 1, finding 1).
+func (q *Queries) CreateRuleTask(ctx context.Context, arg CreateRuleTaskParams) (int64, error) {
+	result, err := q.db.Exec(ctx, createRuleTask,
+		arg.EpisodeID,
+		arg.Title,
+		arg.Team,
+		arg.Rule,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createTask = `-- name: CreateTask :one
 INSERT INTO tasks (episode_id, title, team, created_by) VALUES ($1, $2, $3, $4) RETURNING id
 `

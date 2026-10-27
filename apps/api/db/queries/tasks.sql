@@ -31,3 +31,12 @@ UPDATE tasks SET done_by = NULL, done_at = NULL, reopened_by = $2, reopened_at =
 -- A change to the episode's tasks is a change to the episode (S20's revision): another tab's
 -- page is then stale, as after a status move.
 UPDATE episodes SET revision = revision + 1 WHERE id = $1;
+
+-- name: CreateRuleTask :execrows
+-- A task a rule made on a send (S43), naming its rule. No row: the episode already has this rule's
+-- task for this team open (the rule fired again on a later send), so it isn't added twice. The
+-- same title for another team is another task (verification 1, finding 1).
+INSERT INTO tasks (episode_id, title, team, created_by_rule)
+SELECT sqlc.arg(episode_id), sqlc.arg(title), sqlc.arg(team), sqlc.arg(rule)::text
+WHERE NOT EXISTS (SELECT 1 FROM tasks t WHERE t.episode_id = sqlc.arg(episode_id) AND t.created_by_rule = sqlc.arg(rule)::text
+                  AND t.title = sqlc.arg(title) AND t.team = sqlc.arg(team) AND t.done_at IS NULL);

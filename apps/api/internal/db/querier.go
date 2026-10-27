@@ -38,6 +38,10 @@ type Querier interface {
 	AddMembership(ctx context.Context, arg AddMembershipParams) error
 	// Makes the user a superadmin (A-21); nothing changes if they already are.
 	AddPlatformAdmin(ctx context.Context, userID uuid.UUID) error
+	// An episode's flags from the HQ's rules (plan C6, session S43; migration 00034). The handlers have
+	// checked the episode is the caller's hospital's.
+	// A flag a rule adds on a send. No row: the same rule's flag is still standing (not cleared).
+	AddRuleFlag(ctx context.Context, arg AddRuleFlagParams) (int64, error)
 	// One status change in the history (EPI-03). rule names an automatic change's rule (the daily
 	// auto-archive, S22), with no user. at: when, for a job run as of its own time (S22 test report 1,
 	// F-2); NULL is now.
@@ -65,6 +69,8 @@ type Querier interface {
 	// The hospitals' auto-archives go first (S22 test report 1, F-2): they decide on the activity
 	// there has been, before a reminder due in the same run would make an idle episode look active.
 	ClaimDueJob(ctx context.Context, arg ClaimDueJobParams) (ClaimDueJobRow, error)
+	// No row: it's already cleared. The caller holds LockEpisodeStatus.
+	ClearEpisodeFlag(ctx context.Context, arg ClearEpisodeFlagParams) (int64, error)
 	// The items copied from the episode's procedure, before its new procedure's are copied.
 	ClearProcedureInfo(ctx context.Context, episodeID uuid.UUID) error
 	CompleteReview(ctx context.Context, arg CompleteReviewParams) (int64, error)
@@ -118,6 +124,10 @@ type Querier interface {
 	CreateProcedure(ctx context.Context, arg CreateProcedureParams) (uuid.UUID, error)
 	// A new questionnaire is the trust's, for all its hospitals.
 	CreateQuestionnaire(ctx context.Context, arg CreateQuestionnaireParams) (uuid.UUID, error)
+	// A task a rule made on a send (S43), naming its rule. No row: the episode already has this rule's
+	// task for this team open (the rule fired again on a later send), so it isn't added twice. The
+	// same title for another team is another task (verification 1, finding 1).
+	CreateRuleTask(ctx context.Context, arg CreateRuleTaskParams) (int64, error)
 	CreateStaffInvite(ctx context.Context, arg CreateStaffInviteParams) error
 	CreateTask(ctx context.Context, arg CreateTaskParams) (uuid.UUID, error)
 	// Nothing is returned when the email is already taken (by an invite running at the same time).
@@ -181,6 +191,7 @@ type Querier interface {
 	// With its HQ form (S18): the version, the patient's submit and who sent it keep their names
 	// from before forms, so the episode's JSON is unchanged; hq_form_id holds the answers.
 	GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpisodeRow, error)
+	GetEpisodeFlag(ctx context.Context, arg GetEpisodeFlagParams) (GetEpisodeFlagRow, error)
 	// seq: notes written at the same time, in the order written (S22)
 	// An episode's HQ form as the patient fills it in: for the patient's session (the handler checks
 	// the episode is theirs) or staff completing it on their behalf (it checks the hospital).
@@ -266,6 +277,8 @@ type Querier interface {
 	ListEpisodeAnswers(ctx context.Context, episodeFormID uuid.UUID) ([]ListEpisodeAnswersRow, error)
 	// user_name is NULL for the patient's entries and the automatic ones.
 	ListEpisodeEvents(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeEventsRow, error)
+	// Every flag, standing or cleared, oldest first, with who cleared it.
+	ListEpisodeFlags(ctx context.Context, episodeID uuid.UUID) ([]ListEpisodeFlagsRow, error)
 	// The episode's list, in order: the procedure's, then a clinician's in the order added. Retired
 	// items come too, for staff; the patient gets the active ones only.
 	ListEpisodeInfo(ctx context.Context, arg ListEpisodeInfoParams) ([]ListEpisodeInfoRow, error)
@@ -274,7 +287,7 @@ type Querier interface {
 	// worklist (S21, EPI-02: in_worklist, migration 00022), whose "procedure within N days" counts
 	// from today at each episode's hospital (its time zone, else default_zone) and uses the hospital's
 	// worklists.soonDays setting (its own, else its trust's, else soon_days, the platform default).
-	// open_tasks: how many of its tasks are still open (TSK-01).
+	// open_tasks: how many of its tasks are still open (TSK-01); flags: the rules' standing flags (S43).
 	// Archived episodes (S22, EPI-04) are left out unless include_archived, or the status asked for
 	// is archived; no worklist has them (in_worklist).
 	ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]ListEpisodesRow, error)
@@ -383,7 +396,8 @@ type Querier interface {
 	// Taken before a status change (S20), so two changes at once are applied one after the other,
 	// each checking the revision and the table against the status as it is.
 	// The hospital's time zone is for the dates' "not in the future". archived_from is un-archive's
-	// target (S22); the cancel reason is kept when a cancelled episode is archived.
+	// target (S22); the cancel reason is kept when a cancelled episode is archived. S43: a rule's
+	// requirement of the anaesthetist's ASA grade before Ready for admission, and the grade.
 	LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpisodeStatusRow, error)
 	// Taken before Checked (S42), as LockEpisodeStatus before a status change.
 	LockEpisodeTriage(ctx context.Context, id uuid.UUID) (LockEpisodeTriageRow, error)
@@ -460,6 +474,9 @@ type Querier interface {
 	RemoveEpisodeInfo(ctx context.Context, arg RemoveEpisodeInfoParams) (string, error)
 	// No row: it's already open.
 	ReopenTask(ctx context.Context, arg ReopenTaskParams) (int64, error)
+	// A rule requires the anaesthetist's ASA grade before Ready for admission (S43). No row: a rule
+	// already does (the first one's name is kept).
+	RequireAnaesthetistASA(ctx context.Context, arg RequireAnaesthetistASAParams) (int64, error)
 	// The job ran: look again at run_at.
 	RescheduleJob(ctx context.Context, arg RescheduleJobParams) error
 	// A Resend: the new link starts with the episode's five tries again.
@@ -545,6 +562,8 @@ type Querier interface {
 	// The patient's own change (PAT-10) is made to every trust's record of them, so invites and
 	// reminders go to the new contact. Returns the records changed, for each trust's audit log.
 	SetRecordsContact(ctx context.Context, arg SetRecordsContactParams) ([]SetRecordsContactRow, error)
+	// The statuses the latest send's rules suggest ([{rule, status}]), shown on the episode.
+	SetRuleSuggestions(ctx context.Context, arg SetRuleSuggestionsParams) error
 	// At sign-in: how many memberships the user has, and how many are usable: in an active trust and,
 	// for a hospital one, an active hospital; for a trust-wide one, a trust with an active hospital or
 	// none yet (a new trust). None usable means sign-in is refused (ORG-03), as /api/me would list

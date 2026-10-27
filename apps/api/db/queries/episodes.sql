@@ -36,14 +36,17 @@ SELECT id FROM e;
 -- worklist (S21, EPI-02: in_worklist, migration 00022), whose "procedure within N days" counts
 -- from today at each episode's hospital (its time zone, else default_zone) and uses the hospital's
 -- worklists.soonDays setting (its own, else its trust's, else soon_days, the platform default).
--- open_tasks: how many of its tasks are still open (TSK-01).
+-- open_tasks: how many of its tasks are still open (TSK-01); flags: the rules' standing flags (S43).
 -- Archived episodes (S22, EPI-04) are left out unless include_archived, or the status asked for
 -- is archived; no worklist has them (in_worklist).
 SELECT e.id, e.hospital_id, h.name AS hospital_name, e.status, coalesce(pr.name, '')::text AS procedure,
        e.planned_date, e.poa_date, e.created_at,
        e.patient_id, p.first_name, p.last_name, e.hospital_number,
        q.name AS questionnaire_name, v.version_no,
-       (SELECT count(*) FROM tasks t WHERE t.episode_id = e.id AND t.done_at IS NULL)::int AS open_tasks
+       (SELECT count(*) FROM tasks t WHERE t.episode_id = e.id AND t.done_at IS NULL)::int AS open_tasks,
+       -- each name once, though two rules may add the same one (verification 1, finding 4)
+       ARRAY(SELECT fl.name FROM episode_flags fl WHERE fl.episode_id = e.id AND fl.cleared_at IS NULL
+             GROUP BY fl.name ORDER BY min(fl.created_at), fl.name)::text[] AS flags
 FROM episodes e
 JOIN hospitals h ON h.id = e.hospital_id
 JOIN orgs o ON o.id = e.org_id
@@ -90,7 +93,9 @@ SELECT e.id, e.status, e.procedure_id, coalesce(pr.name, '')::text AS procedure,
        p.mobile, p.email,
        q.name AS questionnaire_name, v.version_no, f.id AS hq_form_id,
        -- S42: the auto-triage while it stands, and who checked it
-       e.triage_rule, e.triage_summary, e.triaged_at, e.triage_message_pending, e.triage_checked_at, checker.name AS triage_checked_by_name
+       e.triage_rule, e.triage_summary, e.triaged_at, e.triage_message_pending, e.triage_checked_at, checker.name AS triage_checked_by_name,
+       -- S43: the rule requiring the anaesthetist's ASA grade, and the statuses the rules suggest
+       e.anaesthetist_asa_required_by, e.rule_suggestions
 FROM episodes e
 JOIN patients p ON p.id = e.patient_id
 JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
@@ -117,8 +122,10 @@ WHERE id = sqlc.arg(id) AND revision = sqlc.arg(revision);
 -- Taken before a status change (S20), so two changes at once are applied one after the other,
 -- each checking the revision and the table against the status as it is.
 -- The hospital's time zone is for the dates' "not in the future". archived_from is un-archive's
--- target (S22); the cancel reason is kept when a cancelled episode is archived.
-SELECT e.status, e.revision, e.admitted_at, e.discharged_at, e.cancel_reason, e.archived_from, h.timezone
+-- target (S22); the cancel reason is kept when a cancelled episode is archived. S43: a rule's
+-- requirement of the anaesthetist's ASA grade before Ready for admission, and the grade.
+SELECT e.status, e.revision, e.admitted_at, e.discharged_at, e.cancel_reason, e.archived_from, h.timezone,
+       e.anaesthetist_asa_required_by, e.anaesthetist_asa
 FROM episodes e JOIN hospitals h ON h.id = e.hospital_id
 WHERE e.id = $1 FOR UPDATE OF e;
 

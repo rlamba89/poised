@@ -15,6 +15,7 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/episode"
 	"github.com/rlamba89/poised/apps/api/internal/role"
+	"github.com/rlamba89/poised/apps/api/internal/triage"
 )
 
 // Every status, cancel, re-open and undo (plan C3, session S20; EPI-01, EPI-03, EPI-07). Which
@@ -273,6 +274,12 @@ func (s *server) applyStatus(w http.ResponseWriter, r *http.Request, e db.GetEpi
 		writeStatusRefusal(w, err, from, c)
 		return
 	}
+	// A rule asked for the anaesthetist's ASA grade before Ready for admission (S43). Un-archive
+	// restores exactly the status the episode was archived from, so it isn't held back.
+	if c.to == episode.ReadyForAdmission && c.move != episode.Unarchive && needsAnaesthetistASA(now.AnaesthetistAsaRequiredBy, now.AnaesthetistAsa) {
+		writeError(w, http.StatusConflict, triage.NeedsAnaesthetistASA)
+		return
+	}
 
 	set := db.SetEpisodeStatusParams{ID: e.ID, Status: c.to, AdmittedAt: now.AdmittedAt, DischargedAt: now.DischargedAt,
 		CancelReason: c.cancel, Reopen: c.move == episode.Reopen}
@@ -463,6 +470,12 @@ func (s *server) triageChecked(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// needsAnaesthetistASA reports whether a rule's requirement of the anaesthetist's ASA grade (S43) is
+// unmet: a rule asked for it and no anaesthetist's grade is saved.
+func needsAnaesthetistASA(requiredBy *string, grade *int32) bool {
+	return requiredBy != nil && grade == nil
+}
+
 // writeStatusRefusal answers a move the table refuses: 403 for a role too low, else 409.
 func writeStatusRefusal(w http.ResponseWriter, err error, from string, c statusChange) {
 	switch {
@@ -520,16 +533,23 @@ type statusView struct {
 	History   []db.ListStatusEventsRow `json:"statusHistory"`
 }
 
-// undoOption is the undo the control offers: back to `to`, from the current status.
+// undoOption is the undo the control offers: back to `to`, from the current status. Blocked: why
+// it's refused for now (S43: back to Ready for admission while the anaesthetist's ASA is required).
 type undoOption struct {
-	To    string `json:"to"`
-	Label string `json:"label"`
+	To      string `json:"to"`
+	Label   string `json:"label"`
+	Blocked string `json:"blocked,omitempty"`
 }
 
 func (s *server) statusView(ctx context.Context, e db.GetEpisodeRow, who role.Role) (statusView, error) {
 	v := statusView{Moves: episode.Options(e.Status, who)}
 	if v.Moves == nil {
 		v.Moves = []episode.Option{}
+	}
+	for i, m := range v.Moves { // S43: offered, but refused until the rule's requirement is met; the control says why
+		if m.To == episode.ReadyForAdmission && needsAnaesthetistASA(e.AnaesthetistAsaRequiredBy, e.AnaesthetistAsa) {
+			v.Moves[i].Blocked = triage.NeedsAnaesthetistASA
+		}
 	}
 	if e.ArchivedFrom != nil {
 		if _, err := episode.Check(e.Status, *e.ArchivedFrom, episode.Unarchive, who); err == nil {
@@ -541,6 +561,9 @@ func (s *server) statusView(ctx context.Context, e db.GetEpisodeRow, who role.Ro
 	case err == nil:
 		if to, ok := episode.UndoTarget(e.Status, &episode.Event{Move: episode.Move(latest.Move), From: latest.FromStatus, To: latest.ToStatus}); ok && who.AtLeast(role.Clinician) {
 			v.Undo = &undoOption{To: to, Label: episode.Labels[to]}
+			if to == episode.ReadyForAdmission && needsAnaesthetistASA(e.AnaesthetistAsaRequiredBy, e.AnaesthetistAsa) {
+				v.Undo.Blocked = triage.NeedsAnaesthetistASA // verification 1, finding 2
+			}
 		}
 	case !errors.Is(err, pgx.ErrNoRows):
 		return v, err

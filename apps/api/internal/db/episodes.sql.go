@@ -330,7 +330,9 @@ SELECT e.id, e.status, e.procedure_id, coalesce(pr.name, '')::text AS procedure,
        p.mobile, p.email,
        q.name AS questionnaire_name, v.version_no, f.id AS hq_form_id,
        -- S42: the auto-triage while it stands, and who checked it
-       e.triage_rule, e.triage_summary, e.triaged_at, e.triage_message_pending, e.triage_checked_at, checker.name AS triage_checked_by_name
+       e.triage_rule, e.triage_summary, e.triaged_at, e.triage_message_pending, e.triage_checked_at, checker.name AS triage_checked_by_name,
+       -- S43: the rule requiring the anaesthetist's ASA grade, and the statuses the rules suggest
+       e.anaesthetist_asa_required_by, e.rule_suggestions
 FROM episodes e
 JOIN patients p ON p.id = e.patient_id
 JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
@@ -349,49 +351,51 @@ type GetEpisodeParams struct {
 }
 
 type GetEpisodeRow struct {
-	ID                     uuid.UUID          `json:"id"`
-	Status                 string             `json:"status"`
-	ProcedureID            uuid.NullUUID      `json:"procedureId"`
-	Procedure              string             `json:"procedure"`
-	PlannedDate            pgtype.Date        `json:"plannedDate"`
-	PoaDate                pgtype.Date        `json:"poaDate"`
-	Anaesthetic            string             `json:"anaesthetic"`
-	Consultant             string             `json:"consultant"`
-	NurseAsa               *int32             `json:"nurseAsa"`
-	AnaesthetistAsa        *int32             `json:"anaesthetistAsa"`
-	PatientSubmittedAt     pgtype.Timestamptz `json:"patientSubmittedAt"`
-	ReviewCompletedAt      pgtype.Timestamptz `json:"reviewCompletedAt"`
-	CreatedAt              time.Time          `json:"createdAt"`
-	VersionID              uuid.UUID          `json:"versionId"`
-	HospitalNumber         string             `json:"hospitalNumber"`
-	InvitedAt              pgtype.Timestamptz `json:"invitedAt"`
-	RemindersSent          int32              `json:"remindersSent"`
-	NotRespondingAt        pgtype.Timestamptz `json:"notRespondingAt"`
-	Revision               int32              `json:"revision"`
-	AdmittedAt             pgtype.Date        `json:"admittedAt"`
-	DischargedAt           pgtype.Date        `json:"dischargedAt"`
-	CancelReason           *string            `json:"cancelReason"`
-	ArchivedFrom           *string            `json:"archivedFrom"`
-	ReviewCompletedByName  *string            `json:"reviewCompletedByName"`
-	PatientSubmittedByName *string            `json:"patientSubmittedByName"`
-	PatientID              uuid.UUID          `json:"patientId"`
-	FirstName              string             `json:"firstName"`
-	LastName               string             `json:"lastName"`
-	DateOfBirth            pgtype.Date        `json:"dateOfBirth"`
-	Sex                    string             `json:"sex"`
-	NationalID             *string            `json:"nationalId"`
-	NationalIDType         *string            `json:"nationalIdType"`
-	Mobile                 string             `json:"mobile"`
-	Email                  string             `json:"email"`
-	QuestionnaireName      string             `json:"questionnaireName"`
-	VersionNo              int32              `json:"versionNo"`
-	HqFormID               uuid.UUID          `json:"hqFormId"`
-	TriageRule             *string            `json:"triageRule"`
-	TriageSummary          *string            `json:"triageSummary"`
-	TriagedAt              pgtype.Timestamptz `json:"triagedAt"`
-	TriageMessagePending   bool               `json:"triageMessagePending"`
-	TriageCheckedAt        pgtype.Timestamptz `json:"triageCheckedAt"`
-	TriageCheckedByName    *string            `json:"triageCheckedByName"`
+	ID                        uuid.UUID          `json:"id"`
+	Status                    string             `json:"status"`
+	ProcedureID               uuid.NullUUID      `json:"procedureId"`
+	Procedure                 string             `json:"procedure"`
+	PlannedDate               pgtype.Date        `json:"plannedDate"`
+	PoaDate                   pgtype.Date        `json:"poaDate"`
+	Anaesthetic               string             `json:"anaesthetic"`
+	Consultant                string             `json:"consultant"`
+	NurseAsa                  *int32             `json:"nurseAsa"`
+	AnaesthetistAsa           *int32             `json:"anaesthetistAsa"`
+	PatientSubmittedAt        pgtype.Timestamptz `json:"patientSubmittedAt"`
+	ReviewCompletedAt         pgtype.Timestamptz `json:"reviewCompletedAt"`
+	CreatedAt                 time.Time          `json:"createdAt"`
+	VersionID                 uuid.UUID          `json:"versionId"`
+	HospitalNumber            string             `json:"hospitalNumber"`
+	InvitedAt                 pgtype.Timestamptz `json:"invitedAt"`
+	RemindersSent             int32              `json:"remindersSent"`
+	NotRespondingAt           pgtype.Timestamptz `json:"notRespondingAt"`
+	Revision                  int32              `json:"revision"`
+	AdmittedAt                pgtype.Date        `json:"admittedAt"`
+	DischargedAt              pgtype.Date        `json:"dischargedAt"`
+	CancelReason              *string            `json:"cancelReason"`
+	ArchivedFrom              *string            `json:"archivedFrom"`
+	ReviewCompletedByName     *string            `json:"reviewCompletedByName"`
+	PatientSubmittedByName    *string            `json:"patientSubmittedByName"`
+	PatientID                 uuid.UUID          `json:"patientId"`
+	FirstName                 string             `json:"firstName"`
+	LastName                  string             `json:"lastName"`
+	DateOfBirth               pgtype.Date        `json:"dateOfBirth"`
+	Sex                       string             `json:"sex"`
+	NationalID                *string            `json:"nationalId"`
+	NationalIDType            *string            `json:"nationalIdType"`
+	Mobile                    string             `json:"mobile"`
+	Email                     string             `json:"email"`
+	QuestionnaireName         string             `json:"questionnaireName"`
+	VersionNo                 int32              `json:"versionNo"`
+	HqFormID                  uuid.UUID          `json:"hqFormId"`
+	TriageRule                *string            `json:"triageRule"`
+	TriageSummary             *string            `json:"triageSummary"`
+	TriagedAt                 pgtype.Timestamptz `json:"triagedAt"`
+	TriageMessagePending      bool               `json:"triageMessagePending"`
+	TriageCheckedAt           pgtype.Timestamptz `json:"triageCheckedAt"`
+	TriageCheckedByName       *string            `json:"triageCheckedByName"`
+	AnaesthetistAsaRequiredBy *string            `json:"anaesthetistAsaRequiredBy"`
+	RuleSuggestions           json.RawMessage    `json:"ruleSuggestions"`
 }
 
 // With its HQ form (S18): the version, the patient's submit and who sent it keep their names
@@ -443,6 +447,8 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 		&i.TriageMessagePending,
 		&i.TriageCheckedAt,
 		&i.TriageCheckedByName,
+		&i.AnaesthetistAsaRequiredBy,
+		&i.RuleSuggestions,
 	)
 	return i, err
 }
@@ -679,7 +685,10 @@ SELECT e.id, e.hospital_id, h.name AS hospital_name, e.status, coalesce(pr.name,
        e.planned_date, e.poa_date, e.created_at,
        e.patient_id, p.first_name, p.last_name, e.hospital_number,
        q.name AS questionnaire_name, v.version_no,
-       (SELECT count(*) FROM tasks t WHERE t.episode_id = e.id AND t.done_at IS NULL)::int AS open_tasks
+       (SELECT count(*) FROM tasks t WHERE t.episode_id = e.id AND t.done_at IS NULL)::int AS open_tasks,
+       -- each name once, though two rules may add the same one (verification 1, finding 4)
+       ARRAY(SELECT fl.name FROM episode_flags fl WHERE fl.episode_id = e.id AND fl.cleared_at IS NULL
+             GROUP BY fl.name ORDER BY min(fl.created_at), fl.name)::text[] AS flags
 FROM episodes e
 JOIN hospitals h ON h.id = e.hospital_id
 JOIN orgs o ON o.id = e.org_id
@@ -726,6 +735,7 @@ type ListEpisodesRow struct {
 	QuestionnaireName string      `json:"questionnaireName"`
 	VersionNo         int32       `json:"versionNo"`
 	OpenTasks         int32       `json:"openTasks"`
+	Flags             []string    `json:"flags"`
 }
 
 // One trust's episodes: at every hospital when all_hospitals (a trust-wide member's "All
@@ -733,7 +743,7 @@ type ListEpisodesRow struct {
 // worklist (S21, EPI-02: in_worklist, migration 00022), whose "procedure within N days" counts
 // from today at each episode's hospital (its time zone, else default_zone) and uses the hospital's
 // worklists.soonDays setting (its own, else its trust's, else soon_days, the platform default).
-// open_tasks: how many of its tasks are still open (TSK-01).
+// open_tasks: how many of its tasks are still open (TSK-01); flags: the rules' standing flags (S43).
 // Archived episodes (S22, EPI-04) are left out unless include_archived, or the status asked for
 // is archived; no worklist has them (in_worklist).
 func (q *Queries) ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]ListEpisodesRow, error) {
@@ -771,6 +781,7 @@ func (q *Queries) ListEpisodes(ctx context.Context, arg ListEpisodesParams) ([]L
 			&i.QuestionnaireName,
 			&i.VersionNo,
 			&i.OpenTasks,
+			&i.Flags,
 		); err != nil {
 			return nil, err
 		}
@@ -1054,25 +1065,29 @@ func (q *Queries) ListVersionChapters(ctx context.Context, versionID uuid.UUID) 
 }
 
 const lockEpisodeStatus = `-- name: LockEpisodeStatus :one
-SELECT e.status, e.revision, e.admitted_at, e.discharged_at, e.cancel_reason, e.archived_from, h.timezone
+SELECT e.status, e.revision, e.admitted_at, e.discharged_at, e.cancel_reason, e.archived_from, h.timezone,
+       e.anaesthetist_asa_required_by, e.anaesthetist_asa
 FROM episodes e JOIN hospitals h ON h.id = e.hospital_id
 WHERE e.id = $1 FOR UPDATE OF e
 `
 
 type LockEpisodeStatusRow struct {
-	Status       string      `json:"status"`
-	Revision     int32       `json:"revision"`
-	AdmittedAt   pgtype.Date `json:"admittedAt"`
-	DischargedAt pgtype.Date `json:"dischargedAt"`
-	CancelReason *string     `json:"cancelReason"`
-	ArchivedFrom *string     `json:"archivedFrom"`
-	Timezone     *string     `json:"timezone"`
+	Status                    string      `json:"status"`
+	Revision                  int32       `json:"revision"`
+	AdmittedAt                pgtype.Date `json:"admittedAt"`
+	DischargedAt              pgtype.Date `json:"dischargedAt"`
+	CancelReason              *string     `json:"cancelReason"`
+	ArchivedFrom              *string     `json:"archivedFrom"`
+	Timezone                  *string     `json:"timezone"`
+	AnaesthetistAsaRequiredBy *string     `json:"anaesthetistAsaRequiredBy"`
+	AnaesthetistAsa           *int32      `json:"anaesthetistAsa"`
 }
 
 // Taken before a status change (S20), so two changes at once are applied one after the other,
 // each checking the revision and the table against the status as it is.
 // The hospital's time zone is for the dates' "not in the future". archived_from is un-archive's
-// target (S22); the cancel reason is kept when a cancelled episode is archived.
+// target (S22); the cancel reason is kept when a cancelled episode is archived. S43: a rule's
+// requirement of the anaesthetist's ASA grade before Ready for admission, and the grade.
 func (q *Queries) LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpisodeStatusRow, error) {
 	row := q.db.QueryRow(ctx, lockEpisodeStatus, id)
 	var i LockEpisodeStatusRow
@@ -1084,6 +1099,8 @@ func (q *Queries) LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpis
 		&i.CancelReason,
 		&i.ArchivedFrom,
 		&i.Timezone,
+		&i.AnaesthetistAsaRequiredBy,
+		&i.AnaesthetistAsa,
 	)
 	return i, err
 }

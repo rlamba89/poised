@@ -566,6 +566,10 @@ func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
 	}
 	message := "" // the status the patient is told about now, if any (EPI-08)
 	if res != nil {
+		if err := ruleActions(ctx, q, f.ID, *res); err != nil {
+			serverError(w, "rule actions", err)
+			return
+		}
 		if message, err = s.autoTriage(ctx, q, f, *res); err != nil {
 			serverError(w, "auto-triage", err)
 			return
@@ -591,6 +595,15 @@ func (s *server) autoTriage(ctx context.Context, q *db.Queries, f form, res eval
 	d := triage.Decide(res)
 	if d.Rule == "" {
 		return "", nil
+	}
+	if d.Target == episode.ReadyForAdmission { // S43: a requirement standing from an earlier send holds it too
+		now, err := q.LockEpisodeStatus(ctx, f.ID)
+		if err != nil {
+			return "", err
+		}
+		if needsAnaesthetistASA(now.AnaesthetistAsaRequiredBy, now.AnaesthetistAsa) {
+			d = triage.Decision{Rule: d.Rule, Blocked: triage.AnaesthetistASAGuard}
+		}
 	}
 	if !d.Moves() {
 		return "", q.AddAutomaticEpisodeEventNow(ctx, db.AddAutomaticEpisodeEventNowParams{EpisodeID: f.ID, Text: d.Note()})
@@ -625,6 +638,54 @@ func (s *server) autoTriage(ctx context.Context, q *db.Queries, f form, res eval
 }
 
 func ptrTo[T any](v T) *T { return &v }
+
+// ruleActions makes the fired rules' other writes (S43; ASA-03, TSK-01), in the send's transaction,
+// before autoTriage: each rule's task (for its team, naming the rule) unless that rule's task is
+// still open from an earlier send; each flag unless it's still standing; the requirement of the
+// anaesthetist's ASA grade before Ready for admission; and the statuses the rules suggest (the
+// latest send's replace any before). Each task, flag and new requirement gets an automatic General
+// notes line.
+func ruleActions(ctx context.Context, q *db.Queries, eid uuid.UUID, res evaluate.Result) error {
+	a := triage.ActionsOf(res)
+	note := func(text string) error {
+		return q.AddAutomaticEpisodeEventNow(ctx, db.AddAutomaticEpisodeEventNowParams{EpisodeID: eid, Text: text})
+	}
+	for _, t := range a.Tasks {
+		n, err := q.CreateRuleTask(ctx, db.CreateRuleTaskParams{EpisodeID: eid, Title: t.Title, Team: t.Team, Rule: t.Rule})
+		if err == nil && n > 0 {
+			err = note(t.Note())
+		}
+		if err != nil {
+			return err
+		}
+	}
+	for _, f := range a.Flags {
+		n, err := q.AddRuleFlag(ctx, db.AddRuleFlagParams{EpisodeID: eid, Name: f.Name, Rule: f.Rule})
+		if err == nil && n > 0 {
+			err = note(f.Note())
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if a.RequireASA != "" {
+		n, err := q.RequireAnaesthetistASA(ctx, db.RequireAnaesthetistASAParams{ID: eid, Rule: a.RequireASA})
+		if err == nil && n > 0 {
+			err = note(triage.RequireNote(a.RequireASA))
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if a.Suggestions == nil {
+		a.Suggestions = []triage.Suggestion{}
+	}
+	suggestions, err := json.Marshal(a.Suggestions)
+	if err != nil {
+		return err
+	}
+	return q.SetRuleSuggestions(ctx, db.SetRuleSuggestionsParams{ID: eid, Suggestions: suggestions})
+}
 
 // checksDidntRun is the General notes line when the evaluate service couldn't work out a sent HQ.
 const checksDidntRun = "The automatic checks didn't run. Review this HQ by hand."

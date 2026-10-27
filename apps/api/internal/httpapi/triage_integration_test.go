@@ -233,7 +233,9 @@ func TestAutoTriageOnSend(t *testing.T) {
 		if got := readEpisode(t, w, e.ID); got.Status != episode.ReadyForReview {
 			t.Errorf("status = %s", got.Status)
 		}
-		if n := notesOf(t, w, e.ID); !slices.Equal(n, []string{"HQ completed on the patient's behalf"}) {
+		// S43: the rule's task is added, with its line; no auto-triage line.
+		if n := notesOf(t, w, e.ID); !slices.Equal(n, []string{"HQ completed on the patient's behalf",
+			"auto:Task added by the rule “High risk” for the anaesthetist team: Book anaesthetic review"}) {
 			t.Errorf("notes = %q", n)
 		}
 		if len(statusEvents(t, w, e.ID)) != 1 || onAutoTriaged(t, w, e.ID) {
@@ -260,6 +262,9 @@ func TestAutoTriageOnSend(t *testing.T) {
 				t.Errorf("%s: status = %s", why, got.Status)
 			}
 			want := []string{"HQ completed on the patient's behalf", "auto:Not auto-triaged by the rule “Low risk”: " + why + ". Review this HQ by hand."}
+			if res == &required { // S43: the requirement is recorded first, with its own line
+				want = slices.Insert(want, 1, "auto:The rule “Low risk” requires the anaesthetist's ASA grade before Ready for admission")
+			}
 			if n := notesOf(t, w, e.ID); !slices.Equal(n, want) {
 				t.Errorf("notes = %q, want %q", n, want)
 			}

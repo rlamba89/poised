@@ -74,39 +74,41 @@ type ContentItem struct {
 }
 
 type Episode struct {
-	ID                   uuid.UUID          `json:"id"`
-	HospitalID           uuid.UUID          `json:"hospitalId"`
-	PatientID            uuid.UUID          `json:"patientId"`
-	Status               string             `json:"status"`
-	Anaesthetic          string             `json:"anaesthetic"`
-	Consultant           string             `json:"consultant"`
-	NurseAsa             *int32             `json:"nurseAsa"`
-	AnaesthetistAsa      *int32             `json:"anaesthetistAsa"`
-	ReviewCompletedBy    uuid.NullUUID      `json:"reviewCompletedBy"`
-	ReviewCompletedAt    pgtype.Timestamptz `json:"reviewCompletedAt"`
-	CreatedBy            uuid.UUID          `json:"createdBy"`
-	CreatedAt            time.Time          `json:"createdAt"`
-	OrgID                uuid.UUID          `json:"orgId"`
-	HospitalNumber       string             `json:"hospitalNumber"`
-	InvitedAt            pgtype.Timestamptz `json:"invitedAt"`
-	RemindersSent        int32              `json:"remindersSent"`
-	NotRespondingAt      pgtype.Timestamptz `json:"notRespondingAt"`
-	DobFailedAttempts    int32              `json:"dobFailedAttempts"`
-	ProcedureID          uuid.NullUUID      `json:"procedureId"`
-	PlannedDate          pgtype.Date        `json:"plannedDate"`
-	PoaDate              pgtype.Date        `json:"poaDate"`
-	Revision             int32              `json:"revision"`
-	AdmittedAt           pgtype.Date        `json:"admittedAt"`
-	DischargedAt         pgtype.Date        `json:"dischargedAt"`
-	CancelReason         *string            `json:"cancelReason"`
-	ArchivedFrom         *string            `json:"archivedFrom"`
-	LastActivityAt       time.Time          `json:"lastActivityAt"`
-	TriageRule           *string            `json:"triageRule"`
-	TriageSummary        *string            `json:"triageSummary"`
-	TriagedAt            pgtype.Timestamptz `json:"triagedAt"`
-	TriageMessagePending bool               `json:"triageMessagePending"`
-	TriageCheckedBy      uuid.NullUUID      `json:"triageCheckedBy"`
-	TriageCheckedAt      pgtype.Timestamptz `json:"triageCheckedAt"`
+	ID                        uuid.UUID          `json:"id"`
+	HospitalID                uuid.UUID          `json:"hospitalId"`
+	PatientID                 uuid.UUID          `json:"patientId"`
+	Status                    string             `json:"status"`
+	Anaesthetic               string             `json:"anaesthetic"`
+	Consultant                string             `json:"consultant"`
+	NurseAsa                  *int32             `json:"nurseAsa"`
+	AnaesthetistAsa           *int32             `json:"anaesthetistAsa"`
+	ReviewCompletedBy         uuid.NullUUID      `json:"reviewCompletedBy"`
+	ReviewCompletedAt         pgtype.Timestamptz `json:"reviewCompletedAt"`
+	CreatedBy                 uuid.UUID          `json:"createdBy"`
+	CreatedAt                 time.Time          `json:"createdAt"`
+	OrgID                     uuid.UUID          `json:"orgId"`
+	HospitalNumber            string             `json:"hospitalNumber"`
+	InvitedAt                 pgtype.Timestamptz `json:"invitedAt"`
+	RemindersSent             int32              `json:"remindersSent"`
+	NotRespondingAt           pgtype.Timestamptz `json:"notRespondingAt"`
+	DobFailedAttempts         int32              `json:"dobFailedAttempts"`
+	ProcedureID               uuid.NullUUID      `json:"procedureId"`
+	PlannedDate               pgtype.Date        `json:"plannedDate"`
+	PoaDate                   pgtype.Date        `json:"poaDate"`
+	Revision                  int32              `json:"revision"`
+	AdmittedAt                pgtype.Date        `json:"admittedAt"`
+	DischargedAt              pgtype.Date        `json:"dischargedAt"`
+	CancelReason              *string            `json:"cancelReason"`
+	ArchivedFrom              *string            `json:"archivedFrom"`
+	LastActivityAt            time.Time          `json:"lastActivityAt"`
+	TriageRule                *string            `json:"triageRule"`
+	TriageSummary             *string            `json:"triageSummary"`
+	TriagedAt                 pgtype.Timestamptz `json:"triagedAt"`
+	TriageMessagePending      bool               `json:"triageMessagePending"`
+	TriageCheckedBy           uuid.NullUUID      `json:"triageCheckedBy"`
+	TriageCheckedAt           pgtype.Timestamptz `json:"triageCheckedAt"`
+	AnaesthetistAsaRequiredBy *string            `json:"anaesthetistAsaRequiredBy"`
+	RuleSuggestions           json.RawMessage    `json:"ruleSuggestions"`
 }
 
 type EpisodeAnswer struct {
@@ -134,6 +136,17 @@ type EpisodeEvent struct {
 	CreatedAt time.Time     `json:"createdAt"`
 	Automatic bool          `json:"automatic"`
 	Seq       *int64        `json:"seq"`
+}
+
+type EpisodeFlag struct {
+	ID            uuid.UUID          `json:"id"`
+	EpisodeID     uuid.UUID          `json:"episodeId"`
+	Name          string             `json:"name"`
+	Rule          string             `json:"rule"`
+	CreatedAt     time.Time          `json:"createdAt"`
+	ClearedBy     uuid.NullUUID      `json:"clearedBy"`
+	ClearedAt     pgtype.Timestamptz `json:"clearedAt"`
+	ClearedReason *string            `json:"clearedReason"`
 }
 
 type EpisodeForm struct {
