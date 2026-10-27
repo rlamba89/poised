@@ -33,6 +33,22 @@ func (q *Queries) AddAutomaticEpisodeEvent(ctx context.Context, arg AddAutomatic
 	return err
 }
 
+const addAutomaticEpisodeEventNow = `-- name: AddAutomaticEpisodeEventNow :exec
+INSERT INTO episode_events (episode_id, kind, text, automatic) VALUES ($1, 'event', $2, true)
+`
+
+type AddAutomaticEpisodeEventNowParams struct {
+	EpisodeID uuid.UUID `json:"episodeId"`
+	Text      string    `json:"text"`
+}
+
+// An automatic entry written by a request, at the transaction's time, so it sits after the status
+// event the same request wrote (S41: "The automatic checks didn't run…"; test report 1, F-1).
+func (q *Queries) AddAutomaticEpisodeEventNow(ctx context.Context, arg AddAutomaticEpisodeEventNowParams) error {
+	_, err := q.db.Exec(ctx, addAutomaticEpisodeEventNow, arg.EpisodeID, arg.Text)
+	return err
+}
+
 const addEpisodeEvent = `-- name: AddEpisodeEvent :exec
 INSERT INTO episode_events (episode_id, kind, text, user_id) VALUES ($1, $2, $3, $4)
 `
@@ -50,6 +66,29 @@ func (q *Queries) AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams
 		arg.Kind,
 		arg.Text,
 		arg.UserID,
+	)
+	return err
+}
+
+const addFormOutput = `-- name: AddFormOutput :exec
+INSERT INTO form_outputs (episode_form_id, result, evaluator_version, error)
+VALUES ($1, $2, $3, $4)
+`
+
+type AddFormOutputParams struct {
+	FormID           uuid.UUID       `json:"formId"`
+	Result           json.RawMessage `json:"result"`
+	EvaluatorVersion *string         `json:"evaluatorVersion"`
+	Error            *string         `json:"error"`
+}
+
+// What the evaluate service gave for a sent form (S41): its result and version, or the error.
+func (q *Queries) AddFormOutput(ctx context.Context, arg AddFormOutputParams) error {
+	_, err := q.db.Exec(ctx, addFormOutput,
+		arg.FormID,
+		arg.Result,
+		arg.EvaluatorVersion,
+		arg.Error,
 	)
 	return err
 }
@@ -348,6 +387,7 @@ const getEpisodeForm = `-- name: GetEpisodeForm :one
 SELECT e.id, e.status, e.archived_from, -- S29: archived from Cancelled still says cancelled
        f.submitted_at AS patient_submitted_at, f.version_id, f.id AS form_id, f.prefilled_at,
        e.org_id, e.hospital_id, e.patient_id, p.account_id, -- for the checks and the audit log, never sent to the patient
+       e.procedure_id, v.rules AS version_rules, -- for the evaluate service on send (S41)
        p.first_name, p.last_name, p.date_of_birth, p.sex,
        q.name AS questionnaire_name, h.name AS hospital_name, h.timezone,
        (o.status = 'active' AND h.status = 'active')::boolean AS open -- false while suspended (ORG-03)
@@ -373,6 +413,8 @@ type GetEpisodeFormRow struct {
 	HospitalID         uuid.UUID          `json:"hospitalId"`
 	PatientID          uuid.UUID          `json:"patientId"`
 	AccountID          uuid.NullUUID      `json:"accountId"`
+	ProcedureID        uuid.NullUUID      `json:"procedureId"`
+	VersionRules       json.RawMessage    `json:"versionRules"`
 	FirstName          string             `json:"firstName"`
 	LastName           string             `json:"lastName"`
 	DateOfBirth        pgtype.Date        `json:"dateOfBirth"`
@@ -401,6 +443,8 @@ func (q *Queries) GetEpisodeForm(ctx context.Context, id uuid.UUID) (GetEpisodeF
 		&i.HospitalID,
 		&i.PatientID,
 		&i.AccountID,
+		&i.ProcedureID,
+		&i.VersionRules,
 		&i.FirstName,
 		&i.LastName,
 		&i.DateOfBirth,

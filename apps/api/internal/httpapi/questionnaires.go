@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/rlamba89/poised/apps/api/internal/asarules"
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/evaluate"
+	"github.com/rlamba89/poised/apps/api/internal/keys"
 	"github.com/rlamba89/poised/apps/api/internal/role"
 )
 
@@ -237,7 +240,23 @@ func (s *server) publishQuestionnaire(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "walk trust questionnaires", err)
 		return
 	}
-	if problems := keyProblems(draft, versions); len(problems) > 0 {
+	// The browser's publish checks, run by the evaluate service (S41): logic, summaries, videos, test
+	// cases and the rules with their whole-HQ test cases. Nothing is published unchecked.
+	sets := make([]evaluate.PublishSet, len(rows))
+	for i, c := range rows {
+		sets[i] = evaluate.PublishSet{Name: c.Name, Audience: c.Audience, Content: c.Content}
+	}
+	found, err := s.eval.PublishProblems(ctx, evaluate.PublishInput{Sets: sets, Rules: row.Rules})
+	if err != nil {
+		log.Printf("%s publish checks, version %s: %v", evaluate.FailedMarker, row.VersionID, err)
+		writeError(w, http.StatusServiceUnavailable, "The checks couldn't run. Try again in a minute.")
+		return
+	}
+	problems := make([]keys.Problem, 0, len(found))
+	for _, p := range found {
+		problems = append(problems, keys.Problem{Set: p.Set, Message: p.Message})
+	}
+	if problems = append(problems, keyProblems(draft, versions)...); len(problems) > 0 {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
 			"error":    "This version can't be published until these problems are fixed.",
 			"problems": problems,

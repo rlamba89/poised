@@ -179,6 +179,11 @@ INSERT INTO episode_events (episode_id, kind, text, user_id) VALUES ($1, $2, $3,
 INSERT INTO episode_events (episode_id, kind, text, automatic, created_at)
 VALUES (sqlc.arg(episode_id), 'event', sqlc.arg(text), true, sqlc.arg(at)::timestamptz);
 
+-- name: AddAutomaticEpisodeEventNow :exec
+-- An automatic entry written by a request, at the transaction's time, so it sits after the status
+-- event the same request wrote (S41: "The automatic checks didn't run…"; test report 1, F-1).
+INSERT INTO episode_events (episode_id, kind, text, automatic) VALUES (sqlc.arg(episode_id), 'event', sqlc.arg(text), true);
+
 -- name: ListEpisodeEvents :many
 -- user_name is NULL for the patient's entries and the automatic ones.
 SELECT ev.id, ev.kind, ev.text, ev.created_at, u.name AS user_name, ev.automatic
@@ -193,6 +198,7 @@ ORDER BY ev.created_at, ev.seq; -- seq: notes written at the same time, in the o
 SELECT e.id, e.status, e.archived_from, -- S29: archived from Cancelled still says cancelled
        f.submitted_at AS patient_submitted_at, f.version_id, f.id AS form_id, f.prefilled_at,
        e.org_id, e.hospital_id, e.patient_id, p.account_id, -- for the checks and the audit log, never sent to the patient
+       e.procedure_id, v.rules AS version_rules, -- for the evaluate service on send (S41)
        p.first_name, p.last_name, p.date_of_birth, p.sex,
        q.name AS questionnaire_name, h.name AS hospital_name, h.timezone,
        (o.status = 'active' AND h.status = 'active')::boolean AS open -- false while suspended (ORG-03)
@@ -365,3 +371,8 @@ RETURNING revision;
 -- name: CompleteReview :execrows
 UPDATE episodes SET status = 'ready_for_poa', review_completed_by = $2, review_completed_at = now(), revision = revision + 1
 WHERE id = $1 AND status = 'ready_for_review';
+
+-- name: AddFormOutput :exec
+-- What the evaluate service gave for a sent form (S41): its result and version, or the error.
+INSERT INTO form_outputs (episode_form_id, result, evaluator_version, error)
+VALUES (sqlc.arg(form_id), sqlc.narg(result), sqlc.narg(evaluator_version), sqlc.narg(error));

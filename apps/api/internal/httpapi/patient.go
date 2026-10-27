@@ -20,6 +20,7 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/chapter"
 	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/episode"
+	"github.com/rlamba89/poised/apps/api/internal/evaluate"
 	"github.com/rlamba89/poised/apps/api/internal/role"
 )
 
@@ -556,11 +557,60 @@ func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
 		serverError(w, "status history", err)
 		return
 	}
+	if err := s.evaluateSent(ctx, q, f); err != nil {
+		serverError(w, "store outputs", err)
+		return
+	}
 	if err := tx.Commit(ctx); err != nil {
 		serverError(w, "commit", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// checksDidntRun is the General notes line when the evaluate service couldn't work out a sent HQ.
+const checksDidntRun = "The automatic checks didn't run. Review this HQ by hand."
+
+// evaluateSent asks the evaluate service what the sent answers give (S41, D-1) and stores it in
+// form_outputs, in the send's transaction, after the answers are frozen. It acts on nothing yet
+// (S42). The service gets the published version whole (each set with its audience, and the rules),
+// the patient's answers, their age today at the hospital and their sex, and the episode's procedure:
+// nothing else about the patient. If the call fails (the service down, too slow, a bad reply), the
+// send still goes through: the error is stored, one EVALUATE_FAILED line is logged (the form's id
+// and the error, never an answer) and the General notes ask for the HQ to be reviewed by hand.
+func (s *server) evaluateSent(ctx context.Context, q *db.Queries, f form) error {
+	chapters, err := q.ListVersionChapters(ctx, f.VersionID)
+	if err != nil {
+		return err
+	}
+	saved, err := q.ListEpisodeAnswers(ctx, f.FormID)
+	if err != nil {
+		return err
+	}
+	in := evaluate.Input{FormID: f.FormID, Rules: f.VersionRules, Answers: map[uuid.UUID]json.RawMessage{},
+		Patient: evaluate.Patient{Age: ageOn(f.DateOfBirth, s.today(f.Timezone)), Sex: f.Sex}}
+	if f.ProcedureID.Valid {
+		in.ProcedureID = &f.ProcedureID.UUID
+	}
+	for _, c := range chapters {
+		in.Sets = append(in.Sets, evaluate.Set{ID: c.ID, Name: c.Name, Audience: c.Audience, Content: c.Content})
+	}
+	for _, a := range saved {
+		if a.Actor == "patient" {
+			in.Answers[a.ChapterID] = a.Data
+		}
+	}
+	res, err := s.eval.Evaluate(ctx, in)
+	if err != nil {
+		log.Printf("%s form %s: %v", evaluate.FailedMarker, f.FormID, err)
+		msg := err.Error()
+		if err := q.AddFormOutput(ctx, db.AddFormOutputParams{FormID: f.FormID, Error: &msg}); err != nil {
+			return err
+		}
+		// Written as automatic, shown "Automatic" like a reminder's (test report 1, F-1), whoever sent it.
+		return q.AddAutomaticEpisodeEventNow(ctx, db.AddAutomaticEpisodeEventNowParams{EpisodeID: f.ID, Text: checksDidntRun})
+	}
+	return q.AddFormOutput(ctx, db.AddFormOutputParams{FormID: f.FormID, Result: res.Raw, EvaluatorVersion: &res.Evaluator})
 }
 
 // uncheckedTicks is why the HQ can't be sent yet, or "": a required "I have watched this video" tick

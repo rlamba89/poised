@@ -26,9 +26,14 @@ type Querier interface {
 	// an undelivered report (S17). at is the run's time (S22 test report 1, F-2): a job run "as of" a
 	// later time writes as of then.
 	AddAutomaticEpisodeEvent(ctx context.Context, arg AddAutomaticEpisodeEventParams) error
+	// An automatic entry written by a request, at the transaction's time, so it sits after the status
+	// event the same request wrote (S41: "The automatic checks didn't run…"; test report 1, F-1).
+	AddAutomaticEpisodeEventNow(ctx context.Context, arg AddAutomaticEpisodeEventNowParams) error
 	AddEpisodeEvent(ctx context.Context, arg AddEpisodeEventParams) error
 	// A clinician's item, last in the list; 0 rows if the episode already has it.
 	AddEpisodeInfo(ctx context.Context, arg AddEpisodeInfoParams) (int64, error)
+	// What the evaluate service gave for a sent form (S41): its result and version, or the error.
+	AddFormOutput(ctx context.Context, arg AddFormOutputParams) error
 	AddHit(ctx context.Context, arg AddHitParams) error
 	AddMembership(ctx context.Context, arg AddMembershipParams) error
 	// Makes the user a superadmin (A-21); nothing changes if they already are.

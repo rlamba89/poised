@@ -179,6 +179,15 @@ type EpisodeStatusEvent struct {
 	CreatedAt  time.Time          `json:"createdAt"`
 }
 
+type FormOutput struct {
+	ID               int64           `json:"id"`
+	EpisodeFormID    uuid.UUID       `json:"episodeFormId"`
+	Result           json.RawMessage `json:"result"`
+	EvaluatorVersion *string         `json:"evaluatorVersion"`
+	Error            *string         `json:"error"`
+	CreatedAt        time.Time       `json:"createdAt"`
+}
+
 type Hospital struct {
 	ID       uuid.UUID       `json:"id"`
 	Name     string          `json:"name"`
