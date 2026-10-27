@@ -44,8 +44,12 @@ func (d Decision) Note() string {
 var guards = map[string]string{
 	"flag":            "the answers have a red or amber flag",
 	"incomplete":      "a score is Incomplete",
-	"anaesthetistAsa": "a rule requires the anaesthetist's ASA grade first",
+	"anaesthetistAsa": AnaesthetistASAGuard,
 }
+
+// AnaesthetistASAGuard is the guard's words when a rule requires the anaesthetist's ASA grade
+// before Ready for admission (S43).
+const AnaesthetistASAGuard = "a rule requires the anaesthetist's ASA grade first"
 
 // Decide reads the result of a send whose checks ran. The evaluator applies the guards itself
 // (packages/clinical's firedRules holds the rule's auto-triage, with the reason), so the Preview and
@@ -79,7 +83,7 @@ func Decide(res evaluate.Result) Decision {
 	case incomplete(res):
 		d.Blocked = "a score is Incomplete"
 	case required && d.Target == episode.ReadyForAdmission:
-		d.Blocked = "a rule requires the anaesthetist's ASA grade first"
+		d.Blocked = AnaesthetistASAGuard
 	}
 	if d.Blocked != "" {
 		return Decision{Rule: d.Rule, Blocked: d.Blocked}
