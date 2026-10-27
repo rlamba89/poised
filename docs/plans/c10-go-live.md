@@ -30,6 +30,9 @@
   - pre-fill;
   - identity linking;
   - no virus scanning.
+- **Changes to our clinical logic** (Rahul, 27 Oct), when a release would make a live HQ give a different result (as S39's "E" rule did):
+  - **a regression check before every release:** every trust's saved test cases, published and draft, run against the new code; each HQ whose results change is reported, goes through the hazard log and the clinical safety officer, and is named to its trust in the release notes;
+  - **pinning for changes that affect results** (e.g. how the ASA or a score is worked out): a published HQ keeps the logic it was published with until the trust publishes a new version.
 - NHS DSPT, Cyber Essentials Plus, a DPIA template for customers, and the data processing agreement (OPS-03).
 - An independent pen test (NFR-05).
 

@@ -32,6 +32,23 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 27 Oct 2026: C6's open items answered (Rahul, asked by Claude in chat after the S38–S44 run)
+
+Every item is in [S44a's answers](sessions/S44a-c6-followups/answers.md) and [S44b's answers](sessions/S44b-asa-grade-history/answers.md).
+- **Two follow-up sessions before S45:** S44a (the follow-ups and the verifiers' defects) and S44b (the ASA grade history, on its own because it's a migration, routes, a UI and clinical). Then S45, then the push.
+- **A score input that a condition hides adds 0 points;** a shown question left unanswered still makes it Incomplete. *Supersedes* S38's "a hidden input makes the score Incomplete" (26 Oct, builder's reading). Otherwise any conditional question in a score would stop auto-triage for every patient it's hidden from.
+- **On send, only what the patient's form showed is kept.** Answers to sets (and questions) hidden at that moment are dropped, so a set a clinician's correction brings back starts empty: the clinician answers it during validation, and nothing goes back to the patient. The stored record is what the patient sent.
+- **Publish refuses a patient condition that tests clinician-only content** (it can never be true in the patient's form).
+- **The thank-you page has one neutral wording** for every send ("…sent to the hospital. We'll contact you about what happens next."), because it can't know whether the rules will move the episode on.
+- **Clinician-entered score inputs rightly stop auto-triage** (the clinician enters them and carries on), but the authoring tool **warns** the author that auto-triage won't work for that HQ, and why, and lets them go ahead anyway.
+- **The rules' suggested status shows until the episode reaches or passes it** (and not once cancelled, archived or admitted).
+- **The anaesthetist's ASA grade is never changed or cleared, in any status.** Grades are a history: each is kept with who and when; a re-grade needs a reason; a mistake is marked "entered in error" (struck through, still visible), and then the one before it counts again. Rahul: changing a grade is too risky. (S44b)
+- **Production policy for changes to our clinical logic** (when a release would make a live HQ give a different result): **both** a regression check before every release (every trust's test cases, published and draft, run against the new code; each change is reported, signed off and told to the trust) **and pinning** for changes that affect results (a published HQ keeps its logic until the trust publishes a new version). For C10 ([c10-go-live.md](plans/c10-go-live.md)). For now, the local drafts whose test cases S39's "E" rule changed are updated by a one-off script.
+- **All four verifier defects are fixed before S45** (S42's message sent twice, S44's Complete review race, S41's rules save racing Publish, S38's score picker offering repeating-group questions). The small improvements chosen are the two clearer messages, the ASA guide nudges, the suggested ASA on Validate and only after sending, and the age in the hospital's time zone. Authors' own bands get "also when" too.
+- **S45 measures the evaluate call on QA before changing anything:** if it takes more than about 1 s while locks are held, the builder asks before moving the calls out of the locks. No provisioned concurrency (it costs money even when idle).
+- **The local database is reset** (in S44a, keeping HJE Full HQ), and `test_audit.py` reads the audit CSV as a stream. **The audit log's "Listed episodes" rows are not capped:** the audit log is the record of who saw which patients, so it stays complete (Claude's correction to its own suggestion, the same day).
+- **Saved option lists stay copies** (as built, OPT-02): a list change doesn't reach existing questions.
+
 ### 27 Oct 2026: S44, the server's checks on send and on Complete review (builder, automatic run; tested 27 Oct, test report 1 all passed; verified 27 Oct, verification 1: four non-blocking notes in pending.md)
 
 - **Send** (both routes): the one evaluator call S41 makes also decides the send. A set the patient's form shows that isn't complete → **409 "Please finish “Your health” before sending your answers."**, every such set named; the check runs after the freeze in the send's transaction and a refusal rolls it all back, so nothing is frozen and the status is unchanged. The service failing → accepted as before (S41's fail-safe). Closes pending.md's "The API accepts Send with no answers". ([build notes](sessions/S44-server-checks/build-notes.md))
