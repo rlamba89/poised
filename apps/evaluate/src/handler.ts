@@ -1,0 +1,63 @@
+// The evaluate service's requests (plan C6, S41), apart from how they arrive: server.ts serves
+// them over HTTP locally (npm run evaluate); S45's Lambda will call handle() the same way.
+//
+//   POST /evaluate          a sent HQ (EvaluateInput) → what it gives (EvaluateResult)
+//   POST /publish-problems  a version's sets and rules (PublishInput) → { problems }
+//   GET  /health            { ok, evaluator }
+//
+// Nothing here ever logs an answer: an error log names only the episode form's id, the error's
+// kind and where in the code it happened (not its message, which could quote a value).
+import { checkPublish, evaluate, EvaluateInputError } from "@poised/clinical";
+
+/** The largest body accepted, in bytes: a whole HQ's JSON with its answers fits many times over. */
+export const MAX_BODY = 10 << 20;
+
+/** Where Go calls the service by default (internal/config's EVALUATE_URL), so its port. */
+export const DEFAULT_PORT = 8090;
+
+export type Reply = { status: number; body: unknown };
+
+/** The two operations; a test swaps one for a failing one. */
+export type Ops = { evaluate: typeof evaluate; checkPublish: typeof checkPublish };
+const real: Ops = { evaluate, checkPublish };
+
+/** The port in EVALUATE_URL (the address Go calls), so one setting serves both sides. */
+export function portOf(url: string | undefined): number {
+  if (!url) return DEFAULT_PORT;
+  const port = Number(new URL(url).port);
+  return port > 0 ? port : DEFAULT_PORT;
+}
+
+/** The error's kind and its stack's code locations, without its message. */
+function where(e: unknown): string {
+  if (!(e instanceof Error)) return typeof e;
+  const frames = (e.stack ?? "").split("\n").filter((l) => l.trim().startsWith("at ")).slice(0, 5).map((l) => l.trim());
+  return [e.name, ...frames].join(" | ");
+}
+
+const formIdOf = (v: unknown): string => {
+  const id = v && typeof v === "object" ? (v as { formId?: unknown }).formId : undefined;
+  return typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id) ? id : "unknown";
+};
+
+export async function handle(method: string, path: string, body: string, version: string, ops: Partial<Ops> = {}): Promise<Reply> {
+  const op = { ...real, ...ops };
+  if (path === "/health") return method === "GET" ? { status: 200, body: { ok: true, evaluator: version } } : { status: 405, body: { error: "Use GET." } };
+  if (path !== "/evaluate" && path !== "/publish-problems") return { status: 404, body: { error: "Not found." } };
+  if (method !== "POST") return { status: 405, body: { error: "Use POST." } };
+  let input: unknown;
+  try {
+    input = JSON.parse(body);
+  } catch {
+    return { status: 400, body: { error: "The body isn't JSON." } };
+  }
+  try {
+    const out = path === "/evaluate" ? op.evaluate(input as Parameters<Ops["evaluate"]>[0], version) : op.checkPublish(input as Parameters<Ops["checkPublish"]>[0]);
+    return { status: 200, body: out };
+  } catch (e) {
+    if (e instanceof EvaluateInputError) return { status: 400, body: { error: e.message } };
+    const what = path === "/evaluate" ? `form ${formIdOf(input)}` : "a version's publish checks";
+    console.error(`evaluate: failed on ${what}: ${where(e)}`);
+    return { status: 500, body: { error: "The checks couldn't be worked out." } };
+  }
+}

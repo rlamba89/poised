@@ -5,7 +5,7 @@ export
 API := apps/api
 GOOSE := cd $(API) && go tool goose -dir db/migrations postgres "$(DATABASE_URL)"
 
-.PHONY: dev staff-api patient-api test test-integration e2e-setup e2e lint db-up migrate migrate-down seed sqlc platform-admin \
+.PHONY: dev evaluate staff-api patient-api test test-integration e2e-setup e2e lint db-up migrate migrate-down seed sqlc platform-admin \
 	build-lambdas infra-test synth aws-setup deploy-stacks deploy-web aws-db deploy-qa destroy-stacks \
 	deploy-pipeline destroy-pipeline qa-users qa-code qa-password e2e-users aws-platform-admin \
 	test-recipients test-recipients-verify test-recipients-status test-recipients-off
@@ -17,13 +17,19 @@ node_modules: package-lock.json
 .env:
 	cp .env.example .env
 
-# Runs the Go API (every route, with the dev login) and the web app (Vite) together; Ctrl-C
-# stops both.
+# Runs the Go API (every route, with the dev login), the web app (Vite) and the evaluate service
+# (S41: works out a sent HQ's results and the publish checks, at EVALUATE_URL, default
+# http://127.0.0.1:8090) together; Ctrl-C stops all three.
 dev: node_modules .env
 	@trap 'kill 0' INT TERM EXIT; \
 	(cd $(API) && DEV_LOGIN=true go run ./cmd/api) & \
 	npm run dev -w apps/web & \
+	npm run evaluate & \
 	wait
+
+# The evaluate service alone (S41), e.g. after stopping it to try what happens when it's down.
+evaluate: node_modules
+	npm run evaluate
 
 # One API function alone, as it runs on AWS (plan F3, D-4): the patient's link only, or the
 # staff routes only (with the dev login). ADDR is where it listens (default :8081), so it can

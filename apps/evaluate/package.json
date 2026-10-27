@@ -1,0 +1,21 @@
+{
+  "name": "@poised/evaluate",
+  "private": true,
+  "description": "The evaluate service (plan C6, S41): packages/clinical's evaluate() and checkPublish() served over HTTP for the Go API. No database, no state.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "node build.mjs && node dist/evaluate.cjs",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@poised/clinical": "0.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.3",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}
