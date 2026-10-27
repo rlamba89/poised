@@ -144,6 +144,16 @@ def test_a_suggested_status_is_shown_and_changes_nothing(page: Page, as_user, pa
     expect(page.get_by_test_id("rule-suggestion")).to_be_visible()
     expect(page).to_have_url(re.compile(rf"/episodes/{episode['id']}$"))
 
+    # S44a: once the episode reaches the suggested status, the line goes (the history keeps it).
+    cara = as_user("Cara Clinician")
+    cara.validate(episode, "About you", {"q_smokes": "o_yes", "q_chest_pain": "o_no", "q_snore": "o_never"})
+    cara.validate(episode, "Your heart", {"q_heart_failure": "o_no"})
+    cara.validate(episode, "Nurse checks", {})
+    cara.complete_review(episode)
+    page.reload()
+    expect(page.get_by_role("combobox", name="Episode status")).to_have_value("Ready for POA")
+    expect(page.get_by_test_id("rule-suggestion")).to_have_count(0)
+
 
 def test_a_stale_tabs_clear_is_told_and_closes_once_reloaded(page: Page, as_user, patient_link):
     """Test report 1, F-1: a Clear sent from a tab opened before someone else cleared the flag is told

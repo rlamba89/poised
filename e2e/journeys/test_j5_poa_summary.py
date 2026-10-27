@@ -25,7 +25,7 @@ import re
 
 from playwright.sync_api import Page, expect
 
-from support import PATIENT_ANSWERS, change_status, sign_in, unique
+from support import PATIENT_ANSWERS, change_status, choose, sign_in, unique
 from test_j16b_prefill_cross_trust import trust_b_then_trust_a
 
 
@@ -245,6 +245,17 @@ def test_the_suggested_asa_with_its_reasons_on_both_tabs(page: Page, as_user, pa
     asa.get_by_role("link", name=HF_REASON).click()
     expect(page).to_have_url(re.compile(rf"/sets/{hq['chapters']['Your heart']}\?q=q_heart_failure$"))
     page.go_back()
+
+    # S44a: Validate shows the suggestion too, and it changes as Cara corrects an answer (before it saves).
+    page.goto(f"{path}/sets/{hq['chapters']['Your heart']}")
+    on_validate = page.get_by_test_id("suggested-asa-line")
+    expect(on_validate).to_contain_text(f"Suggested ASA III: {HF_REASON}")
+    choose(page, "Have you been told you have heart failure?", "No")
+    expect(on_validate).to_contain_text(f"Suggested ASA II: {SMOKER_REASON}")
+    choose(page, "Have you been told you have heart failure?", "Yes")
+    expect(on_validate).to_contain_text(f"Suggested ASA III: {HF_REASON}")
+    expect(page.get_by_test_id("validate-save-status")).to_have_text("Saved")
+    page.goto(f"{path}/poa")
 
     # Cara corrects heart failure to No: the validated suggestion drops to ASA II, the patient's doesn't.
     cara.validate(episode, "About you", {"q_smokes": "o_yes"})

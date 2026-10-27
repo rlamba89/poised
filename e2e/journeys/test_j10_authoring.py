@@ -392,7 +392,7 @@ def test_a_score_across_question_sets(page: Page, phone: BrowserContext, as_user
     lines.get_by_role("textbox", name="Value").fill("40")
     lines.get_by_role("textbox", name="Value").press("Tab")
     card = main.locator("[data-testid^=card-q_]").filter(has_text="Total of the scores")  # its title is being edited in place
-    expect(card).to_contain_text("Total of the scores of 3 questions (2 in earlier Question Sets), plus 1 points line")
+    expect(card).to_contain_text("Total of the scores of 3 questions (2 in earlier Question Sets), plus 1 line adding points")
     # A line removed while another is unfinished is saved without it (verification 1, F1).
     lines.get_by_role("button", name="Add points line").click()
     lines.get_by_role("combobox", name="Question").nth(1).click()
@@ -400,14 +400,14 @@ def test_a_score_across_question_sets(page: Page, phone: BrowserContext, as_user
     pick_in = lines.get_by_role("combobox", name="Value")
     pick_in.click()
     page.get_by_role("option", name="Male", exact=True).click()
-    expect(card).to_contain_text("plus 2 points lines")
+    expect(card).to_contain_text("plus 2 lines adding points")
     lines.get_by_role("button", name="Add points line").click()  # left unfinished
     lines.get_by_role("button", name="Remove line").nth(1).click()  # the Sex line
-    expect(card).to_contain_text("plus 1 points line")
+    expect(card).to_contain_text("plus 1 line adding points")
     expect(page.get_by_test_id("save-status")).to_have_text("All changes saved")
     page.reload()
     main.locator("[data-testid^=card-q_]").filter(has_text="Total of the scores").click()
-    expect(main.locator("[data-testid^=card-q_]").filter(has_text="Total of the scores")).to_contain_text("plus 1 points line")
+    expect(main.locator("[data-testid^=card-q_]").filter(has_text="Total of the scores")).to_contain_text("plus 1 line adding points")
 
     # Two bands: Low up to 2, High above; High carries a disclosure.
     settings.get_by_role("button", name="Add band").click()
@@ -447,7 +447,7 @@ def test_a_score_across_question_sets(page: Page, phone: BrowserContext, as_user
     # Sleep is shown only to women: for a man its answers don't count, and the box says so (test report 2, F-1).
     pick(page, "Sex", "Male")
     expect(note.get_by_test_id("earlier-hidden")).to_have_text("The sample patient wouldn't see “Sleep”, so its answers don't count.")
-    expect(scores).to_contain_text("Sleep risk: Incomplete")
+    expect(scores).to_contain_text("Sleep risk: 2 (Low)")  # S44a: a hidden set's questions add 0 (collar 1, age 1)
     expect(page.get_by_test_id("outputs-panel")).not_to_contain_text("High risk of sleep apnoea")
     pick(page, "Sex", "Female")
     expect(note.get_by_test_id("earlier-hidden")).to_have_count(0)

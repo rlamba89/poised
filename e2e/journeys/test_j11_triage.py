@@ -303,6 +303,6 @@ def test_a_second_tabs_checked_is_refused_in_plain_words(page: Page, as_user, pa
 
     second.get_by_test_id("auto-triage").get_by_role("button", name="Checked").click()
     card = second.get_by_test_id("auto-triage")
-    expect(card.get_by_test_id("triage-check-error")).to_contain_text("This episode changed since you opened it")
+    expect(card.get_by_test_id("triage-check-error")).to_have_text("Someone checked this while you had it open.")  # S44a
     expect(card.get_by_test_id("triage-checked")).to_contain_text("Checked by Cara Clinician on")
     expect(card.get_by_role("button", name="Checked")).to_have_count(0)

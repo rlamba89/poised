@@ -9,13 +9,12 @@ Each of the pre-fill card's buttons has its own words in the log (S29): Start fr
 staff for the patient, reads "Started a Question Set fresh for the patient"."""
 
 import csv
-import io
 import re
 from datetime import date, timedelta
 
 from playwright.sync_api import Browser, Page, expect
 
-from support import PATIENT_ANSWERS, choose, pick, sign_in, unique
+from support import PATIENT_ANSWERS, choose, pick, sign_in, stream_find, unique
 from test_j16b_prefill_cross_trust import trust_b_then_trust_a
 
 
@@ -114,7 +113,8 @@ def test_an_admin_finds_a_clinicians_actions_filters_them_and_exports_the_csv(pa
     with page.expect_download() as download:
         page.get_by_role("link", name="Export CSV").click()
     assert download.value.suggested_filename.endswith(".csv")
-    records = list(csv.DictReader(io.StringIO(open(download.value.path(), encoding="utf-8").read())))
+    with open(download.value.path(), encoding="utf-8", newline="") as f:  # read as a stream
+        records = list(csv.DictReader(f))
     assert len(records) == shown, f"{len(records)} CSV rows, {shown} listed"
     for rec, text in zip(records, listed):
         assert rec["Who"] == "Cara Clinician" and rec["Action"] in text and rec["Hospital"] in text, (rec, text)
@@ -148,17 +148,17 @@ def test_another_trusts_admin_sees_nothing_of_trust_a(page: Page, as_user):
     show(page, "patient=")
     expect(page.get_by_text("Nothing matches these filters.")).to_be_visible()
 
+    # The CSVs are read as a stream (S44a): a trust's whole log can be hundreds of MB on a
+    # long-lived database, too big for one string.
+    ids = [episode["id"], episode["patientId"]]
     max_ = as_user("Max Multi", "Hospital B1")
-    res = max_.request.get(f"/api{max_.o('/audit')}?format=csv")
-    assert res.ok, f"GET Trust B's audit CSV: {res.status}"
-    trust_b_log = res.text()
-    assert trust_b_log.startswith("Time,Who,"), trust_b_log[:80]
-    for id_ in (episode["id"], episode["patientId"]):
-        assert id_ not in trust_b_log, f"Trust B's audit log names Trust A's {id_}"
+    first, found = stream_find(max_.request, f"/api{max_.o('/audit')}?format=csv", ids)
+    assert first.startswith("Time,Who,"), first[:80]
+    assert not found, f"Trust B's audit log names Trust A's {found}"
     # And Trust A's own log does name them (the check above isn't vacuous).
     ada = as_user("Ada Admin")
-    trust_a_log = ada.request.get(f"/api{ada.o('/audit')}?format=csv").text()
-    assert episode["id"] in trust_a_log
+    _, found = stream_find(ada.request, f"/api{ada.o('/audit')}?format=csv", ids)
+    assert episode["id"] in found
 
 
 def test_bad_filters_say_so_and_never_leave_old_rows_on_screen(page: Page):

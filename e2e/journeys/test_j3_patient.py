@@ -105,6 +105,8 @@ def test_patient_fills_in_and_sends_their_hq_on_a_phone(page: Page, phone: Brows
     confirm = patient.get_by_role("dialog", name="Send your answers?")
     confirm.get_by_role("button", name="Send my answers").click()
     expect(patient.get_by_role("heading", name="Thank you, Sam")).to_be_visible()
+    # One neutral wording for every send, promising no review (S44a).
+    expect(patient.get_by_text("Your answers have been sent to the hospital. We'll contact you about what happens next.")).to_be_visible()
     patient.reload()  # opening the link again shows the thank-you page, not the form
     expect(patient.get_by_role("heading", name="Thank you, Sam")).to_be_visible()
 

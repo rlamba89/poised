@@ -19,6 +19,7 @@ import os
 import re
 import secrets
 import time
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -149,6 +150,21 @@ def _signed_in_request(name: str) -> APIRequestContext:
     request = _Run.playwright.request.new_context(base_url=_Run.base_url)
     _dev_sign_in(request, name)
     return request
+
+
+def stream_find(request: APIRequestContext, path: str, needles: list[str]) -> tuple[str, set[str]]:
+    """GETs `path` with `request`'s cookies and reads the answer line by line (S44a), so a big
+    file (e.g. a trust's whole audit CSV) never has to fit in one string. Returns the first line and
+    which of `needles` appear anywhere in it."""
+    cookies = "; ".join(f"{c['name']}={c['value']}" for c in request.storage_state()["cookies"])
+    req = urllib.request.Request(f"{_Run.base_url}{path}", headers={"Cookie": cookies})
+    found: set[str] = set()
+    with urllib.request.urlopen(req, timeout=120) as res:
+        first = res.readline().decode("utf-8")
+        for raw in [first.encode("utf-8"), *res]:
+            line = raw.decode("utf-8", errors="replace")
+            found.update(n for n in needles if n in line)
+    return first, found
 
 
 def unique() -> str:

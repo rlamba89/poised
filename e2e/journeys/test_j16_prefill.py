@@ -48,6 +48,7 @@ def test_a_returning_patient_confirms_their_pre_filled_answers_on_a_phone(phone:
     p.answer("About you", about)
     p.answer("Your health", health)
     p.submit()
+    as_user("Alex Author").review_by_hand(first)  # the seeded demo HQ's default rules auto-triage it (S42)
     cara.validate(first, "About you", about)
     cara.validate(first, "Your health", {**health, "snoring": "yes"})
     cara.validate(first, "Nurse checks", {"q_bp": "120/80"})
