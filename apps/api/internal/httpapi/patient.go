@@ -22,6 +22,7 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/episode"
 	"github.com/rlamba89/poised/apps/api/internal/evaluate"
 	"github.com/rlamba89/poised/apps/api/internal/role"
+	"github.com/rlamba89/poised/apps/api/internal/triage"
 )
 
 // The patient's side (plan C2, session S14; A-4, PAT-04, PAT-05). Every session starts with a
@@ -511,7 +512,8 @@ func (s *server) saveForm(w http.ResponseWriter, r *http.Request, f form) {
 }
 
 // submitForm submits the HQ form, freezing the patient's answers, and moves the episode to Ready
-// for review (triage), through the transition table (S20), recording the change.
+// for review (triage), through the transition table (S20), recording the change. Then the HQ's
+// rules may move it straight on (S42, autoTriage).
 // The browser has checked every required question (plan 2.1); Go also holds it back while a
 // required video tick every patient sees isn't ticked (S34).
 func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
@@ -557,35 +559,92 @@ func (s *server) submitForm(w http.ResponseWriter, r *http.Request, f form) {
 		serverError(w, "status history", err)
 		return
 	}
-	if err := s.evaluateSent(ctx, q, f); err != nil {
+	res, err := s.evaluateSent(ctx, q, f)
+	if err != nil {
 		serverError(w, "store outputs", err)
 		return
+	}
+	message := "" // the status the patient is told about now, if any (EPI-08)
+	if res != nil {
+		if message, err = s.autoTriage(ctx, q, f, *res); err != nil {
+			serverError(w, "auto-triage", err)
+			return
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		serverError(w, "commit", err)
 		return
 	}
+	if message != "" {
+		s.automaticStatusMessage(r.Context(), f.ID, message)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// autoTriage acts on the rules that fired (S42; ASA-02, A-8), in the send's transaction: if a rule
+// auto-triages and every guard holds (internal/triage), the episode moves on from Ready for review
+// to the rule's target, recorded as the automatic auto_triage move naming the rule, with an
+// automatic General notes line; a guard that stopped it gets a line saying why. It returns the
+// status whose message the patient gets once the send is saved: the target's, unless the HQ holds
+// the message until a clinician clicks Checked (S42 answers 2); else "".
+func (s *server) autoTriage(ctx context.Context, q *db.Queries, f form, res evaluate.Result) (string, error) {
+	d := triage.Decide(res)
+	if d.Rule == "" {
+		return "", nil
+	}
+	if !d.Moves() {
+		return "", q.AddAutomaticEpisodeEventNow(ctx, db.AddAutomaticEpisodeEventNowParams{EpisodeID: f.ID, Text: d.Note()})
+	}
+	if err := episode.CheckAutomatic(episode.ReadyForReview, d.Target, episode.AutoTriage); err != nil {
+		return "", err // asarules.Targets and the table disagree: a bug
+	}
+	var hq struct {
+		MessageAfterCheck bool `json:"messageAfterCheck"`
+	}
+	if len(f.VersionRules) > 0 {
+		_ = json.Unmarshal(f.VersionRules, &hq) // checked when saved (asarules.Check); unreadable: send at once, as by default
+	}
+	stem := episode.StatusMessage(episode.AutoTriage, d.Target)
+	held := hq.MessageAfterCheck && stem != ""
+	n, err := q.AutoTriageEpisode(ctx, db.AutoTriageEpisodeParams{ID: f.ID, Status: d.Target, Rule: &d.Rule, Summary: &d.Summary, MessagePending: held})
+	if err != nil || n == 0 {
+		return "", cmp.Or(err, errors.New("the episode isn't Ready for review"))
+	}
+	rule := d.Rule
+	if err := q.AddStatusEvent(ctx, db.AddStatusEventParams{EpisodeID: f.ID, Move: string(episode.AutoTriage),
+		FromStatus: ptrTo(episode.ReadyForReview), ToStatus: d.Target, Rule: &rule}); err != nil {
+		return "", err
+	}
+	if err := q.AddAutomaticEpisodeEventNow(ctx, db.AddAutomaticEpisodeEventNowParams{EpisodeID: f.ID, Text: d.Note()}); err != nil {
+		return "", err
+	}
+	if held || stem == "" {
+		return "", nil
+	}
+	return d.Target, nil
+}
+
+func ptrTo[T any](v T) *T { return &v }
 
 // checksDidntRun is the General notes line when the evaluate service couldn't work out a sent HQ.
 const checksDidntRun = "The automatic checks didn't run. Review this HQ by hand."
 
 // evaluateSent asks the evaluate service what the sent answers give (S41, D-1) and stores it in
-// form_outputs, in the send's transaction, after the answers are frozen. It acts on nothing yet
-// (S42). The service gets the published version whole (each set with its audience, and the rules),
+// form_outputs, in the send's transaction, after the answers are frozen; autoTriage acts on it (S42). The service gets the published version whole (each set with its audience, and the rules),
 // the patient's answers, their age today at the hospital and their sex, and the episode's procedure:
 // nothing else about the patient. If the call fails (the service down, too slow, a bad reply), the
 // send still goes through: the error is stored, one EVALUATE_FAILED line is logged (the form's id
 // and the error, never an answer) and the General notes ask for the HQ to be reviewed by hand.
-func (s *server) evaluateSent(ctx context.Context, q *db.Queries, f form) error {
+//
+// It returns the result, or nil when the call failed (S42 then leaves the episode Ready for review).
+func (s *server) evaluateSent(ctx context.Context, q *db.Queries, f form) (*evaluate.Result, error) {
 	chapters, err := q.ListVersionChapters(ctx, f.VersionID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	saved, err := q.ListEpisodeAnswers(ctx, f.FormID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	in := evaluate.Input{FormID: f.FormID, Rules: f.VersionRules, Answers: map[uuid.UUID]json.RawMessage{},
 		Patient: evaluate.Patient{Age: ageOn(f.DateOfBirth, s.today(f.Timezone)), Sex: f.Sex}}
@@ -605,12 +664,12 @@ func (s *server) evaluateSent(ctx context.Context, q *db.Queries, f form) error 
 		log.Printf("%s form %s: %v", evaluate.FailedMarker, f.FormID, err)
 		msg := err.Error()
 		if err := q.AddFormOutput(ctx, db.AddFormOutputParams{FormID: f.FormID, Error: &msg}); err != nil {
-			return err
+			return nil, err
 		}
 		// Written as automatic, shown "Automatic" like a reminder's (test report 1, F-1), whoever sent it.
-		return q.AddAutomaticEpisodeEventNow(ctx, db.AddAutomaticEpisodeEventNowParams{EpisodeID: f.ID, Text: checksDidntRun})
+		return nil, q.AddAutomaticEpisodeEventNow(ctx, db.AddAutomaticEpisodeEventNowParams{EpisodeID: f.ID, Text: checksDidntRun})
 	}
-	return q.AddFormOutput(ctx, db.AddFormOutputParams{FormID: f.FormID, Result: res.Raw, EvaluatorVersion: &res.Evaluator})
+	return &res, q.AddFormOutput(ctx, db.AddFormOutputParams{FormID: f.FormID, Result: res.Raw, EvaluatorVersion: &res.Evaluator})
 }
 
 // uncheckedTicks is why the HQ can't be sent yet, or "": a required "I have watched this video" tick

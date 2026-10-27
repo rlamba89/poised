@@ -127,6 +127,56 @@ func (q *Queries) AddStatusEvent(ctx context.Context, arg AddStatusEventParams) 
 	return err
 }
 
+const autoTriageEpisode = `-- name: AutoTriageEpisode :execrows
+UPDATE episodes
+SET status = $1, triage_rule = $2, triage_summary = $3, triaged_at = now(),
+    triage_message_pending = $4, triage_checked_by = NULL, triage_checked_at = NULL,
+    revision = revision + 1
+WHERE id = $5 AND status = 'ready_for_review'
+`
+
+type AutoTriageEpisodeParams struct {
+	Status         string    `json:"status"`
+	Rule           *string   `json:"rule"`
+	Summary        *string   `json:"summary"`
+	MessagePending bool      `json:"messagePending"`
+	ID             uuid.UUID `json:"id"`
+}
+
+// The HQ's rules move the episode on (S42), in the send's transaction, right after SubmitPatientHQ
+// moved it to Ready for review: to the rule's target, stamped with the rule and its words.
+// message_pending: the patient's status message waits for Checked (the HQ's setting).
+func (q *Queries) AutoTriageEpisode(ctx context.Context, arg AutoTriageEpisodeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, autoTriageEpisode,
+		arg.Status,
+		arg.Rule,
+		arg.Summary,
+		arg.MessagePending,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const checkEpisodeTriage = `-- name: CheckEpisodeTriage :exec
+UPDATE episodes
+SET triage_checked_by = $1, triage_checked_at = now(), triage_message_pending = false, revision = revision + 1
+WHERE id = $2
+`
+
+type CheckEpisodeTriageParams struct {
+	UserID uuid.NullUUID `json:"userId"`
+	ID     uuid.UUID     `json:"id"`
+}
+
+// A clinician clicked Checked (S42 answers 1): who and when; it leaves the Auto-triaged worklist.
+func (q *Queries) CheckEpisodeTriage(ctx context.Context, arg CheckEpisodeTriageParams) error {
+	_, err := q.db.Exec(ctx, checkEpisodeTriage, arg.UserID, arg.ID)
+	return err
+}
+
 const completeReview = `-- name: CompleteReview :execrows
 UPDATE episodes SET status = 'ready_for_poa', review_completed_by = $2, review_completed_at = now(), revision = revision + 1
 WHERE id = $1 AND status = 'ready_for_review'
@@ -278,7 +328,9 @@ SELECT e.id, e.status, e.procedure_id, coalesce(pr.name, '')::text AS procedure,
        reviewer.name AS review_completed_by_name, submitter.name AS patient_submitted_by_name,
        p.id AS patient_id, p.first_name, p.last_name, p.date_of_birth, p.sex, p.national_id, p.national_id_type,
        p.mobile, p.email,
-       q.name AS questionnaire_name, v.version_no, f.id AS hq_form_id
+       q.name AS questionnaire_name, v.version_no, f.id AS hq_form_id,
+       -- S42: the auto-triage while it stands, and who checked it
+       e.triage_rule, e.triage_summary, e.triaged_at, e.triage_message_pending, e.triage_checked_at, checker.name AS triage_checked_by_name
 FROM episodes e
 JOIN patients p ON p.id = e.patient_id
 JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
@@ -287,6 +339,7 @@ JOIN questionnaires q ON q.id = v.questionnaire_id
 LEFT JOIN procedures pr ON pr.id = e.procedure_id
 LEFT JOIN users reviewer ON reviewer.id = e.review_completed_by
 LEFT JOIN users submitter ON submitter.id = f.submitted_by
+LEFT JOIN users checker ON checker.id = e.triage_checked_by
 WHERE e.id = $1 AND e.hospital_id = $2
 `
 
@@ -333,6 +386,12 @@ type GetEpisodeRow struct {
 	QuestionnaireName      string             `json:"questionnaireName"`
 	VersionNo              int32              `json:"versionNo"`
 	HqFormID               uuid.UUID          `json:"hqFormId"`
+	TriageRule             *string            `json:"triageRule"`
+	TriageSummary          *string            `json:"triageSummary"`
+	TriagedAt              pgtype.Timestamptz `json:"triagedAt"`
+	TriageMessagePending   bool               `json:"triageMessagePending"`
+	TriageCheckedAt        pgtype.Timestamptz `json:"triageCheckedAt"`
+	TriageCheckedByName    *string            `json:"triageCheckedByName"`
 }
 
 // With its HQ form (S18): the version, the patient's submit and who sent it keep their names
@@ -378,6 +437,12 @@ func (q *Queries) GetEpisode(ctx context.Context, arg GetEpisodeParams) (GetEpis
 		&i.QuestionnaireName,
 		&i.VersionNo,
 		&i.HqFormID,
+		&i.TriageRule,
+		&i.TriageSummary,
+		&i.TriagedAt,
+		&i.TriageMessagePending,
+		&i.TriageCheckedAt,
+		&i.TriageCheckedByName,
 	)
 	return i, err
 }
@@ -1023,6 +1088,33 @@ func (q *Queries) LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpis
 	return i, err
 }
 
+const lockEpisodeTriage = `-- name: LockEpisodeTriage :one
+SELECT status, revision, triaged_at, triage_checked_at, triage_message_pending
+FROM episodes WHERE id = $1 FOR UPDATE
+`
+
+type LockEpisodeTriageRow struct {
+	Status               string             `json:"status"`
+	Revision             int32              `json:"revision"`
+	TriagedAt            pgtype.Timestamptz `json:"triagedAt"`
+	TriageCheckedAt      pgtype.Timestamptz `json:"triageCheckedAt"`
+	TriageMessagePending bool               `json:"triageMessagePending"`
+}
+
+// Taken before Checked (S42), as LockEpisodeStatus before a status change.
+func (q *Queries) LockEpisodeTriage(ctx context.Context, id uuid.UUID) (LockEpisodeTriageRow, error) {
+	row := q.db.QueryRow(ctx, lockEpisodeTriage, id)
+	var i LockEpisodeTriageRow
+	err := row.Scan(
+		&i.Status,
+		&i.Revision,
+		&i.TriagedAt,
+		&i.TriageCheckedAt,
+		&i.TriageMessagePending,
+	)
+	return i, err
+}
+
 const lockFormPrefill = `-- name: LockFormPrefill :one
 SELECT (prefilled_at IS NOT NULL)::boolean AS done FROM episode_forms WHERE id = $1 FOR NO KEY UPDATE
 `
@@ -1222,6 +1314,12 @@ SET status = $1, admitted_at = $2, discharged_at = $3,
     cancel_reason = $4, archived_from = $5,
     review_completed_by = CASE WHEN $6::boolean THEN NULL ELSE review_completed_by END,
     review_completed_at = CASE WHEN $6::boolean THEN NULL ELSE review_completed_at END,
+    triage_rule = CASE WHEN $6::boolean THEN NULL ELSE triage_rule END,
+    triage_summary = CASE WHEN $6::boolean THEN NULL ELSE triage_summary END,
+    triaged_at = CASE WHEN $6::boolean THEN NULL ELSE triaged_at END,
+    triage_message_pending = triage_message_pending AND NOT $6::boolean,
+    triage_checked_by = CASE WHEN $6::boolean THEN NULL ELSE triage_checked_by END,
+    triage_checked_at = CASE WHEN $6::boolean THEN NULL ELSE triage_checked_at END,
     revision = revision + 1
 WHERE id = $7
 `
@@ -1240,6 +1338,9 @@ type SetEpisodeStatusParams struct {
 // (EPI-07) the review stamp cleared, which unlocks the clinician's answers (they're saved only
 // while the episode is Ready for review). The caller holds LockEpisodeStatus.
 // archived_from: the status it's archived from when archiving (S22), else NULL.
+// A re-open also ends an auto-triage (S42): a person reviews the HQ now, so it leaves the
+// Auto-triaged worklist, its stamp goes, and a message still waiting for Checked never goes. The
+// status history and the General notes keep what happened.
 func (q *Queries) SetEpisodeStatus(ctx context.Context, arg SetEpisodeStatusParams) error {
 	_, err := q.db.Exec(ctx, setEpisodeStatus,
 		arg.Status,

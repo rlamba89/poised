@@ -47,11 +47,17 @@ type Querier interface {
 	// Archives the episode, if nothing has changed it since it was read (the same status, and no
 	// write since: last_activity_at). No row: it changed meanwhile, and the next run decides again.
 	AutoArchiveEpisode(ctx context.Context, arg AutoArchiveEpisodeParams) (int64, error)
+	// The HQ's rules move the episode on (S42), in the send's transaction, right after SubmitPatientHQ
+	// moved it to Ready for review: to the rule's target, stamped with the rule and its words.
+	// message_pending: the patient's status message waits for Checked (the HQ's setting).
+	AutoTriageEpisode(ctx context.Context, arg AutoTriageEpisodeParams) (int64, error)
 	// Whether the account has an invite not yet accepted: it has never signed in.
 	AwaitingFirstSignIn(ctx context.Context, userID uuid.UUID) (bool, error)
 	// A change to the episode's tasks is a change to the episode (S20's revision): another tab's
 	// page is then stale, as after a status move.
 	BumpEpisodeRevision(ctx context.Context, id uuid.UUID) error
+	// A clinician clicked Checked (S42 answers 1): who and when; it leaves the Auto-triaged worklist.
+	CheckEpisodeTriage(ctx context.Context, arg CheckEpisodeTriageParams) error
 	// Takes one due job: its run_at moves to lease_until, so no other runner sees it as due while
 	// this one runs it (FOR UPDATE SKIP LOCKED: a row another runner is taking at the same moment is
 	// skipped). If this runner dies, the job is due again at lease_until. Nothing stays locked while
@@ -379,6 +385,8 @@ type Querier interface {
 	// The hospital's time zone is for the dates' "not in the future". archived_from is un-archive's
 	// target (S22); the cancel reason is kept when a cancelled episode is archived.
 	LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpisodeStatusRow, error)
+	// Taken before Checked (S42), as LockEpisodeStatus before a status change.
+	LockEpisodeTriage(ctx context.Context, id uuid.UUID) (LockEpisodeTriageRow, error)
 	// The form, locked while its first open pre-fills it (S28 answers 3: once per form), so a second
 	// open at the same moment waits and then finds it done. NO KEY UPDATE: saves of other sets
 	// (their answer rows' foreign key) don't wait.
@@ -523,6 +531,9 @@ type Querier interface {
 	// (EPI-07) the review stamp cleared, which unlocks the clinician's answers (they're saved only
 	// while the episode is Ready for review). The caller holds LockEpisodeStatus.
 	// archived_from: the status it's archived from when archiving (S22), else NULL.
+	// A re-open also ends an auto-triage (S42): a person reviews the HQ now, so it leaves the
+	// Auto-triaged worklist, its stamp goes, and a message still waiting for Checked never goes. The
+	// status history and the General notes keep what happened.
 	SetEpisodeStatus(ctx context.Context, arg SetEpisodeStatusParams) error
 	SetHospitalSettings(ctx context.Context, arg SetHospitalSettingsParams) error
 	SetHospitalStatus(ctx context.Context, arg SetHospitalStatusParams) error

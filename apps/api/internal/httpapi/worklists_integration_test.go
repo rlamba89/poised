@@ -99,6 +99,19 @@ func newWorklistWorld(t *testing.T) *worklistWorld {
 	cancelled := ep(w.a, episode.Cancelled, days(1))
 	addTask(t, w.clinic, cancelled, "Book anaesthetic review", episode.Anaesthetist, false)
 
+	// Auto-triaged (S42): moved on by the rules and not yet checked; not once checked, and never a
+	// cancelled or archived episode.
+	triaged := func(e apitest.Episode, checked bool) {
+		t.Helper()
+		exec(`UPDATE episodes SET triage_rule = 'Low risk', triage_summary = 'ASA I, no red or amber flags', triaged_at = now(),
+			triage_checked_by = CASE WHEN $2 THEN $3::uuid END, triage_checked_at = CASE WHEN $2 THEN now() END WHERE id = $1`, e.ID, checked, w.cara.ID)
+	}
+	triaged(ep(w.a, episode.ReadyForAdmission, nil, "auto_triaged"), false)
+	triaged(ep(w.a, episode.ReadyForPOA, nil), true)
+	triaged(ep(w.a, episode.Cancelled, nil), false)
+	triaged(ep(w.a, episode.Archived, nil), false)
+	triaged(ep(w.a2, episode.POAComplete, nil, "auto_triaged"), false)
+
 	// Procedure within 14 days (A) and not Ready for admission: today and day 14 are in; day 15,
 	// yesterday and no date are out; so are Ready for admission and the statuses after it.
 	ep(w.a, episode.NotReady, days(0), "procedure_soon")
@@ -162,7 +175,7 @@ func counts(t *testing.T, c *apitest.Client, path string) []worklistCount {
 	return got
 }
 
-var worklistKeys = []string{"ready_for_review", "not_responding", "anaesthetic_review", "procedure_soon", "on_hold", "open_tasks"}
+var worklistKeys = []string{"ready_for_review", "auto_triaged", "not_responding", "anaesthetic_review", "procedure_soon", "on_hold", "open_tasks"}
 
 func TestWorklists(t *testing.T) {
 	t.Parallel()
@@ -190,10 +203,10 @@ func TestWorklists(t *testing.T) {
 		if !slices.Equal(keys, worklistKeys) {
 			t.Errorf("worklists = %v, want %v", keys, worklistKeys)
 		}
-		if got[3].Label != "Procedure within 14 days" {
-			t.Errorf("A's soon worklist = %q", got[3].Label)
+		if got[4].Label != "Procedure within 14 days" {
+			t.Errorf("A's soon worklist = %q", got[4].Label)
 		}
-		if a2 := counts(t, w.site2, at(w.a2, "/worklists")); a2[3].Label != "Procedure within 7 days" || a2[3].Count != 1 || a2[0].Count != 1 {
+		if a2 := counts(t, w.site2, at(w.a2, "/worklists")); a2[4].Label != "Procedure within 7 days" || a2[4].Count != 1 || a2[0].Count != 1 {
 			t.Errorf("A2's counts = %+v", a2)
 		}
 	})
@@ -208,8 +221,8 @@ func TestWorklists(t *testing.T) {
 				t.Errorf("count %+v, want %s %d", all[i], k, len(want))
 			}
 		}
-		if all[3].Label != "Procedure soon" {
-			t.Errorf("several hospitals' soon worklist = %q, want no one number of days", all[3].Label)
+		if all[4].Label != "Procedure soon" {
+			t.Errorf("several hospitals' soon worklist = %q, want no one number of days", all[4].Label)
 		}
 	})
 	t.Run("happy path: a hospital-only clinician's All hospitals list is still only their hospital", func(t *testing.T) {
@@ -236,11 +249,11 @@ func TestWorklists(t *testing.T) {
 		}
 		defer w.db.Exec(t.Context(), `UPDATE orgs SET settings = '{}' WHERE id = $1`, w.a.Org)
 		got := counts(t, w.clinician, at(w.a, "/worklists"))
-		if got[3].Label != "Procedure within 20 days" || got[3].Count != len(w.want["procedure_soon"])+1 { // day 15 comes in
-			t.Errorf("soon with the trust's 20 days = %+v", got[3])
+		if got[4].Label != "Procedure within 20 days" || got[4].Count != len(w.want["procedure_soon"])+1 { // day 15 comes in
+			t.Errorf("soon with the trust's 20 days = %+v", got[4])
 		}
-		if a2 := counts(t, w.site2, at(w.a2, "/worklists")); a2[3].Label != "Procedure within 7 days" {
-			t.Errorf("A2 keeps its own: %+v", a2[3])
+		if a2 := counts(t, w.site2, at(w.a2, "/worklists")); a2[4].Label != "Procedure within 7 days" {
+			t.Errorf("A2 keeps its own: %+v", a2[4])
 		}
 	})
 	t.Run("no sign-in", func(t *testing.T) {
@@ -262,13 +275,13 @@ func TestWorklists(t *testing.T) {
 		for _, c := range bc {
 			got[c.Key] = c.Count
 		}
-		want := map[string]int{"ready_for_review": 0, "not_responding": 0, "anaesthetic_review": 0, "procedure_soon": 0, "on_hold": 1, "open_tasks": 0}
+		want := map[string]int{"ready_for_review": 0, "auto_triaged": 0, "not_responding": 0, "anaesthetic_review": 0, "procedure_soon": 0, "on_hold": 1, "open_tasks": 0}
 		if !maps.Equal(got, want) {
 			t.Errorf("B's counts = %v, want %v", got, want)
 		}
 	})
 	t.Run("invalid input: an unknown worklist", func(t *testing.T) {
-		for _, k := range []string{"nonsense", "auto_triaged", "On_hold"} {
+		for _, k := range []string{"nonsense", "Auto_triaged", "On_hold"} {
 			refused(t, w.clinician.Do("GET", at(w.a, "/episodes?worklist="+k), nil), http.StatusBadRequest)
 			refused(t, w.clinician.Do("GET", "/api/o/"+w.a.Org.String()+"/episodes?worklist="+k, nil), http.StatusBadRequest)
 		}

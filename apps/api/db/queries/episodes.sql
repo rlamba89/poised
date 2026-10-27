@@ -88,7 +88,9 @@ SELECT e.id, e.status, e.procedure_id, coalesce(pr.name, '')::text AS procedure,
        reviewer.name AS review_completed_by_name, submitter.name AS patient_submitted_by_name,
        p.id AS patient_id, p.first_name, p.last_name, p.date_of_birth, p.sex, p.national_id, p.national_id_type,
        p.mobile, p.email,
-       q.name AS questionnaire_name, v.version_no, f.id AS hq_form_id
+       q.name AS questionnaire_name, v.version_no, f.id AS hq_form_id,
+       -- S42: the auto-triage while it stands, and who checked it
+       e.triage_rule, e.triage_summary, e.triaged_at, e.triage_message_pending, e.triage_checked_at, checker.name AS triage_checked_by_name
 FROM episodes e
 JOIN patients p ON p.id = e.patient_id
 JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq'
@@ -97,6 +99,7 @@ JOIN questionnaires q ON q.id = v.questionnaire_id
 LEFT JOIN procedures pr ON pr.id = e.procedure_id
 LEFT JOIN users reviewer ON reviewer.id = e.review_completed_by
 LEFT JOIN users submitter ON submitter.id = f.submitted_by
+LEFT JOIN users checker ON checker.id = e.triage_checked_by
 WHERE e.id = $1 AND e.hospital_id = $2;
 
 -- name: UpdateEpisode :execrows
@@ -124,12 +127,42 @@ WHERE e.id = $1 FOR UPDATE OF e;
 -- (EPI-07) the review stamp cleared, which unlocks the clinician's answers (they're saved only
 -- while the episode is Ready for review). The caller holds LockEpisodeStatus.
 -- archived_from: the status it's archived from when archiving (S22), else NULL.
+-- A re-open also ends an auto-triage (S42): a person reviews the HQ now, so it leaves the
+-- Auto-triaged worklist, its stamp goes, and a message still waiting for Checked never goes. The
+-- status history and the General notes keep what happened.
 UPDATE episodes
 SET status = sqlc.arg(status), admitted_at = sqlc.arg(admitted_at), discharged_at = sqlc.arg(discharged_at),
     cancel_reason = sqlc.narg(cancel_reason), archived_from = sqlc.narg(archived_from),
     review_completed_by = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE review_completed_by END,
     review_completed_at = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE review_completed_at END,
+    triage_rule = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE triage_rule END,
+    triage_summary = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE triage_summary END,
+    triaged_at = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE triaged_at END,
+    triage_message_pending = triage_message_pending AND NOT sqlc.arg(reopen)::boolean,
+    triage_checked_by = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE triage_checked_by END,
+    triage_checked_at = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE triage_checked_at END,
     revision = revision + 1
+WHERE id = sqlc.arg(id);
+
+-- name: AutoTriageEpisode :execrows
+-- The HQ's rules move the episode on (S42), in the send's transaction, right after SubmitPatientHQ
+-- moved it to Ready for review: to the rule's target, stamped with the rule and its words.
+-- message_pending: the patient's status message waits for Checked (the HQ's setting).
+UPDATE episodes
+SET status = sqlc.arg(status), triage_rule = sqlc.arg(rule), triage_summary = sqlc.arg(summary), triaged_at = now(),
+    triage_message_pending = sqlc.arg(message_pending), triage_checked_by = NULL, triage_checked_at = NULL,
+    revision = revision + 1
+WHERE id = sqlc.arg(id) AND status = 'ready_for_review';
+
+-- name: LockEpisodeTriage :one
+-- Taken before Checked (S42), as LockEpisodeStatus before a status change.
+SELECT status, revision, triaged_at, triage_checked_at, triage_message_pending
+FROM episodes WHERE id = $1 FOR UPDATE;
+
+-- name: CheckEpisodeTriage :exec
+-- A clinician clicked Checked (S42 answers 1): who and when; it leaves the Auto-triaged worklist.
+UPDATE episodes
+SET triage_checked_by = sqlc.arg(user_id), triage_checked_at = now(), triage_message_pending = false, revision = revision + 1
 WHERE id = sqlc.arg(id);
 
 -- name: AddStatusEvent :exec

@@ -227,6 +227,7 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/cancel", hosp(s.audited("episode.cancel", s.cancelEpisode)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/reopen", hosp(s.audited("episode.reopen", s.reopenReview)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/undo", hosp(s.audited("episode.undo", s.undoStatus)))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/triage-checked", hosp(s.audited("triage.checked", s.triageChecked))) // S42
 	// Archive and un-archive (S22, EPI-04): a super clinician's; an archived episode is read-only.
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/archive", hosp(s.audited("episode.archive", s.archiveEpisode)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/unarchive", hosp(s.audited("episode.unarchive", s.unarchiveEpisode)))

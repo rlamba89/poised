@@ -382,6 +382,87 @@ func (s *server) statusMessage(r *http.Request, eid uuid.UUID, stem, status stri
 	}
 }
 
+// automaticStatusMessage is statusMessage for a move nobody made by hand (S42: auto-triage): the
+// General notes lines are automatic, whoever sent the HQ.
+func (s *server) automaticStatusMessage(ctx context.Context, eid uuid.UUID, status string) {
+	what := episode.Labels[status] + " message"
+	note := func(text string) {
+		if err := s.q.AddAutomaticEpisodeEventNow(ctx, db.AddAutomaticEpisodeEventNowParams{EpisodeID: eid, Text: text}); err != nil {
+			log.Printf("episode event: %v", err)
+		}
+	}
+	ctx = context.WithoutCancel(ctx) // the move is saved: finish what's started
+	res, on, err := s.inviter.SendStatus(ctx, eid, episode.StatusMessage(episode.AutoTriage, status), status)
+	if err != nil {
+		log.Printf("status message for episode %s: %v", eid, err)
+		note(what + " not sent: something went wrong.")
+		return
+	}
+	if on {
+		note(res.Note(what+" sent", what+" not sent"))
+	}
+}
+
+// triageChecked is POST …/episodes/{eid}/triage-checked {revision} (S42 answers 1): a clinician
+// at the hospital has looked at an auto-triaged episode. Who and when are recorded, with a General
+// notes line, and it leaves the Auto-triaged worklist. If the HQ held the patient's message for this
+// (answers 2), it goes now, as long as the episode is still where the rule moved it.
+func (s *server) triageChecked(w http.ResponseWriter, r *http.Request) {
+	e, in, ok := s.readStatusRequest(w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		serverError(w, "begin", err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	now, err := q.LockEpisodeTriage(ctx, e.ID)
+	if err != nil {
+		serverError(w, "lock episode", err)
+		return
+	}
+	switch {
+	case now.Revision != *in.Revision:
+		writeStale(w)
+		return
+	case now.Status == episode.Archived:
+		writeError(w, http.StatusConflict, archivedMsg)
+		return
+	case now.Status == episode.Cancelled:
+		writeError(w, http.StatusConflict, cancelledMsg)
+		return
+	case !now.TriagedAt.Valid:
+		writeError(w, http.StatusConflict, "This episode wasn't auto-triaged, so there's nothing to check.")
+		return
+	case now.TriageCheckedAt.Valid:
+		writeError(w, http.StatusConflict, "This auto-triage has already been checked.")
+		return
+	}
+	uid := currentUser(r).ID
+	if err := q.CheckEpisodeTriage(ctx, db.CheckEpisodeTriageParams{ID: e.ID, UserID: uuid.NullUUID{UUID: uid, Valid: true}}); err != nil {
+		serverError(w, "check triage", err)
+		return
+	}
+	if err := q.AddEpisodeEvent(ctx, db.AddEpisodeEventParams{EpisodeID: e.ID, Kind: "event", Text: "Auto-triage checked",
+		UserID: uuid.NullUUID{UUID: uid, Valid: true}}); err != nil {
+		serverError(w, "note", err)
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		serverError(w, "commit", err)
+		return
+	}
+	// The held message fits only while the episode is still at the status it tells the patient about.
+	if stem := episode.StatusMessage(episode.AutoTriage, now.Status); now.TriageMessagePending && stem != "" {
+		s.statusMessage(r, e.ID, stem, now.Status)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // writeStatusRefusal answers a move the table refuses: 403 for a role too low, else 409.
 func writeStatusRefusal(w http.ResponseWriter, err error, from string, c statusChange) {
 	switch {
