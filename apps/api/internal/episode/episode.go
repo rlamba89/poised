@@ -60,6 +60,7 @@ const (
 	Undo           Move = "undo"            // steps back a move made by hand, with a reason
 	Archive        Move = "archive"         // by a super clinician, or the daily auto-archive (S22, EPI-04, EPI-05)
 	Unarchive      Move = "unarchive"       // back to the status it was archived from, with a reason
+	AutoTriage     Move = "auto_triage"     // the HQ's rules move it on right after the send (S42, A-8); the system only
 )
 
 // Rule is what an allowed move needs.
@@ -128,6 +129,23 @@ func Check(from, to string, move Move, who role.Role) (Rule, error) {
 		return Rule{}, ErrRole
 	}
 	return r, nil
+}
+
+// automatic are the moves only the system makes (S42), never a person: so they aren't in allowed,
+// Check refuses them to every role and Options never lists them. Auto-triage goes from Ready for
+// review, straight after the send moved the episode there, to a rule's target (asarules.Targets).
+var automatic = map[pair]Move{
+	{ReadyForReview, ReadyForAdmission}: AutoTriage,
+	{ReadyForReview, ReadyForPOA}:       AutoTriage,
+	{ReadyForReview, POAComplete}:       AutoTriage,
+}
+
+// CheckAutomatic says whether the system may make move from → to (ErrIllegal if not).
+func CheckAutomatic(from, to string, move Move) error {
+	if m, ok := automatic[pair{from, to}]; !ok || m != move {
+		return ErrIllegal
+	}
+	return nil
 }
 
 // Option is a move the status control offers.

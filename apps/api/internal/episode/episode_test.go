@@ -48,10 +48,11 @@ func agreed() []legal {
 	return out
 }
 
-var moves = []Move{Create, Submit, CompleteReview, Set, Admit, Discharge, Cancel, Reopen, Undo, Archive, Unarchive, "nonsense"}
+var moves = []Move{Create, Submit, CompleteReview, Set, Admit, Discharge, Cancel, Reopen, Undo, Archive, Unarchive, AutoTriage, "nonsense"}
 
 // Every pair of statuses, with every move and every role (and the patient): the agreed moves are
 // allowed at their least role and above, refused below it (ErrRole); everything else is illegal.
+// Auto-triage (S42) is never in it: only the system makes it (CheckAutomatic), so no role may by hand.
 func TestCheckEveryPair(t *testing.T) {
 	all := append(slices.Clone(Statuses), "nonsense", "")
 	who := []role.Role{role.None, role.Clinician, role.SuperClinician, role.Admin} // role.None: the patient
@@ -91,6 +92,27 @@ func TestCheckEveryPair(t *testing.T) {
 	}
 	if checked < 1000 {
 		t.Fatalf("checked only %d combinations", checked)
+	}
+}
+
+// The system's own moves (S42): auto-triage from Ready for review, right after the send, to one of
+// the rules' targets (asarules.Targets, A-8). Every other pair and move is illegal for the system.
+func TestCheckAutomaticEveryPair(t *testing.T) {
+	targets := []string{ReadyForAdmission, ReadyForPOA, POAComplete}
+	all := append(slices.Clone(Statuses), "nonsense", "")
+	for _, from := range all {
+		for _, to := range all {
+			for _, m := range moves {
+				want := m == AutoTriage && from == ReadyForReview && slices.Contains(targets, to)
+				err := CheckAutomatic(from, to, m)
+				if want && err != nil {
+					t.Errorf("CheckAutomatic(%s → %s, %s) = %v, want allowed", from, to, m, err)
+				}
+				if !want && !errors.Is(err, ErrIllegal) {
+					t.Errorf("CheckAutomatic(%s → %s, %s) = %v, want ErrIllegal", from, to, m, err)
+				}
+			}
+		}
 	}
 }
 
@@ -158,6 +180,7 @@ func TestUndoTarget(t *testing.T) {
 		{"discharged by mistake", Discharged, ptr(ev(Discharge, Admitted, Discharged)), Admitted},
 		{"the review: re-open instead", ReadyForPOA, ptr(ev(CompleteReview, ReadyForReview, ReadyForPOA)), ""},
 		{"the patient's submit", ReadyForReview, ptr(ev(Submit, HQNotComplete, ReadyForReview)), ""},
+		{"auto-triaged: re-open instead (S42)", ReadyForAdmission, ptr(ev(AutoTriage, ReadyForReview, ReadyForAdmission)), ""},
 		{"a re-open", ReadyForReview, ptr(ev(Reopen, OnHold, ReadyForReview)), ""},
 		{"cancel stays final", Cancelled, ptr(ev(Cancel, OnHold, Cancelled)), ""},
 		{"created", HQNotComplete, ptr(ev(Create, "", HQNotComplete)), ""},

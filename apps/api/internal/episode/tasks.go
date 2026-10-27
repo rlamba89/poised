@@ -65,9 +65,10 @@ func Worklists(soonDays int) []Worklist {
 		soon.Label = "Procedure within " + days
 		soon.Help = "A planned procedure date today or in the next " + days + ", and not yet Ready for admission."
 	}
-	// Auto-triaged comes with auto-triage (C6).
 	return []Worklist{
 		{Key: "ready_for_review", Label: "Ready for review", Help: "The patient has sent their HQ, and the HQ review isn't complete."},
+		// S42 (EPI-02): until a clinician clicks Checked (S42 answers 1).
+		{Key: "auto_triaged", Label: "Auto-triaged", Help: "Moved on automatically by the HQ's rules; not yet checked by a clinician."},
 		{Key: "not_responding", Label: "Not responding", Help: "Marked not responding: the patient hasn't sent their HQ by the hospital's day."},
 		{Key: "anaesthetic_review", Label: "Anaesthetic review needed", Help: "An open task for the anaesthetist team."},
 		soon,
@@ -85,10 +86,11 @@ func IsWorklist(key string) bool {
 // stem of its settings ("readyForAdmission": statusMessages.readyForAdmissionSms switches on
 // templates.readyForAdmissionSms, and the same for Email), or "" for none. Only a move forward by
 // hand sends one: a pick of Ready for admission, or cancelling. Undoing an admission, which lands
-// on Ready for admission again, tells the patient nothing.
+// on Ready for admission again, tells the patient nothing. Auto-triage to Ready for admission (S42)
+// sends it too: at once, or when a clinician clicks Checked if the HQ's rules say so.
 func StatusMessage(move Move, to string) string {
 	switch {
-	case move == Set && to == ReadyForAdmission:
+	case (move == Set || move == AutoTriage) && to == ReadyForAdmission:
 		return "readyForAdmission"
 	case move == Cancel:
 		return "cancelled"

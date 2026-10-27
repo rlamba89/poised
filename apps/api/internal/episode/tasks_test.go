@@ -48,8 +48,9 @@ func TestWorklists(t *testing.T) {
 		}
 		return out
 	}
-	// The six fixed worklists, in the agreed order (S21 answers 2).
-	want := []string{"ready_for_review", "not_responding", "anaesthetic_review", "procedure_soon", "on_hold", "open_tasks"}
+	// The fixed worklists, in the agreed order (S21 answers 2), with Auto-triaged after Ready for
+	// review (S42: the quick check after an automatic decision).
+	want := []string{"ready_for_review", "auto_triaged", "not_responding", "anaesthetic_review", "procedure_soon", "on_hold", "open_tasks"}
 	if got := keys(Worklists(14)); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("Worklists = %v, want %v", got, want)
 	}
@@ -58,17 +59,20 @@ func TestWorklists(t *testing.T) {
 			t.Errorf("worklist %+v: want a label, a help line and IsWorklist", w)
 		}
 	}
-	soon := Worklists(10)[3]
+	soon := Worklists(10)[4]
 	if soon.Label != "Procedure within 10 days" || !strings.Contains(soon.Help, "next 10 days") {
 		t.Errorf("one hospital's soon worklist = %+v, want its days", soon)
 	}
-	if one := Worklists(1)[3]; one.Label != "Procedure within 1 day" || !strings.Contains(one.Help, "next 1 day,") {
+	if one := Worklists(1)[4]; one.Label != "Procedure within 1 day" || !strings.Contains(one.Help, "next 1 day,") {
 		t.Errorf("one day = %+v, want the singular", one)
 	}
-	if soon := Worklists(0)[3]; soon.Label != "Procedure soon" || !strings.Contains(soon.Help, "each hospital's") {
+	if soon := Worklists(0)[4]; soon.Label != "Procedure soon" || !strings.Contains(soon.Help, "each hospital's") {
 		t.Errorf("several hospitals' soon worklist = %+v, want no one number of days", soon)
 	}
-	for _, k := range []string{"", "all", "Ready_for_review", "auto_triaged"} {
+	if a := Worklists(14)[1]; a.Label != "Auto-triaged" || a.Help != "Moved on automatically by the HQ's rules; not yet checked by a clinician." {
+		t.Errorf("auto-triaged = %+v", a)
+	}
+	for _, k := range []string{"", "all", "Ready_for_review", "Auto_triaged"} {
 		if IsWorklist(k) {
 			t.Errorf("IsWorklist(%q) = true", k)
 		}
@@ -90,6 +94,9 @@ func TestStatusMessage(t *testing.T) {
 		{CompleteReview, ReadyForPOA, ""},
 		{Reopen, ReadyForReview, ""},
 		{Submit, ReadyForReview, ""},
+		{AutoTriage, ReadyForAdmission, "readyForAdmission"}, // S42: auto-triaged to Ready for admission
+		{AutoTriage, ReadyForPOA, ""},
+		{AutoTriage, POAComplete, ""},
 	} {
 		if got := StatusMessage(c.move, c.to); got != c.want {
 			t.Errorf("StatusMessage(%s, %s) = %q, want %q", c.move, c.to, got, c.want)
