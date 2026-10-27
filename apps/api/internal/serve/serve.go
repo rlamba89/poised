@@ -23,6 +23,7 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/cognito"
 	"github.com/rlamba89/poised/apps/api/internal/config"
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/evaluate"
 	"github.com/rlamba89/poised/apps/api/internal/httpapi"
 	"github.com/rlamba89/poised/apps/api/internal/jobs"
 	"github.com/rlamba89/poised/apps/api/internal/messaging"
@@ -65,7 +66,8 @@ func Setup(ctx context.Context, name string) httpapi.Deps {
 	if c := cfg.Cognito; c.Enabled() {
 		userPool = &cognito.AWS{PoolID: c.UserPoolID, ClientID: c.ClientID, Domain: c.Domain, RedirectURI: c.RedirectURI}
 	}
-	return httpapi.Deps{Pool: pool, Config: cfg, Cognito: userPool, SMS: sms, Email: email}
+	// The evaluate service (S41): npm run evaluate locally, at EVALUATE_URL.
+	return httpapi.Deps{Pool: pool, Config: cfg, Cognito: userPool, SMS: sms, Email: email, Evaluator: evaluate.HTTP{URL: cfg.EvaluateURL}}
 }
 
 // senders are the patients' texts and emails as MESSAGING says (S17): captured in sent_messages;

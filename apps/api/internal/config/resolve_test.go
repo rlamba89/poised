@@ -48,6 +48,7 @@ func lambdaEnv() env {
 	e["AWS_LAMBDA_FUNCTION_NAME"] = "poised-ca-qa-staff-api"
 	e["CONFIG_STRICT"] = "true"
 	e["MESSAGING"] = "capture"
+	e["EVALUATE_URL"] = "https://evaluate.ca.example.test" // S45 sets the real one
 	e["DATABASE_URL_PARAM"] = "/sj/qa/database-url"
 	e["APP_URL_PARAM"] = "/sj/qa/app-url"
 	e["TOKEN_SECRET_ARN"] = "arn:aws:secretsmanager:ca-central-1:111111111111:secret:poised-ca-qa-token-AbCdEf"

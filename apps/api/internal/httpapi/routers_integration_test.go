@@ -130,8 +130,9 @@ func TestConfig(t *testing.T) {
 	country := map[string]string{
 		"APP_URL": "https://ca.example.test", "DEFAULT_TIME_ZONE": "America/Toronto",
 		"DEFAULT_LOCALE": "fr-CA", "PHONE_COUNTRY": "CA", "CONFIG_STRICT": "true",
-		"NATIONAL_ID_TYPE": "nhs",     // the only scheme built so far
-		"MESSAGING":        "capture", // strict needs it set (S14 verification 1)
+		"NATIONAL_ID_TYPE": "nhs",                              // the only scheme built so far
+		"MESSAGING":        "capture",                          // strict needs it set (S14 verification 1)
+		"EVALUATE_URL":     "https://evaluate.ca.example.test", // so does the evaluate service (S41)
 		// The estimated time's seconds per question (S36): not a per-country value, but the
 		// browser gets it from here.
 		"SECONDS_PER_QUESTION": "20",

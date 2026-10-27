@@ -12,12 +12,13 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/cognito"
 	"github.com/rlamba89/poised/apps/api/internal/config"
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/evaluate"
 	"github.com/rlamba89/poised/apps/api/internal/invite"
 	"github.com/rlamba89/poised/apps/api/internal/jobs"
 	"github.com/rlamba89/poised/apps/api/internal/messaging"
 )
 
-// Deps is what the routers need. Later plans add S3 and evaluate; tests pass fakes.
+// Deps is what the routers need. Later plans add S3; tests pass fakes.
 type Deps struct {
 	Pool    *pgxpool.Pool
 	Config  config.Config  // the token secret, DEV_LOGIN, MESSAGING and the per-country values
@@ -28,6 +29,9 @@ type Deps struct {
 	Clock       clock.Clock     // nil: the system clock
 	SMS         messaging.SMS   // patients' texts (S14): captured until S17
 	Email       messaging.Email // patients' emails (S14): captured until S17
+	// Evaluator is the evaluate service (S41, D-1): an HQ's results when it's sent, and the publish
+	// checks. Locally npm run evaluate (make dev starts it); evaluate.Recorder in tests.
+	Evaluator evaluate.Evaluator
 }
 
 type server struct {
@@ -39,6 +43,7 @@ type server struct {
 	clock   clock.Clock
 	sms     messaging.SMS
 	email   messaging.Email
+	eval    evaluate.Evaluator
 	inviter invite.Sender    // the patient's invites and Resend (S14); reminders use it too (S16)
 	jobs    jobs.Runner      // the scheduled jobs, for the QA "run jobs as of" route (S16)
 	idToken cognito.Verifier // checks the ID token at the Cognito sign-in (S12), when there's a pool
@@ -51,13 +56,16 @@ func newServer(d Deps) *server {
 	if d.SMS == nil || d.Email == nil {
 		panic("httpapi: Deps.SMS or Deps.Email is not set") // a missing one would lose every invite
 	}
+	if d.Evaluator == nil {
+		panic("httpapi: Deps.Evaluator is not set") // a missing one would leave every sent HQ unchecked
+	}
 	if d.Clock == nil {
 		d.Clock = clock.Real{}
 	}
 	inviter := invite.Sender{Pool: d.Pool, SMS: d.SMS, Email: d.Email, Clock: d.Clock,
 		AppURL: d.Config.Country.AppURL, PhoneCountry: d.Config.Country.PhoneCountry}
 	s := &server{pool: d.Pool, q: db.New(d.Pool), secret: []byte(d.Config.TokenSecret), cfg: d.Config,
-		cognito: d.Cognito, clock: d.Clock, sms: d.SMS, email: d.Email, inviter: inviter,
+		cognito: d.Cognito, clock: d.Clock, sms: d.SMS, email: d.Email, eval: d.Evaluator, inviter: inviter,
 		jobs: jobs.Runner{Pool: d.Pool, Inviter: inviter, DefaultZone: d.Config.Country.TimeZone}}
 	if pool := d.Config.Cognito; pool.Enabled() {
 		keys := d.CognitoKeys

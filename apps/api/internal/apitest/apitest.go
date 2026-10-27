@@ -43,6 +43,7 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/cognito"
 	"github.com/rlamba89/poised/apps/api/internal/config"
 	"github.com/rlamba89/poised/apps/api/internal/db"
+	"github.com/rlamba89/poised/apps/api/internal/evaluate"
 	"github.com/rlamba89/poised/apps/api/internal/httpapi"
 	"github.com/rlamba89/poised/apps/api/internal/messaging"
 )
@@ -175,9 +176,12 @@ type Client struct {
 	// Messages are the patients' texts and emails the server sent (nil with Options.Capture,
 	// where they go to sent_messages as in make dev).
 	Messages *messaging.Recorder
-	base     string
-	http     *http.Client
-	cfg      config.Config
+	// Evaluator is the server's evaluate service (S41): what it was sent; make it fail with
+	// Evaluator.Fail, or answer with Evaluator.Reply and Evaluator.SetProblems.
+	Evaluator *evaluate.Recorder
+	base      string
+	http      *http.Client
+	cfg       config.Config
 }
 
 // New gives the test its own database, copied from the migrated template, and a real
@@ -260,8 +264,8 @@ func NewWith(t *testing.T, opts Options) (*Client, *Fixtures) {
 	if err != nil {
 		t.Fatalf("apitest: connect to %s: %v", name, err)
 	}
-	clk, cog := &clock.Fake{}, &cognito.Recorder{}
-	deps := httpapi.Deps{Pool: pool, Config: cfg, Cognito: cog, Clock: clk,
+	clk, cog, ev := &clock.Fake{}, &cognito.Recorder{}, &evaluate.Recorder{}
+	deps := httpapi.Deps{Pool: pool, Config: cfg, Cognito: cog, Clock: clk, Evaluator: ev,
 		CognitoKeys: cognito.StaticKeys{cognitoKid: &cognitoKey().PublicKey}}
 	var msgs *messaging.Recorder
 	if opts.Capture {
@@ -279,7 +283,7 @@ func NewWith(t *testing.T, opts Options) (*Client, *Fixtures) {
 			t.Errorf("apitest: drop %s: %v", name, err)
 		}
 	})
-	return &Client{DB: pool, Clock: clk, Cognito: cog, Messages: msgs, base: srv.URL, http: srv.Client(), cfg: cfg}, &Fixtures{db: pool}
+	return &Client{DB: pool, Clock: clk, Cognito: cog, Messages: msgs, Evaluator: ev, base: srv.URL, http: srv.Client(), cfg: cfg}, &Fixtures{db: pool}
 }
 
 // IDToken is an ID token from the made-up user pool (Options.Cognito) for sub and email, valid
@@ -382,7 +386,7 @@ func (c *Client) WithCookie(t *testing.T, name, value, path string) *Client {
 }
 
 func (c *Client) withJar(jar http.CookieJar) *Client {
-	return &Client{DB: c.DB, Clock: c.Clock, Cognito: c.Cognito, Messages: c.Messages, base: c.base,
+	return &Client{DB: c.DB, Clock: c.Clock, Cognito: c.Cognito, Messages: c.Messages, Evaluator: c.Evaluator, base: c.base,
 		http: &http.Client{Transport: c.http.Transport, Jar: jar}, cfg: c.cfg}
 }
 

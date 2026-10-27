@@ -33,7 +33,7 @@ func TestHandle(t *testing.T) {
 	r.Want(t, http.StatusCreated)
 	var ep struct{ ID string }
 	r.Decode(t, &ep)
-	deps := httpapi.Deps{Pool: c.DB, Config: c.Config(), Cognito: cognito.Local{}, SMS: c.Messages, Email: c.Messages}
+	deps := httpapi.Deps{Pool: c.DB, Config: c.Config(), Cognito: cognito.Local{}, SMS: c.Messages, Email: c.Messages, Evaluator: c.Evaluator}
 	handle := handler(deps)
 	ctx := t.Context()
 
@@ -70,7 +70,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("a run without the QA clock outside capture mode", func(t *testing.T) {
-		send := httpapi.Deps{Pool: c.DB, Config: c.Config(), Cognito: cognito.Local{}, SMS: c.Messages, Email: c.Messages}
+		send := httpapi.Deps{Pool: c.DB, Config: c.Config(), Cognito: cognito.Local{}, SMS: c.Messages, Email: c.Messages, Evaluator: c.Evaluator}
 		send.Config.Messaging = "send"
 		before := time.Now()
 		out, err := handler(send)(ctx, json.RawMessage(`{}`))

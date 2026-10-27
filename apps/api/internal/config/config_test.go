@@ -42,6 +42,7 @@ func strict() env {
 	e := cognito(country())
 	e["CONFIG_STRICT"] = "true"
 	e["MESSAGING"] = "capture"
+	e["EVALUATE_URL"] = "https://evaluate.ca.example.test"
 	return e
 }
 
@@ -461,6 +462,35 @@ func TestLoadSecondsPerQuestion(t *testing.T) {
 	for _, bad := range []string{"0", "-5", "15s", "1.5", "601"} {
 		e["SECONDS_PER_QUESTION"] = bad
 		if _, err := config.Load(e.get); err == nil || !strings.Contains(err.Error(), "SECONDS_PER_QUESTION") {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
+}
+
+// The evaluate service's address (S41, D-1): locally npm run evaluate's, which make dev starts; on
+// AWS it must be set (S45), so a deployment never sends HQs to a laptop's address.
+func TestLoadEvaluateURL(t *testing.T) {
+	c, err := config.Load(required().get)
+	if err != nil || c.EvaluateURL != "http://127.0.0.1:8090" {
+		t.Fatalf("local default: %q, %v", c.EvaluateURL, err)
+	}
+	e := required()
+	e["EVALUATE_URL"] = "http://127.0.0.1:9100/"
+	if c, err := config.Load(e.get); err != nil || c.EvaluateURL != "http://127.0.0.1:9100" {
+		t.Fatalf("set: %q, %v", c.EvaluateURL, err)
+	}
+	if c, err := config.Load(strict().get); err != nil || c.EvaluateURL != "https://evaluate.ca.example.test" {
+		t.Fatalf("strict: %q, %v", c.EvaluateURL, err)
+	}
+	e = strict()
+	delete(e, "EVALUATE_URL")
+	if _, err := config.Load(e.get); err == nil || !strings.Contains(err.Error(), "EVALUATE_URL") {
+		t.Errorf("strict without it: %v, want an error naming EVALUATE_URL", err)
+	}
+	for _, bad := range []string{"127.0.0.1:8090", "ftp://x.example.test", "http://", "http://x.example.test/evaluate"} {
+		e := required()
+		e["EVALUATE_URL"] = bad
+		if _, err := config.Load(e.get); err == nil || !strings.Contains(err.Error(), "EVALUATE_URL") {
 			t.Errorf("%q: %v", bad, err)
 		}
 	}

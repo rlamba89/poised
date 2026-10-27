@@ -11,6 +11,7 @@ import (
 
 	"github.com/rlamba89/poised/apps/api/internal/cognito"
 	"github.com/rlamba89/poised/apps/api/internal/config"
+	"github.com/rlamba89/poised/apps/api/internal/evaluate"
 	"github.com/rlamba89/poised/apps/api/internal/httpapi"
 	"github.com/rlamba89/poised/apps/api/internal/messaging"
 	"github.com/rlamba89/poised/apps/api/internal/serve"
@@ -129,7 +130,7 @@ func TestLambdaServesTheRouter(t *testing.T) {
 		t.Fatal(err)
 	}
 	capture := messaging.Capture{} // never used: no route here sends anything
-	h := httpapi.NewPatientRouter(httpapi.Deps{Config: cfg, Cognito: cognito.Local{}, SMS: capture, Email: capture})
+	h := httpapi.NewPatientRouter(httpapi.Deps{Config: cfg, Cognito: cognito.Local{}, SMS: capture, Email: capture, Evaluator: &evaluate.Recorder{}})
 	r := invoke(t, h, 0, event("GET", "/api/config", "198.51.100.7", ""))
 	if r.StatusCode != 200 || !strings.Contains(r.Body, `"locale"`) {
 		t.Errorf("status %d: %s", r.StatusCode, r.Body)

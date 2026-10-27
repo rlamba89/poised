@@ -56,7 +56,12 @@ type Config struct {
 	// counts this many seconds for each question they see, plus each video's length (S36 answers 3:
 	// configurable, default 15). Not a per-country value, so it keeps its default under CONFIG_STRICT.
 	SecondsPerQuestion int
-	Country            Country
+	// EVALUATE_URL (S41, D-1): the evaluate service, which works out an HQ's results when it's sent
+	// and runs the publish checks (internal/evaluate). Locally `npm run evaluate`, which make dev
+	// starts (default http://127.0.0.1:8090, its port read by the service too); required with
+	// CONFIG_STRICT (AWS, S45). No trailing slash.
+	EvaluateURL string
+	Country     Country
 	// Cognito is the staff user pool (S12): staff sign in through its managed login. Required on
 	// AWS (CONFIG_STRICT); locally it's usually unset and the dev login stands in.
 	Cognito Cognito
@@ -93,6 +98,10 @@ const (
 	DefaultSecondsPerQuestion = 15
 	maxSecondsPerQuestion     = 600
 )
+
+// DefaultEvaluateURL is where make dev's evaluate service listens (apps/evaluate reads the port
+// from EVALUATE_URL too).
+const DefaultEvaluateURL = "http://127.0.0.1:8090"
 
 // maxForwardedHops is a sanity limit: on QA the browser's address is third from the right
 // (Amplify's rewrite adds two, API Gateway one; infra/api_stack.py).
@@ -297,6 +306,7 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, fmt.Errorf("MESSAGING must be %q or %q, not %q", MessagingCapture, MessagingSend, c.Messaging))
 	}
 	errs = append(errs, c.loadSending(getenv, need)...)
+	errs = append(errs, c.loadEvaluateURL(getenv, strict, need)...)
 	if len(missing) > 0 {
 		hint := " (copy .env.example to .env)"
 		if strict {
@@ -344,6 +354,23 @@ func (c *Config) loadSending(getenv func(string) string, need func(string) strin
 		errs = append(errs, fmt.Errorf("SMS_SENDER_ID must be 1 to 11 letters, digits or hyphens, not %q", v))
 	}
 	return errs
+}
+
+// loadEvaluateURL reads EVALUATE_URL (S41): an http(s) address with no path, the local default
+// outside strict mode.
+func (c *Config) loadEvaluateURL(getenv func(string) string, strict bool, need func(string) string) []error {
+	v := getenv("EVALUATE_URL")
+	if v == "" && !strict {
+		v = DefaultEvaluateURL
+	} else if v == "" {
+		need("EVALUATE_URL") // reported as missing
+		return nil
+	}
+	c.EvaluateURL = strings.TrimSuffix(v, "/")
+	if u, err := url.Parse(c.EvaluateURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Path != "" {
+		return []error{fmt.Errorf("EVALUATE_URL must be the evaluate service's address with no path, such as %s, not %q", DefaultEvaluateURL, v)}
+	}
+	return nil
 }
 
 // isAddress reports whether v is a bare email address (no name, no angle brackets).
