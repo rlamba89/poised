@@ -8,7 +8,7 @@ import { publishProblems } from "./publish";
 import { registerClinicalProperties } from "./properties";
 import { combineChapters, givenEarlier } from "./questionSets";
 import { earlierContexts, isSetComplete, isSetReadyToSend, shownSets } from "./respondent";
-import { applyEarlier, formatScore, linesToSave, parseScore, scoredQuestions, type PointsLine, type ScoreForm } from "./scores";
+import { applyEarlier, bandWhenSubjects, formatBandWhen, formatScore, linesToSave, parseBandWhen, parseScore, scoredQuestions, type PointsLine, type ScoreForm } from "./scores";
 import { modelFor, runTestCase, type SamplePatient, type TestCase } from "./testcases";
 import { renameReferences } from "./library";
 import { showBands } from "./questionTypes";
@@ -159,14 +159,73 @@ describe("a score across Question Sets (S38)", () => {
     }
   });
 
-  it("counts a question a condition hides, or a set a condition hides, as unanswered", () => {
-    // q_cough is shown only to smokers; its old answer stays in the data but doesn't count.
+  it("adds 0 for a question a condition hides, but is Incomplete for one shown and skipped (S44a)", () => {
+    // q_cough is shown only to smokers; its old answer stays in the data but adds nothing.
     const withCough = neck(risk({ kind: "score", questions: ["q_snore", "q_cough"] }));
     expect(scoreFor({ s1: { q_snore: "o_yes", q_smoke: "o_y", q_cough: "o_yes" } }, man51, sets(withCough)).value).toBe(2);
-    expect(scoreFor({ s1: { q_snore: "o_yes", q_smoke: "o_n", q_cough: "o_yes" } }, man51, sets(withCough)).display).toBe("Incomplete");
-    // Set 1 hidden by its condition: its answers no longer count.
+    const hiddenCough = scoreFor({ s1: { q_snore: "o_yes", q_smoke: "o_n", q_cough: "o_yes" } }, man51, sets(withCough));
+    expect(hiddenCough.value).toBe(1);
+    expect(hiddenCough.display).toBe("1 (Low)");
+    expect(hiddenCough.result.scores).toEqual([{ questionId: "q_risk", title: "Sleep risk", value: 1, band: { id: "b_low", label: "Low" }, incomplete: false }]);
+    // Shown (a smoker) and not answered: Incomplete.
+    expect(scoreFor({ s1: { q_snore: "o_yes", q_smoke: "o_y" } }, man51, sets(withCough)).display).toBe("Incomplete");
+  });
+
+  it("adds 0 for every question of a Question Set a condition hides, and its lines don't fire (S44a)", () => {
+    // Set 1 hidden: snoring, tiredness and the BMI line add nothing; the neck, age and sex do (3: High).
     const hidden = { ...sleep, chapterVisibleIf: "{patientAge} < 18" };
-    expect(scoreFor(allYes, man51, sets(neck(risk(form)), hidden)).display).toBe("Incomplete");
+    const r = scoreFor({ s1: allYes.s1, s2: { q_neck: "o_yes" } }, man51, sets(neck(risk(form)), hidden));
+    expect(r.value).toBe(3);
+    expect(r.display).toBe("3 (High)");
+    // This set's own question still counts: unanswered, Incomplete.
+    expect(scoreFor({ s1: allYes.s1, s2: {} }, man51, sets(neck(risk(form)), hidden)).display).toBe("Incomplete");
+  });
+
+  it("doesn't fire a points line that tests a hidden answer, in this set or an earlier one (S44a)", () => {
+    // Earlier: q_cough hidden (not a smoker) with an old Yes; "is answered" would fire on an old value too.
+    const earlierLine = neck(risk({
+      kind: "score", questions: ["q_neck"],
+      lines: [{ points: 5, rule: { left: "q_cough", op: "eq", value: "o_yes" } }, { points: 7, rule: { left: "q_cough", op: "empty" } }],
+    }));
+    expect(scoreFor({ s1: { q_smoke: "o_n", q_cough: "o_yes" }, s2: { q_neck: "o_no" } }, man51, sets(earlierLine)).value).toBe(0);
+    expect(scoreFor({ s1: { q_smoke: "o_y", q_cough: "o_yes" }, s2: { q_neck: "o_no" } }, man51, sets(earlierLine)).value).toBe(5);
+    // This set: the Calculation comes first on the page, before the question its line tests.
+    const own: ChapterJson = {
+      pages: [{
+        name: "p_2", elements: [
+          risk({ kind: "score", questions: ["q_neck", "q_pillows"], lines: [{ points: 4, rule: { left: "q_pillows", op: "eq", value: "o_yes" } }] }),
+          yesNo("q_neck", "Is your neck large?"),
+          yesNo("q_pillows", "More than two pillows?", { visibleIf: "{q_neck} = 'o_yes'" }),
+        ],
+      }],
+    };
+    const m = modelFor(own, "clinician", man51);
+    m.data = { q_neck: "o_yes", q_pillows: "o_yes" };
+    expect(m.getQuestionByName("q_risk").value).toBe(6);
+    m.setValue("q_neck", "o_no"); // q_pillows goes, its old Yes stays in the data
+    expect(m.getQuestionByName("q_risk").value).toBe(0);
+    m.setValue("q_neck", "o_yes");
+    expect(m.getQuestionByName("q_risk").value).toBe(6);
+    m.dispose();
+    const fresh = modelFor(own, "clinician", man51);
+    fresh.data = { q_neck: "o_no", q_pillows: "o_yes" };
+    expect(fresh.getQuestionByName("q_risk").value).toBe(0);
+    fresh.dispose();
+  });
+
+  it("adds 0 for a hidden page's question", () => {
+    const paged: ChapterJson = {
+      pages: [
+        { name: "p_2", elements: [yesNo("q_neck", "Is your neck large?"), risk({ kind: "score", questions: ["q_neck", "q_extra"] })] },
+        { name: "p_x", visibleIf: "{q_neck} = 'o_yes'", elements: [yesNo("q_extra", "Extra")] },
+      ],
+    };
+    const m = modelFor(paged, "clinician", man51);
+    m.data = { q_neck: "o_no", q_extra: "o_yes" };
+    expect(m.getQuestionByName("q_risk").value).toBe(0);
+    m.setValue("q_neck", "o_yes");
+    expect(m.getQuestionByName("q_risk").value).toBe(2);
+    m.dispose();
   });
 
   it("uses an earlier set's score band, and an earlier answer, in points lines", () => {
@@ -276,12 +335,15 @@ describe("test cases with earlier sets' answers (S38)", () => {
     // Without them, the score is Incomplete, so no disclosure.
     expect(runTestCase(two, { ...tc, earlier: undefined }, earlier).missing).toEqual(["Note (Airway): High risk of sleep apnoea"]);
   });
-  it("leaves out the answers of an earlier set the case's patient wouldn't see (test report 2, F-1)", () => {
+  it("leaves out the answers of an earlier set the case's patient wouldn't see (test report 2, F-1), counting them 0 (S44a)", () => {
     const womenOnly = [{ name: "Sleep", doc: { ...sleep, chapterVisibleIf: "{patientSex} = 'female'" } }];
-    expect(runTestCase(two, tc, womenOnly).missing).toEqual(["Note (Airway): High risk of sleep apnoea"]);
+    // Snoring, tiredness and the BMI add 0: neck, age and sex give 3, High.
+    expect(runTestCase(two, tc, womenOnly).pass).toBe(true);
+    expect(runTestCase(two, { ...tc, patient: { ...man51, age: 40 } }, womenOnly).missing).toEqual(["Note (Airway): High risk of sleep apnoea"]);
     const given = givenEarlier(womenOnly, tc.earlier!, man51, "clinician");
     expect(given.hidden).toEqual(["Sleep"]);
     expect(given.earlier.values).toEqual({});
+    expect(given.earlier.hidden).toEqual(expect.arrayContaining(["q_snore", "q_tired", "q_bmi"]));
     expect(givenEarlier(womenOnly, tc.earlier!, { ...man51, sex: "female" }, "clinician")).toEqual({
       earlier: { doc: combineChapters(womenOnly), values: tc.earlier }, hidden: [],
     });
@@ -349,6 +411,20 @@ describe("a key repeated in two Question Sets (verification 1, F2)", () => {
   });
 });
 
+describe("the questions a score can add up (S44a, S38 verification 3)", () => {
+  it("leaves out scored questions inside a repeating group, which score() can't read", () => {
+    const listed: ChapterJson = { pages: [{ name: "p_1", title: "Meds", elements: [
+      yesNo("q_top", "Top level"),
+      { type: "panel", name: "g_1", elements: [yesNo("q_in_group", "In a group")] },
+      { type: "paneldynamic", name: "q_list", templateElements: [yesNo("q_in_list", "In a list")] },
+    ] }] };
+    const here = scoredQuestions(listed, undefined, "q_risk").flatMap((g) => g.items.map((i) => i.value));
+    expect(here).toEqual(["q_top", "q_in_group"]);
+    const earlier = scoredQuestions(neck(risk(form)), listed, "q_risk").find((g) => g.group === "Meds")!.items.map((i) => i.value);
+    expect(earlier).toEqual(["q_top", "q_in_group"]);
+  });
+});
+
 describe("Question Set conditions on a score that uses earlier sets (verification 2, F4)", () => {
   // Set 1: q_a. Set 2: score s from q_a. Set 3: shown only when s >= 1.
   const one: ChapterJson = { pages: [{ name: "p_1", elements: [yesNo("q_a", "A?")] }] };
@@ -387,5 +463,63 @@ describe("Question Set conditions on a score that uses earlier sets (verificatio
     const own: ChapterJson = { pages: [{ name: "p_2", elements: [yesNo("q_b", "B?"), { type: "expression", name: "s", expression: "score('q_b')" }] }] };
     const old = [{ id: "s1", name: "One", content: one }, { id: "s2", name: "Two", content: own }, { id: "s3", name: "Three", content: three }];
     expect(shownSets(old, { s2: { q_b: "o_no", s: 1 } }, "clinician", man51).map((x) => x.id)).toEqual(["s1", "s2", "s3"]);
+  });
+});
+
+describe("an author's band with \"also when\" (S44a)", () => {
+  // Snoring points 0–2; High from 3, and also when the score is 2 or more and the patient is male.
+  const when = formatBandWhen([{ left: "q_score", op: "gte", value: 2 }, { left: "patientSex", op: "eq", value: "male" }])!;
+  const doc = (w = when): ChapterJson => ({ pages: [{ name: "p_1", elements: [
+    yesNo("q_snore", "Do you snore?"), yesNo("q_tired", "Tired?"),
+    { type: "expression", name: "q_score", title: "Sleep score", calcKind: "score", expression: formatScore({ kind: "score", questions: ["q_snore", "q_tired"] }),
+      bands: [{ id: "b_low", label: "Low", max: 2 }, { id: "b_high", label: "High", when: w, clinicalOutputs: [high] }] },
+  ] }] });
+  const run = (patient: SamplePatient, data: Record<string, unknown>, d = doc()) => {
+    const m = modelFor(d, "clinician", patient);
+    showBands(m);
+    m.data = data;
+    const q = m.getQuestionByName("q_score");
+    const out = { display: (q as unknown as { formatedValue: string }).formatedValue, result: computeOutputs(m) };
+    m.dispose();
+    return out;
+  };
+
+  it("writes the rules and reads them back; a ready-made score's (with or) can't be edited", () => {
+    expect(when).toBe("{q_score} >= 2 and {patientSex} = 'male'");
+    expect(parseBandWhen(when)).toEqual([{ left: "q_score", op: "gte", value: 2 }, { left: "patientSex", op: "eq", value: "male" }]);
+    expect(parseBandWhen(undefined)).toEqual([]);
+    expect(parseBandWhen("{a} = 'x' or ({b} = 'y' and {c} = 'z')")).toBeUndefined();
+    expect(formatBandWhen([{ left: "", op: "eq" }])).toBeUndefined();
+  });
+
+  it("offers the score itself, then what a points line can test", () => {
+    const subjects = bandWhenSubjects(doc(), undefined, "q_score");
+    expect(subjects[0]).toEqual({ id: "q_score", left: "q_score", label: "The score", group: "This score", type: "number" });
+    expect(subjects.map((x) => x.left)).toEqual(expect.arrayContaining(["patientAge", "patientSex", "q_snore"]));
+  });
+
+  it("picks the band whatever the score's own limits, with its disclosure", () => {
+    const yes2 = { q_snore: "o_yes", q_tired: "o_yes" };
+    expect(run(man51, yes2).display).toBe("2 (High)");
+    expect(run(man51, yes2).result.outputs.map((o) => o.output.id)).toEqual(["out_high"]);
+    expect(run({ ...man51, sex: "female" }, yes2).display).toBe("2 (Low)");
+    expect(run(man51, { q_snore: "o_yes", q_tired: "o_no" }).display).toBe("1 (Low)");
+  });
+
+  it("is Incomplete while what the band tests has no answer (the sex not known)", () => {
+    expect(run({ ...man51, sex: "unknown" }, { q_snore: "o_yes", q_tired: "o_yes" }).display).toBe("Incomplete");
+  });
+
+  it("runs in test cases (and so the Preview)", () => {
+    const tc: TestCase = { id: "t", name: "Male", viewer: "clinician", patient: man51, answers: { q_snore: "o_yes", q_tired: "o_yes" }, expected: ["Note (Airway): High risk of sleep apnoea"] };
+    expect(runTestCase(doc(), tc).pass).toBe(true);
+    expect(runTestCase(doc(), { ...tc, patient: { ...man51, sex: "female" } }).pass).toBe(false);
+  });
+
+  it("names a band's \"also when\" testing something deleted, at Publish", () => {
+    const gone = formatBandWhen([{ left: "q_gone", op: "eq", value: "o_yes" }])!;
+    expect(publishProblems([{ name: "Sleep", doc: doc(gone) }]).map((p) => p.message)).toEqual([
+      "\"Sleep score\" band \"High\": it tests something that no longer exists (q_gone)",
+    ]);
   });
 });

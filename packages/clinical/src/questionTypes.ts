@@ -1,7 +1,7 @@
 // The incumbent's question types SurveyJS doesn't have, built from its own questions so the
 // preview and the patient runtime render them (plan-redesign.md, step 5).
-import { ComponentCollection, FunctionFactory, Serializer, settings, type Question, type SurveyModel } from "survey-core";
-import { ALL_ANSWERED, bandIn, earlierPoints, earlierQuestion, inputAnswered, isGuardedScore } from "./scores";
+import { ComponentCollection, FunctionFactory, Serializer, settings, SurveyModel, type Question } from "survey-core";
+import { ALL_ANSWERED, bandIn, bandWhenInputs, earlierPoints, earlierQuestion, inputAnswered, inputHidden, isGuardedScore, scoreAsShown } from "./scores";
 import { registerVideoType } from "./video";
 
 /** Registers Medication, Admissions, BMI, Profile and Video (S34), and the flags the editor stores. Safe to call twice. */
@@ -116,7 +116,8 @@ export function registerQuestionTypes(): void {
  * - `score('q_a', 'q_b')`: the total of the chosen options' scores
  * - `band('q_calc')`: the ID of the band a Calculation's value falls in
  * - `bmi(heightCm, weightKg)`: the body mass index, to one decimal place
- * - `allAnswered('q_a', 'patientAge', …)` (S38): whether every input of a score has an answer
+ * - `allAnswered('q_a', 'patientAge', …)` (S38): whether every input of a score has an answer (one a
+ *   condition hides counts, adding 0: S44a)
  * score() and band() also find questions in earlier Question Sets (scores.ts, applyEarlier).
  */
 function registerClinicalFunctions(): void {
@@ -124,6 +125,15 @@ function registerClinicalFunctions(): void {
   // text ('q_a'), so a score with a line testing {patientAge} would skip a change to q_a (S38 test
   // report 1, F-1). Calculations always run again instead, as before SurveyJS tracked them.
   settings.expressionQuestionTrackDependencies = false;
+  // A score's "Add N points when…" line that tests a hidden input doesn't fire (S44a, scoreAsShown).
+  // SurveyJS passes every expression through beforeExpressionRunning (the onExpressionRunning
+  // event) just before it runs; doing it here, once, covers every survey any view builds.
+  const proto = SurveyModel.prototype as unknown as { beforeExpressionRunning(obj: unknown, prop: string, expr: string): string };
+  const before = proto.beforeExpressionRunning;
+  proto.beforeExpressionRunning = function (this: SurveyModel, obj: unknown, prop: string, expr: string) {
+    const e = before.call(this, obj, prop, expr);
+    return prop === "expression" && e ? scoreAsShown(this, e) : e;
+  };
   FunctionFactory.Instance.register("score", function (this: { survey?: SurveyModel }, params: unknown[]) {
     let total = 0;
     for (const name of params) {
@@ -133,7 +143,7 @@ function registerClinicalFunctions(): void {
         if (earlier) total += earlierPoints(earlier.el, earlier.value);
         continue;
       }
-      if (q.isEmpty()) continue;
+      if (q.isEmpty() || inputHidden(this.survey, q.name)) continue; // hidden on purpose: 0 (S44a)
       const chosen: unknown[] = Array.isArray(q.value) ? q.value : [q.value];
       for (const c of q.choices ?? []) if (chosen.includes(c.value)) total += Number(c.score ?? 0);
     }
@@ -148,8 +158,11 @@ function registerClinicalFunctions(): void {
     if (q.isEmpty()) return "";
     return bandIn(this.survey, q.getPropertyValue("bands"), q.value)?.id ?? "";
   });
-  FunctionFactory.Instance.register(ALL_ANSWERED, function (this: { survey?: SurveyModel }, params: unknown[]) {
-    return params.every((name) => inputAnswered(this.survey, String(name)));
+  FunctionFactory.Instance.register(ALL_ANSWERED, function (this: { survey?: SurveyModel; question?: Question }, params: unknown[]) {
+    // A band's "also when" inputs count too (S44a): without them the band can't be decided.
+    const q = this.question;
+    const also = q && q.getType() === "expression" ? bandWhenInputs(q.name, q.getPropertyValue("bands")) : [];
+    return [...params.map(String), ...also].every((name) => inputAnswered(this.survey, name));
   });
   FunctionFactory.Instance.register("bmi", (params: unknown[]) => {
     const [h, w] = params.map(Number);

@@ -1,8 +1,8 @@
 // Filling in an episode's HQ (plan-workflow.md Steps 3–4): the patient on their link, and the
 // clinician validating. The same rules decide which Question Sets are shown and when one is done.
-import type { Question } from "survey-core";
+import { settings, type Question } from "survey-core";
 import { asaRank, suggestAsa, type SuggestedAsa } from "./asa";
-import { referencesIn, SUGGESTED_ASA, type ChapterJson } from "./doc";
+import { namesIn, referencesIn, SUGGESTED_ASA, type ChapterJson } from "./doc";
 import { computeOutputs, formatAnswer, isChoiceQuestion, type ProducedOutput, type ScoreResult } from "./outputs";
 import { registerClinicalProperties } from "./properties";
 import { chapterConditionOf, combineChapters, isChapterShown } from "./questionSets";
@@ -15,16 +15,37 @@ export type EpisodePatient = { firstName: string; lastName: string; dateOfBirth:
 
 export type Answers = Record<string, unknown>;
 
-/** Whole years from a YYYY-MM-DD date of birth to `today`. */
-export function ageFrom(ymd: string, today = new Date()): number {
-  const [y, m, d] = ymd.split("-").map(Number);
-  const age = today.getFullYear() - y;
-  return today.getMonth() + 1 < m || (today.getMonth() + 1 === m && today.getDate() < d) ? age - 1 : age;
+/**
+ * The calendar date at a moment in a time zone (S44a: the hospital's, as Go works it out), or in the
+ * browser's own without one (or with a zone the browser doesn't know). Always the Gregorian calendar
+ * and Latin digits, whatever the browser's locale (verification 1: th-TH's year is 2569); `locale` is
+ * for the tests, the browser's own otherwise.
+ */
+export function dateIn(at: Date, timeZone?: string, locale?: string): { y: number; m: number; d: number } {
+  if (timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat(locale, { timeZone, calendar: "gregory", year: "numeric", month: "numeric", day: "numeric", numberingSystem: "latn" }).formatToParts(at);
+      const part = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+      const out = { y: part("year"), m: part("month"), d: part("day") };
+      if (out.y && out.m && out.d) return out;
+    } catch {
+      // an unknown zone: the browser's own
+    }
+  }
+  return { y: at.getFullYear(), m: at.getMonth() + 1, d: at.getDate() };
 }
 
-/** The survey variables {patientName}, {patientAge} and {patientSex} for this patient. */
-export function patientVariables(p: EpisodePatient, today = new Date()): SamplePatient {
-  return { name: `${p.firstName} ${p.lastName}`, age: ageFrom(p.dateOfBirth, today), sex: p.sex };
+/** Whole years from a YYYY-MM-DD date of birth to `today` (its date in `timeZone`, if given). */
+export function ageFrom(ymd: string, today = new Date(), timeZone?: string): number {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const now = dateIn(today, timeZone);
+  const age = now.y - y;
+  return now.m < m || (now.m === m && now.d < d) ? age - 1 : age;
+}
+
+/** The survey variables {patientName}, {patientAge} and {patientSex} for this patient (the age at `timeZone`, if given). */
+export function patientVariables(p: EpisodePatient, today = new Date(), timeZone?: string): SamplePatient {
+  return { name: `${p.firstName} ${p.lastName}`, age: ageFrom(p.dateOfBirth, today, timeZone), sex: p.sex };
 }
 
 /**
@@ -67,9 +88,10 @@ export function shownSets<T extends { id: string; name?: string; content: Chapte
  * What each shown Question Set's survey gets from the sets shown before it (S38): their answers by
  * key, and their JSON, so a score can use earlier sets' questions. One helper for every view: the
  * patient's form, Validate, the POA Summary (and S41's evaluate service).
- * - A set a condition hides gives nothing, so its questions count as unanswered.
+ * - A set a condition hides gives no answers; its questions are listed as hidden, so a later score
+ *   counts them as 0 (S44a, Rahul 27 Oct).
  * - Only the questions shown in a set count (one a condition hides, or on a hidden page or group, is
- *   unanswered), plus every Calculation's value, worked out with the sets before it.
+ *   listed as hidden too), plus every Calculation's value, worked out with the sets before it.
  * - `viewer` decides what is in each set: a patient's form has no clinician-only questions.
  * An HQ none of whose scores use another set's questions gets none (so older HQs work as before).
  */
@@ -106,22 +128,30 @@ export function hqSets<T extends { id: string; name?: string; content: ChapterJs
   const shown: T[] = [];
   const before: { name: string; doc: ChapterJson }[] = [];
   let values: Answers = {};
+  let hidden: string[] = [];
   const produced: ProducedOutput[] = [];
   if (usesAsa) seen = { ...seen, [SUGGESTED_ASA]: 0 };
   for (const set of sets) {
-    if (!isChapterShown(set.content, seen)) continue;
+    if (!isChapterShown(set.content, seen)) {
+      hidden = [...hidden, ...namesIn(set.content)]; // a hidden set's questions add 0 to a later score (S44a)
+      continue;
+    }
     shown.push(set);
-    const context: Earlier = { doc: combineChapters(before), values };
+    const context: Earlier = { doc: combineChapters(before), values, hidden };
     earlier.set(set.id, context);
     const m = modelFor(set.content, viewer, patient, context);
     m.data = answers[set.id] ?? {};
     const next: Answers = { ...values };
+    const nextHidden = [...hidden];
     const worked: Answers = {};
     for (const q of m.getAllQuestions(false, false, false)) {
       const calc = q.getType() === "expression";
+      const visible = calc || (q.isVisible && q.isParentVisible);
       if (calc) worked[q.name] = q.isEmpty() ? undefined : q.value;
-      if ((calc || (q.isVisible && q.isParentVisible)) && !q.isEmpty()) next[q.name] = q.value;
+      if (visible && !q.isEmpty()) next[q.name] = q.value;
+      if (!visible) nextHidden.push(q.name);
     }
+    hidden = nextHidden;
     if (usesAsa) produced.push(...computeOutputs(m).outputs);
     m.dispose();
     values = next;
@@ -133,6 +163,51 @@ export function hqSets<T extends { id: string; name?: string; content: ChapterJs
     before.push({ name: set.name ?? set.id, doc: set.content });
   }
   return { shown, earlier };
+}
+
+/**
+ * The answers as the viewer's form shows them (S44a, Rahul 27 Oct: "on send, keep only what the
+ * patient's form showed"): each set's answers, without those to questions a condition hides there
+ * (the question, its group or its page; their "Other" text too), and {} for a set its condition hides.
+ * A Calculation's value stays. Keys the form doesn't know are kept as they are.
+ *
+ * Repeated until nothing changes (verification 1, finding 2): a follow-up shown only through a hidden
+ * question's old answer (B no hides A, whose old Yes kept C shown) goes too, so what's kept is exactly
+ * what every later view shows from it, and running it again changes nothing.
+ */
+export function shownAnswers<T extends { id: string; name?: string; content: ChapterJson }>(
+  sets: T[], answers: Record<string, Answers | undefined>, viewer: Viewer, patient: SamplePatient,
+): Record<string, Answers> {
+  let now = shownAnswersOnce(sets, answers, viewer, patient);
+  // Each pass only drops answers, so this ends; the limit is a guard.
+  for (let i = 0; i < 50; i++) {
+    const next = shownAnswersOnce(sets, now, viewer, patient);
+    if (JSON.stringify(next) === JSON.stringify(now)) break;
+    now = next;
+  }
+  return now;
+}
+
+function shownAnswersOnce<T extends { id: string; name?: string; content: ChapterJson }>(
+  sets: T[], answers: Record<string, Answers | undefined>, viewer: Viewer, patient: SamplePatient,
+): Record<string, Answers> {
+  registerClinicalProperties();
+  const { shown, earlier } = hqSets(sets, answers, viewer, patient);
+  const out: Record<string, Answers> = {};
+  for (const s of sets) out[s.id] = {};
+  for (const s of shown) {
+    const m = modelFor(s.content, viewer, patient, earlier.get(s.id));
+    m.data = answers[s.id] ?? {};
+    const hidden = new Set(
+      m.getAllQuestions(false, false, false).filter((q) => q.getType() !== "expression" && (!q.isVisible || !q.isParentVisible)).map((q) => q.name),
+    );
+    m.dispose();
+    const suffix = settings.commentSuffix;
+    out[s.id] = Object.fromEntries(
+      Object.entries(answers[s.id] ?? {}).filter(([k]) => !hidden.has(k) && !(k.endsWith(suffix) && hidden.has(k.slice(0, -suffix.length)))),
+    );
+  }
+  return out;
 }
 
 /** Whether a Question Set's condition tests the suggested ASA (only a clinician set's may). */

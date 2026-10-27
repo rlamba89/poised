@@ -12,7 +12,7 @@ import type { SuggestedAsa } from "./asa";
 import type { ChapterJson } from "./doc";
 import type { ProducedOutput, ScoreResult } from "./outputs";
 import { publishProblems, type PublishProblem } from "./publish";
-import { hqResult, hqSets, isSetComplete, shownSets, type Answers } from "./respondent";
+import { hqResult, hqSets, isSetComplete, shownAnswers, shownSets, type Answers } from "./respondent";
 import { firedLine, firedRules, isPatientSet, ruleSetOf, type HeldReason, type RuleAction } from "./rules";
 import type { SamplePatient } from "./testcases";
 import type { ReviewFlag } from "./types";
@@ -58,6 +58,11 @@ export type EvaluateResult = {
   rules: EvaluateRule[];
   /** The sets the patient's own form shows, and whether each is complete (S44 refuses an incomplete send). */
   patientSets: { id: string; complete: boolean }[];
+  /**
+   * The patient's answers as their form showed them (S44a): every patient set, without the answers
+   * to questions a condition hid, and {} for a set its condition hid. Go stores these as what was sent.
+   */
+  sent: Record<string, Answers>;
 };
 
 /** An input that isn't what Go sends: the service answers 400. Its message never holds an answer. */
@@ -94,13 +99,17 @@ function checkInput(input: EvaluateInput): void {
  * What a sent HQ's answers give, worked out as the clinician's view does before any validation
  * (rules.ts hqRuleResult, S40): every set, with answers only in the patient's sets, so a clinician
  * score worked out from them (STOP-Bang) counts and a clinician set's own questions never do. Then,
- * in the patient's own view, which of their sets are shown and complete.
+ * in the patient's own view, which of their sets are shown and complete. Only the answers the
+ * patient's form showed count (S44a: `sent`, which Go stores as the frozen answers).
  */
 export function evaluate(input: EvaluateInput, version: string): EvaluateResult {
   checkInput(input);
   const patient: SamplePatient = { name: "", age: input.patient.age, sex: input.patient.sex };
-  const answers: Record<string, Answers> = {};
-  for (const s of input.sets) if (isPatientSet(s)) answers[s.id] = input.answers[s.id] ?? {};
+  const given: Record<string, Answers> = {};
+  for (const s of input.sets) if (isPatientSet(s)) given[s.id] = input.answers[s.id] ?? {};
+  // What the patient's form showed is what was sent (S44a), and what the result is worked out from.
+  const own = input.sets.filter(isPatientSet);
+  const answers = shownAnswers(own, given, "patient", patient);
 
   const r = hqResult(input.sets, answers, "clinician", patient);
   const rules = ruleSetOf(input.rules);
@@ -111,7 +120,6 @@ export function evaluate(input: EvaluateInput, version: string): EvaluateResult 
     .filter((o) => o.output.flag)
     .map((o) => ({ level: o.output.flag!, setId: o.setId, questionId: o.questionId, text: `${o.questionTitle}: ${o.answerLabel}` }));
 
-  const own = input.sets.filter(isPatientSet);
   const view = hqSets(own, answers, "patient", patient);
   const patientSets = view.shown.map((s) => ({ id: s.id, complete: isSetComplete(s.content, answers[s.id], "patient", patient, view.earlier.get(s.id)) }));
 
@@ -125,6 +133,7 @@ export function evaluate(input: EvaluateInput, version: string): EvaluateResult 
       id: f.rule.id, name: f.rule.name, actions: f.actions, held: f.held, ...(f.heldReason ? { heldReason: f.heldReason } : {}), line: firedLine(f),
     })),
     patientSets,
+    sent: answers,
   };
 }
 

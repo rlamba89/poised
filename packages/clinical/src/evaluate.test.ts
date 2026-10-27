@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import sent from "../../../apps/api/internal/evaluate/testdata/evaluate.json";
 import publishing from "../../../apps/api/internal/evaluate/testdata/publish_problems.json";
 import reviewing from "../../../apps/api/internal/evaluate/testdata/shown.json";
+import type { ChapterJson } from "./doc";
 import { checkPublish, evaluate, EvaluateInputError, shownSetsFor, type EvaluateInput, type PublishInput, type ShownInput } from "./evaluate";
+import { shownAnswers } from "./respondent";
 
 const input = sent.input as unknown as EvaluateInput;
 const [ABOUT, SLEEP, TRAVEL, NURSE] = input.sets.map((s) => s.id);
@@ -65,6 +67,57 @@ describe("evaluate: what the server works out when an HQ is sent (S41)", () => {
 
   it("says whether each set the patient's own form shows is complete (for S44)", () => {
     expect(r.patientSets).toEqual([{ id: ABOUT, complete: true }, { id: SLEEP, complete: false }]);
+  });
+
+  it("sends only what the patient's form showed: a hidden set's answers and a hidden question's are left out (S44a)", () => {
+    expect(r.sent).toEqual({
+      [ABOUT]: input.answers[ABOUT],
+      [SLEEP]: { q_tired: "o_y" }, // q_naps is asked only of those not tired
+      [TRAVEL]: {}, // shown only to non-smokers
+    });
+    expect(r.sent).not.toHaveProperty(NURSE); // a clinician's set isn't the patient's to send
+  });
+
+  it("works the result out from what was sent: a hidden question's disclosure, flag and points don't count (S44a)", () => {
+    const sets: EvaluateInput["sets"] = [{ id: "s", name: "S", audience: "patient", content: { pages: [{ name: "p", elements: [
+      { type: "radiogroup", name: "q_snore", title: "Do you snore?", choices: [{ value: "o_y", text: "Yes" }, { value: "o_n", text: "No" }] },
+      { type: "radiogroup", name: "q_loud", title: "Loudly?", visibleIf: "{q_snore} = 'o_y'", showOtherItem: true, choices: [
+        { value: "o_y", text: "Yes", score: 3, clinicalOutputs: [{ id: "d_loud", codes: [], note: { text: "Loud snoring", category: "Airway" }, flag: "red" as const }] },
+        { value: "o_n", text: "No", score: 0 },
+      ] },
+      { type: "expression", name: "q_pts", title: "Points", calcKind: "score", expression: "iif(allAnswered('q_loud'), score('q_loud'), '')" },
+    ] }] } }];
+    // Yes → Loudly: Yes (with "Other" text) → back to No: the follow-up's answers stay in the data.
+    const res = evaluate({ ...input, sets, answers: { s: { q_snore: "o_n", q_loud: "o_y", "q_loud-Comment": "very", q_pts: 3 } }, rules: null }, "test");
+    expect(res.sent).toEqual({ s: { q_snore: "o_n", q_pts: 3 } });
+    expect(res.flags).toEqual([]);
+    expect(res.sets[0].outputs).toEqual([]);
+    expect(res.sets[0].scores).toEqual([{ questionId: "q_pts", title: "Points", value: 0, incomplete: false }]);
+  });
+
+  it("drops a chain of hidden follow-ups until nothing changes, so what's frozen is what every view shows (verification 1, finding 2)", () => {
+    // B = yes shows A; A = yes shows C. B yes, A yes, C severe, then B back to no.
+    const chain: ChapterJson = { pages: [{ name: "p", elements: [
+      { type: "radiogroup", name: "qB", title: "B", choices: [{ value: "yes", text: "Yes" }, { value: "no", text: "No" }] },
+      { type: "radiogroup", name: "qA", title: "A", visibleIf: "{qB} = 'yes'", choices: [{ value: "yes", text: "Yes" }, { value: "no", text: "No" }] },
+      { type: "text", name: "qC", title: "C", visibleIf: "{qA} = 'yes'" },
+    ] }] };
+    const sets = [{ id: "s", name: "S", content: chain }];
+    const once = shownAnswers(sets, { s: { qB: "no", qA: "yes", qC: "severe" } }, "patient", { name: "" });
+    expect(once).toEqual({ s: { qB: "no" } });
+    expect(shownAnswers(sets, once, "patient", { name: "" })).toEqual(once);
+    // Shown all the way: everything kept.
+    expect(shownAnswers(sets, { s: { qB: "yes", qA: "yes", qC: "severe" } }, "patient", { name: "" })).toEqual({ s: { qB: "yes", qA: "yes", qC: "severe" } });
+  });
+
+  it("drops a set whose condition only held through a hidden answer", () => {
+    const first: ChapterJson = { pages: [{ name: "p", elements: [
+      { type: "radiogroup", name: "qB", title: "B", choices: [{ value: "yes", text: "Yes" }, { value: "no", text: "No" }] },
+      { type: "radiogroup", name: "qA", title: "A", visibleIf: "{qB} = 'yes'", choices: [{ value: "yes", text: "Yes" }, { value: "no", text: "No" }] },
+    ] }] };
+    const second: ChapterJson = { chapterVisibleIf: "{qA} = 'yes'", pages: [{ name: "p", elements: [{ type: "text", name: "qD", title: "D" }] }] };
+    const sets = [{ id: "s1", name: "S1", content: first }, { id: "s2", name: "S2", content: second }];
+    expect(shownAnswers(sets, { s1: { qB: "no", qA: "yes" }, s2: { qD: "x" } }, "patient", { name: "" })).toEqual({ s1: { qB: "no" }, s2: {} });
   });
 
   it("with no rules (a version published before S40), no rule fires", () => {

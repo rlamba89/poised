@@ -1,5 +1,5 @@
 {
-  "about": "One HQ sent (S41): Go's evaluate client and packages/clinical's evaluate() both test against this file, so the two sides stay in step. Made-up data only. The patient smokes (ASA II) and has heart failure (ASA III), has chest pain (a red flag) and snores 5 nights (Snore score High). Sleep is shown (it needs snoring over 2), Travel isn't (it needs smoking No). Sleep has a required question unanswered, so it isn't complete. The clinician set's answers are never counted: the rules look at what the patient sends. The default rules: High risk fires.",
+  "about": "One HQ sent (S41): Go's evaluate client and packages/clinical's evaluate() both test against this file, so the two sides stay in step. Made-up data only. The patient smokes (ASA II) and has heart failure (ASA III), has chest pain (a red flag) and snores 5 nights (Snore score High). Sleep is shown (it needs snoring over 2), Travel isn't (it needs smoking No). Sleep has a required question unanswered, so it isn't complete. What was sent (S44a) is only what the patient's form showed: Travel's answer (its set hidden) and Sleep's nap answer (asked only of those not tired) are left out, and so is the nap length, shown only through that hidden answer (verification 1, finding 2). The clinician set's answers are never counted: the rules look at what the patient sends. The default rules: High risk fires.",
   "input": {
     "formId": "6f1d2c3b-0000-4000-8000-000000000001",
     "sets": [
@@ -45,7 +45,9 @@
                 { "value": "o_y", "text": "Yes", "clinicalOutputs": [{ "id": "d_tired", "codes": [], "note": { "text": "Daytime tiredness", "category": "Sleep" }, "flag": "amber" }] },
                 { "value": "o_n", "text": "No" }
               ] },
-              { "type": "comment", "name": "q_sleep_more", "title": "Tell us more about your sleep", "isRequired": true }
+              { "type": "comment", "name": "q_sleep_more", "title": "Tell us more about your sleep", "isRequired": true },
+              { "type": "comment", "name": "q_naps", "title": "How often do you nap?", "visibleIf": "{q_tired} = 'o_n'" },
+              { "type": "text", "name": "q_nap_hours", "title": "For how long?", "visibleIf": "{q_naps} notempty" }
             ]
           }]
         }
@@ -97,7 +99,8 @@
     },
     "answers": {
       "c1000000-0000-4000-8000-000000000001": { "q_smoke": "o_y", "q_heart": "o_y", "q_chest": "o_y", "q_snores": 5, "q_score": 5 },
-      "c1000000-0000-4000-8000-000000000002": { "q_tired": "o_y" },
+      "c1000000-0000-4000-8000-000000000002": { "q_tired": "o_y", "q_naps": "Every afternoon", "q_nap_hours": "2 hours" },
+      "c1000000-0000-4000-8000-000000000003": { "q_travel": "By bus" },
       "c1000000-0000-4000-8000-000000000004": { "q_frail": "o_y" }
     },
     "patient": { "age": 54, "sex": "female" },
@@ -281,6 +284,11 @@
         "id": "c1000000-0000-4000-8000-000000000002",
         "complete": false
       }
-    ]
+    ],
+    "sent": {
+      "c1000000-0000-4000-8000-000000000001": { "q_smoke": "o_y", "q_heart": "o_y", "q_chest": "o_y", "q_snores": 5, "q_score": 5 },
+      "c1000000-0000-4000-8000-000000000002": { "q_tired": "o_y" },
+      "c1000000-0000-4000-8000-000000000003": {}
+    }
   }
 }

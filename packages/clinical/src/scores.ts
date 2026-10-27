@@ -5,7 +5,9 @@
 // The form writes one SurveyJS expression, and reads it back:
 //   iif(allAnswered('q_a', 'q_b', 'patientAge'), score('q_a', 'q_b') + iif({patientAge} > 50, 1, 0), '')
 // A score with a missing input is **Incomplete**: it has no value, so no band, and it is never read
-// as low risk (Rahul, 26 Oct). Old scores (`score('q_a', 'q_b')`) still total what is answered.
+// as low risk (Rahul, 26 Oct). An input a condition hides (the question, its page or its whole
+// Question Set) adds 0 instead, and a line testing it doesn't fire (Rahul, 27 Oct; S44a). Old scores
+// (`score('q_a', 'q_b')`) still total what is answered.
 //
 // A score may use questions from earlier Question Sets (by key), as a Question Set's condition can.
 // Each set's survey is given the earlier shown sets' answers (`Earlier`): their values as survey
@@ -13,7 +15,7 @@
 // and bands. respondent.ts `earlierContexts` builds them for an HQ.
 import { BinaryOperand, ConditionRunner, ConditionsParser, Const, FunctionOperand, Variable, type Operand, type SurveyModel } from "survey-core";
 import { allElements, expressionsIn, namesIn, optionsOf, pagesOf, referencesIn, textOf, VARIABLES, type ChapterJson, type ElementJson } from "./doc";
-import { bandFor, formatRule, isComplete, ruleOf, type Band, type Rule } from "./logic";
+import { bandFor, formatRule, isComplete, isGroup, parseLogic, pointsSubjects, repeatingParents, ruleOf, type Band, type Rule, type Subject } from "./logic";
 
 export type PointsLine = { points: number; rule: Rule };
 export type ScoreForm = { kind: "score"; questions: string[]; lines?: PointsLine[] };
@@ -46,7 +48,10 @@ export function linesToSave(draft: PointsLine[], saved: PointsLine[]): PointsLin
  * earlier set's (applyEarlier; verification 1, F2).
  */
 export function scoredQuestions(doc: ChapterJson, earlier: ChapterJson | undefined, calc: string): { group: string; items: { value: string; label: string }[] }[] {
-  const isScored = (e: ElementJson) => optionsOf(e).some((o) => o.score !== undefined);
+  // A question inside a repeating group has an answer per row, which score() can't read: left out,
+  // as pointsSubjects does (S44a, S38 verification 3).
+  const repeating = new Set([...repeatingParents(doc).keys(), ...(earlier ? repeatingParents(earlier).keys() : [])]);
+  const isScored = (e: ElementJson) => !repeating.has(e.name) && optionsOf(e).some((o) => o.score !== undefined);
   const own = allElements(doc).filter(({ el }) => el.name !== calc && isScored(el));
   const taken = new Set(own.map(({ el }) => el.name));
   const item = (el: ElementJson) => ({ value: el.name, label: textOf(el.title) || el.name });
@@ -115,6 +120,24 @@ export function parseScore(expression: string | undefined): ScoreForm | undefine
 /** Whether a Calculation is a score that goes Incomplete while an input is missing. */
 export const isGuardedScore = (expression: unknown) => typeof expression === "string" && expression.trim().startsWith(`iif(${ALL_ANSWERED}(`);
 
+const parsed = new Map<string, ScoreForm | null>();
+
+/**
+ * A score's expression as it runs in a survey now (S44a): an "Add N points when…" line that tests an
+ * input a condition hides is left out, so it doesn't fire (a hidden answer adds 0, whatever its old
+ * value). Anything the score form didn't write runs as it is. Called for every Calculation by
+ * SurveyJS (questionTypes.ts registers it), so every view and the evaluate service agree.
+ */
+export function scoreAsShown(survey: SurveyModel, expression: string): string {
+  if (!isGuardedScore(expression)) return expression;
+  if (!parsed.has(expression)) parsed.set(expression, parseScore(expression) ?? null);
+  const f = parsed.get(expression);
+  if (!f?.lines?.length) return expression;
+  const lines = f.lines.filter((l) => !inputHidden(survey, l.rule.left));
+  if (lines.length === f.lines.length) return expression;
+  return formatScore({ ...f, lines }) || "0";
+}
+
 // ---------------------------------------------------------------- answers from earlier Question Sets
 
 type Answers = Record<string, unknown>;
@@ -123,9 +146,18 @@ type Answers = Record<string, unknown>;
  * What a Question Set's survey gets from the earlier sets shown: their answers by key (including
  * their Calculations' values), and their JSON (combineChapters), for options' points and bands.
  */
-export type Earlier = { doc: ChapterJson; values: Answers };
+export type Earlier = {
+  doc: ChapterJson;
+  values: Answers;
+  /**
+   * The earlier sets' question keys a condition hid (S44a): in a set its condition hid, or hidden
+   * inside a shown set. A score input among them adds 0 and doesn't make the score Incomplete.
+   */
+  hidden?: string[];
+};
 
 const definitions = new WeakMap<object, Map<string, ElementJson>>();
+const hiddenEarlier = new WeakMap<object, Set<string>>();
 
 /**
  * Gives a survey the earlier sets' answers: each becomes a survey variable, unless this set has a
@@ -138,6 +170,7 @@ export function applyEarlier(model: SurveyModel, earlier: Earlier | undefined): 
   const defs = new Map<string, ElementJson>();
   for (const { el } of allElements(earlier.doc)) if (!own.has(el.name)) defs.set(el.name, el);
   definitions.set(model, defs);
+  hiddenEarlier.set(model, new Set((earlier.hidden ?? []).filter((n) => !own.has(n))));
   for (const [name, value] of Object.entries(earlier.values)) if (!own.has(name)) model.setVariable(name, value);
   // score('q') and allAnswered('q') name their questions as text, so SurveyJS doesn't know they
   // depend on these variables: run every condition and Calculation again.
@@ -163,18 +196,32 @@ export const isEmpty = (v: unknown) =>
 type Q = { name: string; value: unknown; isVisible: boolean; isParentVisible: boolean; getType(): string };
 
 /**
- * Whether a score's input has an answer (`allAnswered`). A question in this set counts only while it's
- * shown (a question, group or page a condition hides isn't answered); an earlier set's answer counts
- * only if that set was shown (earlierContexts). "Unknown" isn't an answer to the patient's sex.
- * `q.bmi` is the BMI part of a BMI question's answer.
+ * Whether a condition hides a score's input (S44a, Rahul 27 Oct: it then adds 0 points): a question
+ * in this set that it, its group or its page hides (a Calculation is always worked out, so never
+ * hidden), or an earlier set's question its set or a condition there hid (`Earlier.hidden`).
+ * `q.bmi` is the BMI question `q`.
+ */
+export function inputHidden(survey: SurveyModel | undefined, name: string): boolean {
+  if (!survey) return false;
+  const head = name.split(".")[0];
+  const q = survey.getQuestionByName(head) as unknown as Q | null;
+  if (q) return q.getType() !== "expression" && (!q.isVisible || !q.isParentVisible);
+  return hiddenEarlier.get(survey)?.has(head) ?? false;
+}
+
+/**
+ * Whether a score's input has an answer (`allAnswered`). An input a condition hides counts as
+ * answered, adding 0 (S44a; inputHidden); a shown one left unanswered makes the score Incomplete.
+ * An earlier set's answer counts only if that set was shown (earlierContexts). "Unknown" isn't an
+ * answer to the patient's sex. `q.bmi` is the BMI part of a BMI question's answer.
  */
 export function inputAnswered(survey: SurveyModel | undefined, name: string): boolean {
   if (!survey) return false;
+  if (inputHidden(survey, name)) return true;
   const [head, ...path] = name.split(".");
   const q = survey.getQuestionByName(head) as unknown as Q | null;
   let value: unknown;
   if (q) {
-    if (q.getType() !== "expression" && (!q.isVisible || !q.isParentVisible)) return false;
     value = q.value;
   } else {
     value = survey.getVariable(head);
@@ -186,21 +233,74 @@ export function inputAnswered(survey: SurveyModel | undefined, name: string): bo
 
 /**
  * The band a Calculation's value is in, in a survey: a band's "also when" condition (`when`, e.g.
- * STOP-Bang's high-risk rule) picks it whatever the value; otherwise the first whose maximum the
- * value doesn't exceed. No value (an Incomplete score), no band.
+ * STOP-Bang's high-risk rule, or an author's own: S44a) picks it whatever the value; otherwise the
+ * first whose maximum the value doesn't exceed. No value (an Incomplete score), no band. An input a
+ * condition hides has no answer for "also when" (S44a), whatever its old value.
  */
 export function bandIn(survey: SurveyModel | undefined, bands: unknown, value: unknown): Band | undefined {
   if (!Array.isArray(bands) || isEmpty(value)) return undefined;
   const holds = (expr: string) => {
     if (!survey) return false;
     try {
-      return new ConditionRunner(expr).runValues(survey.getFilteredValues(), survey.getFilteredProperties()) === true;
+      const values = { ...survey.getFilteredValues() };
+      for (const r of referencesIn(expr)) if (inputHidden(survey, r)) delete values[r];
+      return new ConditionRunner(expr).runValues(values, survey.getFilteredProperties()) === true;
     } catch {
       return false;
     }
   };
   const also = [...(bands as Band[])].reverse().find((b) => typeof b.when === "string" && b.when.trim() && holds(b.when));
   return also ?? bandFor(bands, value);
+}
+
+// ---------------------------------------------------------------- "also when" on a band (S44a)
+
+/**
+ * What a band's "also when" can test (S44a, Rahul 27 Oct): the score itself, then what an "Add N
+ * points when…" line can (Patient, Measurements, Other scores, answers), from the same menus.
+ */
+export function bandWhenSubjects(doc: ChapterJson, earlier: ChapterJson | undefined, calc: string): Subject[] {
+  return [{ id: calc, left: calc, label: "The score", group: "This score", type: "number" }, ...pointsSubjects(doc, earlier, calc)];
+}
+
+/** A band's "also when" from its rules (all must hold), or undefined while none is complete. */
+export function formatBandWhen(rules: Rule[]): string | undefined {
+  const done = rules.filter(isComplete).map(formatRule);
+  return done.length ? done.join(" and ") : undefined;
+}
+
+/**
+ * The rules of a band's "also when" the editor can show, or undefined for one it can't (a ready-made
+ * score's, which has "or"): those are shown as words, read-only.
+ */
+export function parseBandWhen(when: string | undefined): Rule[] | undefined {
+  if (!when?.trim()) return [];
+  let g;
+  try {
+    g = parseLogic(when);
+  } catch {
+    return undefined;
+  }
+  if (!g || g.not || (g.join !== "and" && g.items.length > 1) || g.items.some(isGroup)) return undefined;
+  const rules = g.items as Rule[];
+  return formatBandWhen(rules) === when ? rules : undefined;
+}
+
+/**
+ * The inputs a score's bands' "also when" tests (S44a), besides the score itself: one left
+ * unanswered makes the score Incomplete, as its own inputs do, since the band can't be decided.
+ */
+export function bandWhenInputs(calc: string, bands: unknown): string[] {
+  if (!Array.isArray(bands)) return [];
+  const out = new Set<string>();
+  for (const b of bands as Band[]) {
+    if (typeof b.when !== "string") continue;
+    for (const m of b.when.matchAll(/\{(?:panel\.)?([A-Za-z0-9_.]+)\}/g)) out.add(m[1]);
+    for (const m of b.when.matchAll(/\bband\('([^']*)'\)/g)) out.add(m[1]);
+  }
+  out.delete(calc);
+  for (const v of ["viewer", "patientName"]) out.delete(v);
+  return [...out];
 }
 
 /**

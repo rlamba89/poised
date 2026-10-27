@@ -402,7 +402,7 @@ export function pointsSubjects(doc: ChapterJson, earlier: ChapterJson | undefine
 }
 
 /** Each element inside a repeating group, with that group's name. */
-function repeatingParents(doc: ChapterJson): Map<string, string> {
+export function repeatingParents(doc: ChapterJson): Map<string, string> {
   const out = new Map<string, string>();
   const walk = (els: ElementJson[], group?: string) => {
     for (const el of els) {

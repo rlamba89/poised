@@ -20,5 +20,10 @@ export type ClinicalOutput = {
    * from, e.g. "Poorly controlled diabetes", copied so a published HQ never changes.
    */
   asa?: { grade: AsaGrade; emergency: boolean; reason?: string };
+  /**
+   * The author chose "No ASA grade" (S44a), so the editor remembers it and Publish doesn't warn. A
+   * disclosure saved before S44a without a grade has neither, and reads as not chosen.
+   */
+  asaNone?: true;
   flag?: ReviewFlag;
 };

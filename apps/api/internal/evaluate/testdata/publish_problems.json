@@ -93,6 +93,35 @@
         "rules": null
       },
       "output": { "problems": [{ "set": "About you", "message": "Question Set condition: only a clinician's Question Set can test the suggested ASA" }] }
+    },
+    {
+      "name": "a patient set conditioned on a clinician-only score is refused (S44a)",
+      "input": {
+        "sets": [
+          {
+            "name": "Sleep",
+            "audience": "patient",
+            "content": {
+              "pages": [{ "name": "p_1", "elements": [
+                { "type": "radiogroup", "name": "q_snore", "title": "Do you snore?", "choices": [{ "value": "o_y", "text": "Yes", "score": 1 }, { "value": "o_n", "text": "No", "score": 0 }] },
+                { "type": "expression", "name": "q_risk", "title": "Sleep risk", "clinicianOnly": true, "calcKind": "score",
+                  "expression": "iif(allAnswered('q_snore'), score('q_snore'), '')",
+                  "bands": [{ "id": "b_low", "label": "Low", "max": 0 }, { "id": "b_high", "label": "High" }] }
+              ] }]
+            }
+          },
+          {
+            "name": "Sleep follow-up",
+            "audience": "patient",
+            "content": {
+              "chapterVisibleIf": "band('q_risk') = 'b_high'",
+              "pages": [{ "name": "p_1", "elements": [{ "type": "comment", "name": "q_more", "title": "Tell us more" }] }]
+            }
+          }
+        ],
+        "rules": null
+      },
+      "output": { "problems": [{ "set": "Sleep follow-up", "message": "“Sleep follow-up” shows only when Sleep risk band is High, but patients can't see Sleep risk. Make the score visible to patients, or move the condition to a clinician Question Set." }] }
     }
   ]
 }

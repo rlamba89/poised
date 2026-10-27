@@ -1,14 +1,14 @@
 // Checks before publishing (SGN-04, without sign-off yet): logic problems (a score may use earlier
 // Question Sets' questions, S38), two clinical summaries
 // covering the same Group, Section or page (S32), a video without a YouTube or Vimeo link or a length
-// (S34), and failing test cases in every Question Set; then the HQ's ASA rules (S40): a rule that can't
-// fire, and a failing whole-HQ test case.
+// (S34), and failing test cases in every Question Set; a patient's condition on clinician-only content
+// (S44a); then the HQ's ASA rules (S40): a rule that can't fire, and a failing whole-HQ test case.
 // They run in the browser (plan 2.1); publishing is blocked while any are found.
 // The question-key checks (S23) are Go's: the editor shows them from GET …/question-keys.
 import type { ChapterJson } from "./doc";
 import { logicProblems } from "./logic";
 import { registerClinicalProperties } from "./properties";
-import { chapterConditionProblems, combineChapters } from "./questionSets";
+import { chapterConditionProblems, combineChapters, patientConditionProblems } from "./questionSets";
 import { readyScoreProblems } from "./ready";
 import { ruleProblems, runHqTestCase, type RuleSet } from "./rules";
 import { summaryProblems } from "./summary";
@@ -34,6 +34,8 @@ export function publishProblems(sets: { name: string; doc: ChapterJson; audience
       if (!runTestCase(s.doc, tc, sets.slice(0, i)).pass) out.push({ set: s.name, message: `Test case “${tc.name}” fails` });
     }
   });
+  // A patient's condition on something patients can't see could never hold in their form (S44a).
+  out.push(...patientConditionProblems(sets));
   if (rules) {
     const hq = sets.map((s, i) => ({ id: String(i), name: s.name, content: s.doc, audience: s.audience }));
     for (const m of ruleProblems(rules, hq)) out.push({ set: "Rules", message: m });

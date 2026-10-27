@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChapterJson } from "./doc";
 import { Model } from "survey-core";
-import { ageFrom, describeAnswer, isSetComplete, isSetReadyToSend, patientVariables, sameAnswer, shownSets } from "./respondent";
+import { ageFrom, dateIn, describeAnswer, isSetComplete, isSetReadyToSend, patientVariables, sameAnswer, shownSets } from "./respondent";
 
 const smoking: ChapterJson = {
   pages: [{ name: "p_1", elements: [{ type: "radiogroup", name: "q_smoke", isRequired: true, choices: [{ value: "o_y", text: "Yes" }, { value: "o_n", text: "No" }] }] }],
@@ -16,6 +16,21 @@ describe("respondent", () => {
     expect(ageFrom("1974-12-11", new Date(2026, 9, 1))).toBe(51);
     expect(ageFrom("1974-10-01", new Date(2026, 9, 1))).toBe(52);
     expect(patientVariables({ firstName: "Jo", lastName: "Bloggs", dateOfBirth: "1974-12-11", sex: "male" }, new Date(2026, 9, 1))).toEqual(pat);
+  });
+
+  it("works out the age on a day in the hospital's time zone, as Go does (S44a)", () => {
+    // 23:30 UTC on 10 Dec: already 11 Dec (the birthday) in Auckland, still 10 Dec in Los Angeles.
+    const at = new Date(Date.UTC(2026, 11, 10, 23, 30));
+    expect(ageFrom("1974-12-11", at, "Pacific/Auckland")).toBe(52);
+    expect(ageFrom("1974-12-11", at, "America/Los_Angeles")).toBe(51);
+    expect(ageFrom("1974-12-11", at, "UTC")).toBe(51);
+    expect(patientVariables({ firstName: "Jo", lastName: "Bloggs", dateOfBirth: "1974-12-11", sex: "male" }, at, "Pacific/Auckland").age).toBe(52);
+    // Verification 1, finding 1: a browser whose locale has another calendar still gets the Gregorian date.
+    for (const locale of ["th-TH", "fa-IR", "ar-SA", "ja-JP-u-ca-japanese"]) {
+      expect(dateIn(at, "Pacific/Auckland", locale)).toEqual({ y: 2026, m: 12, d: 11 });
+    }
+    // A zone the browser doesn't know: its own date, as before.
+    expect(ageFrom("1974-12-11", new Date(2026, 9, 1), "Not/AZone")).toBe(51);
   });
 
   it("is complete when every required visible question is answered", () => {
