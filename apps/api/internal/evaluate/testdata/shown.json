@@ -1,0 +1,276 @@
+{
+  "about": "Complete review (S44): which Question Sets are shown for the answers that count now (the clinician's copy where there is one, else the patient's), as the episode page works them out before Complete HQ review. Go's evaluate client and packages/clinical's shownSetsFor() both test against this file. Made-up data only. The same sets as evaluate.json. The patient said they smoke and snore 5 nights; the clinician's copy of About you says No to smoking and 1 night, so Travel is shown (it needs smoking No) and Sleep isn't (it needs snoring over 2). The clinician set is always shown.",
+  "input": {
+    "formId": "6f1d2c3b-0000-4000-8000-000000000001",
+    "sets": [
+      {
+        "id": "c1000000-0000-4000-8000-000000000001",
+        "name": "About you",
+        "audience": "patient",
+        "content": {
+          "pages": [
+            {
+              "name": "p_1",
+              "elements": [
+                {
+                  "type": "radiogroup",
+                  "name": "q_smoke",
+                  "title": "Do you smoke?",
+                  "isRequired": true,
+                  "choices": [
+                    {
+                      "value": "o_y",
+                      "text": "Yes",
+                      "clinicalOutputs": [
+                        {
+                          "id": "d_smoke",
+                          "codes": [
+                            {
+                              "set": "SNOMED",
+                              "code": "77176002",
+                              "display": "Smoker"
+                            }
+                          ],
+                          "asa": {
+                            "grade": "II",
+                            "emergency": false
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "value": "o_n",
+                      "text": "No"
+                    }
+                  ]
+                },
+                {
+                  "type": "radiogroup",
+                  "name": "q_heart",
+                  "title": "Do you have heart failure?",
+                  "isRequired": true,
+                  "choices": [
+                    {
+                      "value": "o_y",
+                      "text": "Yes",
+                      "clinicalOutputs": [
+                        {
+                          "id": "d_heart",
+                          "codes": [
+                            {
+                              "set": "ICD10",
+                              "code": "I50.9",
+                              "display": "Heart failure unspecified"
+                            }
+                          ],
+                          "asa": {
+                            "grade": "III",
+                            "emergency": false,
+                            "reason": "Moderate reduction of ejection fraction"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "value": "o_n",
+                      "text": "No"
+                    }
+                  ]
+                },
+                {
+                  "type": "radiogroup",
+                  "name": "q_chest",
+                  "title": "Do you get chest pain?",
+                  "isRequired": true,
+                  "choices": [
+                    {
+                      "value": "o_y",
+                      "text": "Yes",
+                      "clinicalOutputs": [
+                        {
+                          "id": "d_chest",
+                          "codes": [],
+                          "note": {
+                            "text": "Chest pain",
+                            "category": "Heart"
+                          },
+                          "flag": "red"
+                        }
+                      ]
+                    },
+                    {
+                      "value": "o_n",
+                      "text": "No"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "inputType": "number",
+                  "name": "q_snores",
+                  "title": "How many nights a week do you snore?",
+                  "isRequired": true
+                },
+                {
+                  "type": "expression",
+                  "name": "q_score",
+                  "title": "Snore score",
+                  "expression": "{q_snores}",
+                  "bands": [
+                    {
+                      "id": "b_low",
+                      "label": "Low",
+                      "max": 2
+                    },
+                    {
+                      "id": "b_high",
+                      "label": "High"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "c1000000-0000-4000-8000-000000000002",
+        "name": "Sleep",
+        "audience": "patient",
+        "content": {
+          "chapterVisibleIf": "{q_snores} > 2",
+          "pages": [
+            {
+              "name": "p_1",
+              "elements": [
+                {
+                  "type": "radiogroup",
+                  "name": "q_tired",
+                  "title": "Are you tired in the day?",
+                  "isRequired": true,
+                  "choices": [
+                    {
+                      "value": "o_y",
+                      "text": "Yes",
+                      "clinicalOutputs": [
+                        {
+                          "id": "d_tired",
+                          "codes": [],
+                          "note": {
+                            "text": "Daytime tiredness",
+                            "category": "Sleep"
+                          },
+                          "flag": "amber"
+                        }
+                      ]
+                    },
+                    {
+                      "value": "o_n",
+                      "text": "No"
+                    }
+                  ]
+                },
+                {
+                  "type": "comment",
+                  "name": "q_sleep_more",
+                  "title": "Tell us more about your sleep",
+                  "isRequired": true
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "c1000000-0000-4000-8000-000000000003",
+        "name": "Travel",
+        "audience": "patient",
+        "content": {
+          "chapterVisibleIf": "{q_smoke} = 'o_n'",
+          "pages": [
+            {
+              "name": "p_1",
+              "elements": [
+                {
+                  "type": "text",
+                  "name": "q_travel",
+                  "title": "How will you get to the hospital?",
+                  "isRequired": true
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "c1000000-0000-4000-8000-000000000004",
+        "name": "Nurse checks",
+        "audience": "clinician",
+        "content": {
+          "pages": [
+            {
+              "name": "p_1",
+              "elements": [
+                {
+                  "type": "radiogroup",
+                  "name": "q_frail",
+                  "title": "Is the patient frail?",
+                  "choices": [
+                    {
+                      "value": "o_y",
+                      "text": "Yes",
+                      "clinicalOutputs": [
+                        {
+                          "id": "d_frail",
+                          "codes": [],
+                          "note": {
+                            "text": "Frail",
+                            "category": "General"
+                          },
+                          "asa": {
+                            "grade": "IV",
+                            "emergency": false
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "value": "o_n",
+                      "text": "No"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "answers": {
+      "c1000000-0000-4000-8000-000000000001": {
+        "q_smoke": "o_n",
+        "q_heart": "o_y",
+        "q_chest": "o_n",
+        "q_snores": 1,
+        "q_score": 1
+      },
+      "c1000000-0000-4000-8000-000000000002": {
+        "q_tired": "o_y"
+      },
+      "c1000000-0000-4000-8000-000000000004": {
+        "q_frail": "o_n"
+      }
+    },
+    "patient": {
+      "age": 54,
+      "sex": "female"
+    }
+  },
+  "output": {
+    "shown": [
+      "c1000000-0000-4000-8000-000000000001",
+      "c1000000-0000-4000-8000-000000000003",
+      "c1000000-0000-4000-8000-000000000004"
+    ]
+  }
+}

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import sent from "../../../apps/api/internal/evaluate/testdata/evaluate.json";
 import publishing from "../../../apps/api/internal/evaluate/testdata/publish_problems.json";
-import { checkPublish, evaluate, EvaluateInputError, type EvaluateInput, type PublishInput } from "./evaluate";
+import reviewing from "../../../apps/api/internal/evaluate/testdata/shown.json";
+import { checkPublish, evaluate, EvaluateInputError, shownSetsFor, type EvaluateInput, type PublishInput, type ShownInput } from "./evaluate";
 
 const input = sent.input as unknown as EvaluateInput;
 const [ABOUT, SLEEP, TRAVEL, NURSE] = input.sets.map((s) => s.id);
@@ -106,5 +107,40 @@ describe("checkPublish: the publish checks the server runs (S41)", () => {
 
   it("refuses an input that isn't a version", () => {
     expect(() => checkPublish({} as PublishInput)).toThrow(EvaluateInputError);
+  });
+});
+
+describe("shownSetsFor: the sets Complete review needs validated (S44)", () => {
+  const review = reviewing.input as unknown as ShownInput;
+
+  it("gives the same result as the shared fixture Go's client tests against", () => {
+    expect(shownSetsFor(review)).toEqual(reviewing.output);
+  });
+
+  it("uses the answers that count now: the clinician's copy shows Travel and hides Sleep", () => {
+    expect(shownSetsFor(review).shown).toEqual([ABOUT, TRAVEL, NURSE]);
+    // With the patient's own answers (they smoke, snore 5 nights), Sleep is shown and Travel isn't.
+    expect(shownSetsFor({ ...review, answers: input.answers }).shown).toEqual([ABOUT, SLEEP, NURSE]);
+  });
+
+  it("counts a clinician set's answers, which a later clinician set's condition may test", () => {
+    const sets = [
+      { id: "n1", name: "Nurse", audience: "clinician", content: { pages: [{ name: "p", elements: [{ type: "text", name: "q_bp", title: "BP" }] }] } },
+      { id: "n2", name: "High BP", audience: "clinician", content: { chapterVisibleIf: "{q_bp} = 'high'", pages: [{ name: "p", elements: [{ type: "text", name: "q_more", title: "More" }] }] } },
+    ];
+    expect(shownSetsFor({ sets, answers: { n1: { q_bp: "high" } }, patient: {} }).shown).toEqual(["n1", "n2"]);
+    expect(shownSetsFor({ sets, answers: { n1: { q_bp: "low" } }, patient: {} }).shown).toEqual(["n1"]);
+  });
+
+  it("sees the patient's age, as the episode page does", () => {
+    const sets = [{ id: "s", name: "Older", audience: "patient", content: { chapterVisibleIf: "{patientAge} > 60", pages: [{ name: "p", elements: [{ type: "text", name: "q", title: "Q" }] }] } }];
+    expect(shownSetsFor({ sets, answers: {}, patient: { age: 70 } }).shown).toEqual(["s"]);
+    expect(shownSetsFor({ sets, answers: {}, patient: { age: 40 } }).shown).toEqual([]);
+  });
+
+  it("refuses an input that isn't an HQ's sets and answers", () => {
+    expect(() => shownSetsFor({} as ShownInput)).toThrow(EvaluateInputError);
+    expect(() => shownSetsFor({ ...review, answers: [] } as unknown as ShownInput)).toThrow(EvaluateInputError);
+    expect(() => shownSetsFor({ ...review, patient: { age: "old" } } as unknown as ShownInput)).toThrow(EvaluateInputError);
   });
 });

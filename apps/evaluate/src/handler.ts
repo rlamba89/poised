@@ -3,11 +3,12 @@
 //
 //   POST /evaluate          a sent HQ (EvaluateInput) → what it gives (EvaluateResult)
 //   POST /publish-problems  a version's sets and rules (PublishInput) → { problems }
+//   POST /shown             a reviewed HQ's sets and the answers that count now (ShownInput) → { shown } (S44)
 //   GET  /health            { ok, evaluator }
 //
 // Nothing here ever logs an answer: an error log names only the episode form's id, the error's
 // kind and where in the code it happened (not its message, which could quote a value).
-import { checkPublish, evaluate, EvaluateInputError } from "@poised/clinical";
+import { checkPublish, evaluate, EvaluateInputError, shownSetsFor } from "@poised/clinical";
 
 /** The largest body accepted, in bytes: a whole HQ's JSON with its answers fits many times over. */
 export const MAX_BODY = 10 << 20;
@@ -17,9 +18,9 @@ export const DEFAULT_PORT = 8090;
 
 export type Reply = { status: number; body: unknown };
 
-/** The two operations; a test swaps one for a failing one. */
-export type Ops = { evaluate: typeof evaluate; checkPublish: typeof checkPublish };
-const real: Ops = { evaluate, checkPublish };
+/** The operations; a test swaps one for a failing one. */
+export type Ops = { evaluate: typeof evaluate; checkPublish: typeof checkPublish; shownSetsFor: typeof shownSetsFor };
+const real: Ops = { evaluate, checkPublish, shownSetsFor };
 
 /** The port in EVALUATE_URL (the address Go calls), so one setting serves both sides. */
 export function portOf(url: string | undefined): number {
@@ -43,7 +44,7 @@ const formIdOf = (v: unknown): string => {
 export async function handle(method: string, path: string, body: string, version: string, ops: Partial<Ops> = {}): Promise<Reply> {
   const op = { ...real, ...ops };
   if (path === "/health") return method === "GET" ? { status: 200, body: { ok: true, evaluator: version } } : { status: 405, body: { error: "Use GET." } };
-  if (path !== "/evaluate" && path !== "/publish-problems") return { status: 404, body: { error: "Not found." } };
+  if (path !== "/evaluate" && path !== "/publish-problems" && path !== "/shown") return { status: 404, body: { error: "Not found." } };
   if (method !== "POST") return { status: 405, body: { error: "Use POST." } };
   let input: unknown;
   try {
@@ -52,11 +53,14 @@ export async function handle(method: string, path: string, body: string, version
     return { status: 400, body: { error: "The body isn't JSON." } };
   }
   try {
-    const out = path === "/evaluate" ? op.evaluate(input as Parameters<Ops["evaluate"]>[0], version) : op.checkPublish(input as Parameters<Ops["checkPublish"]>[0]);
+    const out =
+      path === "/evaluate" ? op.evaluate(input as Parameters<Ops["evaluate"]>[0], version)
+      : path === "/shown" ? op.shownSetsFor(input as Parameters<Ops["shownSetsFor"]>[0])
+      : op.checkPublish(input as Parameters<Ops["checkPublish"]>[0]);
     return { status: 200, body: out };
   } catch (e) {
     if (e instanceof EvaluateInputError) return { status: 400, body: { error: e.message } };
-    const what = path === "/evaluate" ? `form ${formIdOf(input)}` : "a version's publish checks";
+    const what = path === "/publish-problems" ? "a version's publish checks" : `form ${formIdOf(input)}`;
     console.error(`evaluate: failed on ${what}: ${where(e)}`);
     return { status: 500, body: { error: "The checks couldn't be worked out." } };
   }

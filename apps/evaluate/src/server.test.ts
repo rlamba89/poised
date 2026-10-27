@@ -2,6 +2,7 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import sent from "../../api/internal/evaluate/testdata/evaluate.json";
 import publishing from "../../api/internal/evaluate/testdata/publish_problems.json";
+import reviewing from "../../api/internal/evaluate/testdata/shown.json";
 import { handle, portOf } from "./handler";
 import { startServer } from "./server";
 
@@ -30,6 +31,14 @@ describe("the evaluate service over HTTP (S41)", () => {
     const r = await post("/publish-problems", c.input);
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual(c.output);
+  });
+
+  it("POST /shown gives the shared fixture's sets (S44: Complete review)", async () => {
+    const r = await post("/shown", reviewing.input);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual(reviewing.output);
+    const bad = await post("/shown", { sets: [], answers: [], patient: {} });
+    expect(bad.status).toBe(400);
   });
 
   it("GET /health answers ok, with the evaluator's version", async () => {
@@ -68,6 +77,19 @@ describe("its error log (S41: it never logs answers)", () => {
     expect(lines).toContain(sent.input.formId);
     expect(lines).not.toContain("q_secret");
     expect(lines).not.toContain("Yes");
+    log.mockRestore();
+  });
+
+  it("names only the form on /shown too (S44)", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const boom = () => {
+      throw new Error("q_secret answer Yes was bad");
+    };
+    const r = await handle("POST", "/shown", JSON.stringify(reviewing.input), "test", { shownSetsFor: boom });
+    expect(r.status).toBe(500);
+    const lines = log.mock.calls.map((c) => c.join(" ")).join("\n");
+    expect(lines).toContain(reviewing.input.formId);
+    expect(lines).not.toContain("q_secret");
     log.mockRestore();
   });
 });

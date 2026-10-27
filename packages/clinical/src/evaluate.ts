@@ -1,17 +1,18 @@
-// The evaluate service's two operations (plan C6, session S41; D-1). Go never evaluates SurveyJS
+// The evaluate service's operations (plan C6, sessions S41 and S44; D-1). Go never evaluates SurveyJS
 // (CLAUDE.md's key rule); this is the one agreed exception: when an HQ is sent, Go sends the
 // published version, the patient's answers and the patient context here, and stores what comes back.
 // When a version is published, Go asks here for the browser's publish checks, so the API alone can't
-// publish a version whose test cases fail.
+// publish a version whose test cases fail. On Complete review (S44), Go asks which sets are shown for
+// the answers that count now, so it can refuse while one isn't validated.
 //
-// Both are pure functions of their input: no database, no state, nothing logged. apps/evaluate
+// All are pure functions of their input: no database, no state, nothing logged. apps/evaluate
 // serves them over HTTP (npm run evaluate); S45 runs the same functions in a Lambda. The shared
 // fixtures in apps/api/internal/evaluate/testdata keep this file and Go's client in step.
 import type { SuggestedAsa } from "./asa";
 import type { ChapterJson } from "./doc";
 import type { ProducedOutput, ScoreResult } from "./outputs";
 import { publishProblems, type PublishProblem } from "./publish";
-import { hqResult, hqSets, isSetComplete, type Answers } from "./respondent";
+import { hqResult, hqSets, isSetComplete, shownSets, type Answers } from "./respondent";
 import { firedLine, firedRules, isPatientSet, ruleSetOf, type HeldReason, type RuleAction } from "./rules";
 import type { SamplePatient } from "./testcases";
 import type { ReviewFlag } from "./types";
@@ -73,7 +74,8 @@ function checkSets(sets: unknown, needId: boolean): void {
   }
 }
 
-function checkInput(input: EvaluateInput): void {
+/** The sets, the answers by set and the patient: what both /evaluate and /shown are sent. */
+function checkAnswered(input: { sets: unknown; answers: unknown; patient: unknown }): void {
   if (!isObject(input)) throw new EvaluateInputError("the input must be an object");
   checkSets(input.sets, true);
   if (!isObject(input.answers) || !Object.values(input.answers).every(isObject)) throw new EvaluateInputError("answers must be an object of objects, by set id");
@@ -81,6 +83,10 @@ function checkInput(input: EvaluateInput): void {
   if (!isObject(p) || (p.age !== undefined && typeof p.age !== "number") || (p.sex !== undefined && typeof p.sex !== "string")) {
     throw new EvaluateInputError("patient must give a number age and a text sex");
   }
+}
+
+function checkInput(input: EvaluateInput): void {
+  checkAnswered(input);
   if (input.procedureId != null && typeof input.procedureId !== "string") throw new EvaluateInputError("procedureId must be text");
 }
 
@@ -120,6 +126,30 @@ export function evaluate(input: EvaluateInput, version: string): EvaluateResult 
     })),
     patientSets,
   };
+}
+
+/** What Go sends on Complete review (S44): the version's sets, the answers that count now, and the patient. */
+export type ShownInput = {
+  /** The episode form's id: the only thing an error log may name. */
+  formId?: string;
+  /** Every Question Set of the published version, in order. */
+  sets: EvaluateSet[];
+  /** The answers that count now, by set id: the clinician's copy where there is one, else the patient's. */
+  answers: Record<string, Answers>;
+  /** The patient's age on the day they sent their answers, and sex. */
+  patient: { age?: number; sex?: string };
+};
+
+/**
+ * The Question Sets shown, in order, for the answers that count now, as the episode page works them
+ * out before it enables Complete HQ review (EpisodePage's shownSets over allCurrentAnswers, in the
+ * clinician's view): every set's answers count, a clinician set's too. Go refuses Complete review
+ * while one of these has no validated copy (S44).
+ */
+export function shownSetsFor(input: ShownInput): { shown: string[] } {
+  checkAnswered(input);
+  const patient: SamplePatient = { name: "", age: input.patient.age, sex: input.patient.sex };
+  return { shown: shownSets(input.sets, input.answers, "clinician", patient).map((s) => s.id) };
 }
 
 /** What Go sends when a version is published: its Question Sets in order (with their audience) and its rules. */

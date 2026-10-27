@@ -144,6 +144,37 @@ func TestHTTPEvaluate(t *testing.T) {
 	}
 }
 
+// S44: Complete review asks which sets are shown for the answers that count now.
+func TestHTTPShown(t *testing.T) {
+	var fx sentFixture
+	read(t, "shown.json", &fx)
+	var in evaluate.ShownInput
+	if err := json.Unmarshal(fx.Input, &in); err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := json.Marshal(in); !sameJSON(t, out, fx.Input) {
+		t.Errorf("Go's ShownInput doesn't round-trip the fixture:\n got %s\nwant %s", out, fx.Input)
+	}
+	var got []byte
+	url := fixtureServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/shown" || r.Header.Get("Content-Type") != "application/json" {
+			t.Errorf("request = %s %s (%s)", r.Method, r.URL.Path, r.Header.Get("Content-Type"))
+		}
+		got, _ = io.ReadAll(r.Body)
+		w.Write(fx.Output)
+	})
+	shown, err := evaluate.HTTP{URL: url}.Shown(context.Background(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameJSON(t, got, fx.Input) {
+		t.Errorf("sent %s", got)
+	}
+	if want := []uuid.UUID{in.Sets[0].ID, in.Sets[2].ID, in.Sets[3].ID}; !reflect.DeepEqual(shown, want) {
+		t.Errorf("shown = %v, want %v", shown, want)
+	}
+}
+
 func TestHTTPPublishProblems(t *testing.T) {
 	var fx publishFixture
 	read(t, "publish_problems.json", &fx)
@@ -222,6 +253,19 @@ func TestHTTPFailures(t *testing.T) {
 			t.Fatalf("err = %v after %v", err, time.Since(start))
 		}
 	})
+	t.Run("shown: a reply with no list, and a server error", func(t *testing.T) {
+		for _, h := range []http.HandlerFunc{
+			func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"q_secret":1}`)) },
+			func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, "q_secret", http.StatusInternalServerError)
+			},
+		} {
+			_, err := evaluate.HTTP{URL: fixtureServer(t, h)}.Shown(context.Background(), evaluate.ShownInput{FormID: uuid.New()})
+			if err == nil || strings.Contains(err.Error(), "q_secret") {
+				t.Errorf("err = %v", err)
+			}
+		}
+	})
 	t.Run("publish checks failing", func(t *testing.T) {
 		url := fixtureServer(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusBadGateway) })
 		if _, err := (evaluate.HTTP{URL: url}).PublishProblems(context.Background(), evaluate.PublishInput{}); err == nil {
@@ -259,5 +303,23 @@ func TestRecorder(t *testing.T) {
 	}
 	if len(r.Published()) != 2 {
 		t.Errorf("Published = %d", len(r.Published()))
+	}
+
+	// S44: Shown gives every set unless told some are hidden; Fail fails it too.
+	other := uuid.New()
+	review := evaluate.ShownInput{FormID: in.FormID, Sets: append(in.Sets, evaluate.Set{ID: other, Name: "Nurse", Audience: "clinician", Content: json.RawMessage(`{}`)})}
+	if got, err := r.Shown(context.Background(), review); err != nil || !reflect.DeepEqual(got, []uuid.UUID{set, other}) {
+		t.Errorf("Shown = %v, %v", got, err)
+	}
+	r.Hide(set)
+	if got, _ := r.Shown(context.Background(), review); !reflect.DeepEqual(got, []uuid.UUID{other}) {
+		t.Errorf("Shown after Hide = %v", got)
+	}
+	if got := r.ShownInputs(); len(got) != 2 || got[0].FormID != in.FormID {
+		t.Errorf("ShownInputs = %+v", got)
+	}
+	r.Fail(errors.New("down"))
+	if _, err := r.Shown(context.Background(), review); err == nil {
+		t.Error("Fail: Shown didn't fail")
 	}
 }

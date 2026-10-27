@@ -4,7 +4,9 @@
 //   - Evaluate: when an HQ is sent, Go sends the published version, the patient's answers and the
 //     patient context, and stores what comes back (form_outputs);
 //   - PublishProblems: when a version is published, the browser's publish checks, so the API alone
-//     can't publish a version whose test cases fail.
+//     can't publish a version whose test cases fail;
+//   - Shown: on Complete review (S44), the sets shown for the answers that count now, so Go can
+//     refuse while one of them isn't validated.
 //
 // Locally the service is `npm run evaluate` (apps/evaluate), which make dev starts, at EVALUATE_URL;
 // S45 puts it in a Lambda. Tests use Recorder. The shared fixtures in testdata are read by both this
@@ -33,6 +35,7 @@ import (
 type Evaluator interface {
 	Evaluate(ctx context.Context, in Input) (Result, error)
 	PublishProblems(ctx context.Context, in PublishInput) ([]Problem, error)
+	Shown(ctx context.Context, in ShownInput) ([]uuid.UUID, error)
 }
 
 // Set is one Question Set of the published version, as stored (clinician-only parts too).
@@ -58,6 +61,15 @@ type Input struct {
 	Answers     map[uuid.UUID]json.RawMessage `json:"answers"` // the patient's answers, by set
 	Patient     Patient                       `json:"patient"`
 	ProcedureID *uuid.UUID                    `json:"procedureId"`
+}
+
+// ShownInput is an HQ under review (S44): every set, the answers that count now by set (the
+// clinician's copy where there is one, else the patient's), and the patient as on the day they sent.
+type ShownInput struct {
+	FormID  uuid.UUID                     `json:"formId"` // the only thing the service's error log names
+	Sets    []Set                         `json:"sets"`
+	Answers map[uuid.UUID]json.RawMessage `json:"answers"`
+	Patient Patient                       `json:"patient"`
 }
 
 // Result is what a sent HQ's answers give: the same result the clinician's view shows for them
@@ -142,7 +154,8 @@ type Problem struct {
 // counts DELIVERY_FAILED.
 const FailedMarker = "EVALUATE_FAILED"
 
-// The calls' time limits: a patient waits on Evaluate; PublishProblems runs every test case.
+// The calls' time limits: a patient waits on Evaluate, a clinician on Shown; PublishProblems runs
+// every test case.
 const (
 	EvaluateTimeout = 5 * time.Second
 	PublishTimeout  = 20 * time.Second
@@ -177,6 +190,21 @@ func (h HTTP) PublishProblems(ctx context.Context, in PublishInput) ([]Problem, 
 		return nil, errors.New("evaluate: /publish-problems: the reply isn't a list of problems")
 	}
 	return *out.Problems, nil
+}
+
+// Shown is the sets shown, in order, for the answers that count now (S44).
+func (h HTTP) Shown(ctx context.Context, in ShownInput) ([]uuid.UUID, error) {
+	raw, err := h.post(ctx, "/shown", cmpDuration(h.Timeout, EvaluateTimeout), in)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Shown *[]uuid.UUID `json:"shown"`
+	}
+	if json.Unmarshal(raw, &out) != nil || out.Shown == nil {
+		return nil, errors.New("evaluate: /shown: the reply isn't a list of sets")
+	}
+	return *out.Shown, nil
 }
 
 // decodeResult checks the reply is a result (it names its evaluator) and keeps it whole.
@@ -236,14 +264,46 @@ const FakeVersion = "fake"
 
 // Recorder is the fake for tests: it records each call and answers as told. By default Evaluate
 // answers like the service for an HQ that gives nothing (every set shown, no disclosures, no rule
-// fires, every patient set complete) and PublishProblems finds none.
+// fires, every patient set complete), PublishProblems finds none and Shown gives every set.
 type Recorder struct {
 	mu        sync.Mutex
 	inputs    []Input
 	published []PublishInput
+	reviewed  []ShownInput
 	result    *Result
 	problems  []Problem
+	hidden    []uuid.UUID
 	err       error
+}
+
+// Hide makes Shown leave these sets out, as if their conditions hid them (none: show all again).
+func (r *Recorder) Hide(sets ...uuid.UUID) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.hidden = sets
+}
+
+// ShownInputs are the HQs sent to Shown, in order.
+func (r *Recorder) ShownInputs() []ShownInput {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.reviewed)
+}
+
+func (r *Recorder) Shown(_ context.Context, in ShownInput) ([]uuid.UUID, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.reviewed = append(r.reviewed, in)
+	if r.err != nil {
+		return nil, r.err
+	}
+	shown := []uuid.UUID{}
+	for _, s := range in.Sets {
+		if !slices.Contains(r.hidden, s.ID) {
+			shown = append(shown, s.ID)
+		}
+	}
+	return shown, nil
 }
 
 // Fail makes every call fail with err (nil: succeed again).
