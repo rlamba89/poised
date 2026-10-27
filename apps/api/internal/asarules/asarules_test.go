@@ -160,3 +160,31 @@ func TestCheckLimitsTheNumberOfRules(t *testing.T) {
 		t.Errorf("problem = %q", problem)
 	}
 }
+
+// S42 (answers 2): each HQ says when an auto-triaged patient's status message goes. Off by default
+// (straight away); on, it waits for a clinician's Checked. A set stored before S42 has no such
+// field and counts as off; anything but true or false is refused.
+func TestCheckKeepsWhenTheMessageGoes(t *testing.T) {
+	set, _ := Check(Defaults())
+	if set.MessageAfterCheck {
+		t.Error("the defaults send the message straight away")
+	}
+	if !strings.Contains(string(Defaults()), `"messageAfterCheck": false`) {
+		t.Error("the defaults name the setting")
+	}
+	old := variant(t, func(m map[string]any) { delete(m, "messageAfterCheck") })
+	if set, problem := Check(old); problem != "" || set.MessageAfterCheck {
+		t.Errorf("a set from before S42 = %+v, %q; want accepted, off", set, problem)
+	}
+	on := variant(t, func(m map[string]any) { m["messageAfterCheck"] = true })
+	set, problem := Check(on)
+	if problem != "" || !set.MessageAfterCheck {
+		t.Fatalf("on = %+v, %q", set, problem)
+	}
+	if !strings.Contains(string(set.JSON()), `"messageAfterCheck":true`) {
+		t.Errorf("stored = %s", set.JSON())
+	}
+	if _, problem := Check(variant(t, func(m map[string]any) { m["messageAfterCheck"] = "yes" })); problem == "" {
+		t.Error("a setting that isn't true or false was accepted")
+	}
+}

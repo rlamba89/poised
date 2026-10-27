@@ -9,7 +9,8 @@
 //
 // The stored JSON is one object: the rules in order, the HQ's setting for patients whose answers
 // give no ASA grade (S40 answers 2: counted as ASA I and auto-triaged, unless an author turns it
-// off), and the whole-HQ test cases (S40 answers 4), which check which rules fire.
+// off), when an auto-triaged patient's message goes (S42 answers 2: at once unless the author says
+// after Checked), and the whole-HQ test cases (S40 answers 4), which check which rules fire.
 package asarules
 
 import (
@@ -117,7 +118,11 @@ type TestCase struct {
 }
 
 type RuleSet struct {
-	NoGradeAutoTriage bool       `json:"noGradeAutoTriage"`
+	NoGradeAutoTriage bool `json:"noGradeAutoTriage"`
+	// MessageAfterCheck: an auto-triaged patient's status message (e.g. Ready for admission, if the
+	// hospital sends one) waits until a clinician clicks Checked; off, it goes at once (S42 answers 2:
+	// a setting on each HQ, off by default). A set stored before S42 has none: off.
+	MessageAfterCheck bool       `json:"messageAfterCheck"`
 	Rules             []Rule     `json:"rules"`
 	TestCases         []TestCase `json:"testCases"`
 }
@@ -132,6 +137,7 @@ var idPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,40}$`)
 func Check(raw json.RawMessage) (RuleSet, string) {
 	var set struct {
 		NoGradeAutoTriage *bool      `json:"noGradeAutoTriage"`
+		MessageAfterCheck bool       `json:"messageAfterCheck"`
 		Rules             []Rule     `json:"rules"`
 		TestCases         []TestCase `json:"testCases"`
 	}
@@ -143,7 +149,7 @@ func Check(raw json.RawMessage) (RuleSet, string) {
 	if err := dec.Decode(&set); err != nil || dec.More() || set.NoGradeAutoTriage == nil || set.Rules == nil {
 		return RuleSet{}, unreadable
 	}
-	out := RuleSet{NoGradeAutoTriage: *set.NoGradeAutoTriage, Rules: []Rule{}, TestCases: []TestCase{}}
+	out := RuleSet{NoGradeAutoTriage: *set.NoGradeAutoTriage, MessageAfterCheck: set.MessageAfterCheck, Rules: []Rule{}, TestCases: []TestCase{}}
 	if len(set.Rules) > MaxRules {
 		return RuleSet{}, fmt.Sprintf("An HQ can have at most %d rules.", MaxRules)
 	}

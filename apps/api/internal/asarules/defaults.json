@@ -1,5 +1,6 @@
 {
   "noGradeAutoTriage": true,
+  "messageAfterCheck": false,
   "rules": [
     {
       "id": "low_risk",

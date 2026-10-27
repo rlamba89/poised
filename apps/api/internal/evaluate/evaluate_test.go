@@ -137,6 +137,11 @@ func TestHTTPEvaluate(t *testing.T) {
 	if !reflect.DeepEqual(res.PatientSets, want) {
 		t.Errorf("PatientSets = %+v", res.PatientSets)
 	}
+	// S42: each set's scores, which auto-triage reads (an Incomplete one stops it).
+	if len(res.Sets) != 3 || res.Sets[0].ID != about || len(res.Sets[0].Scores) != 1 ||
+		res.Sets[0].Scores[0] != (evaluate.Score{QuestionID: "q_score", Incomplete: false}) {
+		t.Errorf("Sets = %+v", res.Sets)
+	}
 }
 
 func TestHTTPPublishProblems(t *testing.T) {

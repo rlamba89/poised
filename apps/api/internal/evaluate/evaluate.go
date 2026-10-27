@@ -65,11 +65,24 @@ type Input struct {
 type Result struct {
 	Evaluator    string          `json:"evaluator"` // which build worked it out
 	Shown        []uuid.UUID     `json:"shown"`     // the Question Sets shown, in order
+	Sets         []SetResult     `json:"sets"`      // each shown set's scores (S42: an Incomplete one stops auto-triage); its disclosures are in Raw
 	SuggestedASA *SuggestedASA   `json:"suggestedAsa"`
 	Flags        []Flag          `json:"flags"`       // every red and amber flag
 	Rules        []FiredRule     `json:"rules"`       // the rules that fire, in order (S42, S43 act on them)
 	PatientSets  []PatientSet    `json:"patientSets"` // the sets the patient's own form shows (S44)
 	Raw          json.RawMessage `json:"-"`
+}
+
+// SetResult is one shown set's part of the result, as Go reads it.
+type SetResult struct {
+	ID     uuid.UUID `json:"id"`
+	Scores []Score   `json:"scores"`
+}
+
+// Score is a Calculation's result; Incomplete while one of its inputs has no answer (S38).
+type Score struct {
+	QuestionID string `json:"questionId"`
+	Incomplete bool   `json:"incomplete"`
 }
 
 // SuggestedASA is the suggested grade (I…VI), E for an emergency; its reasons are in Raw.
@@ -93,7 +106,10 @@ type FiredRule struct {
 	Name    string            `json:"name"`
 	Actions []json.RawMessage `json:"actions"`
 	Held    bool              `json:"held"`
-	Line    string            `json:"line"`
+	// HeldReason says why its auto-triage was taken out (S42): noGrade (the HQ's setting), or one of
+	// the guards every send applies: flag, incomplete, anaesthetistAsa.
+	HeldReason string `json:"heldReason,omitempty"`
+	Line       string `json:"line"`
 }
 
 // PatientSet is a set the patient's own form shows, and whether it's complete.
