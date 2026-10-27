@@ -305,7 +305,8 @@ export default function PatientHQ({ path, onBehalf }: Props) {
           <Card withBorder p="xl" ta="center">
             <IconCircleCheck size={48} color="var(--mantine-color-green-6)" style={{ margin: "0 auto" }} />
             <Title order={3} mt="sm">Sent for {hq.patient.name}</Title>
-            <Text mt="xs">The answers are with the team for review.</Text>
+            {/* Test report 1, E-1: the HQ's rules may have moved it on (S42); the episode page says where. */}
+            <Text mt="xs">The answers are with the team. The episode page shows its status now.</Text>
             <Button mt="md" component={Link} to={onBehalf.back}>Back to the episode</Button>
           </Card>
         ) : hq.submitted ? (
@@ -384,7 +385,7 @@ export default function PatientHQ({ path, onBehalf }: Props) {
         <Stack>
           <Text>
             {onBehalf
-              ? "Once sent, the answers can't be changed here, and the episode moves to Ready for review."
+              ? "Once sent, the answers can't be changed here. The episode moves to Ready for review, or on from there if the HQ's rules auto-triage it."
               : "Once sent, you can't change your answers here. The hospital team will contact you if they need anything else."}
           </Text>
           <Group justify="flex-end">

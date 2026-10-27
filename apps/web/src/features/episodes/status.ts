@@ -6,7 +6,8 @@ import type { EpisodeStatus } from "./types";
 
 /** internal/episode's Move: the kind of a status change. */
 export type StatusMove = "create" | "submit" | "complete_review" | "set" | "admit" | "discharge" | "cancel" | "reopen" | "undo"
-  | "archive" | "unarchive"; // S22
+  | "archive" | "unarchive" // S22
+  | "auto_triage"; // S42: the HQ's rules, never a person
 
 /** A move the status control offers (episode.Option). */
 export type StatusOption = { to: EpisodeStatus; label: string; move: StatusMove; needsReason: boolean; needsDate: boolean };
@@ -97,6 +98,7 @@ export function historyText(ev: StatusEvent, labels: Record<EpisodeStatus, strin
     undo: "Undone",
     archive: "Archived",
     unarchive: "Un-archived",
+    auto_triage: "Auto-triaged",
   };
   if (ev.move === "create") return `Created: ${to}`;
   const what = kind[ev.move];
@@ -109,3 +111,12 @@ export function historyWho(ev: StatusEvent): string {
   if (ev.rule) return `Automatic (${ev.rule})`;
   return "Patient";
 }
+
+/** An episode's auto-triage as GET …/episodes/:id gives it (S42); all null when it wasn't, or was re-opened since. */
+type Triage = { status: EpisodeStatus; triageRule: string | null; triageSummary: string | null; triagedAt: string | null; triageCheckedAt: string | null };
+
+/** The stamp on each Question Set of an auto-triaged episode: "Auto-triaged (ASA II, no red or amber flags)". */
+export const triageStamp = (e: Triage): string | null => (e.triagedAt && e.triageSummary ? `Auto-triaged (${e.triageSummary})` : null);
+
+/** Whether the episode waits for a clinician's Checked (S42 answers 1): on the Auto-triaged worklist, as Go's in_worklist. */
+export const awaitingCheck = (e: Triage): boolean => !!e.triagedAt && !e.triageCheckedAt && e.status !== "cancelled" && e.status !== "archived";

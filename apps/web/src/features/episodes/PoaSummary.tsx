@@ -27,6 +27,7 @@ import { allCurrentAnswers, hqPatient, useEpisodeHQ, type EpisodeHQ } from "./hq
 import { restoreSpot, saveSpot, takeSpot, validateAt } from "./jump";
 import { sessionStore } from "@/lib/chunkError";
 import { SaveError, isStale, StatusControl } from "./StatusControl";
+import { triageStamp } from "./status";
 import { patientName, type Episode, type EpisodeEvent } from "./types";
 
 type Tab = "validated" | "patient";
@@ -115,9 +116,14 @@ function Summary({ tab, episode: e, events, hq, path, onChanged, episodeId }: Su
 
   return (
     <Stack>
-      {validated && !e.reviewCompletedAt && (
+      {validated && !e.reviewCompletedAt && (triageStamp(e) ? (
+        // S42: the HQ's rules moved it on, so there's no validated copy: the patient's answers are shown.
+        <Alert color="teal" data-testid="poa-auto-triaged">
+          {triageStamp(e)} by the rule “{e.triageRule}”. No clinician validated these answers, so this shows the patient&apos;s own.
+        </Alert>
+      ) : (
         <Alert color="orange" className="sj-no-print">The HQ review isn&apos;t complete yet. This shows the answers as they stand.</Alert>
-      )}
+      ))}
       {!validated && !e.patientSubmittedAt && (
         <Alert color="orange" className="sj-no-print">The patient hasn&apos;t sent their answers yet. This shows what they have saved so far.</Alert>
       )}
@@ -188,7 +194,9 @@ function byLine(validated: boolean, e: Episode, hq: EpisodeHQ, setId: string): s
   const row = hq.clinician[setId];
   if (validated && row) return `${row.validatedAt ? "Validated by" : "Saved by"} ${row.updatedByName} on ${formatDateTime(row.validatedAt ?? row.updatedAt)}`;
   const who = hq.enteredBy[setId] ? `Patient (entered by ${hq.enteredBy[setId]})` : "Patient";
-  return e.patientSubmittedAt ? `${who} on ${formatDateTime(e.patientSubmittedAt)}` : `${who}, not sent yet`;
+  const line = e.patientSubmittedAt ? `${who} on ${formatDateTime(e.patientSubmittedAt)}` : `${who}, not sent yet`;
+  const stamp = triageStamp(e); // S42: every set of an auto-triaged episode says so
+  return stamp && !row?.validatedAt ? `${stamp} · ${line}` : line;
 }
 
 /**

@@ -67,6 +67,8 @@ export function RulesPage({ base, questionnaireId }: { base: string; questionnai
       </Group>
       <Text size="sm" c="dimmed" mb="md">
         Rules run once, when the patient sends this HQ, on the suggested ASA from the patient&apos;s answers. Every rule that matches fires, in this order.
+        A rule never auto-triages a patient whose answers have a red or amber flag or an Incomplete score, or when a rule requires the
+        anaesthetist&apos;s ASA before Ready for admission: the patient goes to Ready for review instead.
       </Text>
       {readOnly && <Alert color="gray" mb="md" p="xs"><Text size="sm">{readOnly}</Text></Alert>}
       {error && <Alert color="red" mb="md" p="xs" data-testid="rules-error"><Text size="sm">{error}</Text></Alert>}
@@ -81,6 +83,17 @@ export function RulesPage({ base, questionnaireId }: { base: string; questionnai
               checked={rules.noGradeAutoTriage}
               disabled={!!readOnly || busy}
               onChange={(e) => change({ ...rules, noGradeAutoTriage: e.currentTarget.checked })}
+            />
+            {/* S42 answers 2: off by default, so the hospital's status message goes as soon as the rules move the patient on. */}
+            <Checkbox
+              mt="sm"
+              label="When a rule auto-triages a patient, wait for a clinician to click Checked before the patient's status message goes"
+              description={rules.messageAfterCheck
+                ? "On: the hospital's message (for example Ready for admission) goes once a clinician has checked the episode on the Auto-triaged list."
+                : "Off: the hospital's message goes straight away. The episode is still on the Auto-triaged list for a clinician to check."}
+              checked={!!rules.messageAfterCheck}
+              disabled={!!readOnly || busy}
+              onChange={(e) => change({ ...rules, messageAfterCheck: e.currentTarget.checked })}
             />
           </Card>
 

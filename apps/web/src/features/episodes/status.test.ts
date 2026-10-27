@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { historyText, historyWho, notResponding, pickOptions, statusRequest, type StatusEvent, type StatusOption } from "./status";
+import {
+  awaitingCheck, historyText, historyWho, notResponding, pickOptions, statusRequest, triageStamp, type StatusEvent, type StatusOption,
+} from "./status";
 import { STATUS_LABELS } from "./types";
 
 const onHold: StatusOption = { to: "on_hold", label: "On hold", move: "set", needsReason: false, needsDate: false };
@@ -60,6 +62,7 @@ describe("the history", () => {
     [ev({ move: "undo", fromStatus: "admitted", toStatus: "ready_for_admission" }), "Undone: Admitted → Ready for admission"],
     [ev({ move: "archive", fromStatus: "discharged", toStatus: "archived" }), "Archived: Discharged → Archived"],
     [ev({ move: "unarchive", fromStatus: "archived", toStatus: "discharged" }), "Un-archived: Archived → Discharged"],
+    [ev({ move: "auto_triage", fromStatus: "ready_for_review", toStatus: "ready_for_admission" }), "Auto-triaged: Ready for review → Ready for admission"],
   ])("%#: %s", (e, want) => {
     expect(historyText(e, STATUS_LABELS)).toBe(want);
   });
@@ -80,5 +83,23 @@ describe("notResponding (the red badge)", () => {
     expect(notResponding({ status: "ready_for_review", notRespondingAt: at, patientSubmittedAt: at })).toBe(false);
     expect(notResponding({ status: "archived", notRespondingAt: at, patientSubmittedAt: null })).toBe(false);
     expect(notResponding({ status: "cancelled", notRespondingAt: at, patientSubmittedAt: null })).toBe(false);
+  });
+});
+
+// S42: an auto-triaged episode's stamp, and whether it waits for a clinician's Checked.
+describe("auto-triage", () => {
+  const triaged = { status: "ready_for_admission" as const, triageRule: "Low risk", triageSummary: "ASA II, no red or amber flags",
+    triagedAt: "2026-10-27T10:00:00Z", triageCheckedAt: null };
+  it("stamps each set with the rule's words while the auto-triage stands", () => {
+    expect(triageStamp(triaged)).toBe("Auto-triaged (ASA II, no red or amber flags)");
+    expect(triageStamp({ ...triaged, triageCheckedAt: "2026-10-27T11:00:00Z" })).toBe("Auto-triaged (ASA II, no red or amber flags)");
+    expect(triageStamp({ ...triaged, triageRule: null, triageSummary: null, triagedAt: null })).toBeNull(); // never, or re-opened
+  });
+  it("waits for Checked until a clinician clicks it; never once cancelled or archived", () => {
+    expect(awaitingCheck(triaged)).toBe(true);
+    expect(awaitingCheck({ ...triaged, triageCheckedAt: "2026-10-27T11:00:00Z" })).toBe(false);
+    expect(awaitingCheck({ ...triaged, triagedAt: null, triageRule: null, triageSummary: null })).toBe(false);
+    expect(awaitingCheck({ ...triaged, status: "cancelled" })).toBe(false);
+    expect(awaitingCheck({ ...triaged, status: "archived" })).toBe(false);
   });
 });

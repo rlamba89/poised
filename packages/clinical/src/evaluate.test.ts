@@ -76,6 +76,12 @@ describe("evaluate: what the server works out when an HQ is sent (S41)", () => {
     expect(evaluate({ ...input, rules, procedureId: null }, "test").rules).toEqual([]);
   });
 
+  it("holds an auto-triage the guards stop, and says why (S42, test report 1, E-2)", () => {
+    const rules = { noGradeAutoTriage: true, testCases: [], rules: [{ id: "low", name: "Low", when: { asa: { op: ">=" as const, grade: 1 } }, then: [{ kind: "autoTriage" as const, target: "ready_for_admission" as const }] }] };
+    const [low] = evaluate({ ...input, rules }, "test").rules; // the fixture's answers have a red and an amber flag
+    expect(low).toEqual({ id: "low", name: "Low", actions: [], held: true, heldReason: "flag", line: "Rule fires: Low (no auto-triage: a red or amber flag)" });
+  });
+
   it("works out a score's points for age and sex from the patient context", () => {
     const sets = [{ id: "s", name: "S", audience: "patient", content: { pages: [{ name: "p", elements: [
       { type: "expression", name: "q_age", title: "Age points", expression: "iif({patientAge} > 50, 1, 0) + iif({patientSex} = 'male', 1, 0)", bands: [{ id: "b_0", label: "None", max: 0 }, { id: "b_1", label: "Some" }] },

@@ -70,19 +70,33 @@ export type HqTestCase = { id: string; name: string; patient: SamplePatient; pro
 
 /**
  * What a version stores: its rules in order, whether a patient whose answers give no ASA grade can
- * be auto-triaged (S40 answers 2: they count as ASA I; on by default), and its whole-HQ test cases.
+ * be auto-triaged (S40 answers 2: they count as ASA I; on by default), whether an auto-triaged
+ * patient's status message waits until a clinician clicks Checked (S42 answers 2: off by default, so
+ * it goes at once; Go's asarules.RuleSet.MessageAfterCheck), and its whole-HQ test cases.
  */
-export type RuleSet = { noGradeAutoTriage: boolean; rules: AsaRule[]; testCases: HqTestCase[] };
+export type RuleSet = { noGradeAutoTriage: boolean; messageAfterCheck?: boolean; rules: AsaRule[]; testCases: HqTestCase[] };
 
 /** What the rules look at: the result computeOutputs (one set) or hqResult (the HQ) gives, and the episode's procedure. */
 export type RuleInput = { suggestedAsa?: SuggestedAsa; outputs: ProducedOutput[]; scores?: ScoreResult[]; procedureId?: string };
 
 /**
- * A rule that fires, with the actions to take. `held`: the rule auto-triages, but the patient's
- * answers give no ASA grade and the HQ's setting says such patients aren't auto-triaged, so that
- * action was taken out.
+ * Why a rule's auto-triage was taken out (`held`):
+ *   - noGrade: the answers give no ASA grade and the HQ's setting says such patients aren't auto-triaged (S40);
+ *   - the guards every send applies, which no setting switches off (S42 answers 2; Go's internal/triage
+ *     checks them again): flag, a red or amber flag; incomplete, a score is Incomplete; anaesthetistAsa,
+ *     a rule that fires requires the anaesthetist's ASA grade before Ready for admission.
  */
-export type FiredRule = { rule: AsaRule; actions: RuleAction[]; held: boolean };
+export type HeldReason = "noGrade" | "flag" | "incomplete" | "anaesthetistAsa";
+
+/** A rule that fires, with the actions to take: `held` when its auto-triage was taken out, and why. */
+export type FiredRule = { rule: AsaRule; actions: RuleAction[]; held: boolean; heldReason?: HeldReason };
+
+const HELD_WORDS: Record<HeldReason, string> = {
+  noGrade: "no ASA grade",
+  flag: "a red or amber flag",
+  incomplete: "a score is Incomplete",
+  anaesthetistAsa: "the anaesthetist's ASA is required first",
+};
 
 const sameCode = (a: CodeRef, b: CodeRef) => a.set === b.set && a.code === b.code;
 
@@ -105,13 +119,29 @@ function matches(w: RuleWhen, input: RuleInput, grade: number): boolean {
  */
 export function firedRules(set: RuleSet, input: RuleInput): FiredRule[] {
   const grade = input.suggestedAsa ? asaRank(input.suggestedAsa.grade) : 1;
-  const hold = !input.suggestedAsa && !set.noGradeAutoTriage;
-  return set.rules
-    .filter((r) => matches(r.when, input, grade))
-    .map((rule) => {
-      const held = hold && rule.then.some((a) => a.kind === "autoTriage");
-      return { rule, held, actions: held ? rule.then.filter((a) => a.kind !== "autoTriage") : rule.then };
-    });
+  const matched = set.rules.filter((r) => matches(r.when, input, grade));
+  const requiresAsa = matched.some((r) => r.then.some((a) => a.kind === "requireAnaesthetistAsa"));
+  const reasonFor = (rule: AsaRule): HeldReason | undefined => {
+    const triage = rule.then.find((a) => a.kind === "autoTriage");
+    if (!triage) return undefined;
+    if (!input.suggestedAsa && !set.noGradeAutoTriage) return "noGrade";
+    if (input.outputs.some((o) => o.output.flag)) return "flag";
+    if ((input.scores ?? []).some((s) => s.incomplete)) return "incomplete";
+    if (requiresAsa && triage.target === "ready_for_admission") return "anaesthetistAsa";
+    return undefined;
+  };
+  return matched.map((rule) => {
+    const heldReason = reasonFor(rule);
+    if (!heldReason) return { rule, held: false, actions: rule.then };
+    return { rule, held: true, heldReason, actions: rule.then.filter((a) => a.kind !== "autoTriage") };
+  });
+}
+
+/** What a rule that fires does, in words: its actions, then why its auto-triage was held. */
+export function firedWords(f: FiredRule): string {
+  const words = f.actions.map(actionWords);
+  if (f.held) words.push(`no auto-triage: ${HELD_WORDS[f.heldReason ?? "noGrade"]}`);
+  return words.join("; ");
 }
 
 /**
@@ -184,11 +214,7 @@ export function actionWords(a: RuleAction): string {
 export const ruleWords = (r: AsaRule, names: RuleNames): string => `When ${whenWords(r.when, names)}: ${r.then.map(actionWords).join("; ")}`;
 
 /** A rule that fires, as test cases write it: "Rule fires: Low risk (auto-triage to Ready for admission)". */
-export function firedLine(f: FiredRule): string {
-  const words = f.actions.map(actionWords);
-  if (f.held) words.push("no auto-triage: no ASA grade");
-  return `Rule fires: ${f.rule.name} (${words.join("; ")})`;
-}
+export const firedLine = (f: FiredRule): string => `Rule fires: ${f.rule.name} (${firedWords(f)})`;
 
 /** "ASA I–II, no red flags": a rule's "when", short. */
 function shortWhen(w: RuleWhen, names: RuleNames): string {
@@ -212,7 +238,9 @@ export function autoTriageSummary(set: RuleSet, names: RuleNames): string {
   const triage = set.rules.flatMap((r) => r.then.filter((a) => a.kind === "autoTriage").map((a) => `${shortWhen(r.when, names)} → ${label(TRIAGE_TARGETS, a.target)}`));
   if (!triage.length) return "This version doesn't auto-triage anyone.";
   const none = set.noGradeAutoTriage ? "Patients with no ASA grade count as ASA I." : "Patients with no ASA grade are never auto-triaged.";
-  return `This version auto-triages: ${triage.join("; ")}. ${none}`;
+  const never = "Never with a red or amber flag, a score Incomplete, or the anaesthetist's ASA required first."; // S42's guards
+  const message = set.messageAfterCheck ? " The patient's message goes when a clinician clicks Checked." : "";
+  return `This version auto-triages: ${triage.join("; ")}. ${none} ${never}${message}`;
 }
 
 // ---------------------------------------------------------------- what an HQ offers
@@ -319,5 +347,10 @@ export function ruleProblems(set: RuleSet, sets: HqSet[]): string[] {
 /** A rule set a version may hold (null before S40): the stored JSON, or none. */
 export const ruleSetOf = (raw: unknown): RuleSet | null =>
   raw && typeof raw === "object" && Array.isArray((raw as RuleSet).rules)
-    ? { noGradeAutoTriage: (raw as RuleSet).noGradeAutoTriage !== false, rules: (raw as RuleSet).rules, testCases: (raw as RuleSet).testCases ?? [] }
+    ? {
+        noGradeAutoTriage: (raw as RuleSet).noGradeAutoTriage !== false,
+        messageAfterCheck: (raw as RuleSet).messageAfterCheck === true,
+        rules: (raw as RuleSet).rules,
+        testCases: (raw as RuleSet).testCases ?? [],
+      }
     : null;

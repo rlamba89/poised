@@ -12,7 +12,7 @@ import type { ChapterJson } from "./doc";
 import type { ProducedOutput, ScoreResult } from "./outputs";
 import { publishProblems, type PublishProblem } from "./publish";
 import { hqResult, hqSets, isSetComplete, type Answers } from "./respondent";
-import { firedLine, firedRules, isPatientSet, ruleSetOf, type RuleAction } from "./rules";
+import { firedLine, firedRules, isPatientSet, ruleSetOf, type HeldReason, type RuleAction } from "./rules";
 import type { SamplePatient } from "./testcases";
 import type { ReviewFlag } from "./types";
 
@@ -38,8 +38,8 @@ export type EvaluateInput = {
 /** A disclosure with a review flag, in words ("Do you get chest pain?: Yes"). */
 export type EvaluateFlag = { level: ReviewFlag; setId: string; questionId: string; text: string };
 
-/** A rule that fires: its actions (auto-triage taken out when `held`), and the line test cases write. */
-export type EvaluateRule = { id: string; name: string; actions: RuleAction[]; held: boolean; line: string };
+/** A rule that fires: its actions (auto-triage taken out when `held`, and why: S42), and the line test cases write. */
+export type EvaluateRule = { id: string; name: string; actions: RuleAction[]; held: boolean; heldReason?: HeldReason; line: string };
 
 /** What comes back: the same result the clinician's view shows for the patient's answers, before any validation. */
 export type EvaluateResult = {
@@ -115,7 +115,9 @@ export function evaluate(input: EvaluateInput, version: string): EvaluateResult 
     sets: r.sets,
     suggestedAsa: r.suggestedAsa ?? null,
     flags,
-    rules: fired.map((f) => ({ id: f.rule.id, name: f.rule.name, actions: f.actions, held: f.held, line: firedLine(f) })),
+    rules: fired.map((f) => ({
+      id: f.rule.id, name: f.rule.name, actions: f.actions, held: f.held, ...(f.heldReason ? { heldReason: f.heldReason } : {}), line: firedLine(f),
+    })),
     patientSets,
   };
 }

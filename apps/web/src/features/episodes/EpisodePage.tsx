@@ -17,8 +17,9 @@ import { EditProcedure } from "./EditProcedure";
 import { StatusBadge } from "./EpisodeList";
 import { GeneralNotes } from "./GeneralNotes";
 import { allCurrentAnswers, hqPatient, useEpisodeHQ } from "./hq";
-import { historyWho, notResponding, type StatusEvent, type StatusOption, type UndoOption } from "./status";
+import { awaitingCheck, historyWho, notResponding, triageStamp, type StatusEvent, type StatusOption, type UndoOption } from "./status";
 import { StatusControl, StatusHistory } from "./StatusControl";
+import { isStale } from "./StatusControl";
 import { SuggestedAsaLine } from "./SuggestedAsa";
 import { TasksPanel } from "./TasksPanel";
 import { patientName, STATUS_LABELS, type Episode, type EpisodeEvent, type EpisodeInvite } from "./types";
@@ -107,6 +108,8 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
           {archivedBy?.reason ? `. Reason: ${archivedBy.reason}` : ""}. It can&apos;t be changed: a super clinician can un-archive it.
         </Alert>
       )}
+
+      {e.triagedAt && <AutoTriage path={path} episode={e} history={data.statusHistory} onChecked={reload} />}
 
       <Card withBorder>
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
@@ -241,6 +244,55 @@ function Invite({ path, episode, invite, undelivered, onSent }: {
   );
 }
 
+/**
+ * The HQ's rules moved the episode on when the patient sent it (S42): which rule, to where, when,
+ * and the quick human check. Any clinician at the hospital clicks Checked (S42 answers 1), which
+ * takes it off the Auto-triaged worklist; if the HQ holds the patient's message for it, it goes then.
+ */
+function AutoTriage({ path, episode: e, history, onChecked }: { path: string; episode: Episode; history: StatusEvent[]; onChecked: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const move = history.findLast((h) => h.move === "auto_triage");
+  const waiting = awaitingCheck(e);
+  const check = async () => {
+    setSaving(true);
+    try {
+      await api(`${path}/triage-checked`, { method: "POST", body: JSON.stringify({ revision: e.revision }) });
+      setError("");
+      onChecked();
+    } catch (err) {
+      setError((err as Error).message);
+      if (isStale(err)) onChecked(); // someone changed it meanwhile: show what it is now
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Alert color={waiting ? "teal" : "gray"} title={`Auto-triaged by the rule “${e.triageRule}”`} data-testid="auto-triage">
+      <Text size="sm">
+        {move ? `Moved to ${STATUS_LABELS[move.toStatus]} automatically` : "Moved on automatically"} when{" "}
+        {/* Test report 1, E-1: staff may have sent it for the patient. */}
+        {e.patientSubmittedByName ? `${e.patientSubmittedByName} sent the HQ on the patient's behalf` : "the patient sent the HQ"}
+        {" "}({e.triageSummary}), on {formatDateTime(e.triagedAt ?? "")}. No clinician validated the answers: the POA Summary shows the
+        patient&apos;s own.
+      </Text>
+      {/* Shown whichever way the episode is now: a Checked refused because someone else checked it first
+          reloads to "Checked by…", and still says so (test report 1, F-1). */}
+      {error && <Alert color="red" p="xs" mt="xs" data-testid="triage-check-error"><Text size="sm">{error}</Text></Alert>}
+      {e.triageCheckedAt ? (
+        <Text size="sm" mt={4} data-testid="triage-checked">Checked by {e.triageCheckedByName} on {formatDateTime(e.triageCheckedAt)}.</Text>
+      ) : waiting && (
+        <Stack gap={6} mt="xs">
+          <Text size="sm">
+            Not yet checked by a clinician.{e.triageMessagePending ? " The patient's message goes when you click Checked." : ""}
+          </Text>
+          <Button size="xs" w="fit-content" onClick={check} loading={saving}>Checked</Button>
+        </Stack>
+      )}
+    </Alert>
+  );
+}
+
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <Group gap="xs" wrap="nowrap" align="baseline">
@@ -268,6 +320,7 @@ function QuestionSets({ base, episode, onReviewed }: { base: string; episode: Ep
   const waiting = episode.status === "hq_not_complete";
   const reviewing = episode.status === "ready_for_review";
   const allValidated = sets.every((s) => hq.clinician[s.id]?.validatedAt);
+  const stamp = triageStamp(episode);
 
   const complete = async () => {
     setCompleting(true);
@@ -316,6 +369,9 @@ function QuestionSets({ base, episode, onReviewed }: { base: string; episode: Ep
                 <Table.Td>
                   {row?.validatedAt ? (
                     <Text size="sm" c="green.8">Validated by {row.updatedByName} on {formatDateTime(row.validatedAt)}</Text>
+                  ) : stamp ? (
+                    // S42: the HQ's rules moved it on, so nobody validates the sets.
+                    <Text size="sm" c="teal.8" data-testid="triage-stamp">{stamp}</Text>
                   ) : (
                     <Text size="sm" c="dimmed">{waiting ? "Waiting for the patient" : row ? "In progress" : "Not started"}</Text>
                   )}

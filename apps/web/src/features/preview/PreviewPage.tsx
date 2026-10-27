@@ -13,7 +13,7 @@ import "@/features/video/VideoQuestion"; // draws Video elements (S34)
 import "@/features/information/InformationQuestion"; // draws Information, cleaned (S35)
 import "survey-core/survey-core.css";
 import {
-  actionWords, applyEarlier, chapterConditionOf, combineChapters, computeOutputs, earlierKeysUsed, forPatient, givenEarlier, showBands, localesIn, refreshClinicalSummaries, registerClinicalProperties,
+  applyEarlier, firedWords, chapterConditionOf, combineChapters, computeOutputs, earlierKeysUsed, forPatient, givenEarlier, showBands, localesIn, refreshClinicalSummaries, registerClinicalProperties,
   ruleSetOf, setFiredRules, setViewer, withoutSurveyHtml, LANGUAGES, type Answers, type ChapterJson, type ComputedOutputs, type FiredRule, type RuleSet, type Viewer,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
@@ -362,7 +362,7 @@ function OutputsPanel({ result, fired }: { result: ComputedOutputs; fired: Fired
             {fired.length === 0 && <Text size="sm" c="dimmed">None</Text>}
             {fired.map((f) => (
               <Text size="sm" key={f.rule.id}>
-                <b>{f.rule.name}</b>: {[...f.actions.map(actionWords), ...(f.held ? ["no auto-triage: no ASA grade"] : [])].join("; ")}
+                <b>{f.rule.name}</b>: {firedWords(f)}
               </Text>
             ))}
           </div>

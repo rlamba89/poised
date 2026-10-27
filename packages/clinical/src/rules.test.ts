@@ -6,13 +6,15 @@ import { computeOutputs } from "./outputs";
 import { registerClinicalProperties } from "./properties";
 import { publishProblems } from "./publish";
 import {
-  actionWords, autoTriageSummary, codesIn, setFiredRules, firedLine, firedRules, hqRuleResult, ruleNames, ruleProblems, ruleWords, runHqTestCase, scoresWithBands,
+  actionWords, autoTriageSummary, codesIn, setFiredRules, firedLine, firedWords, firedRules, hqRuleResult, ruleNames, ruleProblems, ruleWords, ruleSetOf, runHqTestCase, scoresWithBands,
   type AsaRule, type HqTestCase, type RuleSet,
 } from "./rules";
 
 registerClinicalProperties();
 
 const DEFAULTS = defaults as RuleSet;
+// S42 (test report 1, E-2): the guards every send applies, in the Publish window's line.
+const NEVER = "Never with a red or amber flag, a score Incomplete, or the anaesthetist's ASA required first.";
 const copy = (): RuleSet => structuredClone(DEFAULTS);
 
 const smoker = { set: "SNOMED" as const, code: "77176002", display: "Smoker" };
@@ -81,6 +83,41 @@ describe("the rule matcher (S40, ASA-02/03)", () => {
     expect(names(DEFAULTS, amber)).toEqual(["Low risk"]);
   });
 
+  // S42 (test report 1, E-2): the guards a real send applies can't be switched off, so the Preview, Test
+  // the whole HQ and test cases hold the auto-triage as the server does, and say why.
+  it("holds the auto-triage, saying why, as a real send does: an amber flag, an Incomplete score, the anaesthetist's ASA", () => {
+    const amber = resultOf({ q_smoke: "o_y" });
+    amber.outputs.push({ ...amber.outputs[0], output: { id: "x", codes: [], flag: "amber" } });
+    const [a] = firedRules(DEFAULTS, amber);
+    expect(a).toMatchObject({ held: true, heldReason: "flag", actions: [] });
+    expect(firedLine(a)).toBe("Rule fires: Low risk (no auto-triage: a red or amber flag)");
+    expect(firedWords(a)).toBe("no auto-triage: a red or amber flag");
+
+    const incomplete = resultOf({ q_smoke: "o_y" });
+    incomplete.scores.push({ questionId: "q_stopbang", title: "STOP-Bang", incomplete: true });
+    const [i] = firedRules(DEFAULTS, incomplete);
+    expect(i).toMatchObject({ held: true, heldReason: "incomplete", actions: [] });
+    expect(firedLine(i)).toBe("Rule fires: Low risk (no auto-triage: a score is Incomplete)");
+
+    const asa = copy();
+    asa.rules.push({ id: "d", name: "Diabetes", when: { asa: { op: "<=", grade: 6 } }, then: [{ kind: "requireAnaesthetistAsa" }] });
+    const [low, diabetes] = firedRules(asa, resultOf({ q_smoke: "o_y" }));
+    expect(low).toMatchObject({ held: true, heldReason: "anaesthetistAsa", actions: [] });
+    expect(firedLine(low)).toBe("Rule fires: Low risk (no auto-triage: the anaesthetist's ASA is required first)");
+    expect(diabetes).toMatchObject({ held: false, actions: [{ kind: "requireAnaesthetistAsa" }] });
+    // Only Ready for admission waits for the anaesthetist's ASA.
+    asa.rules[0].then = [{ kind: "autoTriage", target: "ready_for_poa" }, { kind: "flag", name: "Day case" }];
+    const [poa] = firedRules(asa, resultOf({ q_smoke: "o_y" }));
+    expect(poa.held).toBe(false);
+    // A held rule keeps its other actions.
+    amber.outputs.length = 1;
+    amber.outputs.push({ ...amber.outputs[0], output: { id: "x", codes: [], flag: "amber" } });
+    expect(firedRules(asa, amber)[0]).toMatchObject({ held: true, heldReason: "flag", actions: [{ kind: "flag", name: "Day case" }] });
+    expect(firedWords(firedRules(asa, amber)[0])).toBe("flag “Day case”; no auto-triage: a red or amber flag");
+    // A rule with no auto-triage is never held.
+    expect(firedRules(asa, amber)[1].held).toBe(false);
+  });
+
   it("no ASA grade counts as ASA I, so a fit patient is auto-triaged by default (S40 answers 2)", () => {
     const fit = resultOf({ q_smoke: "o_n" });
     expect(fit.suggestedAsa).toBeUndefined();
@@ -95,6 +132,7 @@ describe("the rule matcher (S40, ASA-02/03)", () => {
     const [f] = firedRules(off, resultOf({ q_smoke: "o_n" }));
     expect(f.rule.name).toBe("Low risk");
     expect(f.held).toBe(true);
+    expect(f.heldReason).toBe("noGrade");
     expect(f.actions).toEqual([]);
     expect(firedLine(f)).toBe("Rule fires: Low risk (no auto-triage: no ASA grade)");
     // A patient with a grade is auto-triaged as before.
@@ -179,11 +217,24 @@ describe("rules in plain words", () => {
   });
 
   it("the Publish window's line says what the version does automatically", () => {
-    expect(autoTriageSummary(DEFAULTS, n)).toBe("This version auto-triages: ASA I–II, no red flags → Ready for admission. Patients with no ASA grade count as ASA I.");
+    expect(autoTriageSummary(DEFAULTS, n)).toBe("This version auto-triages: ASA I–II, no red flags → Ready for admission. Patients with no ASA grade count as ASA I. " + NEVER);
     const off = { ...copy(), noGradeAutoTriage: false };
     off.rules[0].then = [{ kind: "autoTriage", target: "ready_for_poa" }];
-    expect(autoTriageSummary(off, n)).toBe("This version auto-triages: ASA I–II, no red flags → Ready for POA. Patients with no ASA grade are never auto-triaged.");
+    expect(autoTriageSummary(off, n)).toBe("This version auto-triages: ASA I–II, no red flags → Ready for POA. Patients with no ASA grade are never auto-triaged. " + NEVER);
     expect(autoTriageSummary({ ...copy(), rules: [DEFAULTS.rules[1]] }, n)).toBe("This version doesn't auto-triage anyone.");
+    // S42 answers 2: the HQ can hold the patient's message until a clinician clicks Checked.
+    expect(autoTriageSummary({ ...copy(), messageAfterCheck: true }, n)).toBe(
+      "This version auto-triages: ASA I–II, no red flags → Ready for admission. Patients with no ASA grade count as ASA I. " + NEVER +
+        " The patient's message goes when a clinician clicks Checked.",
+    );
+  });
+
+  it("reads the message setting as stored: off unless true (a set from before S42 has none)", () => {
+    expect(DEFAULTS.messageAfterCheck).toBe(false);
+    expect(ruleSetOf({ ...DEFAULTS })?.messageAfterCheck).toBe(false);
+    expect(ruleSetOf({ noGradeAutoTriage: true, rules: [], testCases: [] })?.messageAfterCheck).toBe(false);
+    expect(ruleSetOf({ ...DEFAULTS, messageAfterCheck: true })?.messageAfterCheck).toBe(true);
+    expect(ruleSetOf({ ...DEFAULTS, messageAfterCheck: "yes" })?.messageAfterCheck).toBe(false);
   });
 
   it("lists the codes and the banded scores the patient's sets could give", () => {

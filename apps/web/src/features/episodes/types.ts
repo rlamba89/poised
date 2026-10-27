@@ -53,6 +53,17 @@ export type Episode = EpisodeRow & {
   cancelReason: string | null;
   /** S22: the status it was archived from, which un-archive restores; null unless archived. */
   archivedFrom: EpisodeStatus | null;
+  /**
+   * S42: the auto-triage while it stands (null when the HQ's rules didn't move it on, or a re-open
+   * ended it): the rule, the stamp's words, when; whether the patient's message waits for Checked;
+   * and who clicked Checked, when.
+   */
+  triageRule: string | null;
+  triageSummary: string | null;
+  triagedAt: string | null;
+  triageMessagePending: boolean;
+  triageCheckedAt: string | null;
+  triageCheckedByName: string | null;
 };
 
 /** The patient's working invite (S14), or null before one is sent: when, and whether five wrong dates of birth locked it. */

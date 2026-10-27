@@ -12,7 +12,7 @@ import "@/features/video/VideoQuestion"; // draws Video elements (S34)
 import "@/features/information/InformationQuestion"; // draws Information, cleaned (S35)
 import "survey-core/survey-core.css";
 import {
-  actionWords, allElements, answersBySet, earlierContexts, hqRuleResult, modelFor, newId, registerClinicalProperties, showBands, type Answers, type HqTestCase, type RuleSet,
+  allElements, answersBySet, firedWords, earlierContexts, hqRuleResult, modelFor, newId, registerClinicalProperties, showBands, type Answers, type HqTestCase, type RuleSet,
 } from "@poised/clinical";
 import { showUnits } from "@/features/preview/units";
 import { useHq } from "./useHq";
@@ -180,7 +180,7 @@ export function HqTestPage({ base, questionnaireId }: { base: string; questionna
                 {result.fired.length === 0 && <Text size="sm" c="dimmed">None</Text>}
                 {result.fired.map((f) => (
                   <Text size="sm" key={f.rule.id}>
-                    <b>{f.rule.name}</b>: {[...f.actions.map(actionWords), ...(f.held ? ["no auto-triage: no ASA grade"] : [])].join("; ")}
+                    <b>{f.rule.name}</b>: {firedWords(f)}
                   </Text>
                 ))}
               </div>
