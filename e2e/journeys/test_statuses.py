@@ -84,6 +84,9 @@ def test_a_stale_tab_is_told_and_keeps_its_input(page: Page, as_user, patient_li
     first, second = page, page.context.new_page()
     first.goto(poa)
     second.goto(poa)
+    # Both tabs have loaded the episode before either saves (a slow load could read the newer revision).
+    for tab in (first, second):
+        expect(tab.get_by_role("combobox", name="Anaesthetist ASA grade")).to_be_visible()
 
     # The Nurse ASA in one tab, then the Anaesthetist ASA in the other.
     first.get_by_role("combobox", name="Nurse ASA grade").click()
