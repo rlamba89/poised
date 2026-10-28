@@ -58,6 +58,24 @@ describe("poaSummary", () => {
     expect(poa[1].pages[0].blocks).toMatchObject([{ title: "Angina follow-up Summary", notes: [{ text: "Stable angina" }] }]); // no summary: the page's own block
   });
 
+  // S44c (Rahul, 28 Oct): a question the patient's form didn't show when they sent (its set hidden,
+  // or a condition hiding it there) has no "Patient answered" line: the clinician answers it.
+  it("a question the patient never saw isn't a change from their answer", () => {
+    const followUp: ChapterJson = { pages: [{ name: "p_f", title: "Follow-up", elements: [
+      yesNo("q_pain", "Chest pain?"), { ...yesNo("q_rest", "At rest?", "Rest pain"), visibleIf: "{q_pain} = 'q_pain_y'" }, yesNo("q_walk", "Walk a mile?"),
+    ] }] };
+    const three = [...sets, { id: "s3", name: "Pain", content: followUp }];
+    const sent = { ...patient, s2: {}, s3: { q_pain: "q_pain_n" } }; // as a send keeps them (S44a)
+    const validated = { ...clinician, s3: { q_pain: "q_pain_y", q_rest: "q_rest_y", q_walk: "q_walk_y" } };
+    const poa = poaSummary(three, validated, "clinician", jo, sent);
+    expect(poa[1].pages[0].changes).toEqual([]); // the Angina set: hidden when the patient sent
+    expect(poa[1].pages[0].blocks[0].notes).toEqual([{ text: "Stable angina", questionId: "q_stable", corrected: false }]);
+    const pain = poa[2].pages[0];
+    // Shown at send: Chest pain (answered No) and Walk a mile (left unanswered) are changes; At rest wasn't shown.
+    expect(pain.changes.map((c) => [c.questionId, c.patient, c.clinician])).toEqual([["q_pain", "No", "Yes"], ["q_walk", "no answer", "Yes"]]);
+    expect(pain.blocks[0].notes).toEqual([{ text: "Rest pain", questionId: "q_rest", corrected: false }]);
+  });
+
   it("builds the patient's original answers without the clinician's", () => {
     const poa = poaSummary(sets, patient, "patient", jo);
     expect(poa.map((s) => s.name)).toEqual(["About you"]); // the patient said no angina

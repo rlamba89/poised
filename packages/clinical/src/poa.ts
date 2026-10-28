@@ -8,7 +8,7 @@ import { allElements, findElement, pagesOf, pageTitle, type ChapterJson } from "
 import { computeOutputs, isClinicianOnlyInTree } from "./outputs";
 import { registerClinicalProperties } from "./properties";
 import { prefilledAnswers, prefillMarks, type PrefillMark, type SetPrefill } from "./prefill";
-import { describeAnswer, hqSets, sameAnswer, shownSets, type Answers } from "./respondent";
+import { describeAnswer, hqSets, sameAnswer, shownSets, shownToPatient, type Answers } from "./respondent";
 import { summariesIn, summaryOwners } from "./summary";
 import { modelFor, type SamplePatient } from "./testcases";
 import type { Viewer } from "./viewer";
@@ -39,7 +39,7 @@ export type PoaSet = { id: string; name: string; pages: PoaPage[]; prefill?: Set
 
 const CAPTURES: CaptureKind[] = ["medication", "admissions", "bmi"];
 
-type SetInput = { id: string; name: string; content: ChapterJson };
+type SetInput = { id: string; name: string; content: ChapterJson; audience?: string };
 
 /**
  * The POA Summary for one set of answers.
@@ -63,6 +63,8 @@ export function poaSummary(
   const out: PoaSet[] = [];
   // A score may use earlier sets' answers (S38).
   const { shown, earlier } = hqSets(sets, answers, viewer, patient);
+  // What the patient's form showed for the answers they sent (S44c).
+  const seen = original ? shownToPatient(sets, original, patient) : undefined;
   for (const set of shown) {
     const data = answers[set.id] ?? {};
     const model = modelFor(set.content, viewer, patient, earlier.get(set.id));
@@ -85,12 +87,14 @@ export function poaSummary(
     const owners = summaryOwners(set.content);
     const pageOf = (questionId: string) => pages.get(findElement(set.content, questionId)?.page.name ?? "");
 
-    // Corrections first, so notes from a corrected answer can be marked.
+    // Corrections first, so notes from a corrected answer can be marked. A question the patient's
+    // form didn't show when they sent isn't one (S44c): the clinician answered it, the patient never saw it.
     const corrected = new Set<string>();
     if (before) {
+      const sawIt = seen?.get(set.id);
       for (const { el } of allElements(set.content)) {
         const q = model.getQuestionByName(el.name);
-        if (!q || isClinicianOnlyInTree(q) || sameAnswer(before[el.name], data[el.name])) continue;
+        if (!q || isClinicianOnlyInTree(q) || !sawIt?.has(el.name) || sameAnswer(before[el.name], data[el.name])) continue;
         corrected.add(el.name);
         pageOf(el.name)?.changes.push({
           questionId: el.name, title: q.title, patient: describeAnswer(q, before[el.name]), clinician: describeAnswer(q, data[el.name]),

@@ -17,7 +17,7 @@ import "@/features/video/VideoQuestion"; // draws Video elements (S34)
 import "@/features/information/InformationQuestion"; // draws Information, cleaned (S35)
 import "survey-core/survey-core.css";
 import {
-  answerSaver, earlierContexts, hqSuggestedAsa, prefillChoiceText, prefilledAnswers, prefillMarks, refreshClinicalSummaries, registerClinicalProperties, sameAnswer,
+  answerSaver, earlierContexts, hqSuggestedAsa, shownToPatient, prefillChoiceText, prefilledAnswers, prefillMarks, refreshClinicalSummaries, registerClinicalProperties, sameAnswer,
   startedFreshText, type Answers,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
@@ -82,7 +82,8 @@ function Validate({ base, episode, hq, set, onReload }: ValidateProps) {
     const m = clinicianModel(set.content, patientNow, earlier);
     m.showCompleteButton = false; // "Validate" replaces it
     m.readOnly = !editable;
-    if (patient) showCorrections(m, patient);
+    // Only under questions the patient's form showed when they sent (S44c).
+    if (patient) showCorrections(m, patient, shownToPatient(hq.chapters, hq.patient, patientNow).get(set.id) ?? new Set());
     const entries = prefilledAnswers(prefill); // none once the patient started fresh (S27)
     if (patient && entries) showPrefillOrigins(m, entries, patient);
     m.data = currentAnswers(hq, set.id);

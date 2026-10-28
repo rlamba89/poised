@@ -3,11 +3,15 @@
 import type { Question, SurveyModel } from "survey-core";
 import { describeAnswer, isClinicianOnlyInTree, sameAnswer, type Answers } from "@poised/clinical";
 
-export function showCorrections(model: SurveyModel, patient: Answers): void {
+/**
+ * `shown`: the questions the patient's form showed when they sent (`shownToPatient`, S44c): one it
+ * didn't (its set or a condition hid it) gets no line; the clinician answers it.
+ */
+export function showCorrections(model: SurveyModel, patient: Answers, shown: Set<string>): void {
   const rendered = new Map<string, HTMLElement>();
   const update = (q: Question) => {
     const el = rendered.get(q.name);
-    if (!el || isClinicianOnlyInTree(q)) return; // the patient never saw it
+    if (!el || isClinicianOnlyInTree(q) || !shown.has(q.name)) return; // the patient never saw it
     let note = el.querySelector<HTMLElement>(":scope .sj-patient-answer");
     if (sameAnswer(q.value, patient[q.name])) {
       note?.remove();
