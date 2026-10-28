@@ -39,6 +39,9 @@ const EXAMPLES: Example[] = [
   E("BMI 35 isn't over 35", 40, "female", ["snoring", "tired"], 35, 2, "Low risk"),
   E("No BMI is Incomplete", 40, "male", ["snoring"], undefined, "Incomplete"),
   E("No age is Incomplete", undefined, "male", ["snoring"], 25, "Incomplete"),
+  E("Sex not known is Incomplete", 40, "unknown", ["snoring"], 25, "Incomplete"),
+  // S44c (Rahul, 28 Oct): "Other" can't decide the male point either, so it fails safe.
+  E("Sex Other is Incomplete", 40, "other", ["snoring"], 25, "Incomplete"),
 ];
 
 function run(ex: Example, unanswered?: keyof typeof K) {

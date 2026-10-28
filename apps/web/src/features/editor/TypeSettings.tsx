@@ -7,7 +7,7 @@ import { IconPlus, IconTrash } from "@tabler/icons-react";
 import {
   DATE_FORMATS, TEXT_FORMATS, allElements, bandWhenSubjects, bandsOf, calcFormOf, describeLogic, formatBandWhen, parseBandWhen, calcPatch, choiceDisplayOf, emptyCalc, dateSettingsOf, formatCalc, isValidExpression,
   kindOf, linesToSave, newId, numberSettingsOf, optionsOf, pointsSubjects, scoredQuestions, repeatSettingsOf, setChoiceDisplay, setDateSettings, setNumberSettings,
-  setRepeating, setTextFormat, textFormatOf, textOf, unknownReferences, updateElement, type Band, type CalcForm, type ChapterJson,
+  setRepeating, setTextFormat, STOP_BANG_KEYS, textFormatOf, textOf, unknownReferences, updateElement, type Band, type CalcForm, type ChapterJson,
   type DateFormat, type DateRange, type ElementJson, type PointsLine, type Rule, type ScoreForm, type TextFormat,
 } from "@poised/clinical";
 import { RuleRow } from "./ConditionBuilder";
@@ -302,6 +302,10 @@ function CalculationSettings(props: Props) {
           />
           <PointsLines {...props} form={form} onChange={(lines) => set({ ...form, lines })} />
           <Text size="xs" c="dimmed">Incomplete until every question it adds up and every line has an answer: an Incomplete score has no band. A question a condition hides (or its whole Question Set) adds 0, and a line testing it adds nothing.</Text>
+          {/* S44c (Rahul, 28 Oct): STOP-Bang's male point can't be decided for "Other" either. */}
+          {el.name === STOP_BANG_KEYS.score && (
+            <Text size="xs" c="dimmed" data-testid="stopbang-sex-help">A patient whose sex is Not known or Other makes STOP-Bang Incomplete.</Text>
+          )}
         </>
       )}
       {form.kind === "years" && <Select label="Date" data={dates} value={form.question || null} disabled={readOnly} onChange={(q) => set({ kind: "years", question: q ?? "" })} />}

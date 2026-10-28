@@ -15,6 +15,7 @@ import {
   allElements, answersBySet, firedWords, earlierContexts, hqRuleResult, modelFor, newId, registerClinicalProperties, showBands, type Answers, type HqTestCase, type RuleSet,
 } from "@poised/clinical";
 import { showUnits } from "@/features/preview/units";
+import { SAMPLE_SEXES } from "@/features/preview/samplePatient";
 import { useHq } from "./useHq";
 
 registerClinicalProperties();
@@ -164,7 +165,7 @@ export function HqTestPage({ base, questionnaireId }: { base: string; questionna
                 <TextInput label="Name" value={patient.name} onChange={(e) => setPatient({ ...patient, name: e.currentTarget.value })} />
                 <Group grow>
                   <NumberInput label="Age" min={0} max={120} value={patient.age} onChange={(v) => setPatient({ ...patient, age: v === "" ? "" : Number(v) })} />
-                  <Select label="Sex" data={[{ value: "female", label: "Female" }, { value: "male", label: "Male" }]} value={patient.sex}
+                  <Select label="Sex" data={SAMPLE_SEXES} value={patient.sex}
                     onChange={(v) => setPatient({ ...patient, sex: v })} clearable />
                 </Group>
                 <Select label="Procedure" placeholder="None" clearable searchable data={hq.procedures.map((p) => ({ value: p.id, label: p.name }))}

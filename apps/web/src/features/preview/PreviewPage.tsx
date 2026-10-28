@@ -20,6 +20,7 @@ import { api } from "@/lib/api";
 import { clinicianModel } from "./clinicianView";
 import { SetCondition } from "./SetCondition";
 import { EarlierAnswers, useEarlierSets } from "./EarlierAnswers";
+import { SAMPLE_SEXES } from "./samplePatient";
 import { TestCases } from "./TestCases";
 import { canChange, useHospital } from "@/lib/auth";
 import { showUnits } from "./units";
@@ -277,10 +278,7 @@ function SamplePatientCard({ value, onChange }: { value: SamplePatient; onChange
           <NumberInput label="Age" min={0} max={120} value={value.age} onChange={(v) => onChange({ ...value, age: v === "" ? "" : Number(v) })} />
           <Select
             label="Sex"
-            data={[
-              { value: "female", label: "Female" },
-              { value: "male", label: "Male" },
-            ]}
+            data={SAMPLE_SEXES}
             value={value.sex}
             onChange={(v) => onChange({ ...value, sex: v })}
             clearable

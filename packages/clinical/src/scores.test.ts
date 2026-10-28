@@ -142,6 +142,9 @@ describe("a score across Question Sets (S38)", () => {
     expect(scoreFor(some, { ...man51, sex: "female" }).value).toBe(3);
     // 170 cm, 101.2 kg is a BMI of 35.0: not over 35.
     expect(scoreFor({ ...some, s1: { ...some.s1, q_bmi: { height: 170, weight: 101.2 } } }).value).toBe(3);
+    // An author's own score: sex "Other" is an answer, with no male point (only the ready-made
+    // STOP-Bang is Incomplete for it, S44c: ready.test.ts).
+    expect(scoreFor(some, { ...man51, sex: "other" }).value).toBe(3);
   });
 
   it("is Incomplete while an input has no answer, with no band and no disclosure", () => {
