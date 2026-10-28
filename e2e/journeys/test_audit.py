@@ -201,7 +201,10 @@ def test_a_list_row_names_ten_patients_and_counts_them_all(page: Page, as_user):
     base = sign_in(page.context, "Ada Admin")
     open_audit(page, base)
     pick(page, "Who", "Cara Clinician (cara.clinician@hospital-a.example)")
-    show(page, "user=")
+    # The unfiltered rows stay on screen until the filtered list arrives, so wait for it: a hover on
+    # a row that's then replaced shows no tooltip (S44b: flaky once the local audit log grew).
+    with page.expect_response(lambda r: "/audit?" in r.url and "user=" in r.url):
+        show(page, "user=")
     row = log_rows(page).filter(has_text="Listed episodes").first
     expect(row).to_contain_text(re.compile(r"\d+ patients"))
     row.get_by_text(re.compile(r"\d+ patients")).hover()

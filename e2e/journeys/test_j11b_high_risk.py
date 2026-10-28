@@ -4,11 +4,15 @@ On an HQ published with the default rules, a patient with heart failure (ASA III
 their phone. High risk fires: Cara finds the episode on Anaesthetic review needed with the red
 "Anaesthetic review" flag, the task "Book anaesthetic review" added by the rule, and the episode
 Ready for review (Low risk doesn't fire at ASA III). Once the review is complete, Ready for admission
-is refused, in plain words, until the anaesthetist's ASA grade is saved on the POA Summary; then it
-works. Cara clears the flag with a reason: the badge goes, and who, when and why stay.
+is refused, in plain words, until the anaesthetist's ASA grade is added on the POA Summary; then it
+works. S44b: the grade is a history. Cara adds ASA III (no reason asked), re-grades to ASA IV with a
+reason (both stay; IV counts), marks IV entered in error (struck through, with who and why; III
+counts again); at Ready for admission the only grade can't be marked. Cara clears the flag with a
+reason: the badge goes, and who, when and why stay. Then Admit works.
 
 Its second test: a rule that suggests a status shows the line on the episode and changes nothing."""
 
+import datetime as dt
 import re
 
 from playwright.sync_api import BrowserContext, Page, expect
@@ -88,16 +92,75 @@ def test_a_high_risk_patient_gets_the_rules_task_flag_and_asa_requirement(page: 
     res = cara.request.fetch(f"/api{path}/status", method="PATCH", data={"to": "ready_for_admission", "revision": revision})
     assert res.status == 409 and NEEDS_GRADE in res.text(), f"{res.status} {res.text()}"
 
-    # The anaesthetist's grade, saved on the POA Summary, meets it.
+    # The anaesthetist's grade, added on the POA Summary, meets it (S44b: a history, never edited).
     page.get_by_role("link", name="POA Summary").click()
     expect(page.get_by_test_id("poa-asa-required")).to_have_text(
         "Ready for admission needs the anaesthetist's ASA grade first (the rule “High risk”).")
+    add = page.get_by_test_id("asa-add")
+    expect(add.get_by_role("textbox", name="Why is the grade changed?")).to_have_count(0)  # the first grade needs no reason
     pick(page, "Anaesthetist ASA grade", "ASA III")
-    page.get_by_role("button", name="Save").last.click()
+    add.get_by_role("button", name="Add grade").click()
+    expect(page.get_by_test_id("anaesthetist-asa")).to_have_text("ASA III")
     expect(page.get_by_test_id("poa-asa-required")).to_have_text("The anaesthetist's ASA grade is added, as the rule “High risk” asks.")
+    expect(page.get_by_text("Anaesthetist ASA grade set to 3")).to_be_visible()
+
+    # A re-grade needs a reason; both grades stay, and the latest counts.
+    pick(page, "Anaesthetist ASA grade", "ASA IV")
+    add.get_by_role("button", name="Add grade").click()
+    expect(add.get_by_text("Say why the grade is changed.")).to_be_visible()
+    add.get_by_role("textbox", name="Why is the grade changed?").fill("New echo result")
+    add.get_by_role("button", name="Add grade").click()
+    expect(page.get_by_test_id("anaesthetist-asa")).to_have_text("ASA IV")
+    history = page.get_by_test_id("asa-grade")
+    expect(history).to_have_count(2)
+    expect(history.first).to_contain_text("ASA IV")
+    expect(history.first).to_contain_text("Counts")
+    expect(history.first).to_contain_text("Given by Cara Clinician on")
+    expect(history.first).to_contain_text("New echo result")
+    expect(history.last).to_contain_text("ASA III")
+    expect(page.get_by_text("Anaesthetist ASA grade changed from 3 to 4: New echo result")).to_be_visible()
+
+    # At about 500 px the buttons keep their whole label, even beside a wrapped line (test report 1, F1).
+    size = page.viewport_size
+    page.set_viewport_size({"width": 500, "height": 800})
+    for button in history.get_by_role("button", name=re.compile("entered in error")).all():
+        label = button.locator(".mantine-Button-label")
+        assert label.evaluate("el => el.scrollWidth <= el.clientWidth"), "an Entered in error button is cut off"
+    page.set_viewport_size(size)
+
+    # ASA IV marked entered in error: struck through, still shown, and ASA III counts again.
+    history.first.get_by_role("button", name=re.compile(r"^Mark ASA IV, given on .*, entered in error$")).click()
+    form = page.get_by_test_id("asa-error-form")
+    form.get_by_role("button", name="Mark entered in error").click()
+    expect(form.get_by_text("Say why the grade was entered in error.")).to_be_visible()
+    form.get_by_role("textbox", name="Why was it entered in error?").fill("Typed in the wrong box")
+    form.get_by_role("button", name="Mark entered in error").click()
+    expect(page.get_by_test_id("anaesthetist-asa")).to_have_text("ASA III")
+    struck = page.locator('[data-testid="asa-grade"][data-error="true"]')
+    expect(struck).to_contain_text("ASA IV")
+    expect(struck.get_by_test_id("asa-grade-error")).to_contain_text("Entered in error: marked by Cara Clinician on")
+    expect(struck.get_by_test_id("asa-grade-error")).to_contain_text("Typed in the wrong box")
+    expect(struck.get_by_role("button", name=re.compile("entered in error"))).to_have_count(0)  # can't be unmarked
+    expect(history.last).to_contain_text("Counts")
+    page.reload()
+    expect(page.get_by_test_id("anaesthetist-asa")).to_have_text("ASA III")
+    expect(page.locator('[data-testid="asa-grade"][data-error="true"]')).to_contain_text("ASA IV")
+
     page.go_back()
     expect(page.get_by_test_id("asa-required")).to_have_count(0)
     change_status(page, "Ready for admission")
+
+    # At Ready for admission, the only grade that counts can't be marked entered in error.
+    page.get_by_role("link", name="POA Summary").click()
+    only = page.locator('[data-testid="asa-grade"][data-error="false"]')
+    only.get_by_role("button", name=re.compile(r"^Mark ASA III, given on .*, entered in error$")).click()
+    form = page.get_by_test_id("asa-error-form")
+    form.get_by_role("textbox", name="Why was it entered in error?").fill("Trying it")
+    form.get_by_role("button", name="Mark entered in error").click()
+    expect(form.get_by_text("Add the correct grade first, or move the episode back from Ready for admission.")).to_be_visible()
+    form.get_by_role("button", name="Back").click()
+    expect(page.get_by_test_id("anaesthetist-asa")).to_have_text("ASA III")
+    page.go_back()
 
     # Clearing the flag: a reason first; then the badge goes, and who, when and why stay.
     flag.get_by_role("button", name="Clear the flag Anaesthetic review").click()
@@ -113,6 +176,8 @@ def test_a_high_risk_patient_gets_the_rules_task_flag_and_asa_requirement(page: 
     page.reload()
     expect(page.get_by_test_id("flag-badge")).to_have_count(0)
     expect(page.get_by_test_id("flag-cleared")).to_be_visible()
+    # Admit, as before (the grade can't have gone missing).
+    change_status(page, "Admitted", date=(dt.date.today() - dt.timedelta(days=1)).isoformat())
     page.goto(f"{base}/episodes")
     expect(page.get_by_role("row").filter(has_text=episode["name"]).get_by_test_id("flag-badge")).to_have_count(0)
 

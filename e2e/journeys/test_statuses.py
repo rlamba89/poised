@@ -88,21 +88,22 @@ def test_a_stale_tab_is_told_and_keeps_its_input(page: Page, as_user, patient_li
     for tab in (first, second):
         expect(tab.get_by_role("combobox", name="Anaesthetist ASA grade")).to_be_visible()
 
-    # The Nurse ASA in one tab, then the Anaesthetist ASA in the other.
+    # The Nurse ASA in one tab, then the Anaesthetist ASA in the other (S44b: added to its history).
     first.get_by_role("combobox", name="Nurse ASA grade").click()
     first.get_by_role("option", name="ASA II", exact=True).click()
     first.get_by_role("button", name="Save").first.click()
     expect(first.get_by_text("Nurse ASA grade set to 2")).to_be_visible()
     second.get_by_role("combobox", name="Anaesthetist ASA grade").click()
     second.get_by_role("option", name="ASA III", exact=True).click()
-    second.get_by_role("button", name="Save").last.click()
+    second.get_by_role("button", name="Add grade").click()
     expect(second.get_by_text("This episode changed since you opened it.")).to_be_visible()
     expect(second.get_by_role("combobox", name="Anaesthetist ASA grade")).to_have_value("ASA III")
     second.get_by_role("button", name="Reload").click()
     expect(second.get_by_role("combobox", name="Nurse ASA grade")).to_have_value("ASA II")
     expect(second.get_by_role("combobox", name="Anaesthetist ASA grade")).to_have_value("ASA III")
-    second.get_by_role("button", name="Save").last.click()
+    second.get_by_role("button", name="Add grade").click()
     expect(second.get_by_text("Anaesthetist ASA grade set to 3")).to_be_visible()
+    expect(second.get_by_test_id("anaesthetist-asa")).to_have_text("ASA III")
 
     # A status move from a tab that's out of date.
     first.get_by_role("combobox", name="Episode status").click()
