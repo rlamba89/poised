@@ -144,9 +144,11 @@ WHERE e.id = $1 FOR UPDATE OF e;
 -- while the episode is Ready for review). The caller holds LockEpisodeStatus.
 -- archived_from: the status it's archived from when archiving (S22), else NULL.
 -- A re-open also ends an auto-triage (S42): a person reviews the HQ now, so it leaves the
--- Auto-triaged worklist and its stamp goes. Every change by hand ends a message still waiting for
--- Checked (S44a, S42 verification): the change sends its own message if it has one, so Checked
--- never sends a second. The status history and the General notes keep what happened.
+-- Auto-triaged worklist and its stamp goes. A change that sends its own message (end_wait), and a
+-- re-open, end a message still waiting for Checked (S44a, S42 verification), so Checked never sends
+-- a second. Any other change keeps it held (S44c, Rahul 28 Oct): an Undo or an un-archive back to the
+-- auto-triaged status, not yet Checked, leaves Checked to send it (triageChecked sends it only while
+-- the episode is at that status). The status history and the General notes keep what happened.
 UPDATE episodes
 SET status = sqlc.arg(status), admitted_at = sqlc.arg(admitted_at), discharged_at = sqlc.arg(discharged_at),
     cancel_reason = sqlc.narg(cancel_reason), archived_from = sqlc.narg(archived_from),
@@ -155,7 +157,7 @@ SET status = sqlc.arg(status), admitted_at = sqlc.arg(admitted_at), discharged_a
     triage_rule = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE triage_rule END,
     triage_summary = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE triage_summary END,
     triaged_at = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE triaged_at END,
-    triage_message_pending = false,
+    triage_message_pending = triage_message_pending AND NOT (sqlc.arg(reopen)::boolean OR sqlc.arg(end_wait)::boolean),
     triage_checked_by = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE triage_checked_by END,
     triage_checked_at = CASE WHEN sqlc.arg(reopen)::boolean THEN NULL ELSE triage_checked_at END,
     revision = revision + 1
@@ -348,7 +350,11 @@ FROM episode_forms f WHERE f.id = sqlc.arg(form_id) AND f.status = 'open'
       WHERE a.episode_form_id = f.id AND a.chapter_id = sqlc.arg(chapter_id) AND a.actor = 'patient'), 0)
 ON CONFLICT (episode_form_id, chapter_id, actor) DO UPDATE
 SET data = EXCLUDED.data, updated_at = now(), revision = episode_answers.revision + 1,
-    updated_by = coalesce(EXCLUDED.updated_by, episode_answers.updated_by)
+    updated_by = coalesce(EXCLUDED.updated_by, episode_answers.updated_by),
+    -- S44c (answer 8): the form's own save that only removes answers (`cleared`, and the new
+    -- answers are contained in the old) is counted, so Start fresh still sees the set unchanged.
+    cleared_saves = episode_answers.cleared_saves
+        + CASE WHEN sqlc.arg(cleared)::boolean AND EXCLUDED.data <@ episode_answers.data THEN 1 ELSE 0 END
 WHERE episode_answers.revision = sqlc.arg(revision)
 RETURNING revision;
 
@@ -372,14 +378,15 @@ ORDER BY max(f.submitted_at) DESC;
 -- answers: its pre-filled answers are cleared, so it opens empty, and the button is recorded like
 -- the other two (by: staff on the patient's behalf, NULL for the patient). The prefill map stays:
 -- it's what was copied, for the clinician. Only while the form is open, no button has been
--- pressed, and the set is as Go filled it (revision 1: nothing changed since). The revision moves
+-- pressed, and the set is as Go filled it (revision 1: nothing changed since, apart from the form's
+-- own clearing saves, cleared_saves, S44c answer 8). The revision moves
 -- on, so a tab still showing the answers can't save them back. No row: refused (the caller says why).
 UPDATE episode_answers a SET data = '{}'::jsonb, revision = a.revision + 1, updated_at = now(),
     prefill_choice = 'start_fresh', prefill_choice_at = now(), prefill_choice_by = sqlc.narg(by)
 FROM episode_forms f
 WHERE a.episode_form_id = sqlc.arg(form_id) AND a.chapter_id = sqlc.arg(chapter_id) AND a.actor = 'patient'
   AND f.id = a.episode_form_id AND f.status = 'open'
-  AND a.prefill_choice IS NULL AND a.revision = 1
+  AND a.prefill_choice IS NULL AND a.revision = 1 + a.cleared_saves
   AND jsonb_path_exists(a.prefill, '$.* ? (@.otherTrust == true)');
 
 -- name: KeepSentAnswers :exec

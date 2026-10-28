@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/rlamba89/poised/apps/api/internal/apitest"
+	"github.com/rlamba89/poised/apps/api/internal/db"
 	"github.com/rlamba89/poised/apps/api/internal/evaluate"
 )
 
@@ -321,7 +322,9 @@ func TestPublishAsksTheEvaluator(t *testing.T) {
 			{"audience", func(hq apitest.HQ) *apitest.Resp {
 				return w.author.Do("PATCH", at(w.a, "/chapters/"+hq.Chapters[2].String()), map[string]any{"audience": "patient"})
 			}},
-			{"delete", func(hq apitest.HQ) *apitest.Resp { return w.author.Do("DELETE", at(w.a, "/chapters/"+hq.Chapters[2].String()), nil) }},
+			{"delete", func(hq apitest.HQ) *apitest.Resp {
+				return w.author.Do("DELETE", at(w.a, "/chapters/"+hq.Chapters[2].String()), nil)
+			}},
 			{"add", func(hq apitest.HQ) *apitest.Resp {
 				return w.author.Do("POST", at(w.a, "/questionnaires/"+hq.ID.String()+"/chapters"), map[string]any{"name": "Late set"})
 			}},
@@ -378,6 +381,63 @@ func TestPublishAsksTheEvaluator(t *testing.T) {
 		var first uuid.UUID
 		if err := w.db.QueryRow(t.Context(), `SELECT id FROM chapters WHERE version_id = $1 ORDER BY position LIMIT 1`, hq.VersionID).Scan(&first); err != nil || first != hq.Chapters[2] {
 			t.Errorf("first set = %v (%v), want the reordered one", first, err)
+		}
+	})
+	// S44c (S44a verification 3): a rename or a delete that waited for another author's delete of
+	// the same Question Set says so, not "Only draft versions can be changed.".
+	t.Run("a rename or delete of a Question Set another author is deleting: wait, then 'deleted'", func(t *testing.T) {
+		for _, c := range []struct {
+			name string
+			req  func(hq apitest.HQ) *apitest.Resp
+		}{
+			{"rename", func(hq apitest.HQ) *apitest.Resp {
+				return w.author.Do("PATCH", at(w.a, "/chapters/"+hq.Chapters[2].String()), map[string]any{"name": "Renamed"})
+			}},
+			{"delete", func(hq apitest.HQ) *apitest.Resp {
+				return w.author.Do("DELETE", at(w.a, "/chapters/"+hq.Chapters[2].String()), nil)
+			}},
+		} {
+			t.Run(c.name, func(t *testing.T) {
+				hq := w.fx.DraftHQ(t, w.a, w.alex, "workflow.json")
+				r := meanwhile(t, w.db, `DELETE FROM chapters WHERE id = $1`, []any{hq.Chapters[2]}, func() *apitest.Resp { return c.req(hq) })
+				refused(t, r, http.StatusConflict)
+				if want := "This Question Set has been deleted."; r.Message() != want {
+					t.Errorf("message = %q, want %q", r.Message(), want)
+				}
+				// And once it's gone, a stale tab's rename, delete or content save says the same (404).
+				for _, again := range []*apitest.Resp{c.req(hq), w.author.Do("PUT", at(w.a, "/chapters/"+hq.Chapters[2].String()+"/content"),
+					map[string]any{"content": map[string]any{"pages": []any{}}, "revision": 1})} {
+					refused(t, again, http.StatusNotFound)
+					if want := "This Question Set has been deleted."; again.Message() != want {
+						t.Errorf("after: message = %q, want %q", again.Message(), want)
+					}
+				}
+			})
+		}
+	})
+	// S44c (S44a verification 3): the version's "last changed by" is stamped only on a draft, so a
+	// save's touch that waited for Publish can't overwrite the publisher's.
+	t.Run("the 'last changed' stamp changes only a draft", func(t *testing.T) {
+		hq := w.fx.DraftHQ(t, w.a, w.alex, "workflow.json")
+		publish(hq).Want(t, http.StatusNoContent)
+		var before uuid.UUID
+		if err := w.db.QueryRow(t.Context(), `SELECT updated_by FROM questionnaire_versions WHERE id = $1`, hq.VersionID).Scan(&before); err != nil {
+			t.Fatal(err)
+		}
+		other := w.fx.TrustUser(t, w.a.Org, "super_clinician")
+		if err := db.New(w.db).TouchVersion(t.Context(), db.TouchVersionParams{ID: hq.VersionID, UpdatedBy: other.ID}); err != nil {
+			t.Fatal(err)
+		}
+		var after uuid.UUID
+		if err := w.db.QueryRow(t.Context(), `SELECT updated_by FROM questionnaire_versions WHERE id = $1`, hq.VersionID).Scan(&after); err != nil || after != before {
+			t.Errorf("updated_by = %v (%v), want still %v", after, err, before)
+		}
+		draft := w.fx.DraftHQ(t, w.a, w.alex, "workflow.json")
+		if err := db.New(w.db).TouchVersion(t.Context(), db.TouchVersionParams{ID: draft.VersionID, UpdatedBy: other.ID}); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.db.QueryRow(t.Context(), `SELECT updated_by FROM questionnaire_versions WHERE id = $1`, draft.VersionID).Scan(&after); err != nil || after != other.ID {
+			t.Errorf("a draft's updated_by = %v (%v), want %v", after, err, other.ID)
 		}
 	})
 	t.Run("a version with no rules sends null", func(t *testing.T) {

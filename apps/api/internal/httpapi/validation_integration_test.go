@@ -327,4 +327,38 @@ func TestCompleteReview(t *testing.T) {
 			t.Errorf("events = %+v, want still 1", ev)
 		}
 	})
+	// S44c (S44a verification 2): an episode moved on before anyone reviewed it (On hold, Not ready,
+	// or auto-triaged straight past Ready for review) isn't "already complete".
+	t.Run("past review without one: 'isn't waiting for review any more'", func(t *testing.T) {
+		for _, status := range []string{"on_hold", "not_ready", "ready_for_admission", "ready_for_poa"} {
+			e := w.fx.Episode(t, w.hq, w.cara)
+			setStatus(t, w, e, status)
+			if _, err := w.db.Exec(t.Context(), `UPDATE episodes SET review_completed_at = NULL WHERE id = $1`, e.ID); err != nil {
+				t.Fatal(err)
+			}
+			r := complete(w.clinician, w.a, e)
+			refused(t, r, http.StatusConflict)
+			if want := "This episode isn't waiting for review any more."; r.Message() != want {
+				t.Errorf("%s: message = %q, want %q", status, r.Message(), want)
+			}
+		}
+		// Reviewed, then put on hold: the review is complete.
+		e := w.fx.Episode(t, w.hq, w.cara)
+		setStatus(t, w, e, "on_hold")
+		if r := complete(w.clinician, w.a, e); r.Message() != "The HQ review is already complete." {
+			t.Errorf("reviewed then on hold: message = %q", r.Message())
+		}
+	})
+	t.Run("moved on while Complete review waited: 'isn't waiting for review any more'", func(t *testing.T) {
+		e := w.fx.Episode(t, w.hq, w.cara)
+		setStatus(t, w, e, "ready_for_review")
+		validateAll(t, w, e)
+		r := meanwhile(t, w.db, `UPDATE episodes SET status = 'on_hold', revision = revision + 1 WHERE id = $1`, []any{e.ID}, func() *apitest.Resp {
+			return complete(w.clinician, w.a, e)
+		})
+		refused(t, r, http.StatusConflict)
+		if want := "This episode isn't waiting for review any more."; r.Message() != want {
+			t.Errorf("message = %q, want %q", r.Message(), want)
+		}
+	})
 }

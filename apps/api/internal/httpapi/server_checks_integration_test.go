@@ -432,6 +432,11 @@ func TestClinicianSaveWaitsForCompleteReview(t *testing.T) {
 		return w.clinician.Do("PUT", epPath(w.a, e, "/answers/"+about.String()), map[string]any{"data": map[string]any{"q_smokes": "o_no"}, "revision": 0})
 	})
 	refused(t, r, http.StatusConflict)
+	// S44c (S44a verification 3): the review completed while the save waited, so it says that, not
+	// "changed somewhere else" (the status is read again after no row).
+	if want := "The HQ review is already complete, so the answers can't be changed."; r.Message() != want {
+		t.Errorf("message = %q, want %q", r.Message(), want)
+	}
 	if n := count(t, w.db, `SELECT count(*) FROM episode_answers a JOIN episode_forms f ON f.id = a.episode_form_id
 		WHERE f.episode_id = $1 AND a.actor = 'clinician' AND a.validated_at IS NULL`, e.ID); n != 0 {
 		t.Errorf("%d sets lost their validation after the review completed", n)

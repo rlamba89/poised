@@ -23,6 +23,7 @@ var (
 
 const (
 	notDraft         = "Only draft versions can be changed."
+	chapterDeleted   = "This Question Set has been deleted."
 	chapterNotFound  = "Chapter not found."
 	staleRevisionMsg = "Someone else changed this chapter since you opened it. Reload to see their changes; your latest edits were not saved."
 )
@@ -49,7 +50,9 @@ func (s *server) loadChapterMeta(w http.ResponseWriter, r *http.Request) (db.Get
 	}
 	row, err := s.q.GetChapterMeta(r.Context(), db.GetChapterMetaParams{ID: cid, OrgID: orgID(r), HospitalID: hospitalID(r)})
 	if errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, http.StatusNotFound, chapterNotFound)
+		// Every caller changes a set the editor had open, so its id once existed: another author
+		// deleted it (S44c). Another trust's set gets the same 404.
+		writeError(w, http.StatusNotFound, chapterDeleted)
 		return row, false
 	}
 	if err != nil {
@@ -137,12 +140,22 @@ func (s *server) updateChapter(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "update chapter", err)
 		return
 	}
-	if n == 0 { // published meanwhile (S44a)
-		writeError(w, http.StatusConflict, notDraft)
+	if n == 0 { // published meanwhile (S44a), or deleted by another author (S44c)
+		s.writeChapterGone(w, r, c.VersionID)
 		return
 	}
 	s.touch(r, c.VersionID)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// writeChapterGone answers a rename or delete that changed no row: the version was published
+// meanwhile (S44a), or another author deleted the Question Set (S44c, S44a verification 3).
+func (s *server) writeChapterGone(w http.ResponseWriter, r *http.Request, versionID uuid.UUID) {
+	if status, err := s.q.VersionStatus(r.Context(), versionID); err == nil && status != "draft" {
+		writeError(w, http.StatusConflict, notDraft)
+		return
+	}
+	writeError(w, http.StatusConflict, chapterDeleted)
 }
 
 // reorderChapters takes every chapter id of the draft in the new order.
@@ -223,8 +236,8 @@ func (s *server) deleteChapter(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "delete chapter", err)
 		return
 	}
-	if n == 0 { // published meanwhile (S44a)
-		writeError(w, http.StatusConflict, notDraft)
+	if n == 0 { // published meanwhile (S44a), or deleted by another author (S44c)
+		s.writeChapterGone(w, r, c.VersionID)
 		return
 	}
 	s.touch(r, c.VersionID)

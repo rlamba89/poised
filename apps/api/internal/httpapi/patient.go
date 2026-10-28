@@ -498,7 +498,7 @@ func (s *server) saveForm(w http.ResponseWriter, r *http.Request, f form) {
 		return
 	}
 	rev, err := s.q.SavePatientAnswers(r.Context(), db.SavePatientAnswersParams{
-		FormID: f.FormID, ChapterID: c.ID, Data: raw, Revision: *in.Revision,
+		FormID: f.FormID, ChapterID: c.ID, Data: raw, Revision: *in.Revision, Cleared: in.Cleared,
 		EnteredBy: uuid.NullUUID{UUID: f.enteredBy, Valid: f.enteredBy != uuid.Nil},
 	})
 	if errors.Is(err, pgx.ErrNoRows) {

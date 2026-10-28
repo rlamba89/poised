@@ -89,6 +89,21 @@ func readTriage(t *testing.T, w *clinic, id uuid.UUID) triageState {
 	return s
 }
 
+// shownPending is the episode's triageMessagePending as GET …/episodes/{eid} gives it: what the page
+// shows ("The patient's message goes when you click Checked.").
+func shownPending(t *testing.T, w *clinic, e apitest.Episode) bool {
+	t.Helper()
+	var got struct {
+		Episode struct {
+			TriageMessagePending bool `json:"triageMessagePending"`
+		} `json:"episode"`
+	}
+	r := w.clinician.Do("GET", epPath(w.a, e, ""), nil)
+	r.Want(t, http.StatusOK)
+	r.Decode(t, &got)
+	return got.Episode.TriageMessagePending
+}
+
 // onAutoTriaged reports whether the episode is on hospital A's Auto-triaged worklist.
 func onAutoTriaged(t *testing.T, w *clinic, id uuid.UUID) bool {
 	t.Helper()
@@ -363,8 +378,10 @@ func TestAutoTriageMessages(t *testing.T) {
 	t.Run("On hold, then Ready for admission by hand (which sends it), then Checked: it goes once", func(t *testing.T) {
 		e := send(t, "Twice", "07700 900505")
 		move(t, w, e, episode.OnHold)
-		if s := readTriage(t, w, e.ID); s.MessagePending {
-			t.Error("still pending after a change by hand")
+		// S44c: the page doesn't say the message waits for Checked while it's On hold (it no longer
+		// fits), though it's still held, for an Undo back to Ready for admission.
+		if shownPending(t, w, e) {
+			t.Error("the page says the message waits for Checked while On hold")
 		}
 		move(t, w, e, episode.ReadyForAdmission)
 		if sms := msgs.To("+447700900505"); len(sms) != 2 {
@@ -372,6 +389,42 @@ func TestAutoTriageMessages(t *testing.T) {
 		}
 		w.clinician.Do("POST", epPath(w.a, e, "/triage-checked"), map[string]any{"revision": revisionOf(t, w, e.ID)}).Want(t, http.StatusNoContent)
 		if sms := msgs.To("+447700900505"); len(sms) != 2 {
+			t.Errorf("texts after Checked = %+v, want the Ready for admission message once", sms)
+		}
+	})
+	// S44c (Rahul, 28 Oct, S44a verification 1 finding 5): Undo or un-archive back to the
+	// auto-triaged status, not yet Checked, keeps the message held, so Checked still sends it, once.
+	t.Run("On hold, then Undo back, then Checked: it goes once", func(t *testing.T) {
+		e := send(t, "Undone", "07700 900506")
+		move(t, w, e, episode.OnHold)
+		w.clinician.Do("POST", epPath(w.a, e, "/undo"), map[string]any{"reason": "On hold by mistake", "revision": revisionOf(t, w, e.ID)}).
+			Want(t, http.StatusNoContent)
+		if sms := msgs.To("+447700900506"); len(sms) != 1 { // the invite only: Undo sends nothing
+			t.Errorf("texts after Undo = %+v", sms)
+		}
+		if !shownPending(t, w, e) {
+			t.Error("back at Ready for admission, the page doesn't say the message waits for Checked")
+		}
+		w.clinician.Do("POST", epPath(w.a, e, "/triage-checked"), map[string]any{"revision": revisionOf(t, w, e.ID)}).Want(t, http.StatusNoContent)
+		if sms := msgs.To("+447700900506"); len(sms) != 2 || sms[1].Body != name+": Sam, all done." {
+			t.Errorf("texts after Checked = %+v, want the Ready for admission message once", sms)
+		}
+		if s := readTriage(t, w, e.ID); s.MessagePending {
+			t.Error("still pending after Checked")
+		}
+	})
+	t.Run("archived, then un-archived back, then Checked: it goes once", func(t *testing.T) {
+		e := send(t, "Unarchived", "07700 900507")
+		archive(t, w, e)
+		if shownPending(t, w, e) {
+			t.Error("the page says the message waits for Checked while archived")
+		}
+		w.author.Do("POST", epPath(w.a, e, "/unarchive"), withRevision(t, w, e.ID, map[string]any{"reason": "Archived by mistake"})).Want(t, http.StatusNoContent)
+		if !shownPending(t, w, e) {
+			t.Error("un-archived, the page doesn't say the message waits for Checked")
+		}
+		w.clinician.Do("POST", epPath(w.a, e, "/triage-checked"), map[string]any{"revision": revisionOf(t, w, e.ID)}).Want(t, http.StatusNoContent)
+		if sms := msgs.To("+447700900507"); len(sms) != 2 || sms[1].Body != name+": Sam, all done." {
 			t.Errorf("texts after Checked = %+v, want the Ready for admission message once", sms)
 		}
 	})

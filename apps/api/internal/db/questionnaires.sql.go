@@ -383,7 +383,7 @@ func (q *Queries) SaveVersionRules(ctx context.Context, arg SaveVersionRulesPara
 }
 
 const touchVersion = `-- name: TouchVersion :exec
-UPDATE questionnaire_versions SET updated_by = $2, updated_at = now() WHERE id = $1
+UPDATE questionnaire_versions SET updated_by = $2, updated_at = now() WHERE id = $1 AND status = 'draft'
 `
 
 type TouchVersionParams struct {
@@ -391,6 +391,8 @@ type TouchVersionParams struct {
 	UpdatedBy uuid.UUID `json:"updatedBy"`
 }
 
+// Only a draft (S44c, S44a verification 3): a save's touch that waited for Publish (it runs after
+// the save, as its own statement) mustn't overwrite the publisher's "last changed by".
 func (q *Queries) TouchVersion(ctx context.Context, arg TouchVersionParams) error {
 	_, err := q.db.Exec(ctx, touchVersion, arg.ID, arg.UpdatedBy)
 	return err

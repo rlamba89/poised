@@ -289,7 +289,9 @@ func (s *server) applyStatus(w http.ResponseWriter, r *http.Request, e db.GetEpi
 	}
 
 	set := db.SetEpisodeStatusParams{ID: e.ID, Status: c.to, AdmittedAt: now.AdmittedAt, DischargedAt: now.DischargedAt,
-		CancelReason: c.cancel, Reopen: c.move == episode.Reopen}
+		CancelReason: c.cancel, Reopen: c.move == episode.Reopen,
+		// A change that sends its own message ends a held one (S44a); others keep it (S44c).
+		EndWait: episode.StatusMessage(c.move, c.to) != ""}
 	note := ""
 	switch c.move {
 	case episode.Archive:

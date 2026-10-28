@@ -49,6 +49,9 @@ const staleAnswersMsg = "These answers were changed somewhere else since you ope
 type answersInput struct {
 	Data      map[string]json.RawMessage `json:"data"`
 	Validated bool                       `json:"validated"` // the clinician's only
+	// Cleared marks the patient's form's own save that only removes answers another set's change
+	// hid (S44c, answer 8): it doesn't stop Start fresh. The patient's only.
+	Cleared bool `json:"cleared"`
 	// Revision is the one the browser loaded or last saved: 0 for a Question Set it has no row for.
 	Revision *int32 `json:"revision"`
 }
@@ -101,8 +104,14 @@ func (s *server) saveClinicianAnswers(w http.ResponseWriter, r *http.Request) {
 		UpdatedBy: uuid.NullUUID{UUID: currentUser(r).ID, Valid: true},
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		if e.Status != episode.ReadyForReview {
-			writeError(w, http.StatusConflict, notInReview(e.Status))
+		// The status as it is now (S44c, S44a verification 3): a save that waited for a Complete
+		// review is refused because the review is complete, not because someone else saved.
+		status := e.Status
+		if now, err := s.q.GetEpisode(r.Context(), db.GetEpisodeParams{ID: e.ID, HospitalID: hospitalID(r)}); err == nil {
+			status = now.Status
+		}
+		if status != episode.ReadyForReview {
+			writeError(w, http.StatusConflict, notInReview(status))
 		} else {
 			writeError(w, http.StatusConflict, staleAnswersMsg)
 		}
@@ -126,7 +135,7 @@ func (s *server) completeReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := episode.Check(e.Status, episode.ReadyForPOA, episode.CompleteReview, here(r).Role); err != nil {
-		writeError(w, http.StatusConflict, reviewNotOpen(e.Status))
+		writeError(w, http.StatusConflict, reviewNotOpen(e.Status, e.ReviewCompletedAt.Valid))
 		return
 	}
 	ctx := r.Context()
@@ -143,8 +152,12 @@ func (s *server) completeReview(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "complete review", err)
 		return
 	}
-	if n == 0 { // moved on meanwhile
-		writeError(w, http.StatusConflict, reviewNotOpen(episode.ReadyForPOA))
+	if n == 0 { // moved on meanwhile: say where to, as it is now (S44c)
+		status, reviewed := episode.ReadyForPOA, true
+		if now, err := s.q.GetEpisode(ctx, db.GetEpisodeParams{ID: e.ID, HospitalID: hospitalID(r)}); err == nil {
+			status, reviewed = now.Status, now.ReviewCompletedAt.Valid
+		}
+		writeError(w, http.StatusConflict, reviewNotOpen(status, reviewed))
 		return
 	}
 	// After the move, in its transaction (the episode's row is locked), so the stamps read are the
@@ -169,13 +182,17 @@ func (s *server) completeReview(w http.ResponseWriter, r *http.Request) {
 }
 
 // reviewNotOpen is why Complete review is refused: notInReview's words, but a review already done
-// says only that (S44a, S44 test report 1; "…so the answers can't be changed" is a save's wording).
-func reviewNotOpen(status string) string {
-	switch status {
-	case episode.HQNotComplete, episode.Cancelled, episode.Archived:
+// says only that (S44a, S44 test report 1; "…so the answers can't be changed" is a save's wording),
+// and an episode that moved on before anyone reviewed it (On hold, Not ready, or auto-triaged
+// straight past Ready for review) says it isn't waiting any more (S44c, S44a verification 2).
+func reviewNotOpen(status string, reviewed bool) string {
+	switch {
+	case status == episode.HQNotComplete || status == episode.Cancelled || status == episode.Archived:
 		return notInReview(status)
+	case reviewed:
+		return "The HQ review is already complete."
 	}
-	return "The HQ review is already complete."
+	return "This episode isn't waiting for review any more."
 }
 
 func notInReview(status string) string {

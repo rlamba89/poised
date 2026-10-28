@@ -72,7 +72,9 @@ SELECT EXISTS (
 DELETE FROM questionnaires WHERE id = $1 AND org_id = $2;
 
 -- name: TouchVersion :exec
-UPDATE questionnaire_versions SET updated_by = $2, updated_at = now() WHERE id = $1;
+-- Only a draft (S44c, S44a verification 3): a save's touch that waited for Publish (it runs after
+-- the save, as its own statement) mustn't overwrite the publisher's "last changed by".
+UPDATE questionnaire_versions SET updated_by = $2, updated_at = now() WHERE id = $1 AND status = 'draft';
 
 -- name: LockVersionForPublish :one
 -- Publish re-reads the version under its lock (S44a, S41 verification): a rules save in progress is

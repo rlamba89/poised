@@ -593,9 +593,11 @@ type Querier interface {
 	// while the episode is Ready for review). The caller holds LockEpisodeStatus.
 	// archived_from: the status it's archived from when archiving (S22), else NULL.
 	// A re-open also ends an auto-triage (S42): a person reviews the HQ now, so it leaves the
-	// Auto-triaged worklist and its stamp goes. Every change by hand ends a message still waiting for
-	// Checked (S44a, S42 verification): the change sends its own message if it has one, so Checked
-	// never sends a second. The status history and the General notes keep what happened.
+	// Auto-triaged worklist and its stamp goes. A change that sends its own message (end_wait), and a
+	// re-open, end a message still waiting for Checked (S44a, S42 verification), so Checked never sends
+	// a second. Any other change keeps it held (S44c, Rahul 28 Oct): an Undo or an un-archive back to the
+	// auto-triaged status, not yet Checked, leaves Checked to send it (triageChecked sends it only while
+	// the episode is at that status). The status history and the General notes keep what happened.
 	SetEpisodeStatus(ctx context.Context, arg SetEpisodeStatusParams) error
 	SetHospitalSettings(ctx context.Context, arg SetHospitalSettingsParams) error
 	SetHospitalStatus(ctx context.Context, arg SetHospitalStatusParams) error
@@ -623,7 +625,8 @@ type Querier interface {
 	// answers: its pre-filled answers are cleared, so it opens empty, and the button is recorded like
 	// the other two (by: staff on the patient's behalf, NULL for the patient). The prefill map stays:
 	// it's what was copied, for the clinician. Only while the form is open, no button has been
-	// pressed, and the set is as Go filled it (revision 1: nothing changed since). The revision moves
+	// pressed, and the set is as Go filled it (revision 1: nothing changed since, apart from the form's
+	// own clearing saves, cleared_saves, S44c answer 8). The revision moves
 	// on, so a tab still showing the answers can't save them back. No row: refused (the caller says why).
 	StartFreshPrefill(ctx context.Context, arg StartFreshPrefillParams) (int64, error)
 	// After the right date of birth: a session for the person's account (all their records), tied
@@ -639,6 +642,8 @@ type Querier interface {
 	// A link's expiry governs only opening it: a session from a 15-minute sign-in link lasts like any
 	// other. No row: the session has ended.
 	TouchPatientSession(ctx context.Context, arg TouchPatientSessionParams) (uuid.UUID, error)
+	// Only a draft (S44c, S44a verification 3): a save's touch that waited for Publish (it runs after
+	// the save, as its own statement) mustn't overwrite the publisher's "last changed by".
 	TouchVersion(ctx context.Context, arg TouchVersionParams) error
 	// The patient's Information for an episode (S36, INF-04): videos and leaflets from the content
 	// library. A procedure's list (procedures.info_content, ids in order) is copied onto an episode when

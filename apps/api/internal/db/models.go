@@ -136,6 +136,7 @@ type EpisodeAnswer struct {
 	PrefillChoiceAt pgtype.Timestamptz `json:"prefillChoiceAt"`
 	PrefillChoiceBy uuid.NullUUID      `json:"prefillChoiceBy"`
 	Started         bool               `json:"started"`
+	ClearedSaves    int32              `json:"clearedSaves"`
 }
 
 type EpisodeEvent struct {

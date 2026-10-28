@@ -529,6 +529,50 @@ func TestStartFresh(t *testing.T) {
 			t.Errorf("choice %q", choice)
 		}
 	})
+	// S44c (Rahul, 28 Oct, answer 8; verification 3, N8): the form's own save that only clears answers
+	// another set's change hid (`cleared: true`) isn't the patient changing the set, so Start fresh
+	// still works; a save marked so that changes an answer counts as a change.
+	t.Run("a clearing save by the form leaves Start fresh open; one that changes an answer doesn't", func(t *testing.T) {
+		for _, c := range []struct {
+			name   string
+			change func(data map[string]any) map[string]any
+			want   int
+		}{
+			{"only removes answers", func(d map[string]any) map[string]any {
+				for k := range d {
+					delete(d, k)
+					break
+				}
+				return d
+			}, http.StatusNoContent},
+			{"changes an answer", func(d map[string]any) map[string]any {
+				for k := range d {
+					d[k] = "changed"
+					break
+				}
+				return d
+			}, http.StatusConflict},
+		} {
+			t.Run(c.name, func(t *testing.T) {
+				z := w.person(t, "FreshCleared"+strings.ReplaceAll(c.name, " ", ""))
+				f := getCrossForm(t, z.patient, patientPath(z.inA, ""))
+				var raw string
+				data, _, _, _, _ := row(z.inA, healthAgain)
+				raw = data
+				var d map[string]any
+				if err := json.Unmarshal([]byte(raw), &d); err != nil || len(d) == 0 {
+					t.Fatalf("pre-filled data %s (%v)", raw, err)
+				}
+				savedRevision(t, z.patient.Do("PUT", patientPath(z.inA, "/answers/"+healthAgain.String()),
+					map[string]any{"data": c.change(d), "revision": f.Revisions[healthAgain.String()], "cleared": true}))
+				r := z.patient.Do("POST", patientPath(z.inA, "/prefill/"+healthAgain.String()), fresh)
+				r.Want(t, c.want)
+				if got, _, _, _, _ := row(z.inA, healthAgain); (got == "{}") != (c.want == http.StatusNoContent) {
+					t.Errorf("after Start fresh: %s", got)
+				}
+			})
+		}
+	})
 	t.Run("happy path: staff for the patient, marked as theirs", func(t *testing.T) {
 		z := w.person(t, "FreshBehalf")
 		getCrossForm(t, w.clinician, epPath(w.a, z.inA, "/patient-form"))

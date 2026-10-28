@@ -1333,7 +1333,11 @@ FROM episode_forms f WHERE f.id = $4 AND f.status = 'open'
       WHERE a.episode_form_id = f.id AND a.chapter_id = $1 AND a.actor = 'patient'), 0)
 ON CONFLICT (episode_form_id, chapter_id, actor) DO UPDATE
 SET data = EXCLUDED.data, updated_at = now(), revision = episode_answers.revision + 1,
-    updated_by = coalesce(EXCLUDED.updated_by, episode_answers.updated_by)
+    updated_by = coalesce(EXCLUDED.updated_by, episode_answers.updated_by),
+    -- S44c (answer 8): the form's own save that only removes answers (` + "`" + `cleared` + "`" + `, and the new
+    -- answers are contained in the old) is counted, so Start fresh still sees the set unchanged.
+    cleared_saves = episode_answers.cleared_saves
+        + CASE WHEN $6::boolean AND EXCLUDED.data <@ episode_answers.data THEN 1 ELSE 0 END
 WHERE episode_answers.revision = $5
 RETURNING revision
 `
@@ -1344,6 +1348,7 @@ type SavePatientAnswersParams struct {
 	EnteredBy uuid.NullUUID   `json:"enteredBy"`
 	FormID    uuid.UUID       `json:"formId"`
 	Revision  int32           `json:"revision"`
+	Cleared   bool            `json:"cleared"`
 }
 
 // entered_by is the staff member completing the HQ on the patient's behalf (PAT-09), NULL for the
@@ -1359,6 +1364,7 @@ func (q *Queries) SavePatientAnswers(ctx context.Context, arg SavePatientAnswers
 		arg.EnteredBy,
 		arg.FormID,
 		arg.Revision,
+		arg.Cleared,
 	)
 	var revision int32
 	err := row.Scan(&revision)
@@ -1374,11 +1380,11 @@ SET status = $1, admitted_at = $2, discharged_at = $3,
     triage_rule = CASE WHEN $6::boolean THEN NULL ELSE triage_rule END,
     triage_summary = CASE WHEN $6::boolean THEN NULL ELSE triage_summary END,
     triaged_at = CASE WHEN $6::boolean THEN NULL ELSE triaged_at END,
-    triage_message_pending = false,
+    triage_message_pending = triage_message_pending AND NOT ($6::boolean OR $7::boolean),
     triage_checked_by = CASE WHEN $6::boolean THEN NULL ELSE triage_checked_by END,
     triage_checked_at = CASE WHEN $6::boolean THEN NULL ELSE triage_checked_at END,
     revision = revision + 1
-WHERE id = $7
+WHERE id = $8
 `
 
 type SetEpisodeStatusParams struct {
@@ -1388,6 +1394,7 @@ type SetEpisodeStatusParams struct {
 	CancelReason *string     `json:"cancelReason"`
 	ArchivedFrom *string     `json:"archivedFrom"`
 	Reopen       bool        `json:"reopen"`
+	EndWait      bool        `json:"endWait"`
 	ID           uuid.UUID   `json:"id"`
 }
 
@@ -1396,9 +1403,11 @@ type SetEpisodeStatusParams struct {
 // while the episode is Ready for review). The caller holds LockEpisodeStatus.
 // archived_from: the status it's archived from when archiving (S22), else NULL.
 // A re-open also ends an auto-triage (S42): a person reviews the HQ now, so it leaves the
-// Auto-triaged worklist and its stamp goes. Every change by hand ends a message still waiting for
-// Checked (S44a, S42 verification): the change sends its own message if it has one, so Checked
-// never sends a second. The status history and the General notes keep what happened.
+// Auto-triaged worklist and its stamp goes. A change that sends its own message (end_wait), and a
+// re-open, end a message still waiting for Checked (S44a, S42 verification), so Checked never sends
+// a second. Any other change keeps it held (S44c, Rahul 28 Oct): an Undo or an un-archive back to the
+// auto-triaged status, not yet Checked, leaves Checked to send it (triageChecked sends it only while
+// the episode is at that status). The status history and the General notes keep what happened.
 func (q *Queries) SetEpisodeStatus(ctx context.Context, arg SetEpisodeStatusParams) error {
 	_, err := q.db.Exec(ctx, setEpisodeStatus,
 		arg.Status,
@@ -1407,6 +1416,7 @@ func (q *Queries) SetEpisodeStatus(ctx context.Context, arg SetEpisodeStatusPara
 		arg.CancelReason,
 		arg.ArchivedFrom,
 		arg.Reopen,
+		arg.EndWait,
 		arg.ID,
 	)
 	return err
@@ -1418,7 +1428,7 @@ UPDATE episode_answers a SET data = '{}'::jsonb, revision = a.revision + 1, upda
 FROM episode_forms f
 WHERE a.episode_form_id = $2 AND a.chapter_id = $3 AND a.actor = 'patient'
   AND f.id = a.episode_form_id AND f.status = 'open'
-  AND a.prefill_choice IS NULL AND a.revision = 1
+  AND a.prefill_choice IS NULL AND a.revision = 1 + a.cleared_saves
   AND jsonb_path_exists(a.prefill, '$.* ? (@.otherTrust == true)')
 `
 
@@ -1432,7 +1442,8 @@ type StartFreshPrefillParams struct {
 // answers: its pre-filled answers are cleared, so it opens empty, and the button is recorded like
 // the other two (by: staff on the patient's behalf, NULL for the patient). The prefill map stays:
 // it's what was copied, for the clinician. Only while the form is open, no button has been
-// pressed, and the set is as Go filled it (revision 1: nothing changed since). The revision moves
+// pressed, and the set is as Go filled it (revision 1: nothing changed since, apart from the form's
+// own clearing saves, cleared_saves, S44c answer 8). The revision moves
 // on, so a tab still showing the answers can't save them back. No row: refused (the caller says why).
 func (q *Queries) StartFreshPrefill(ctx context.Context, arg StartFreshPrefillParams) (int64, error) {
 	result, err := q.db.Exec(ctx, startFreshPrefill, arg.By, arg.FormID, arg.ChapterID)
