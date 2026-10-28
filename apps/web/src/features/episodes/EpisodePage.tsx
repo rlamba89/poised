@@ -22,6 +22,7 @@ import { StatusControl, StatusHistory } from "./StatusControl";
 import { isStale, SaveError } from "./StatusControl";
 import { SuggestedAsaLine } from "./SuggestedAsa";
 import { TasksPanel } from "./TasksPanel";
+import type { AnaesthetistGrade } from "./asaGrades";
 import { patientName, STATUS_LABELS, type Episode, type EpisodeEvent, type EpisodeFlag, type EpisodeInvite } from "./types";
 import { inviteUndelivered, statusUndelivered, undeliveredText, type Undelivered } from "./undelivered";
 
@@ -41,6 +42,8 @@ export type EpisodeDetail = {
   statusHistory: StatusEvent[];
   /** S43: the rules' flags, standing and cleared, oldest first. */
   flags: EpisodeFlag[];
+  /** S44b: the anaesthetist's ASA grades, oldest first; episode.anaesthetistAsa is the one that counts. */
+  anaesthetistAsaGrades: AnaesthetistGrade[];
 };
 
 /** Loads an episode and its events; `reload` refetches both. */

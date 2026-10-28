@@ -28,6 +28,8 @@ import { restoreSpot, saveSpot, takeSpot, validateAt } from "./jump";
 import { sessionStore } from "@/lib/chunkError";
 import { SaveError, isStale, StatusControl } from "./StatusControl";
 import { asaRequirement, triageStamp } from "./status";
+import { AnaesthetistGrades } from "./AnaesthetistGrades";
+import { asaLabel, type AnaesthetistGrade } from "./asaGrades";
 import { patientName, type Episode, type EpisodeEvent } from "./types";
 
 type Tab = "validated" | "patient";
@@ -82,16 +84,19 @@ export default function PoaSummary({ base, episodeId }: { base: string; episodeI
               <Tabs.Tab value="patient">Patient answers</Tabs.Tab>
             </Tabs.List>
           </Tabs>
-          <Summary key={tab} tab={tab} episode={e} events={data.events} hq={hq} path={path} onChanged={reload} episodeId={episodeId} />
+          <Summary key={tab} tab={tab} episode={e} events={data.events} grades={data.anaesthetistAsaGrades} hq={hq} path={path} onChanged={reload}
+            episodeId={episodeId} />
         </Stack>
       </Card>
     </Stack>
   );
 }
 
-type SummaryProps = { tab: Tab; episode: Episode; events: EpisodeEvent[]; hq: EpisodeHQ; path: string; onChanged: () => void; episodeId: string };
+type SummaryProps = {
+  tab: Tab; episode: Episode; events: EpisodeEvent[]; grades: AnaesthetistGrade[]; hq: EpisodeHQ; path: string; onChanged: () => void; episodeId: string;
+};
 
-function Summary({ tab, episode: e, events, hq, path, onChanged, episodeId }: SummaryProps) {
+function Summary({ tab, episode: e, events, grades, hq, path, onChanged, episodeId }: SummaryProps) {
   const vars = useMemo(() => hqPatient(e), [e]);
   const validated = tab === "validated";
   const sets = useMemo(() => {
@@ -175,7 +180,7 @@ function Summary({ tab, episode: e, events, hq, path, onChanged, episodeId }: Su
                 link={(r) => (r.setId ? answerLink(path, episodeId, r.setId)(r.questionId, `asa-${r.text}`, r.text) : r.text)}
               />
               {validated && (
-                <AsaGrades episode={e} path={path} onSaved={onChanged} readOnly={e.status === "archived" || e.status === "cancelled"} />
+                <AsaGrades episode={e} grades={grades} path={path} onSaved={onChanged} readOnly={e.status === "archived" || e.status === "cancelled"} />
               )}
             </Stack>
           </Accordion.Panel>
@@ -326,51 +331,46 @@ function Capture({ capture }: { capture: PoaCapture }) {
   );
 }
 
-const ASA = ["I", "II", "III", "IV", "V", "VI"];
-const asaLabel = (n: number | null) => (n ? `ASA ${ASA[n - 1]}` : "Not recorded");
-
 /**
- * The two ASA grades, each saved on its own with the revision the page loaded (S20). If the other
- * was saved meanwhile (another tab), the save is refused: the grade typed stays, with Reload.
- * After a reload, a grade nobody is changing here shows the saved one.
+ * The two ASA grades. The nurse's is saved on its own with the revision the page loaded (S20). If the
+ * episode changed meanwhile (another tab), the save is refused: the grade typed stays, with Reload.
+ * The anaesthetist's is a history (S44b): added, never changed or cleared (AnaesthetistGrades).
  */
-function AsaGrades({ episode, path, onSaved, readOnly }: { episode: Episode; path: string; onSaved: () => void; readOnly: boolean }) {
+function AsaGrades({ episode, grades, path, onSaved, readOnly }: {
+  episode: Episode; grades: AnaesthetistGrade[]; path: string; onSaved: () => void; readOnly: boolean;
+}) {
   const requirement = asaRequirement(episode);
-  const saved = { nurseAsa: episode.nurseAsa ? String(episode.nurseAsa) : null, anaesthetistAsa: episode.anaesthetistAsa ? String(episode.anaesthetistAsa) : null };
-  // A grade being changed here (`value`), or null: it shows the saved one.
-  const [editing, setEditing] = useState<{ nurseAsa: string | null | undefined; anaesthetistAsa: string | null | undefined }>({
-    nurseAsa: undefined, anaesthetistAsa: undefined,
-  });
-  const shown = (f: "nurseAsa" | "anaesthetistAsa") => (editing[f] === undefined ? saved[f] : editing[f]);
+  const saved = episode.nurseAsa ? String(episode.nurseAsa) : null;
+  // The grade being changed here, or undefined: it shows the saved one.
+  const [editing, setEditing] = useState<string | null | undefined>(undefined);
+  const shown = editing === undefined ? saved : editing;
   const [error, setError] = useState("");
   const [stale, setStale] = useState(false);
-  const save = async (field: "nurseAsa" | "anaesthetistAsa") => {
-    const value = shown(field);
+  const save = async () => {
     try {
-      await api(path, { method: "PATCH", body: JSON.stringify({ [field]: value ? Number(value) : 0, revision: episode.revision }) });
+      await api(path, { method: "PATCH", body: JSON.stringify({ nurseAsa: shown ? Number(shown) : 0, revision: episode.revision }) });
       setError("");
-      setEditing((was) => ({ ...was, [field]: undefined }));
+      setEditing(undefined);
       onSaved();
     } catch (err) {
       setError((err as Error).message);
       setStale(isStale(err));
     }
   };
-  const data = ASA.map((g, i) => ({ value: String(i + 1), label: `ASA ${g}` }));
-  const set = (f: "nurseAsa" | "anaesthetistAsa") => (v: string | null) => setEditing((was) => ({ ...was, [f]: v }));
+  const data = [1, 2, 3, 4, 5, 6].map((n) => ({ value: String(n), label: asaLabel(n) }));
   return (
     <Stack>
-      {!episode.nurseAsa && !episode.anaesthetistAsa && <Text size="sm">No ASA grades have been added.</Text>}
+      {/* Not above a history whose grades were all entered in error: its own line says "No grade yet" (test report 1, note 2). */}
+      {!episode.nurseAsa && grades.length === 0 && <Text size="sm">No ASA grades have been added.</Text>}
       {/* S43: a rule asked for the anaesthetist's grade before Ready for admission. */}
       {requirement && <Text size="sm" c={requirement.met ? "dimmed" : "red.8"} data-testid="poa-asa-required">{requirement.text}</Text>}
       <SaveError error={error} stale={stale} onReload={() => { setError(""); onSaved(); }} />
       <Group align="flex-end">
         {/* A cancelled (S20) or archived (S22) episode's grades are shown, not changed: the API refuses them. */}
-        <Select label="Nurse ASA grade" placeholder="ASA grade" data={data} value={shown("nurseAsa")} onChange={set("nurseAsa")} clearable w={180} disabled={readOnly} />
-        <Button className="sj-no-print" variant="default" onClick={() => save("nurseAsa")} disabled={readOnly || shown("nurseAsa") === saved.nurseAsa}>Save</Button>
-        <Select label="Anaesthetist ASA grade" placeholder="ASA grade" data={data} value={shown("anaesthetistAsa")} onChange={set("anaesthetistAsa")} clearable w={200} ml="lg" disabled={readOnly} />
-        <Button className="sj-no-print" variant="default" onClick={() => save("anaesthetistAsa")} disabled={readOnly || shown("anaesthetistAsa") === saved.anaesthetistAsa}>Save</Button>
+        <Select label="Nurse ASA grade" placeholder="ASA grade" data={data} value={shown} onChange={setEditing} clearable w={180} disabled={readOnly} />
+        <Button className="sj-no-print" variant="default" onClick={save} disabled={readOnly || shown === saved}>Save</Button>
       </Group>
+      <AnaesthetistGrades path={path} revision={episode.revision} grades={grades} onChanged={onSaved} readOnly={readOnly} />
     </Stack>
   );
 }

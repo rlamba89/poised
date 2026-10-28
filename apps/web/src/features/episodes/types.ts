@@ -26,6 +26,7 @@ export type Episode = EpisodeRow & {
   anaesthetic: string;
   consultant: string;
   nurseAsa: number | null;
+  /** S44b: the anaesthetist's grade that counts (the latest not entered in error), or null; the history is EpisodeDetail's anaesthetistAsaGrades. */
   anaesthetistAsa: number | null;
   patientSubmittedAt: string | null;
   /** The hospital's time zone (S44a), or null: the deployment's. The age on the day of sending is worked out there. */
@@ -66,7 +67,7 @@ export type Episode = EpisodeRow & {
   triageMessagePending: boolean;
   triageCheckedAt: string | null;
   triageCheckedByName: string | null;
-  /** S43: the rule requiring the anaesthetist's ASA grade before Ready for admission (null: none); met once anaesthetistAsa is set. */
+  /** S43: the rule requiring the anaesthetist's ASA grade before Ready for admission (null: none); met while an anaesthetist's grade counts. */
   anaesthetistAsaRequiredBy: string | null;
   /** S43: the statuses the latest send's rules suggest; shown only. */
   ruleSuggestions: RuleSuggestion[];

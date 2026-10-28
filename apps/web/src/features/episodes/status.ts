@@ -133,7 +133,7 @@ export const pickLabel = (m: { label: string; blocked?: string }): string =>
 
 /**
  * A rule's requirement of the anaesthetist's ASA grade before Ready for admission (S43), in words,
- * or null when no rule asked for it. It's met once an anaesthetist's grade is saved.
+ * or null when no rule asked for it. It's met while an anaesthetist's grade counts (S44b: anaesthetistAsa).
  */
 export function asaRequirement(e: { anaesthetistAsaRequiredBy: string | null; anaesthetistAsa: number | null }): { met: boolean; text: string } | null {
   const rule = e.anaesthetistAsaRequiredBy;
