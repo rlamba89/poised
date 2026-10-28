@@ -21,6 +21,7 @@ type Querier interface {
 	// contact. More than one without a name: people sharing the contact and the birthday, such as twins
 	// (S15 answers 6 and 8).
 	AccountsForSignin(ctx context.Context, arg AccountsForSigninParams) ([]AccountsForSigninRow, error)
+	AddAnaesthetistGrade(ctx context.Context, arg AddAnaesthetistGradeParams) (uuid.UUID, error)
 	AddAutoArchiveJob(ctx context.Context, arg AddAutoArchiveJobParams) error
 	// An entry written by the jobs (S16): a reminder, "not responding", an auto-archive (S22); or by
 	// an undelivered report (S17). at is the run's time (S22 test report 1, F-2): a job run "as of" a
@@ -95,6 +96,10 @@ type Querier interface {
 	// How many episodes each worklist has (S21): the episodes ListEpisodes would list for it, with the
 	// same scope and the same arguments. A worklist with none has no row.
 	CountWorklists(ctx context.Context, arg CountWorklistsParams) ([]CountWorklistsRow, error)
+	// The grade that counts: the latest not entered in error. No row: none.
+	CountingAnaesthetistGrade(ctx context.Context, episodeID uuid.UUID) (int32, error)
+	// How many grades not entered in error the episode has besides this one.
+	CountingAnaesthetistGradesBut(ctx context.Context, arg CountingAnaesthetistGradesButParams) (int64, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (uuid.UUID, error)
 	// Every change to a version's Question Sets is made only into a draft, holding the version's row
 	// FOR SHARE (S44a, verification 1): a change waits for a Publish in progress (which holds it FOR
@@ -180,6 +185,7 @@ type Querier interface {
 	// Their reminders stop too: each would send a new link.
 	FinishRecordsFollowups(ctx context.Context, patientIds []uuid.UUID) error
 	GetAccount(ctx context.Context, id uuid.UUID) (GetAccountRow, error)
+	GetAnaesthetistGrade(ctx context.Context, arg GetAnaesthetistGradeParams) (GetAnaesthetistGradeRow, error)
 	// What the hospital's auto-archive decides with: its zone, its and its trust's settings, and
 	// whether both are active (nothing is archived while either is suspended, ORG-03).
 	GetArchivePolicy(ctx context.Context, id uuid.UUID) (GetArchivePolicyRow, error)
@@ -235,6 +241,9 @@ type Querier interface {
 	GetUserByCognitoSub(ctx context.Context, cognitoSub *string) (GetUserByCognitoSubRow, error)
 	GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error)
 	GetVersionChapter(ctx context.Context, arg GetVersionChapterParams) (GetVersionChapterRow, error)
+	// Whether the episode has any grade, entered in error or not: every grade after its first needs a
+	// reason (S44b answers 2).
+	HasAnaesthetistGrade(ctx context.Context, episodeID uuid.UUID) (bool, error)
 	HasNonDraftVersion(ctx context.Context, questionnaireID uuid.UUID) (bool, error)
 	HospitalInOrg(ctx context.Context, arg HospitalInOrgParams) (bool, error)
 	// The daily auto-archive (S22, EPI-05): one job per hospital, at 02:00 there.
@@ -266,6 +275,12 @@ type Querier interface {
 	LatestUndoable(ctx context.Context, episodeID uuid.UUID) (LatestUndoableRow, error)
 	// Whether the platform's library or this trust's already has the key.
 	LibraryKeyTaken(ctx context.Context, arg LibraryKeyTakenParams) (bool, error)
+	// The anaesthetist's ASA grades of an episode (plan C6, session S44b; migration 00035): a history,
+	// never edited. The handlers have checked the episode is the caller's hospital's, and hold
+	// LockEpisodeStatus while they add or mark one.
+	// Every grade, oldest first, with who gave it (NULL: recorded before the history) and, for one
+	// entered in error, who marked it, when and why.
+	ListAnaesthetistGrades(ctx context.Context, episodeID uuid.UUID) ([]ListAnaesthetistGradesRow, error)
 	// The hospital's episodes either rule could archive (episode.ArchiveDue decides): discharged,
 	// before admission, or cancelled. unarchived_at: the latest un-archive, if any.
 	ListArchiveCandidates(ctx context.Context, hospitalID uuid.UUID) ([]ListArchiveCandidatesRow, error)
@@ -412,7 +427,9 @@ type Querier interface {
 	// each checking the revision and the table against the status as it is.
 	// The hospital's time zone is for the dates' "not in the future". archived_from is un-archive's
 	// target (S22); the cancel reason is kept when a cancelled episode is archived. S43: a rule's
-	// requirement of the anaesthetist's ASA grade before Ready for admission, and the grade.
+	// requirement of the anaesthetist's ASA grade before Ready for admission. S44b: the grade that counts
+	// is read after the lock, by CountingAnaesthetistGrade (a statement of its own sees the grades as
+	// they are once the lock is held; the grade routes hold this lock while they add or mark one).
 	LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpisodeStatusRow, error)
 	// Taken before Checked (S42), as LockEpisodeStatus before a status change.
 	LockEpisodeTriage(ctx context.Context, id uuid.UUID) (LockEpisodeTriageRow, error)
@@ -445,6 +462,8 @@ type Querier interface {
 	LockVersionForPublish(ctx context.Context, id uuid.UUID) (LockVersionForPublishRow, error)
 	// MESSAGING=capture only: the testers' "run as of" runs every hospital's auto-archive (S22).
 	MakeAutoArchivesDue(ctx context.Context, asOf time.Time) error
+	// No row: it's already marked (it can't be unmarked).
+	MarkAnaesthetistGradeInError(ctx context.Context, arg MarkAnaesthetistGradeInErrorParams) (int64, error)
 	MarkFormPrefilled(ctx context.Context, id uuid.UUID) error
 	// No row: already marked, the HQ has been sent, or the episode was cancelled.
 	MarkNotResponding(ctx context.Context, arg MarkNotRespondingParams) (int64, error)

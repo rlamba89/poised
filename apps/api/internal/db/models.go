@@ -12,6 +12,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AnaesthetistAsaGrade struct {
+	ID          uuid.UUID          `json:"id"`
+	EpisodeID   uuid.UUID          `json:"episodeId"`
+	Grade       int32              `json:"grade"`
+	GivenBy     uuid.NullUUID      `json:"givenBy"`
+	GivenAt     time.Time          `json:"givenAt"`
+	Reason      *string            `json:"reason"`
+	ErrorBy     uuid.NullUUID      `json:"errorBy"`
+	ErrorAt     pgtype.Timestamptz `json:"errorAt"`
+	ErrorReason *string            `json:"errorReason"`
+}
+
 type AuditLog struct {
 	ID         int64         `json:"id"`
 	At         time.Time     `json:"at"`
@@ -81,7 +93,6 @@ type Episode struct {
 	Anaesthetic               string             `json:"anaesthetic"`
 	Consultant                string             `json:"consultant"`
 	NurseAsa                  *int32             `json:"nurseAsa"`
-	AnaesthetistAsa           *int32             `json:"anaesthetistAsa"`
 	ReviewCompletedBy         uuid.NullUUID      `json:"reviewCompletedBy"`
 	ReviewCompletedAt         pgtype.Timestamptz `json:"reviewCompletedAt"`
 	CreatedBy                 uuid.UUID          `json:"createdBy"`

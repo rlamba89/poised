@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -253,23 +254,32 @@ func (s *server) getEpisode(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "flags", err)
 		return
 	}
+	// The anaesthetist's ASA grades (S44b), oldest first; episode.anaesthetistAsa is the one that counts.
+	grades, err := s.q.ListAnaesthetistGrades(r.Context(), e.ID)
+	if err != nil {
+		serverError(w, "grades", err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"episode": e, "events": events, "invite": invite, "undelivered": undelivered,
-		"moves": status.Moves, "undo": status.Undo, "unarchive": status.Unarchive, "statusHistory": status.History, "flags": flags})
+		"moves": status.Moves, "undo": status.Undo, "unarchive": status.Unarchive, "statusHistory": status.History, "flags": flags,
+		"anaesthetistAsaGrades": grades})
 }
 
 // episodeChange is what updateEpisode changes. A field sent as null decodes to a nil pointer;
 // for an ASA grade that keeps the current grade (see asaChange), and for the procedure and the
 // dates it clears them. Revision is the episode's revision the page loaded (S20): required.
 type episodeChange struct {
-	Revision        *int32  `json:"revision"`
-	Status          *string `json:"status"`      // refused: the status has its own routes (S20), so an old page can't think it saved one
-	ProcedureID     *string `json:"procedureId"` // S19: an id, or "" for none
-	PlannedDate     *string `json:"plannedDate"` // YYYY-MM-DD, or ""
-	PoaDate         *string `json:"poaDate"`
-	Anaesthetic     *string `json:"anaesthetic"`
-	Consultant      *string `json:"consultant"`
-	NurseAsa        *int32  `json:"nurseAsa"`
-	AnaesthetistAsa *int32  `json:"anaesthetistAsa"`
+	Revision    *int32  `json:"revision"`
+	Status      *string `json:"status"`      // refused: the status has its own routes (S20), so an old page can't think it saved one
+	ProcedureID *string `json:"procedureId"` // S19: an id, or "" for none
+	PlannedDate *string `json:"plannedDate"` // YYYY-MM-DD, or ""
+	PoaDate     *string `json:"poaDate"`
+	Anaesthetic *string `json:"anaesthetic"`
+	Consultant  *string `json:"consultant"`
+	NurseAsa    *int32  `json:"nurseAsa"`
+	// Refused (S44b): the anaesthetist's grade is a history with its own routes (asa_grades.go), never
+	// changed or cleared. Raw, so sending it at all (even null) is refused.
+	AnaesthetistAsa json.RawMessage `json:"anaesthetistAsa"`
 }
 
 // validate trims the procedure details and returns a plain-language problem, or "".
@@ -280,14 +290,18 @@ func (in *episodeChange) validate() string {
 	if in.Status != nil {
 		return "The status is changed on its own (PATCH …/status)."
 	}
+	if len(in.AnaesthetistAsa) > 0 {
+		return "The anaesthetist's ASA grade is added on its own (POST …/anaesthetist-asa); a grade given is never changed or cleared."
+	}
 	for _, f := range []*string{in.Anaesthetic, in.Consultant} {
 		*f = strings.TrimSpace(*f)
 	}
 	return ""
 }
 
-// updateEpisode changes the procedure details and the ASA grades; the status has its own routes
-// (statuses.go, S20). Fields left out keep their value; an ASA grade of 0 clears it. The
+// updateEpisode changes the procedure details and the nurse's ASA grade; the status has its own
+// routes (statuses.go, S20), and so has the anaesthetist's grade (asa_grades.go, S44b). Fields left
+// out keep their value; a nurse's grade of 0 clears it. The
 // procedure and its dates can be changed until the HQ review is complete (S19); a new procedure
 // must be one the trust's list offers here, while the one the episode has stays even if retired.
 // The revision sent must be the episode's current one (409 otherwise), so of two tabs, the second
@@ -334,8 +348,7 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	nurse, nurseMsg, okN := asaChange(e.NurseAsa, in.NurseAsa, "Nurse")
-	anaes, anaesMsg, okA := asaChange(e.AnaesthetistAsa, in.AnaesthetistAsa, "Anaesthetist")
-	if !okN || !okA {
+	if !okN {
 		writeError(w, http.StatusBadRequest, "Choose an ASA grade from 1 to 6.")
 		return
 	}
@@ -343,7 +356,7 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		n, err := q.UpdateEpisode(r.Context(), db.UpdateEpisodeParams{
 			ID: e.ID, Revision: *in.Revision, ProcedureID: next.procedure, PlannedDate: next.planned,
 			PoaDate: next.poa, Anaesthetic: *in.Anaesthetic,
-			Consultant: *in.Consultant, NurseAsa: nurse, AnaesthetistAsa: anaes,
+			Consultant: *in.Consultant, NurseAsa: nurse,
 		})
 		if err != nil {
 			serverError(w, "update episode", err)
@@ -362,7 +375,7 @@ func (s *server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uid := currentUser(r).ID
-	for _, msg := range append(was.changes(next, procedureName), nurseMsg, anaesMsg) {
+	for _, msg := range append(was.changes(next, procedureName), nurseMsg) {
 		if msg != "" {
 			s.event(r, e.ID, msg, uid)
 		}

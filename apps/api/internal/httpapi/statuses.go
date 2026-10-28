@@ -276,9 +276,16 @@ func (s *server) applyStatus(w http.ResponseWriter, r *http.Request, e db.GetEpi
 	}
 	// A rule asked for the anaesthetist's ASA grade before Ready for admission (S43). Un-archive
 	// restores exactly the status the episode was archived from, so it isn't held back.
-	if c.to == episode.ReadyForAdmission && c.move != episode.Unarchive && needsAnaesthetistASA(now.AnaesthetistAsaRequiredBy, now.AnaesthetistAsa) {
-		writeError(w, http.StatusConflict, triage.NeedsAnaesthetistASA)
-		return
+	if c.to == episode.ReadyForAdmission && c.move != episode.Unarchive && now.AnaesthetistAsaRequiredBy != nil {
+		grade, err := countingGrade(ctx, q, e.ID) // S44b: the grade that counts
+		if err != nil {
+			serverError(w, "anaesthetist's grade", err)
+			return
+		}
+		if needsAnaesthetistASA(now.AnaesthetistAsaRequiredBy, grade) {
+			writeError(w, http.StatusConflict, triage.NeedsAnaesthetistASA)
+			return
+		}
 	}
 
 	set := db.SetEpisodeStatusParams{ID: e.ID, Status: c.to, AdmittedAt: now.AdmittedAt, DischargedAt: now.DischargedAt,
@@ -472,7 +479,7 @@ func (s *server) triageChecked(w http.ResponseWriter, r *http.Request) {
 }
 
 // needsAnaesthetistASA reports whether a rule's requirement of the anaesthetist's ASA grade (S43) is
-// unmet: a rule asked for it and no anaesthetist's grade is saved.
+// unmet: a rule asked for it and no anaesthetist's grade counts (S44b: grade is countingGrade's).
 func needsAnaesthetistASA(requiredBy *string, grade *int32) bool {
 	return requiredBy != nil && grade == nil
 }

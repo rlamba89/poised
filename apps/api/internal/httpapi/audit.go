@@ -52,6 +52,8 @@ var auditActions = map[string]string{
 	"task.list":          "Opened an episode's tasks", // S21
 	"task.create":        "Added a task",
 	"task.update":        "Completed or re-opened a task",
+	"asa.add":            "Added the anaesthetist's ASA grade", // S44b
+	"asa.error":          "Marked an anaesthetist's ASA grade entered in error",
 	"information.list":   "Opened an episode's Information", // S36
 	"information.add":    "Added Information to an episode",
 	"information.remove": "Removed Information from an episode",

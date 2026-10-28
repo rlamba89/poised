@@ -674,9 +674,9 @@ func TestEpisodeStatusView(t *testing.T) {
 	}
 }
 
-// Two tabs (pending.md §1a, S20 brief): the Nurse ASA saved in one and the Anaesthetist ASA in the
-// other, both from the revision they loaded. The second is refused with the stale message, so the
-// first isn't lost.
+// Two tabs (pending.md §1a, S20 brief): the Nurse ASA saved in one and the Anaesthetist ASA added
+// in the other (S44b: its own route), both from the revision they loaded. The second is refused with
+// the stale message, so the first isn't lost.
 func TestTwoTabsDontOverwriteEachOther(t *testing.T) {
 	t.Parallel()
 	w := newClinic(t)
@@ -684,7 +684,7 @@ func TestTwoTabsDontOverwriteEachOther(t *testing.T) {
 	setStatus(t, w, e, episode.ReadyForPOA)
 	loaded := revisionOf(t, w, e.ID)
 	w.clinician.Do("PATCH", epPath(w.a, e, ""), map[string]any{"nurseAsa": 2, "revision": loaded}).Want(t, http.StatusNoContent)
-	r := w.clinician.Do("PATCH", epPath(w.a, e, ""), map[string]any{"anaesthetistAsa": 3, "revision": loaded})
+	r := w.clinician.Do("POST", epPath(w.a, e, "/anaesthetist-asa"), map[string]any{"grade": 3, "revision": loaded})
 	refused(t, r, http.StatusConflict)
 	if !strings.Contains(r.Message(), "changed since you opened it") || !strings.Contains(string(r.Body), `"code":"stale"`) {
 		t.Errorf("response %s", r)
@@ -693,7 +693,7 @@ func TestTwoTabsDontOverwriteEachOther(t *testing.T) {
 		t.Errorf("episode %+v", got)
 	}
 	// After a reload, the second tab's change goes in.
-	w.clinician.Do("PATCH", epPath(w.a, e, ""), map[string]any{"anaesthetistAsa": 3, "revision": revisionOf(t, w, e.ID)}).Want(t, http.StatusNoContent)
+	w.clinician.Do("POST", epPath(w.a, e, "/anaesthetist-asa"), map[string]any{"grade": 3, "revision": revisionOf(t, w, e.ID)}).Want(t, http.StatusCreated)
 	if got := readEpisode(t, w, e.ID); got.NurseAsa == nil || *got.NurseAsa != 2 || got.AnaesthetistAsa == nil || *got.AnaesthetistAsa != 3 {
 		t.Errorf("episode %+v", got)
 	}

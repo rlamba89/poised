@@ -627,8 +627,14 @@ func (s *server) autoTriage(ctx context.Context, q *db.Queries, f form, res eval
 		if err != nil {
 			return "", err
 		}
-		if needsAnaesthetistASA(now.AnaesthetistAsaRequiredBy, now.AnaesthetistAsa) {
-			d = triage.Decision{Rule: d.Rule, Blocked: triage.AnaesthetistASAGuard}
+		if now.AnaesthetistAsaRequiredBy != nil {
+			grade, err := countingGrade(ctx, q, f.ID) // S44b: the grade that counts
+			if err != nil {
+				return "", err
+			}
+			if needsAnaesthetistASA(now.AnaesthetistAsaRequiredBy, grade) {
+				d = triage.Decision{Rule: d.Rule, Blocked: triage.AnaesthetistASAGuard}
+			}
 		}
 	}
 	if !d.Moves() {

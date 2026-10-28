@@ -83,7 +83,8 @@ GROUP BY w.key;
 -- With its HQ form (S18): the version, the patient's submit and who sent it keep their names
 -- from before forms, so the episode's JSON is unchanged; hq_form_id holds the answers.
 SELECT e.id, e.status, e.procedure_id, coalesce(pr.name, '')::text AS procedure, e.planned_date, e.poa_date,
-       e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
+       e.anaesthetic, e.consultant, e.nurse_asa,
+       ag.grade AS anaesthetist_asa,
        f.submitted_at AS patient_submitted_at, e.review_completed_at, e.created_at, f.version_id, e.hospital_number,
        e.invited_at, e.reminders_sent, e.not_responding_at, -- the follow-up (S16)
        e.revision, e.admitted_at, e.discharged_at, e.cancel_reason, -- S20
@@ -108,6 +109,9 @@ LEFT JOIN procedures pr ON pr.id = e.procedure_id
 LEFT JOIN users reviewer ON reviewer.id = e.review_completed_by
 LEFT JOIN users submitter ON submitter.id = f.submitted_by
 LEFT JOIN users checker ON checker.id = e.triage_checked_by
+LEFT JOIN anaesthetist_asa_grades ag ON ag.id = ( -- S44b: the anaesthetist's ASA grade that counts: the latest not entered in error
+    SELECT g.id FROM anaesthetist_asa_grades g WHERE g.episode_id = e.id AND g.error_at IS NULL
+    ORDER BY g.given_at DESC, g.id DESC LIMIT 1)
 WHERE e.id = $1 AND e.hospital_id = $2;
 
 -- name: UpdateEpisode :execrows
@@ -117,7 +121,7 @@ WHERE e.id = $1 AND e.hospital_id = $2;
 UPDATE episodes
 SET procedure_id = sqlc.arg(procedure_id), planned_date = sqlc.arg(planned_date),
     poa_date = sqlc.arg(poa_date), anaesthetic = sqlc.arg(anaesthetic),
-    consultant = sqlc.arg(consultant), nurse_asa = sqlc.arg(nurse_asa), anaesthetist_asa = sqlc.arg(anaesthetist_asa),
+    consultant = sqlc.arg(consultant), nurse_asa = sqlc.arg(nurse_asa),
     revision = revision + 1
 WHERE id = sqlc.arg(id) AND revision = sqlc.arg(revision);
 
@@ -126,9 +130,11 @@ WHERE id = sqlc.arg(id) AND revision = sqlc.arg(revision);
 -- each checking the revision and the table against the status as it is.
 -- The hospital's time zone is for the dates' "not in the future". archived_from is un-archive's
 -- target (S22); the cancel reason is kept when a cancelled episode is archived. S43: a rule's
--- requirement of the anaesthetist's ASA grade before Ready for admission, and the grade.
+-- requirement of the anaesthetist's ASA grade before Ready for admission. S44b: the grade that counts
+-- is read after the lock, by CountingAnaesthetistGrade (a statement of its own sees the grades as
+-- they are once the lock is held; the grade routes hold this lock while they add or mark one).
 SELECT e.status, e.revision, e.admitted_at, e.discharged_at, e.cancel_reason, e.archived_from, h.timezone,
-       e.anaesthetist_asa_required_by, e.anaesthetist_asa
+       e.anaesthetist_asa_required_by
 FROM episodes e JOIN hospitals h ON h.id = e.hospital_id
 WHERE e.id = $1 FOR UPDATE OF e;
 

@@ -131,6 +131,16 @@ func (s *server) updateTask(w http.ResponseWriter, r *http.Request) {
 // itself) to stop. changeEpisode answers every refusal and error; true means the change was made.
 func (s *server) changeEpisode(w http.ResponseWriter, r *http.Request, e db.GetEpisodeRow, revision int32, note string,
 	change func(q *db.Queries) (bool, error)) bool {
+	return s.changeLockedEpisode(w, r, e, revision, func(q *db.Queries, _ db.LockEpisodeStatusRow) (string, bool, error) {
+		ok, err := change(q)
+		return note, ok, err
+	})
+}
+
+// changeLockedEpisode is changeEpisode for a change that needs the episode as locked (its status)
+// and words its General notes line itself (S44b: the anaesthetist's ASA grades).
+func (s *server) changeLockedEpisode(w http.ResponseWriter, r *http.Request, e db.GetEpisodeRow, revision int32,
+	change func(q *db.Queries, now db.LockEpisodeStatusRow) (string, bool, error)) bool {
 	ctx := r.Context()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -152,7 +162,7 @@ func (s *server) changeEpisode(w http.ResponseWriter, r *http.Request, e db.GetE
 		writeError(w, http.StatusConflict, msg)
 		return false
 	}
-	ok, err := change(q)
+	note, ok, err := change(q, now)
 	if err != nil {
 		serverError(w, "change episode", err)
 		return false

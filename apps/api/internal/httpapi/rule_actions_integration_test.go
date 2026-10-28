@@ -343,8 +343,8 @@ func TestReadyForAdmissionNeedsTheAnaesthetistsASA(t *testing.T) {
 	to := func(e apitest.Episode, status string) *apitest.Resp {
 		return w.clinician.Do("PATCH", epPath(w.a, e, "/status"), map[string]any{"to": status, "revision": revisionOf(t, w, e.ID)})
 	}
-	grade := func(e apitest.Episode, field string, g int) {
-		w.clinician.Do("PATCH", epPath(w.a, e, ""), map[string]any{field: g, "revision": revisionOf(t, w, e.ID)}).Want(t, http.StatusNoContent)
+	nurse := func(e apitest.Episode, g int) {
+		w.clinician.Do("PATCH", epPath(w.a, e, ""), map[string]any{"nurseAsa": g, "revision": revisionOf(t, w, e.ID)}).Want(t, http.StatusNoContent)
 	}
 	blocked := func(v episodeJSON) string {
 		for _, m := range v.Moves {
@@ -366,10 +366,10 @@ func TestReadyForAdmissionNeedsTheAnaesthetistsASA(t *testing.T) {
 		t.Errorf("refusal = %s", r)
 	}
 	to(e, episode.OnHold).Want(t, http.StatusNoContent) // other moves are fine
-	grade(e, "nurseAsa", 3)                             // the nurse's grade doesn't meet it
+	nurse(e, 3)                                         // the nurse's grade doesn't meet it
 	refused(t, to(e, episode.ReadyForAdmission), http.StatusConflict)
 
-	grade(e, "anaesthetistAsa", 3)
+	grade(t, w, e, 3, "")
 	if b := blocked(getEpisodeJSON(t, w, e)); b != "" {
 		t.Errorf("met, still blocked %q", b)
 	}
@@ -378,20 +378,19 @@ func TestReadyForAdmissionNeedsTheAnaesthetistsASA(t *testing.T) {
 		t.Errorf("status = %s", got.Status)
 	}
 
-	t.Run("the grade cleared again: unmet again", func(t *testing.T) {
+	t.Run("the grade entered in error: unmet again (S44b)", func(t *testing.T) {
 		e := sendForPatient(t, w, highRisk)
 		setStatus(t, w, e, episode.ReadyForPOA)
-		grade(e, "anaesthetistAsa", 4)
-		grade(e, "anaesthetistAsa", 0)
+		markInError(t, w, e, grade(t, w, e, 4, ""), "Wrong patient").Want(t, http.StatusNoContent)
 		refused(t, to(e, episode.ReadyForAdmission), http.StatusConflict)
 	})
 	t.Run("an undo back to Ready for admission is refused too while unmet", func(t *testing.T) {
 		e := sendForPatient(t, w, highRisk)
 		setStatus(t, w, e, episode.ReadyForPOA)
-		grade(e, "anaesthetistAsa", 3)
+		gid := grade(t, w, e, 3, "")
 		to(e, episode.ReadyForAdmission).Want(t, http.StatusNoContent)
 		to(e, episode.OnHold).Want(t, http.StatusNoContent)
-		grade(e, "anaesthetistAsa", 0)
+		markInError(t, w, e, gid, "Wrong patient").Want(t, http.StatusNoContent) // On hold isn't Ready for admission or later
 		// The Undo is offered with why it's refused for now, as the dropdown's move is (verification 1, finding 2).
 		if u := getEpisodeJSON(t, w, e).Undo; u == nil || u.To != episode.ReadyForAdmission || u.Blocked != needsGrade {
 			t.Errorf("undo = %+v", u)

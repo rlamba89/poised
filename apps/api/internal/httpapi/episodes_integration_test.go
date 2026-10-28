@@ -67,7 +67,7 @@ func newClinic(t *testing.T) *clinic {
 type episodeRow struct {
 	Status, Procedure, Anaesthetic, Consultant string // Procedure: its name in the trust's list, or ""
 	Planned, Poa                               string // YYYY-MM-DD, or ""
-	NurseAsa, AnaesthetistAsa                  *int
+	NurseAsa, AnaesthetistAsa                  *int // AnaesthetistAsa: the grade that counts (S44b)
 	Submitted, ReviewCompleted                 *time.Time
 	ReviewCompletedBy                          *uuid.UUID
 }
@@ -76,7 +76,9 @@ func readEpisode(t *testing.T, w *clinic, id uuid.UUID) episodeRow {
 	t.Helper()
 	var e episodeRow
 	err := w.db.QueryRow(t.Context(), `SELECT e.status, coalesce(p.name, ''), coalesce(e.planned_date::text, ''), coalesce(e.poa_date::text, ''),
-		e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa, f.submitted_at, e.review_completed_at, e.review_completed_by
+		e.anaesthetic, e.consultant, e.nurse_asa,
+		(SELECT g.grade FROM anaesthetist_asa_grades g WHERE g.episode_id = e.id AND g.error_at IS NULL ORDER BY g.given_at DESC, g.id DESC LIMIT 1),
+		f.submitted_at, e.review_completed_at, e.review_completed_by
 		FROM episodes e JOIN episode_forms f ON f.episode_id = e.id AND f.kind = 'hq' LEFT JOIN procedures p ON p.id = e.procedure_id
 		WHERE e.id = $1`, id).Scan(
 		&e.Status, &e.Procedure, &e.Planned, &e.Poa, &e.Anaesthetic, &e.Consultant, &e.NurseAsa, &e.AnaesthetistAsa,
@@ -576,17 +578,18 @@ func TestUpdateEpisode(t *testing.T) {
 		t.Fatalf("refusals wrote events: %+v", ev)
 	}
 
-	t.Run("happy path: details and ASA grades, each change with an event", func(t *testing.T) {
+	t.Run("happy path: details and the nurse's ASA grade, each change with an event", func(t *testing.T) {
 		patch(w.clinician, w.a, reviewed, map[string]any{
-			"consultant": " Dr Who ", "nurseAsa": 2, "anaesthetistAsa": 3}).Want(t, http.StatusNoContent)
+			"consultant": " Dr Who ", "nurseAsa": 2}).Want(t, http.StatusNoContent)
 		e := readEpisode(t, w, reviewed.ID)
 		if e.Status != "ready_for_poa" || e.Consultant != "Dr Who" || e.Anaesthetic != before.Anaesthetic ||
-			e.NurseAsa == nil || *e.NurseAsa != 2 || e.AnaesthetistAsa == nil || *e.AnaesthetistAsa != 3 {
+			e.NurseAsa == nil || *e.NurseAsa != 2 || e.AnaesthetistAsa != nil {
 			t.Errorf("episode = %+v", e)
 		}
 		if rev := revisionOf(t, w, reviewed.ID); rev != 1 {
 			t.Errorf("revision %d, want 1", rev)
 		}
+		grade(t, w, reviewed, 3, "") // S44b: the anaesthetist's grade has its own route
 		want := []string{"Nurse ASA grade set to 2", "Anaesthetist ASA grade set to 3"}
 		ev := readEvents(t, w, reviewed.ID)
 		if len(ev) != len(want) {
@@ -654,8 +657,8 @@ func TestUpdateEpisode(t *testing.T) {
 		// Sending them unchanged is no change.
 		patch(w.clinician, w.a, reviewed, map[string]any{"procedureId": "", "plannedDate": "", "anaesthetic": "Spinal"}).Want(t, http.StatusNoContent)
 	})
-	t.Run("happy path: no change, no event; 0 clears a grade", func(t *testing.T) {
-		patch(w.clinician, w.a, reviewed, map[string]any{"nurseAsa": 0, "anaesthetistAsa": 3}).Want(t, http.StatusNoContent)
+	t.Run("happy path: no change, no event; 0 clears the nurse's grade", func(t *testing.T) {
+		patch(w.clinician, w.a, reviewed, map[string]any{"nurseAsa": 0, "anaesthetic": "Spinal"}).Want(t, http.StatusNoContent)
 		e := readEpisode(t, w, reviewed.ID)
 		if e.NurseAsa != nil || e.AnaesthetistAsa == nil || *e.AnaesthetistAsa != 3 {
 			t.Errorf("episode = %+v, want the nurse grade cleared and the anaesthetist's kept", e)
@@ -701,10 +704,10 @@ func TestUpdateEpisodeKeepsAStatusThatJustChanged(t *testing.T) {
 	t.Run("two PATCHes at once from the same revision: the second waits, then is refused", func(t *testing.T) {
 		e := w.fx.Episode(t, w.hq, w.cara)
 		r := meanwhile(t, w.db, `UPDATE episodes SET nurse_asa = 2, revision = revision + 1 WHERE id = $1`, []any{e.ID}, func() *apitest.Resp {
-			return w.clinician.Do("PATCH", epPath(w.a, e, ""), map[string]any{"anaesthetistAsa": 3, "revision": 0})
+			return w.clinician.Do("PATCH", epPath(w.a, e, ""), map[string]any{"consultant": "Dr Who", "revision": 0})
 		})
 		refused(t, r, http.StatusConflict)
-		if got := readEpisode(t, w, e.ID); got.NurseAsa == nil || *got.NurseAsa != 2 || got.AnaesthetistAsa != nil {
+		if got := readEpisode(t, w, e.ID); got.NurseAsa == nil || *got.NurseAsa != 2 || got.Consultant == "Dr Who" {
 			t.Errorf("episode = %+v", got)
 		}
 	})

@@ -320,7 +320,8 @@ func (q *Queries) FinishEpisodeJobs(ctx context.Context, episodeID uuid.NullUUID
 
 const getEpisode = `-- name: GetEpisode :one
 SELECT e.id, e.status, e.procedure_id, coalesce(pr.name, '')::text AS procedure, e.planned_date, e.poa_date,
-       e.anaesthetic, e.consultant, e.nurse_asa, e.anaesthetist_asa,
+       e.anaesthetic, e.consultant, e.nurse_asa,
+       ag.grade AS anaesthetist_asa,
        f.submitted_at AS patient_submitted_at, e.review_completed_at, e.created_at, f.version_id, e.hospital_number,
        e.invited_at, e.reminders_sent, e.not_responding_at, -- the follow-up (S16)
        e.revision, e.admitted_at, e.discharged_at, e.cancel_reason, -- S20
@@ -345,6 +346,9 @@ LEFT JOIN procedures pr ON pr.id = e.procedure_id
 LEFT JOIN users reviewer ON reviewer.id = e.review_completed_by
 LEFT JOIN users submitter ON submitter.id = f.submitted_by
 LEFT JOIN users checker ON checker.id = e.triage_checked_by
+LEFT JOIN anaesthetist_asa_grades ag ON ag.id = ( -- S44b: the anaesthetist's ASA grade that counts: the latest not entered in error
+    SELECT g.id FROM anaesthetist_asa_grades g WHERE g.episode_id = e.id AND g.error_at IS NULL
+    ORDER BY g.given_at DESC, g.id DESC LIMIT 1)
 WHERE e.id = $1 AND e.hospital_id = $2
 `
 
@@ -1096,7 +1100,7 @@ func (q *Queries) ListVersionChapters(ctx context.Context, versionID uuid.UUID) 
 
 const lockEpisodeStatus = `-- name: LockEpisodeStatus :one
 SELECT e.status, e.revision, e.admitted_at, e.discharged_at, e.cancel_reason, e.archived_from, h.timezone,
-       e.anaesthetist_asa_required_by, e.anaesthetist_asa
+       e.anaesthetist_asa_required_by
 FROM episodes e JOIN hospitals h ON h.id = e.hospital_id
 WHERE e.id = $1 FOR UPDATE OF e
 `
@@ -1110,14 +1114,15 @@ type LockEpisodeStatusRow struct {
 	ArchivedFrom              *string     `json:"archivedFrom"`
 	Timezone                  *string     `json:"timezone"`
 	AnaesthetistAsaRequiredBy *string     `json:"anaesthetistAsaRequiredBy"`
-	AnaesthetistAsa           *int32      `json:"anaesthetistAsa"`
 }
 
 // Taken before a status change (S20), so two changes at once are applied one after the other,
 // each checking the revision and the table against the status as it is.
 // The hospital's time zone is for the dates' "not in the future". archived_from is un-archive's
 // target (S22); the cancel reason is kept when a cancelled episode is archived. S43: a rule's
-// requirement of the anaesthetist's ASA grade before Ready for admission, and the grade.
+// requirement of the anaesthetist's ASA grade before Ready for admission. S44b: the grade that counts
+// is read after the lock, by CountingAnaesthetistGrade (a statement of its own sees the grades as
+// they are once the lock is held; the grade routes hold this lock while they add or mark one).
 func (q *Queries) LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpisodeStatusRow, error) {
 	row := q.db.QueryRow(ctx, lockEpisodeStatus, id)
 	var i LockEpisodeStatusRow
@@ -1130,7 +1135,6 @@ func (q *Queries) LockEpisodeStatus(ctx context.Context, id uuid.UUID) (LockEpis
 		&i.ArchivedFrom,
 		&i.Timezone,
 		&i.AnaesthetistAsaRequiredBy,
-		&i.AnaesthetistAsa,
 	)
 	return i, err
 }
@@ -1469,21 +1473,20 @@ const updateEpisode = `-- name: UpdateEpisode :execrows
 UPDATE episodes
 SET procedure_id = $1, planned_date = $2,
     poa_date = $3, anaesthetic = $4,
-    consultant = $5, nurse_asa = $6, anaesthetist_asa = $7,
+    consultant = $5, nurse_asa = $6,
     revision = revision + 1
-WHERE id = $8 AND revision = $9
+WHERE id = $7 AND revision = $8
 `
 
 type UpdateEpisodeParams struct {
-	ProcedureID     uuid.NullUUID `json:"procedureId"`
-	PlannedDate     pgtype.Date   `json:"plannedDate"`
-	PoaDate         pgtype.Date   `json:"poaDate"`
-	Anaesthetic     string        `json:"anaesthetic"`
-	Consultant      string        `json:"consultant"`
-	NurseAsa        *int32        `json:"nurseAsa"`
-	AnaesthetistAsa *int32        `json:"anaesthetistAsa"`
-	ID              uuid.UUID     `json:"id"`
-	Revision        int32         `json:"revision"`
+	ProcedureID uuid.NullUUID `json:"procedureId"`
+	PlannedDate pgtype.Date   `json:"plannedDate"`
+	PoaDate     pgtype.Date   `json:"poaDate"`
+	Anaesthetic string        `json:"anaesthetic"`
+	Consultant  string        `json:"consultant"`
+	NurseAsa    *int32        `json:"nurseAsa"`
+	ID          uuid.UUID     `json:"id"`
+	Revision    int32         `json:"revision"`
 }
 
 // The details staff edit (the status has its own routes, S20). Changes nothing if the episode's
@@ -1497,7 +1500,6 @@ func (q *Queries) UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (i
 		arg.Anaesthetic,
 		arg.Consultant,
 		arg.NurseAsa,
-		arg.AnaesthetistAsa,
 		arg.ID,
 		arg.Revision,
 	)
