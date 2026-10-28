@@ -85,4 +85,16 @@ describe("answerSaver", () => {
     await saver.save("stale");
     expect(saver.confirmed).toBe("loaded");
   });
+
+  // S44c (answer 8): the form's own clearing save is marked, so Go doesn't count it against Start fresh.
+  it("passes on whether a save is the form's own clearing", async () => {
+    const seen: boolean[] = [];
+    const saver = answerSaver<string>(0, async (_b, revision, cleared) => {
+      seen.push(cleared);
+      return { revision: revision + 1 };
+    });
+    await saver.save("typed");
+    await saver.save("cleared", true);
+    expect(seen).toEqual([false, true]);
+  });
 });

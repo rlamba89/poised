@@ -1,0 +1,36 @@
+{
+  "description": "Made-up HQ for J3b (S44c verification 3, F4): a BMI (height and weight typed) whose value shows a follow-up on the next page, so correcting the weight 120 \u2192 125 (Backspace, then 5) must keep the follow-up's answer.",
+  "chapters": [
+    {
+      "name": "Weight",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_w",
+            "title": "Your measurements",
+            "elements": [
+              {
+                "type": "bmi",
+                "name": "q_e2e_bmi",
+                "title": "BMI"
+              }
+            ]
+          },
+          {
+            "name": "p_f",
+            "title": "About your weight",
+            "elements": [
+              {
+                "type": "comment",
+                "name": "q_e2e_weight_why",
+                "title": "Tell us about your weight",
+                "visibleIf": "{q_e2e_bmi.bmi} > 35"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

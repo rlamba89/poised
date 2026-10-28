@@ -1,0 +1,96 @@
+{
+  "description": "Made-up HQ for J3b (S44c): a chain of follow-ups (B shows A, A shows C) and a Question Set shown by A, so a patient who flips B back to No loses A, C and the set's answers at once.",
+  "chapters": [
+    {
+      "name": "Breathing",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_b",
+            "title": "Breathing",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_e2e_hb",
+                "title": "Do you get short of breath?",
+                "yesNo": true,
+                "colCount": 0,
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "radiogroup",
+                "name": "q_e2e_ha",
+                "title": "Is it worse at night?",
+                "yesNo": true,
+                "colCount": 0,
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ],
+                "visibleIf": "{q_e2e_hb} = 'o_yes'"
+              },
+              {
+                "type": "text",
+                "name": "q_e2e_hc",
+                "title": "What wakes you?",
+                "isRequired": true,
+                "visibleIf": "{q_e2e_ha} = 'o_yes'"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Pillows",
+      "audience": "patient",
+      "content": {
+        "chapterVisibleIf": "{q_e2e_ha} = 'o_yes'",
+        "pages": [
+          {
+            "name": "p_n",
+            "title": "Pillows",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "q_e2e_hd",
+                "title": "Do you use more than two pillows?",
+                "yesNo": true,
+                "colCount": 0,
+                "isRequired": true,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

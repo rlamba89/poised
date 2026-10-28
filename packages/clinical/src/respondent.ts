@@ -1,6 +1,6 @@
 // Filling in an episode's HQ (plan-workflow.md Steps 3–4): the patient on their link, and the
 // clinician validating. The same rules decide which Question Sets are shown and when one is done.
-import { settings, type Question } from "survey-core";
+import { settings, type Question, type SurveyModel } from "survey-core";
 import { asaRank, suggestAsa, type SuggestedAsa } from "./asa";
 import { namesIn, referencesIn, SUGGESTED_ASA, type ChapterJson } from "./doc";
 import { computeOutputs, formatAnswer, isChoiceQuestion, type ProducedOutput, type ScoreResult } from "./outputs";
@@ -206,6 +206,116 @@ function shownAnswersOnce<T extends { id: string; name?: string; content: Chapte
     out[s.id] = Object.fromEntries(
       Object.entries(answers[s.id] ?? {}).filter(([k]) => !hidden.has(k) && !(k.endsWith(suffix) && hidden.has(k.slice(0, -suffix.length)))),
     );
+  }
+  return out;
+}
+
+/**
+ * The questions the patient's form showed for these answers (S44c, Rahul 28 Oct): for each patient
+ * Question Set shown, the keys of its questions a condition doesn't hide (nor their page or group).
+ * A set the form hid has none, and a clinician set isn't the patient's. Given the answers the patient
+ * sent, it's what their form showed when they sent (a send keeps only those, S44a), so a question it
+ * didn't show gets no "Patient answered" line: the clinician answers it.
+ */
+export function shownToPatient<T extends { id: string; name?: string; content: ChapterJson; audience?: string }>(
+  sets: T[], answers: Record<string, Answers | undefined>, patient: SamplePatient,
+): Map<string, Set<string>> {
+  registerClinicalProperties();
+  const mine = sets.filter((s) => !s.audience || s.audience === "patient");
+  const { shown, earlier } = hqSets(mine, answers, "patient", patient);
+  const out = new Map<string, Set<string>>();
+  for (const s of shown) {
+    const m = modelFor(s.content, "patient", patient, earlier.get(s.id));
+    m.data = answers[s.id] ?? {};
+    out.set(s.id, new Set(m.getAllQuestions(false, false, false).filter((q) => q.isVisible && q.isParentVisible).map((q) => q.name)));
+    m.dispose();
+  }
+  return out;
+}
+
+/** The questions a form shows now: not hidden by a condition, nor on a hidden page or group. */
+function shownQuestionsOf(model: SurveyModel): Set<string> {
+  return new Set(model.getAllQuestions(false, false, false).filter((q) => q.getType() !== "expression" && q.isVisible && q.isParentVisible).map((q) => q.name));
+}
+
+/**
+ * Choices clear hidden answers at once (verification 3, F4): a pick is final, and a chain must never
+ * show a follow-up through a hidden answer. Every other change (text, numbers, a BMI's height and
+ * weight, a Calculation they feed, lists) waits for the save, after the pause in typing.
+ */
+const CHOICES = new Set(["radiogroup", "checkbox", "dropdown", "tagbox", "imagepicker", "boolean", "rating", "ranking"]);
+const isChoice = (q: { getType(): string } | null | undefined) => !!q && CHOICES.has(q.getType());
+
+/**
+ * Loads a set's answers into the patient's form, which from then on clears an answer once a
+ * condition hides its question, page or group (S44c, Rahul 28 Oct), so what's on screen is what's
+ * saved; each cleared answer is a change (onValueChanged), which the form saves.
+ * - Only answers to questions shown since the last check go, repeated while a cleared answer hides
+ *   more (a chain). So loading clears nothing (verification 1, F1): an answer hidden when the set
+ *   opens (e.g. a pre-filled one) is kept until the set is finished (SurveyJS's default clears
+ *   hidden answers on "Finish this section"), and a send drops it anyway (shownAnswers, S44a).
+ * - A choice clears at once; any other change only at the save, after the pause in typing (`atSave`;
+ *   verifications 2–3, F3/F4): a number typed 20 → 2 → 25, or a weight 120 → 12 → 125, hides a
+ *   follow-up only for an instant, and mustn't wipe its answer. A question such a change shows is
+ *   remembered as shown, so hiding it again before the save still clears it.
+ */
+export function loadForPatient(model: SurveyModel, data: Answers): { atSave(): void } {
+  model.data = data;
+  let shown = shownQuestionsOf(model);
+  let clearing = false;
+  const clear = () => {
+    if (clearing) return;
+    clearing = true;
+    try {
+      for (let i = 0; i < 50; i++) {
+        const now = shownQuestionsOf(model);
+        const gone = [...shown].filter((n) => !now.has(n)).map((n) => model.getQuestionByName(n)).filter((q) => q && !q.isEmpty());
+        shown = now;
+        if (!gone.length) break;
+        for (const q of gone) q.clearValue();
+      }
+    } finally {
+      clearing = false;
+    }
+  };
+  model.onValueChanged.add((_, o) => {
+    if (clearing) return;
+    if (isChoice(o.question ?? model.getQuestionByName(o.name))) clear();
+    else for (const n of shownQuestionsOf(model)) shown.add(n);
+  });
+  return { atSave: clear };
+}
+
+/**
+ * The other Question Sets' answers a change in one set hides (S44c), to clear and save: answers the
+ * form showed before the change (`before`, what the server had) that it no longer shows after it
+ * (`after`), e.g. a follow-up set whose condition the change made false, and a set or question that
+ * set's answers showed. By set id, each set's answers without them; a set losing nothing isn't
+ * listed, nor `changed` (its own form clears its answers, loadForPatient). An answer already
+ * hidden before (e.g. pre-filled into a hidden question) is left for the send to drop.
+ */
+export function clearedAnswers<T extends { id: string; name?: string; content: ChapterJson }>(
+  sets: T[], before: Record<string, Answers | undefined>, after: Record<string, Answers | undefined>, patient: SamplePatient, changed: string,
+): Record<string, Answers> {
+  // Building every set's survey isn't free, and the form saves often (each pause in typing): only
+  // when another set mentions an answer that changed (its condition, a score) can it lose anything.
+  const a = before[changed] ?? {};
+  const b = after[changed] ?? {};
+  const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => !sameAnswer(a[k], b[k])).map((k) => k.split(settings.commentSuffix)[0]);
+  const others = sets.filter((s) => s.id !== changed).map((s) => JSON.stringify(s.content));
+  const mentioned = keys.some((k) => {
+    const word = new RegExp(`\\b${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
+    return others.some((json) => word.test(json));
+  });
+  if (!mentioned) return {};
+  const was = shownAnswers(sets, before, "patient", patient);
+  const now = shownAnswers(sets, after, "patient", patient);
+  const out: Record<string, Answers> = {};
+  for (const s of sets) {
+    if (s.id === changed) continue;
+    const gone = Object.keys(was[s.id] ?? {}).filter((k) => !isEmpty(was[s.id][k]) && !(k in (now[s.id] ?? {})));
+    if (!gone.length) continue;
+    out[s.id] = Object.fromEntries(Object.entries(after[s.id] ?? {}).filter(([k]) => !gone.includes(k)));
   }
   return out;
 }

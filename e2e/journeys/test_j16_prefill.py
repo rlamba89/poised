@@ -4,7 +4,7 @@ the seeded Demo follow-up HQ, which asks some of the same questions. On their ph
 Set opens on a card saying how many answers were filled in from their earlier questionnaire; they
 choose "Everything is still correct" in one set (it jumps to the first question that wasn't filled)
 and "Check each answer" in the other, see the marker under each pre-filled answer (gone once they
-change it, and nothing filled in again after a reload), answer the rest and send it. The buttons
+change it, and nothing filled in again after a reload; one hidden by a condition is cleared, S44c), answer the rest and send it. The buttons
 pressed are recorded. Then the clinician's half (S26, PRE-04): Cara, validating the set, sees where
 each pre-filled answer came from and how it matched, the one the patient changed marked "Changed by
 patient" with the pre-filled answer, and the button the patient pressed; the POA Summary shows the
@@ -106,13 +106,16 @@ def test_a_returning_patient_confirms_their_pre_filled_answers_on_a_phone(phone:
     # Changing a pre-filled answer takes its marker away.
     choose(patient, "Have you ever been sick, or felt very sick, after an anaesthetic?", "No")
     expect(markers).to_have_count(4)
-    # A pre-filled answer its question's condition hides isn't lost: it's back when it shows again.
+    # A pre-filled answer its question's condition hides is cleared at once (S44c, Rahul 28 Oct:
+    # what's on screen is what's saved): it's back empty when it shows again, and typed again here.
     details = patient.get_by_label("What happened with your anaesthetic?")
     choose(patient, "Have you ever had a problem with an anaesthetic?", "No")
     expect(details).to_be_hidden()
     expect(markers).to_have_count(2)
     choose(patient, "Have you ever had a problem with an anaesthetic?", "Yes")
-    expect(details).to_have_value("I was sick all night")
+    expect(details).to_have_value("")
+    expect(markers).to_have_count(3)
+    details.fill("I was sick all night")
     expect(markers).to_have_count(4)
     # Leaving and coming back: nothing is filled in again over the change, and no card.
     patient.get_by_role("button", name="All sections").click()

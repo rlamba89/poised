@@ -1,0 +1,31 @@
+{
+  "description": "Made-up HQ for J3b (S44c verification 2, F3): a typed number whose answer shows a follow-up, so editing 20 \u2192 25 (Backspace, then 5) must keep the follow-up's answer.",
+  "chapters": [
+    {
+      "name": "Alcohol",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_u",
+            "title": "Alcohol",
+            "elements": [
+              {
+                "type": "text",
+                "inputType": "number",
+                "name": "q_e2e_units",
+                "title": "How many units of alcohol a week?"
+              },
+              {
+                "type": "comment",
+                "name": "q_e2e_why",
+                "title": "Tell us more about your drinking",
+                "visibleIf": "{q_e2e_units} > 14"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

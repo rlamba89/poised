@@ -13,16 +13,16 @@ export type SaveResult = { ok: true; revision: number } | { ok: false; conflict:
  * `confirmed` is what the server has: the loaded answers, then each body it accepts. Compare with it,
  * not with what's on screen, to decide whether there's anything to save (S02a verify.md finding 1).
  */
-export function answerSaver<T>(start: number, send: (body: T, revision: number) => Promise<{ revision: number }>, loaded?: T) {
+export function answerSaver<T>(start: number, send: (body: T, revision: number, cleared: boolean) => Promise<{ revision: number }>, loaded?: T) {
   let revision = start;
   let confirmed = loaded;
   let conflict: string | null = null;
   let queue: Promise<unknown> = Promise.resolve();
 
-  const run = async (body: T): Promise<SaveResult> => {
+  const run = async (body: T, cleared: boolean): Promise<SaveResult> => {
     if (conflict !== null) return { ok: false, conflict: true, message: conflict };
     try {
-      revision = (await send(body, revision)).revision;
+      revision = (await send(body, revision, cleared)).revision;
       confirmed = body;
       return { ok: true, revision };
     } catch (e) {
@@ -33,9 +33,12 @@ export function answerSaver<T>(start: number, send: (body: T, revision: number) 
   };
 
   return {
-    /** Sends `body` once every earlier save has finished. */
-    save(body: T): Promise<SaveResult> {
-      const result = queue.then(() => run(body));
+    /**
+     * Sends `body` once every earlier save has finished. `cleared`: the patient's form's own save
+     * that only removes answers another set's change hid (S44c, answer 8).
+     */
+    save(body: T, cleared = false): Promise<SaveResult> {
+      const result = queue.then(() => run(body, cleared));
       queue = result;
       return result;
     },

@@ -16,6 +16,12 @@
 // A set counts as complete only when the server's answers are complete and its draft is saved
 // (isSetReadyToSend), so a change whose save failed keeps "Send my answers" disabled.
 //
+// Hidden answers are cleared (S44c, Rahul 28 Oct): an answer whose question a condition hides (the
+// question, its page or group: cleared in the open set, after a choice at once and after typing
+// at the next autosave, loadForPatient; another Question Set the change
+// hides, or questions there: clearedAnswers, saved here) goes at once, so the screen and what's
+// stored always agree. The send still keeps only what the form showed (S44a), as the backstop.
+//
 // Pre-filled answers (S25): Go fills a set from the patient's earlier HQs when it's first opened.
 // Such a set opens on a card ("We've filled in 23 answers…") with Check each answer and Everything
 // is still correct; the button is recorded, and until one is pressed the set isn't complete. Each
@@ -36,7 +42,7 @@ import "@/features/video/VideoQuestion"; // draws Video elements (S34)
 import "@/features/information/InformationQuestion"; // draws Information, cleaned (S35)
 import "survey-core/survey-core.css";
 import {
-  answerSaver, estimatedMinutes, hqSets, estimateText, isSetReadyToSend, modelFor, registerClinicalProperties, sameAnswer, type Answers, type AnswerSaver, type Earlier,
+  answerSaver, clearedAnswers, estimatedMinutes, loadForPatient, hqSets, estimateText, isSetReadyToSend, modelFor, registerClinicalProperties, sameAnswer, type Answers, type AnswerSaver, type Earlier,
   type ChapterJson, type SamplePatient,
 } from "@poised/clinical";
 import { ApiError, api } from "@/lib/api";
@@ -102,6 +108,10 @@ export default function PatientHQ({ path, onBehalf }: Props) {
   // One saver per set for the life of the page (until Reload): its revision and what the server
   // has confirmed survive closing and reopening the set.
   const savers = useRef(new Map<string, AnswerSaver<Answers>>());
+  // What the server had at the last save checked for answers it hides elsewhere (S44c).
+  const lastSaved = useRef<Record<string, Answers>>({});
+  // A save of a set cleared by another set's change has finished: draw again.
+  const [, setCleared] = useState(0);
   // The opening cards' buttons pressed since the HQ loaded (Go has recorded them).
   const [choices, setChoices] = useState<Record<string, PrefillChoice>>({});
 
@@ -139,6 +149,7 @@ export default function PatientHQ({ path, onBehalf }: Props) {
       .catch(endedBy())
       .then((h) => {
         savers.current = new Map();
+        lastSaved.current = h.answers;
         setDrafts({});
         setChoices({});
         setHq(h);
@@ -216,8 +227,8 @@ export default function PatientHQ({ path, onBehalf }: Props) {
     if (!saver) {
       saver = answerSaver<Answers>(
         hq.revisions[id] ?? 0,
-        (data, revision) =>
-          api<{ revision: number }>(`${path}/answers/${id}`, { method: "PUT", body: JSON.stringify({ data, revision }) })
+        (data, revision, cleared) =>
+          api<{ revision: number }>(`${path}/answers/${id}`, { method: "PUT", body: JSON.stringify({ data, revision, ...(cleared ? { cleared } : {}) }) })
             .catch(endedBy({ unsavedSet: hq.chapters.find((c) => c.id === id)?.name ?? "a section" })),
         hq.answers[id] ?? {},
       );
@@ -226,8 +237,28 @@ export default function PatientHQ({ path, onBehalf }: Props) {
     return saver;
   };
   // What the server has for each set.
-  const saved: Record<string, Answers> = { ...hq.answers };
-  for (const [id, saver] of savers.current) saved[id] = saver.confirmed ?? {};
+  const savedNow = () => {
+    const out: Record<string, Answers> = { ...hq.answers };
+    for (const [id, saver] of savers.current) out[id] = saver.confirmed ?? {};
+    return out;
+  };
+  const saved = savedNow();
+  // After a set's save (S44c): other sets' answers the change hid are cleared, on screen and saved,
+  // e.g. "Do you snore?" back to No clears the snoring follow-up set's answers.
+  const clearHidden = (changed: string) => {
+    const now = savedNow();
+    const clears = clearedAnswers(hq.chapters, lastSaved.current, now, vars, changed);
+    lastSaved.current = { ...now, ...clears };
+    for (const [id, answers] of Object.entries(clears)) {
+      setDraft(id, answers);
+      // Marked as the form's own clearing, so a pre-filled set it touches can still start fresh (answer 8).
+      void saverFor(id).save(answers, true).then((r) => {
+        if (!r.ok && r.conflict) setConflict(r.message);
+        else if (!r.ok) setError(r.message);
+        setCleared((n) => n + 1);
+      });
+    }
+  };
 
   // The sets shown, and the earlier sets' answers each gets (S38), from what the server has; worked
   // out again only when that changes.
@@ -331,6 +362,7 @@ export default function PatientHQ({ path, onBehalf }: Props) {
             onChoose={(choice) => choose(open.id, choice)}
             onNextSet={() => openNext(open.id)}
             onChange={(data) => setDraft(open.id, data)}
+            onSaved={() => clearHidden(open.id)}
             onConflict={setConflict}
             onError={setError}
             onClose={() => setOpenId(null)}
@@ -463,6 +495,8 @@ type SetFormProps = {
   /** The earlier sets' answers, for a score that uses them (S38). */
   earlier?: Earlier;
   onChange: (data: Answers) => void;
+  /** After each save the server accepted (S44c: answers it hides in other sets are cleared). */
+  onSaved: () => void;
   /** Called with the 409's message; the page then shows it with Reload instead of the set. */
   onConflict: (message: string) => void;
   onError: (message: string) => void;
@@ -480,7 +514,7 @@ type SetFormProps = {
 };
 
 /** One Question Set in the patient view. Answers save shortly after each change. */
-function SetForm({ set, data, saver, vars, earlier, onChange, onConflict, onError, onClose, flushRef, prefill, whose, onChoose, onNextSet }: SetFormProps) {
+function SetForm({ set, data, saver, vars, earlier, onChange, onSaved, onConflict, onError, onClose, flushRef, prefill, whose, onChoose, onNextSet }: SetFormProps) {
   // "Not saved" while what's on screen differs from what the server has (e.g. after a failed save).
   const [status, setStatus] = useState<"saving" | "saved" | "unsaved">(() => (sameAnswer(data, saver.confirmed ?? {}) ? "saved" : "unsaved"));
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -488,7 +522,9 @@ function SetForm({ set, data, saver, vars, earlier, onChange, onConflict, onErro
   const pending = useRef(false);
   const latest = useRef(data);
 
-  const model = useMemo(() => {
+  // The model, and what clears answers a condition hides (S44c): built together, so the clearing
+  // always belongs to the model shown (React may build the memo twice in development).
+  const { model, clearing } = useMemo(() => {
     const m: Model = modelFor(set.content, "patient", vars, earlier);
     showUnits(m);
     m.showPageTitles = false;
@@ -496,11 +532,13 @@ function SetForm({ set, data, saver, vars, earlier, onChange, onConflict, onErro
     // A text answer counts as it's typed, not only when its box loses the focus, so "save now"
     // (Sign out, leaving the on-behalf form) always has it (S14 verification 2).
     m.textUpdateMode = "onTyping";
-    m.data = data;
+    // Loading clears nothing (verification 1, F1); an answer a condition hides later is cleared,
+    // after a choice at once, after typing at the next save (persist; verification 2, F3).
+    const clears = loadForPatient(m, data);
     // The marker (PRE-03) under each question still holding its pre-filled answer. Added before the
     // survey first draws, so no question is missed (as the clinician's corrections are).
     if (prefill) showPrefillMarkers(m, prefill, whose);
-    return m;
+    return { model: m, clearing: clears };
     // Built once per set: answers then live in the model.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [set]);
@@ -546,8 +584,17 @@ function SetForm({ set, data, saver, vars, earlier, onChange, onConflict, onErro
   }, [card, focusOn, model]);
 
 
+  // The latest onSaved, so persist stays the same function across renders.
+  const onSavedRef = useRef(onSaved);
+  onSavedRef.current = onSaved;
+
   /** Saves the latest answers now; whether the server has them, and whether it refused them as stale. */
   const persist = useCallback(async () => {
+    // S44c: answers a typed change hid go here, after the pause in typing rather than on each key
+    // (verification 2, F3: a number typed 20 → 2 → 25 mustn't wipe the follow-up it shows).
+    // Clearing is a change, so the timer it starts is stopped.
+    clearing.atSave();
+    latest.current = model.data;
     clearTimeout(timer.current);
     pending.current = false;
     // Nothing to save if the server already has these answers: a tab left open elsewhere mustn't
@@ -560,10 +607,11 @@ function SetForm({ set, data, saver, vars, earlier, onChange, onConflict, onErro
     setStatus("saving");
     const result = await saver.save(answers);
     setStatus(result.ok ? "saved" : "unsaved");
+    if (result.ok) onSavedRef.current();
     if (!result.ok && result.conflict) onConflict(result.message);
     else if (!result.ok) onError(result.message);
     return { ok: result.ok, conflict: !result.ok && result.conflict };
-  }, [saver, onConflict, onError]);
+  }, [saver, model, clearing, onConflict, onError]);
 
   /** Saves the latest answers; false if the answers changed on another device. */
   const save = useCallback(async () => {
@@ -614,9 +662,12 @@ function SetForm({ set, data, saver, vars, earlier, onChange, onConflict, onErro
   useEffect(
     () => () => {
       clearTimeout(timer.current);
-      if (pending.current) void saver.save(latest.current);
+      if (pending.current) {
+        clearing.atSave();
+        void saver.save(model.data);
+      }
     },
-    [saver],
+    [saver, clearing],
   );
 
   const back = async () => {
