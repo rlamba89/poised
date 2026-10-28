@@ -10,3 +10,8 @@ Asked by Claude in chat on 28 Oct 2026, after the S44a–S44b run, from the open
 6. **Re-adding the anaesthetist's grade that already counts** (e.g. a second anaesthetist agreeing): **allow it** (as built in S44b: "confirmed as 3", with a reason).
 
 **How Rahul wants questions asked** (28 Oct): in simple English, short, with a little context (what the thing is, and an everyday example), then one simple question. No dense or technical wording.
+
+## Asked by the conductor, 28 Oct (after verification 3)
+
+7. **One more round for S44c** (test report 5, verification 4) to fix verification 3's F4 (a typed weight or a score still wipes a follow-up while editing) and F5 (a "score isn't in a band" rule on a deleted score always passes, and Publish is silent): **yes.**
+8. **When the app clears a pre-filled (copied) answer on its own** because another answer hid its question, **"Start fresh" must still work for that set**: a clear made by the app doesn't count as the patient changing the set (verification 3, N8).
