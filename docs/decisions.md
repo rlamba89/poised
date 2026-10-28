@@ -15,6 +15,7 @@ Related:
 
 - **Simplest thing that works.** He pushes back on extra services, steps and abstractions. Explain the cost and the reason up front, especially for managed cloud services.
 - **Simple English, short and to the point** (25 Oct). No essays. Explain and ask in plain words, without internal names or jargon.
+  - **Questions (28 Oct):** give a little context first (what the thing is, with an everyday example such as "the patient answers *Do you smoke?* No"), then one simple question with short options. No dense or technical wording; if he asks "what is this?", the question was too dense.
 - **Don't reopen settled decisions** (25 Oct). Check §2 first; if something was decided, follow it and don't ask again. Only raise it if Rahul brings it up.
 - **Ask, with a recommendation.** For stack and product choices, give 2–4 options with the recommended one first, then wait. Don't decide alone. But fix routine problems yourself (e.g. "you can fix the docker yourself and then start").
 - **Check the official docs before planning** (SurveyJS, AWS, Amplify…). Several plans changed because the docs said otherwise: Amplify supports Next.js ≤ 15 only; Cognito has no native magic link; Aurora Serverless takes about 15 s to wake.
@@ -31,6 +32,17 @@ Related:
 ## 2. Decision log (newest first)
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
+
+### 28 Oct 2026: C6's last open items answered (Rahul, asked by Claude in chat after the S44a–S44b run)
+
+Every item is in [S44c's answers](sessions/S44c-c6-last-answers/answers.md); built in S44c, before S45 (brief written 28 Oct).
+- **The patient's form clears an answer as soon as its question is hidden** (SurveyJS "clear on hide"), so the screen and what's stored always agree, even in a chain (B shows A, A shows C; B back to No). Rahul accepted that a patient who flips a question loses the follow-up's answers. S44a's server-side "keep only what the form showed" stays as the backstop.
+- **A held auto-triage message stays held after Undo or un-archive** back to the auto-triaged status, so Checked still tells the patient. A status set by hand still ends the wait (S44a), so nothing goes twice.
+- **A High STOP-Bang holds back the default "Low risk" auto-triage** (the platform defaults), so a clinician sees a patient with likely sleep apnoea first. Only new HQs, and new versions of HQs without rules, get it; authors can change it.
+- **STOP-Bang is Incomplete when the patient's sex is "Other"**, as for "Not known" (fails safe). *Supersedes* S38's build-notes decision 4 ("Other" gets no male point and a definite band).
+- **A question the patient never saw has no "patient answered" line** on Validate or the POA Summary. Rahul: it's obvious the clinician answers it, and nothing goes back to the patient; if it isn't answered, the review can't go forward (S44's check).
+- **Re-adding the anaesthetist's grade that already counts is allowed** (as built in S44b: "confirmed as 3", with a reason).
+- **S44c also takes four small fixes** from S44a's verifications 2–3 (`TouchVersion` only on a draft, and three clearer refusal messages).
 
 ### 27 Oct 2026: S44b, the anaesthetist's ASA grade as a history (builder, automatic run; test report 1: 18 of 19, F1 cosmetic fixed; tested 28 Oct, test report 2 all passed; verification 1 needed fixes (the reason rule, a delete guard), done; test report 3 all passed; verified 28 Oct, verification 2)
 
