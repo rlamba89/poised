@@ -20,6 +20,10 @@ func TestDefaultsPassTheirOwnCheck(t *testing.T) {
 	if low.When.ASA.Op != "<=" || low.When.ASA.Grade != 2 || !low.When.NoRedFlags || low.Then[0].Kind != AutoTriage || low.Then[0].Target != "ready_for_admission" {
 		t.Errorf("low risk = %+v", low)
 	}
+	// S44c (Rahul, 28 Oct): a High STOP-Bang holds back the Low risk auto-triage.
+	if nb := low.When.NotBand; nb == nil || nb.Score != "stopbang_score" || len(nb.Bands) != 1 || nb.Bands[0] != "b_high" {
+		t.Errorf("low risk's notBand = %+v, want STOP-Bang isn't High risk", nb)
+	}
 	if high.When.ASA.Op != ">=" || high.When.ASA.Grade != 3 || len(high.Then) != 3 ||
 		high.Then[0].Title != "Book anaesthetic review" || high.Then[0].Team != "anaesthetist" || high.Then[2].Kind != RequireAnaesthetistASA {
 		t.Errorf("high risk = %+v", high)
@@ -78,6 +82,10 @@ func TestCheckRefusesABadShapeInPlainWords(t *testing.T) {
 			rule(m, 0)["then"] = []any{map[string]any{"kind": "suggestStatus", "status": "cancelled"}}
 		}), "can suggest"},
 		{"a band with no bands", variant(t, func(m map[string]any) { when(m, 0)["band"] = map[string]any{"score": "q_bmi", "bands": []any{}} }), "the score and at least one of its bands"},
+		{"not in a band, with no bands", variant(t, func(m map[string]any) {
+			when(m, 0)["notBand"] = map[string]any{"score": "stopbang_score", "bands": []any{}}
+		}), "the score and at least one of its bands"},
+		{"not in a band, with no score", variant(t, func(m map[string]any) { when(m, 0)["notBand"] = map[string]any{"score": " ", "bands": []any{"b_high"}} }), "the score and at least one of its bands"},
 		{"a code with no code", variant(t, func(m map[string]any) {
 			when(m, 0)["code"] = map[string]any{"set": "ICD10", "code": "", "display": "x"}
 		}), "choose the code"},
@@ -110,6 +118,7 @@ func TestCheckKeepsEveryKindOfWhenAndAction(t *testing.T) {
 	raw := variant(t, func(m map[string]any) {
 		w := when(m, 0)
 		w["band"] = map[string]any{"score": "q_stopbang", "bands": []any{"b_high"}}
+		w["notBand"] = map[string]any{"score": "q_other", "bands": []any{"b_low"}}
 		w["code"] = map[string]any{"set": "ICD10", "code": "I50.9", "display": "Heart failure"}
 		w["procedures"] = []any{proc.String()}
 		rule(m, 0)["then"] = []any{
@@ -127,7 +136,7 @@ func TestCheckKeepsEveryKindOfWhenAndAction(t *testing.T) {
 		t.Fatal(problem)
 	}
 	r := set.Rules[0]
-	if r.When.Band.Score != "q_stopbang" || r.When.Code.Code != "I50.9" || r.When.Procedures[0] != proc {
+	if r.When.Band.Score != "q_stopbang" || r.When.NotBand == nil || r.When.NotBand.Score != "q_other" || r.When.Code.Code != "I50.9" || r.When.Procedures[0] != proc {
 		t.Errorf("when = %+v", r.When)
 	}
 	if r.Then[2].Name != "Sleep apnoea" || r.Then[3].Title != "Call the patient" {

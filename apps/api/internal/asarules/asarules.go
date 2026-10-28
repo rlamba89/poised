@@ -78,6 +78,7 @@ type When struct {
 	ASA        *ASA        `json:"asa"`
 	NoRedFlags bool        `json:"noRedFlags,omitempty"`
 	Band       *Band       `json:"band,omitempty"`
+	NotBand    *Band       `json:"notBand,omitempty"` // S44c: the score is in none of these bands (or the HQ hasn't it)
 	Code       *Code       `json:"code,omitempty"`
 	Procedures []uuid.UUID `json:"procedures,omitempty"` // the episode's procedure is one of these
 }
@@ -198,6 +199,11 @@ func Check(raw json.RawMessage) (RuleSet, string) {
 	return out, ""
 }
 
+// badBand reports whether a band test (band or notBand) is set but incomplete.
+func badBand(b *Band) bool {
+	return b != nil && (strings.TrimSpace(b.Score) == "" || len(b.Bands) == 0 || slices.Contains(b.Bands, ""))
+}
+
 func checkRule(r Rule) (Rule, string) {
 	w := r.When
 	switch {
@@ -205,7 +211,7 @@ func checkRule(r Rule) (Rule, string) {
 		return r, "choose how the suggested ASA is compared (at least, at most or exactly)."
 	case w.ASA.Grade < 1 || w.ASA.Grade > 6:
 		return r, "the ASA grade must be I to VI."
-	case w.Band != nil && (strings.TrimSpace(w.Band.Score) == "" || len(w.Band.Bands) == 0 || slices.Contains(w.Band.Bands, "")):
+	case badBand(w.Band) || badBand(w.NotBand):
 		return r, "choose the score and at least one of its bands."
 	case w.Code != nil && (strings.TrimSpace(w.Code.Code) == "" || (w.Code.Set != "SNOMED" && w.Code.Set != "ICD10")):
 		return r, "choose the code."

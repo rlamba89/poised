@@ -5,7 +5,7 @@ import { useState } from "react";
 import { ActionIcon, Alert, Button, Card, Checkbox, Group, MultiSelect, Select, Stack, Text, TextInput } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import {
-  ASA_GRADES, RULE_TEAMS, SUGGESTABLE, TRIAGE_TARGETS, type AsaOp, type AsaRule, type Band, type CodeRef, type RuleAction,
+  ASA_GRADES, notBandChoices, RULE_TEAMS, SUGGESTABLE, TRIAGE_TARGETS, type AsaOp, type AsaRule, type Band, type CodeRef, type RuleAction,
 } from "@poised/clinical";
 import type { OfferedProcedure } from "@/features/procedures/procedures";
 
@@ -64,6 +64,9 @@ export function RuleForm(props: {
   const setWhen = (patch: Partial<AsaRule["when"]>) => setRule({ ...rule, when: { ...rule.when, ...patch } });
   const setAction = (i: number, a: RuleAction) => setRule({ ...rule, then: rule.then.map((x, j) => (j === i ? a : x)) });
   const score = w.band ? props.scores.find((s) => s.key === w.band!.score) : undefined;
+  // "Isn't in a band" (S44c) may name a score this HQ hasn't (the defaults' STOP-Bang): always offered.
+  const notScores = notBandChoices(props.scores, w.notBand?.score);
+  const notScore = w.notBand ? notScores.find((s) => s.key === w.notBand!.score) : undefined;
 
   const save = async () => {
     setSaving(true);
@@ -98,6 +101,19 @@ export function RuleForm(props: {
               onChange={(v) => setWhen({ band: { score: v ?? "", bands: [] } })} allowDeselect={false} />
             <MultiSelect aria-label="Bands" w={260} placeholder="is one of…" data={(score?.bands ?? []).map((b) => ({ value: b.id, label: b.label }))}
               value={w.band.bands} onChange={(v) => setWhen({ band: { ...w.band!, bands: v } })} />
+          </Group>
+        )}
+        <Checkbox
+          label="and a score isn't in a band"
+          checked={!!w.notBand}
+          onChange={(e) => setWhen({ notBand: e.currentTarget.checked ? { score: notScores[0]?.key ?? "", bands: [] } : undefined })}
+        />
+        {w.notBand && (
+          <Group gap="xs" pl="xl" align="end">
+            <Select aria-label="Score not in a band" w={300} data={notScores.map((s) => ({ value: s.key, label: s.title }))} value={w.notBand.score || null}
+              onChange={(v) => setWhen({ notBand: { score: v ?? "", bands: [] } })} allowDeselect={false} />
+            <MultiSelect aria-label="Bands it isn't in" w={260} placeholder="isn't any of…" data={(notScore?.bands ?? []).map((b) => ({ value: b.id, label: b.label }))}
+              value={w.notBand.bands} onChange={(v) => setWhen({ notBand: { ...w.notBand!, bands: v } })} />
           </Group>
         )}
         <Checkbox

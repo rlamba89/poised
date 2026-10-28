@@ -5,8 +5,10 @@ import type { ChapterJson } from "./doc";
 import { computeOutputs } from "./outputs";
 import { registerClinicalProperties } from "./properties";
 import { publishProblems } from "./publish";
+import { insertReadyScore, STOP_BANG_KEYS } from "./ready";
+import { earlierContexts } from "./respondent";
 import {
-  actionWords, autoTriageSummary, codesIn, setFiredRules, firedLine, firedWords, firedRules, hqRuleResult, ruleNames, ruleProblems, ruleWords, ruleSetOf, runHqTestCase, scoresWithBands,
+  actionWords, autoTriageSummary, codesIn, notBandChoices, setFiredRules, firedLine, firedWords, firedRules, hqRuleResult, ruleNames, ruleProblems, ruleWords, ruleSetOf, runHqTestCase, scoresWithBands,
   type AsaRule, type HqTestCase, type RuleSet,
 } from "./rules";
 
@@ -189,7 +191,10 @@ describe("rules in plain words", () => {
   const n = ruleNames([aboutYou], [{ id: "p_hip", name: "Hip replacement" }, { id: "p_knee", name: "Knee replacement" }]);
 
   it("the defaults", () => {
-    expect(ruleWords(DEFAULTS.rules[0], n)).toBe("When the suggested ASA is I or II and there are no red flags: auto-triage to Ready for admission");
+    // S44c: the HQ here has no STOP-Bang, so its test says so.
+    expect(ruleWords(DEFAULTS.rules[0], n)).toBe(
+      "When the suggested ASA is I or II and there are no red flags and STOP-Bang score isn't High risk (not in this HQ): auto-triage to Ready for admission",
+    );
     expect(ruleWords(DEFAULTS.rules[1], n)).toBe(
       "When the suggested ASA is III or more: add the task “Book anaesthetic review” for the anaesthetist team; flag “Anaesthetic review”; require the anaesthetist's ASA before Ready for admission",
     );
@@ -293,5 +298,98 @@ describe("whole-HQ test cases (S40 answers 4)", () => {
       "Rule “Band”: a band it tests isn't in “Snore score” any more",
     ]);
     expect(publishProblems(forPublish).length).toBe(0); // no rules given: as before S40
+  });
+});
+
+// S44c (Rahul, 28 Oct): in the platform defaults, a High STOP-Bang holds back the Low risk
+// auto-triage, so a clinician sees a patient with likely sleep apnoea first. A rule can now test
+// that a score is NOT in some bands (`notBand`); an HQ without that score passes the test.
+describe("a High STOP-Bang holds back the default Low risk auto-triage (S44c)", () => {
+  const measures: ChapterJson = { pages: [{ name: "p_1", title: "Measurements", elements: [{ type: "bmi", name: "q_bmi", title: "BMI" }] }] };
+  const sleep = insertReadyScore({ pages: [{ name: "p_2", title: "Sleep", elements: [] }] }, { page: "p_2" }, "stopbang", "q_bmi.bmi").doc;
+  const hq = [
+    { id: "m", name: "Measurements", content: measures, audience: "patient" },
+    { id: "s", name: "Sleep", content: sleep, audience: "patient" },
+  ];
+  const man = { name: "Sam Sample", age: 60, sex: "male" };
+  const bmi = (n: number) => ({ height: 170, weight: Math.round(n * 1.7 * 1.7 * 10) / 10 });
+  const K = STOP_BANG_KEYS;
+  const yes = (all: boolean) => Object.fromEntries([K.snoring, K.tired, K.observed, K.pressure, K.neck].map((k) => [k, all ? "o_yes" : "o_no"]));
+
+  it("STOP-Bang 8 (High) and no grade: Low risk doesn't fire, so no auto-triage", () => {
+    const r = hqRuleResult(hq, DEFAULTS, { q_bmi: bmi(40), ...yes(true) }, man);
+    expect(r.fired.map((f) => f.rule.name)).toEqual([]);
+    expect(r.lines).toEqual(["No suggested ASA"]);
+  });
+
+  it("STOP-Bang Low still auto-triages", () => {
+    const r = hqRuleResult(hq, DEFAULTS, { q_bmi: bmi(22), ...yes(false) }, { ...man, age: 30, sex: "female" });
+    expect(r.lines).toEqual(["No suggested ASA", "Rule fires: Low risk (auto-triage to Ready for admission)"]);
+  });
+
+  it("an HQ without STOP-Bang still auto-triages on Low risk, and Publish finds nothing wrong", () => {
+    expect(hqRuleResult(sets, DEFAULTS, { q_smoke: "o_y" }, patient).lines).toEqual(["Suggested ASA II", "Rule fires: Low risk (auto-triage to Ready for admission)"]);
+    expect(ruleProblems(DEFAULTS, sets)).toEqual([]);
+  });
+
+  it("the Preview of the Sleep set (with the earlier BMI) says the same", () => {
+    const woman = { ...man, age: 30, sex: "female" };
+    const earlier = (n: number, p: typeof man) => earlierContexts(hq, { m: { q_bmi: bmi(n) } }, "clinician", p).get("s");
+    const high = setFiredRules(DEFAULTS, sleep, yes(true), man, earlier(40, man));
+    expect(high.map((f) => f.rule.name)).toEqual([]);
+    expect(setFiredRules(DEFAULTS, sleep, yes(false), woman, earlier(22, woman))).toMatchObject([{ rule: { name: "Low risk" }, held: false }]);
+  });
+
+  it("in words, on the Rules page and in the Publish window", () => {
+    const withStopBang = ruleNames(hq.map((s) => s.content));
+    expect(ruleWords(DEFAULTS.rules[0], withStopBang)).toBe(
+      "When the suggested ASA is I or II and there are no red flags and STOP-Bang score isn't High risk: auto-triage to Ready for admission",
+    );
+    expect(autoTriageSummary(DEFAULTS, withStopBang)).toContain("ASA I–II, no red flags, STOP-Bang score not High risk → Ready for admission");
+    // Without STOP-Bang, the Publish line leaves the test out: it can't stop anything.
+    expect(autoTriageSummary(DEFAULTS, ruleNames([aboutYou]))).toContain("ASA I–II, no red flags → Ready for admission");
+  });
+
+  // Verification 3, F5: only a ready-made score may be missing; an author's own score that's gone
+  // would make the rule pass for everyone, silently dropping the exclusion they wrote.
+  it("a missing author's score is a publish problem; a missing STOP-Bang isn't", () => {
+    const set = copy();
+    set.rules[0].when.notBand = { score: "q_frailty", bands: ["b_high"] };
+    expect(ruleProblems(set, sets)).toEqual(["Rule “Low risk”: its score isn't in this HQ any more"]);
+    expect(ruleProblems(DEFAULTS, sets)).toEqual([]);
+  });
+
+  it("a band the score doesn't have is a publish problem, as for `band`", () => {
+    const set = copy();
+    set.rules[0].when.notBand = { score: K.score, bands: ["b_gone"] };
+    expect(ruleProblems(set, hq)).toEqual(["Rule “Low risk”: a band it tests isn't in “STOP-Bang score” any more"]);
+  });
+
+  it("an author's own: a score isn't in these bands", () => {
+    const rule: AsaRule = { id: "r", name: "Not snoring much", when: { asa: { op: "<=", grade: 6 }, notBand: { score: "q_score", bands: ["b_high"] } }, then: [{ kind: "flag", name: "Quiet" }] };
+    const set: RuleSet = { noGradeAutoTriage: true, testCases: [], rules: [rule] };
+    expect(names(set, resultOf({ q_snores: 1 }))).toEqual(["Not snoring much"]);
+    expect(names(set, resultOf({ q_snores: 5 }))).toEqual([]);
+    expect(ruleWords(rule, ruleNames([aboutYou]))).toBe("When the suggested ASA is I to VI and Snore score isn't High: flag “Quiet”");
+  });
+});
+
+// Verification 1, F2: the Rules page's "Score not in a band" always offers the ready-made STOP-Bang
+// when the HQ hasn't it, so the defaults' test can be picked again after choosing another score.
+describe("notBandChoices", () => {
+  const own = scoresWithBands([aboutYou]); // Snore score
+  it("the HQ's scores, then STOP-Bang (not in this HQ), whichever score is chosen", () => {
+    for (const current of [undefined, "q_score", STOP_BANG_KEYS.score]) {
+      const c = notBandChoices(own, current);
+      expect(c.map((s) => [s.key, s.title])).toEqual([["q_score", "Snore score"], [STOP_BANG_KEYS.score, "STOP-Bang score (not in this HQ)"]]);
+      expect(c[1].bands.map((b) => b.label)).toEqual(["Low risk", "Intermediate risk", "High risk"]);
+    }
+  });
+  it("an HQ with STOP-Bang offers its own, once", () => {
+    const sleep = insertReadyScore({ pages: [{ name: "p_2", elements: [{ type: "bmi", name: "q_bmi" }] }] }, { page: "p_2" }, "stopbang", "q_bmi.bmi").doc;
+    expect(notBandChoices(scoresWithBands([sleep])).map((s) => s.title)).toEqual(["STOP-Bang score"]);
+  });
+  it("a score no longer in the HQ, when chosen, shows by its key", () => {
+    expect(notBandChoices(own, "q_gone").map((s) => s.key)).toEqual(["q_score", STOP_BANG_KEYS.score, "q_gone"]);
   });
 });

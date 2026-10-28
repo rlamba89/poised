@@ -14,6 +14,7 @@ import { computeOutputs, type ProducedOutput, type ScoreResult } from "./outputs
 import { normalizeOutput, registerClinicalProperties } from "./properties";
 import { hqResult, type Answers } from "./respondent";
 import { modelFor, type SamplePatient, type TestResult } from "./testcases";
+import { STOP_BANG_KEYS, stopBangGroup } from "./ready";
 import type { Earlier } from "./scores";
 import type { ClinicalOutput, CodeRef } from "./types";
 
@@ -50,6 +51,11 @@ export type RuleWhen = {
   noRedFlags?: boolean;
   /** A score (a Calculation's key) is in one of these bands (their ids). */
   band?: { score: string; bands: string[] };
+  /**
+   * A score is NOT in any of these bands (S44c: the defaults' "STOP-Bang isn't High risk"). An HQ
+   * without the score, or a score with no band yet (Incomplete, which holds auto-triage anyway), passes.
+   */
+  notBand?: { score: string; bands: string[] };
   /** A disclosure produced has this code. */
   code?: CodeRef;
   /** The episode's procedure is one of these (the trust's procedure ids). */
@@ -108,6 +114,10 @@ function matches(w: RuleWhen, input: RuleInput, grade: number): boolean {
     const s = (input.scores ?? []).find((x) => x.questionId === w.band!.score);
     if (!s?.band || !w.band.bands.includes(s.band.id)) return false;
   }
+  if (w.notBand) {
+    const s = (input.scores ?? []).find((x) => x.questionId === w.notBand!.score);
+    if (s?.band && w.notBand.bands.includes(s.band.id)) return false;
+  }
   if (w.code && !input.outputs.some((o) => o.output.codes.some((c) => sameCode(c, w.code!)))) return false;
   if (w.procedures && !(input.procedureId && w.procedures.includes(input.procedureId))) return false;
   return true;
@@ -164,6 +174,32 @@ export function setFiredRules(set: RuleSet, content: ChapterJson, answers: Answe
 /** Names for what rules refer to by id: scores (with their bands) and procedures. */
 export type RuleNames = { scores: Map<string, { title: string; bands: Map<string, string> }>; procedures: Map<string, string> };
 
+/**
+ * A ready-made score's name and bands when the HQ doesn't have it (S44c: the defaults test
+ * STOP-Bang in every HQ), so the words still read well.
+ */
+const READY_NAMES = new Map(
+  [stopBangGroup("")].flatMap((g) => (g.elements ?? []).filter((el) => el.name === STOP_BANG_KEYS.score))
+    .map((el) => [el.name, { title: textOf(el.title) || el.name, bands: new Map(bandsOf(el).map((b) => [b.id, b.label])) }]),
+);
+
+type ScoreChoice = { key: string; title: string; bands: Band[] };
+
+/**
+ * What the Rules page's "a score isn't in a band" can name (S44c): the HQ's scores with bands, then
+ * each ready-made score the HQ hasn't, as "… (not in this HQ)" (the defaults' STOP-Bang; always
+ * offered, verification 1 F2, so it can be picked again), then the chosen score if it's neither.
+ */
+export function notBandChoices(scores: ScoreChoice[], current?: string): ScoreChoice[] {
+  const out = [...scores];
+  for (const [key, ready] of READY_NAMES) {
+    if (out.some((s) => s.key === key)) continue;
+    out.push({ key, title: `${ready.title} (not in this HQ)`, bands: [...ready.bands].map(([id, label]) => ({ id, label })) });
+  }
+  if (current && !out.some((s) => s.key === current)) out.push({ key: current, title: current, bands: [] });
+  return out;
+}
+
 export function ruleNames(docs: ChapterJson[], procedures: { id: string; name: string }[] = []): RuleNames {
   return {
     scores: new Map(scoresWithBands(docs).map((s) => [s.key, { title: s.title, bands: new Map(s.bands.map((b) => [b.id, b.label])) }])),
@@ -189,6 +225,11 @@ export function whenWords(w: RuleWhen, names: RuleNames): string {
   if (w.band) {
     const s = names.scores.get(w.band.score);
     parts.push(`${s?.title ?? w.band.score} is ${or(w.band.bands.map((b) => s?.bands.get(b) ?? b))}`);
+  }
+  if (w.notBand) {
+    const here = names.scores.get(w.notBand.score);
+    const s = here ?? READY_NAMES.get(w.notBand.score);
+    parts.push(`${s?.title ?? w.notBand.score} isn't ${or(w.notBand.bands.map((b) => s?.bands.get(b) ?? b))}${here ? "" : " (not in this HQ)"}`);
   }
   if (w.code) parts.push(`a disclosure has the code ${w.code.display} (${w.code.code})`);
   if (w.procedures) parts.push(`the procedure is ${or(w.procedures.map((p) => names.procedures.get(p) ?? p))}`);
@@ -228,6 +269,9 @@ function shortWhen(w: RuleWhen, names: RuleNames): string {
     const s = names.scores.get(w.band.score);
     parts.push(`${s?.title ?? w.band.score} ${w.band.bands.map((b) => s?.bands.get(b) ?? b).join("/")}`);
   }
+  // Left out when the HQ has no such score: it can't stop anything (S44c).
+  const not = w.notBand && names.scores.get(w.notBand.score);
+  if (w.notBand && not) parts.push(`${not.title} not ${w.notBand.bands.map((b) => not.bands.get(b) ?? b).join("/")}`);
   if (w.code) parts.push(`code ${w.code.code}`);
   if (w.procedures) parts.push(w.procedures.map((p) => names.procedures.get(p) ?? p).join("/"));
   return parts.join(", ");
@@ -333,11 +377,18 @@ export function ruleProblems(set: RuleSet, sets: HqSet[]): string[] {
   const codes = codesIn(docs);
   const out: string[] = [];
   for (const r of set.rules) {
-    const { band, code } = r.when;
+    const { band, notBand, code } = r.when;
     if (band) {
       const s = scores.find((x) => x.key === band.score);
       if (!s) out.push(`Rule “${r.name}”: its score isn't in this HQ any more`);
       else if (band.bands.some((b) => !s.bands.some((x) => x.id === b))) out.push(`Rule “${r.name}”: a band it tests isn't in “${s.title}” any more`);
+    }
+    // "Isn't in these bands" holds in an HQ without a ready-made score (S44c: the defaults' STOP-Bang);
+    // an author's own score that's gone is a problem (verification 3, F5), as for `band`.
+    if (notBand) {
+      const s = scores.find((x) => x.key === notBand.score);
+      if (!s && !READY_NAMES.has(notBand.score)) out.push(`Rule “${r.name}”: its score isn't in this HQ any more`);
+      else if (s && notBand.bands.some((b) => !s.bands.some((x) => x.id === b))) out.push(`Rule “${r.name}”: a band it tests isn't in “${s.title}” any more`);
     }
     if (code && !codes.some((c) => sameCode(c, code))) out.push(`Rule “${r.name}”: no disclosure in this HQ has the code ${code.code}, so the rule can't fire`);
   }

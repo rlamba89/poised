@@ -17,7 +17,9 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect
 
 from support import choose, invite_path, pick, sign_in, unique
 
-LOW_RISK = "When the suggested ASA is I or II and there are no red flags: auto-triage to Ready for admission"
+# S44c: the defaults' Low risk isn't for a High STOP-Bang; this HQ has none, so the words say so.
+LOW_RISK = ("When the suggested ASA is I or II and there are no red flags and STOP-Bang score isn't High risk (not in this HQ): "
+            "auto-triage to Ready for admission")
 HIGH_RISK = ("When the suggested ASA is III or more: add the task “Book anaesthetic review” for the anaesthetist team; "
              "flag “Anaesthetic review”; require the anaesthetist's ASA before Ready for admission")
 

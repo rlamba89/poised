@@ -5,7 +5,7 @@
     {
       "id": "low_risk",
       "name": "Low risk",
-      "when": { "asa": { "op": "<=", "grade": 2 }, "noRedFlags": true },
+      "when": { "asa": { "op": "<=", "grade": 2 }, "noRedFlags": true, "notBand": { "score": "stopbang_score", "bands": ["b_high"] } },
       "then": [{ "kind": "autoTriage", "target": "ready_for_admission" }]
     },
     {
