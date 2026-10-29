@@ -33,6 +33,24 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 29 Oct 2026: S45 on QA (with Rahul; deployed by hand; tested 29 Oct, test report 1 all passed)
+
+- **The evaluate calls stay inside the locks.** Measured on QA: a cold start loads in about 230 ms, a send's call takes 120–350 ms, Publish's and Complete review's 1–12 ms, so the worst case is about 0.6 s, under the 1 s that would have needed Rahul (S44a answer 12). No provisioned concurrency. ([build notes](sessions/S45-evaluate-lambda/build-notes.md), "QA deploy and measurements"; pending.md's four lock items)
+- **To break the function on purpose, set its reserved concurrency to 0** (`aws lambda put-function-concurrency … --reserved-concurrent-executions 0`; mend with `delete-function-concurrency`): every call is refused, nothing is deleted, and no test deploy is needed. A CDK deploy doesn't undo it, so always mend it by hand. Used for H-1 ([infra/README.md](../infra/README.md), "The evaluate Lambda on QA").
+- **Rahul asked what QA costs:** practically nothing. The function and its logs are pay-per-use (inside the free tier at QA's volume), and its alarm is the third of CloudWatch's free 10.
+- **Gotcha:** the first `make e2e` against QA after an idle spell can say "The app isn't answering": QA's Neon database was asleep. Run it again.
+
+### 28 Oct 2026: the evaluate Lambda on Node 24 (Rahul, asked by Claude during S45)
+
+- **The evaluate Lambda runs on Node 24 now** (`nodejs24.x`; its bundle targets `node24`), because AWS drops Node 22 Lambdas around April 2027. **The repo, the local service and the pipeline stay on Node 22 and move to 24 before go-live.** The bundle uses no Node built-in, so the gap is small. ([build notes](sessions/S45-evaluate-lambda/build-notes.md))
+
+### 28 Oct 2026: S45, the evaluate Lambda (code part; builder, no AWS access; QA deploy and measurements to do with Rahul)
+
+- **On AWS the Go APIs invoke the Lambda `poised-<env>-evaluate`** (Node 24, arm64, 1024 MB, 20 s; no database, settings, secrets or VPC; its role only writes its logs) through `evaluate.Lambda` (AWS SDK `Invoke`, payload `{op, input}` → `{status, body}`, the HTTP service's same body). **`EVALUATE_FUNCTION`** names it; `EVALUATE_URL` stays for local; `CONFIG_STRICT` needs one, and **both set is refused**. A function error, a failed invoke or a status other than 200 fails safe as before (`EVALUATE_FAILED`). ([build notes](sessions/S45-evaluate-lambda/build-notes.md))
+- **Only staff-api and patient-api may invoke it.** The jobs Lambda gets the name (Go's strict config needs it to start) but no permission.
+- **The alarm `poised-<env>-evaluate-failures`** counts `EVALUATE_FAILED` in the two APIs' logs, to the existing alert topic. `make build-lambdas` bundles the function into `apps/api/dist/evaluate/index.js`; the pipeline is unchanged.
+- **Gotcha:** the pipeline's checkout has no `.git`, so `build.mjs` takes the evaluator's version from `CODEBUILD_RESOLVED_SOURCE_VERSION` there.
+
 ### 28 Oct 2026: S44c, C6's last open items (builder, automatic run; test report 1: F1 fixed (the sample patient's Sex offers Other and Not known); tested 28 Oct, test report 2 all passed; verification 1 needed fixes (opening a set cleared answers; the STOP-Bang choice on the Rules page), done; test report 3 all passed; verification 2 needed one fix (a typed number's follow-up wiped while editing), done; tested again 28 Oct, test report 4 all passed; verification 3 needed fixes (F4, F5) and Rahul's answer 8, done; tested again 28 Oct, test report 5 all passed; verified 28 Oct, verification 4)
 
 Rahul's 28 Oct answers built as briefed ([build notes](sessions/S44c-c6-last-answers/build-notes.md)); the builder's own choices:

@@ -500,7 +500,7 @@ Browser ─► Amplify Hosting (React app, no server compute) ─┬─ /*      
 API Gateway (HTTP API) ─┬─ /api/*    (session cookie) → staff-api Lambda (Go)
                         └─ /api/p/*                → patient-api Lambda (Go)
 staff-api, patient-api ─► Postgres (Neon now, RDS later) · S3 files (presigned) · SES · SMS
-                       └► evaluate Lambda (Node, packages/clinical): on submit and on complete review
+                       └► evaluate Lambda (Node, packages/clinical): on submit, on publish and on complete review
 EventBridge Scheduler, every 5 min ─► jobs Lambda (Go) ─► jobs table: reminders, PROMs, auto-archive
 Cognito: staff user pool, managed login (password + TOTP MFA; Entra SSO later) → our own session cookie. Patients use our own magic links.
 CodePipeline (CDK Pipelines, Python): GitHub → test + build → QA → Training → approval → Production (one stage per country)
@@ -513,7 +513,7 @@ CodePipeline (CDK Pipelines, Python): GitHub → test + build → QA → Trainin
 | `staff-api` | Go, arm64 | Every `/api/o/…` route | Staff traffic, checked against Cognito |
 | `patient-api` | Go, arm64 | `/api/p/…` and sign-in links | It faces the public internet. It gets its own IAM role (no staff permissions) and its own concurrency cap, so abuse can't starve staff traffic or reach admin actions. |
 | `jobs` | Go, arm64 | The EventBridge schedule | Background work, with no HTTP |
-| `evaluate` | Node | Called by the two APIs (D-1) | A different language |
+| `evaluate` | Node, arm64 | Invoked only by the two APIs (D-1; S45: `EVALUATE_FUNCTION`) | A different language; its role only writes its logs (no database, no secrets) |
 
 - **Why not one Lambda for everything:**
   - Patient and staff code would share one set of permissions and one point of failure.
