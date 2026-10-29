@@ -107,13 +107,16 @@ AWS_ENV = $(if $(PROFILE),AWS_PROFILE=$(PROFILE))
 AWS_CDK_VERSION := 2.1145.0
 AWS_CDK := cd infra && $(AWS_ENV) npx --yes aws-cdk@$(AWS_CDK_VERSION)
 
-# The Lambdas (provided.al2023, arm64): apps/api/dist/<fn>/bootstrap.
-build-lambdas:
+# The Lambdas: the Go ones (provided.al2023, arm64) in apps/api/dist/<fn>/bootstrap, and the
+# evaluate Lambda (S45; Node, one esbuild bundle of packages/clinical) in apps/api/dist/evaluate/index.js.
+build-lambdas: node_modules
 	@for fn in staff-api patient-api jobs; do \
 		echo "build-lambdas: $$fn"; \
 		(cd $(API) && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags lambda.norpc -trimpath \
 			-ldflags='-s -w' -o dist/$$fn/bootstrap ./cmd/$$fn) || exit 1; \
 	done
+	@echo "build-lambdas: evaluate"
+	cd apps/evaluate && node build.mjs --lambda $(CURDIR)/$(API)/dist/evaluate
 
 # The CDK app's Python (pinned in infra/requirements.txt), with PYTHON as for e2e-setup.
 infra/.venv: infra/requirements.txt

@@ -32,10 +32,12 @@ UK_VALUES = ["eu-west-2", "Europe/London", "en-GB", "London", '"GB"']
 
 @pytest.fixture
 def lambda_code(tmp_path):
-    """Stands in for `make build-lambdas`: apps/api/dist/<fn>/bootstrap."""
+    """Stands in for `make build-lambdas`: apps/api/dist/<fn>/bootstrap, and evaluate/index.js."""
     for fn in ("staff-api", "patient-api", "jobs"):
         (tmp_path / fn).mkdir()
         (tmp_path / fn / "bootstrap").write_text("not a real binary")
+    (tmp_path / "evaluate").mkdir()  # S45: the evaluate Lambda's bundle (build.mjs --lambda)
+    (tmp_path / "evaluate" / "index.js").write_text("exports.handler = async () => ({});")
     return tmp_path
 
 
@@ -114,7 +116,7 @@ def test_two_arm64_go_functions(lambda_code):
 
 def test_logs_are_kept_14_days(lambda_code):
     t = synth(CA_QA, lambda_code)
-    t["api"].resource_count_is("AWS::Logs::LogGroup", 3)  # staff-api, patient-api, jobs (S17)
+    t["api"].resource_count_is("AWS::Logs::LogGroup", 4)  # staff-api, patient-api, jobs (S17), evaluate (S45)
     t["api"].all_resources_properties("AWS::Logs::LogGroup", {"RetentionInDays": 14})
 
 
@@ -265,7 +267,7 @@ def test_every_resource_is_tagged_with_its_environment(lambda_code):
         | t["api"].find_resources("AWS::SecretsManager::Secret")
         | t["web"].find_resources("AWS::Amplify::App")
     )
-    assert len(tagged) == 5  # 3 functions, the secret, the app
+    assert len(tagged) == 6  # 4 functions (evaluate: S45), the secret, the app
     for r in tagged.values():
         assert {"Key": "poised-env", "Value": "ca-qa"} in r["Properties"]["Tags"], r
 
@@ -433,3 +435,96 @@ def test_staff_api_can_invite_into_this_pool_only(lambda_code):
     assert "StaffPool" in json.dumps(s["Resource"])  # the pool's own ARN, no wildcard
     [policy] = t.find_resources("AWS::IAM::Policy").values()
     assert "staffapi" in json.dumps(policy["Properties"]["Roles"]).lower().replace("-", "")
+
+
+# --- The evaluate Lambda (S45; D-1, D-4) ------------------------------------------------------------
+
+
+def evaluate_function(t: Template) -> tuple[str, dict]:
+    fns = t["api"].find_resources("AWS::Lambda::Function", {"Properties": {"FunctionName": "poised-ca-qa-evaluate"}})
+    assert len(fns) == 1, "no evaluate function"
+    return next(iter(fns.items()))
+
+
+def test_the_evaluate_function_is_node_on_arm64_with_nothing_else(lambda_code):
+    t = synth(CA_QA, lambda_code)
+    _, fn = evaluate_function(t)
+    props = fn["Properties"]
+    # Node 24 (Rahul, 28 Oct): AWS drops Node 22 Lambdas around April 2027; the repo moves later.
+    assert props["Runtime"] == "nodejs24.x"
+    assert props["Architectures"] == ["arm64"]
+    assert props["Handler"] == "index.handler"
+    # No database, no secrets, no settings: everything it needs comes in the invoke.
+    assert "Environment" not in props or not props["Environment"].get("Variables")
+    assert "VpcConfig" not in props
+    # Go gives up after 20 s (publish checks; a send's after 5 s): the function needn't run longer.
+    assert props["Timeout"] <= 20
+
+
+def roles_policies(t: Template) -> dict[str, list[dict]]:
+    """Each role's logical id → its inline policy statements."""
+    out: dict[str, list[dict]] = {}
+    for p in t["api"].find_resources("AWS::IAM::Policy").values():
+        for role in p["Properties"]["Roles"]:
+            out.setdefault(role["Ref"], []).extend(p["Properties"]["PolicyDocument"]["Statement"])
+    return out
+
+
+def role_of(t: Template, name: str) -> str:
+    fn = lambda_env(t, name)
+    return fn["Role"]["Fn::GetAtt"][0]
+
+
+def test_the_evaluate_functions_role_only_writes_its_logs(lambda_code):
+    t = synth(CA_QA, lambda_code)
+    _, fn = evaluate_function(t)
+    role_id = fn["Properties"]["Role"]["Fn::GetAtt"][0]
+    role = t["api"].to_json()["Resources"][role_id]["Properties"]
+    assert json.dumps(role["ManagedPolicyArns"]).count("arn:") == 1
+    assert "AWSLambdaBasicExecutionRole" in json.dumps(role["ManagedPolicyArns"])
+    assert role_id not in roles_policies(t), "the evaluate function's role has more than basic logging"
+
+
+def test_only_the_two_apis_may_invoke_the_evaluate_function(lambda_code):
+    t = synth(CA_QA, lambda_code)
+    evaluate_id, _ = evaluate_function(t)
+    invokers = set()
+    for role, statements in roles_policies(t).items():
+        for s in statements:
+            if "lambda:InvokeFunction" in json.dumps(s["Action"]) and evaluate_id in json.dumps(s["Resource"]):
+                invokers.add(role)
+    assert invokers == {role_of(t, "poised-ca-qa-staff-api"), role_of(t, "poised-ca-qa-patient-api")}
+    assert role_of(t, "poised-ca-qa-jobs") not in invokers
+    # No resource policy: no other service or account may invoke it either.
+    assert not t["api"].find_resources("AWS::Lambda::Permission", {"Properties": {"FunctionName": Match.object_like({"Fn::GetAtt": [evaluate_id, "Arn"]})}})
+
+
+def test_the_apis_are_told_the_evaluate_function(lambda_code):
+    t = synth(CA_QA, lambda_code)
+    evaluate_id, _ = evaluate_function(t)
+    for fn in ("staff-api", "patient-api"):
+        env = lambda_env(t, f"poised-ca-qa-{fn}")["Environment"]["Variables"]
+        assert env["EVALUATE_FUNCTION"] == {"Ref": evaluate_id}
+        assert "EVALUATE_URL" not in env  # only one of the two (Go refuses both)
+
+
+def test_evaluate_failures_raise_an_alarm(lambda_code):
+    t = synth(CA_QA, lambda_code)
+    filters = [
+        f["Properties"]
+        for f in t["api"].find_resources("AWS::Logs::MetricFilter").values()
+        if "EVALUATE_FAILED" in f["Properties"]["FilterPattern"]
+    ]
+    groups = {json.dumps(f["LogGroupName"]) for f in filters}
+    assert len(filters) == 2 and len(groups) == 2  # staff-api's and patient-api's logs
+    for f in filters:
+        assert f["MetricTransformations"][0]["MetricName"] == "EvaluateFailures"
+        assert any(fn in json.dumps(f["LogGroupName"]) for fn in ("staffapi", "patientapi"))
+    alarms = t["api"].find_resources("AWS::CloudWatch::Alarm", {"Properties": {"MetricName": "EvaluateFailures"}})
+    assert len(alarms) == 1
+    a = next(iter(alarms.values()))["Properties"]
+    assert a["AlarmName"] == "poised-ca-qa-evaluate-failures"
+    assert a["ComparisonOperator"] == "GreaterThanOrEqualToThreshold" and a["Threshold"] == 1
+    # To the same topic as the delivery-failure alarm (OPS-05), so the same address gets it.
+    delivery = t["api"].find_resources("AWS::CloudWatch::Alarm", {"Properties": {"MetricName": "DeliveryFailures"}})
+    assert a["AlarmActions"] == next(iter(delivery.values()))["Properties"]["AlarmActions"]

@@ -32,6 +32,8 @@ def lambda_code(tmp_path):
     for fn in ("staff-api", "patient-api", "jobs"):
         (tmp_path / fn).mkdir()
         (tmp_path / fn / "bootstrap").write_text("not a real binary")
+    (tmp_path / "evaluate").mkdir()  # S45: the evaluate Lambda's bundle (build.mjs --lambda)
+    (tmp_path / "evaluate" / "index.js").write_text("exports.handler = async () => ({});")
     return tmp_path
 
 
@@ -239,15 +241,17 @@ def test_the_functions_may_send(lambda_code):
 
 def test_failed_deliveries_and_failed_jobs_raise_an_alarm(lambda_code):
     t = api(CA_QA_TEST, lambda_code)
-    filters = t.find_resources("AWS::Logs::MetricFilter")
-    assert len(filters) == 3  # every function can send
-    for f in filters.values():
-        p = f["Properties"]
-        assert "DELIVERY_FAILED" in p["FilterPattern"]
+    filters = [
+        f["Properties"]
+        for f in t.find_resources("AWS::Logs::MetricFilter").values()
+        if "DELIVERY_FAILED" in f["Properties"]["FilterPattern"]
+    ]
+    assert len(filters) == 3  # every Go function can send
+    for p in filters:
         assert p["MetricTransformations"][0]["MetricName"] == "DeliveryFailures"
     alarms = [a["Properties"] for a in t.find_resources("AWS::CloudWatch::Alarm").values()]
     names = {a.get("MetricName") for a in alarms}
-    assert names == {"DeliveryFailures", "Errors"}
+    assert names == {"DeliveryFailures", "Errors", "EvaluateFailures"}  # EvaluateFailures: S45
     for a in alarms:
         assert a["ComparisonOperator"] == "GreaterThanOrEqualToThreshold" and a["Threshold"] == 1
         assert a["AlarmActions"]

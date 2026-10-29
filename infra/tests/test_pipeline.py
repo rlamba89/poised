@@ -24,6 +24,8 @@ def lambda_code(tmp_path):
     for fn in ("staff-api", "patient-api", "jobs"):
         (tmp_path / fn).mkdir()
         (tmp_path / fn / "bootstrap").write_text("not a real binary")
+    (tmp_path / "evaluate").mkdir()  # S45: the evaluate Lambda's bundle (build.mjs --lambda)
+    (tmp_path / "evaluate" / "index.js").write_text("exports.handler = async () => ({});")
     return tmp_path
 
 

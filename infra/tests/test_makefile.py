@@ -73,3 +73,13 @@ def test_the_pipeline_can_skip_docker_compose():
     # It starts its own Postgres, then runs `make test-integration DB_UP=`.
     assert not any("docker compose" in line for line in dry_run("db-up", "DB_UP="))
     assert any("docker compose up" in line for line in dry_run("db-up"))
+
+
+def test_build_lambdas_bundles_the_evaluate_function_where_api_stack_reads_it():
+    # S45: the Go functions and the evaluate Lambda (apps/evaluate/build.mjs --lambda), whose
+    # index.js ApiStack deploys from apps/api/dist/evaluate; the pipeline's `make synth` runs it.
+    lines = dry_run("build-lambdas")
+    assert any("for fn in staff-api patient-api jobs" in line for line in lines), lines
+    assert any("./cmd/$fn" in line for line in lines), lines
+    bundle = [line for line in lines if "build.mjs --lambda" in line]
+    assert bundle and "apps/api/dist/evaluate" in bundle[0], lines

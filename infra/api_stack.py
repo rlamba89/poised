@@ -34,6 +34,16 @@ FUNCTIONS = ("staff-api", "patient-api", "jobs")
 # (Go's messaging.DeliveryFailedMarker); the alarm counts them (OPS-05).
 DELIVERY_FAILED_MARKER = "DELIVERY_FAILED"
 
+# The evaluate Lambda (S45; D-1, D-4): packages/clinical's checks, bundled by `make build-lambdas`
+# into apps/api/dist/evaluate/index.js (apps/evaluate/build.mjs --lambda). Only these two may invoke it.
+EVALUATE = "evaluate"
+EVALUATE_CALLERS = ("staff-api", "patient-api")
+
+# Every log line about an evaluate call that failed starts with this (Go's evaluate.FailedMarker):
+# a sent HQ that went to Ready for review unchecked, a publish refused with 503, or a Complete
+# review let through on the browser's checks alone. The alarm counts them, as DELIVERY_FAILED's.
+EVALUATE_FAILED_MARKER = "EVALUATE_FAILED"
+
 # The staff user pool's values the functions read from SSM (config.Resolve): variable → the
 # parameter's last part, <prefix>/cognito-<part>. AuthStack writes them.
 COGNITO_PARAMS = {
@@ -134,6 +144,12 @@ class ApiStack(cdk.Stack):
             ),
         ]
 
+        self.evaluate = self._evaluate(env, lambda_code)
+        # The Go functions invoke it by name (Go's EVALUATE_FUNCTION; EVALUATE_URL is for local
+        # dev only). The jobs Lambda gets the name too, because Go's strict config needs one of the
+        # two to start, but not the right to invoke it: it never evaluates.
+        variables["EVALUATE_FUNCTION"] = self.evaluate.function_name
+
         self.functions: dict[str, lambda_.Function] = {}
         self.log_groups: dict[str, logs.LogGroup] = {}
         for fn in FUNCTIONS:
@@ -166,6 +182,8 @@ class ApiStack(cdk.Stack):
                 for statement in send:
                     f.add_to_role_policy(statement)
             self.token_secret.grant_read(f)
+            if fn in EVALUATE_CALLERS:
+                self.evaluate.grant_invoke(f)
             self.functions[fn] = f
             self.log_groups[fn] = log_group
 
@@ -203,8 +221,41 @@ class ApiStack(cdk.Stack):
 
         cdk.CfnOutput(self, "ApiUrl", value=self.http_api.api_endpoint)
 
+    def _evaluate(self, env: Environment, lambda_code: str) -> lambda_.Function:
+        """The evaluate Lambda (S45): Node, arm64, from the same handler `make dev` serves. No
+        database, no secrets, no settings, no VPC; its role only writes its own logs (the default
+        basic execution role). Its log names only ids, statuses and times, never an answer."""
+        code = os.path.join(lambda_code, EVALUATE)
+        if not os.path.isfile(os.path.join(code, "index.js")):
+            raise FileNotFoundError(f"{code}/index.js is missing: run `make build-lambdas` first")
+        log_group = logs.LogGroup(
+            self,
+            f"{EVALUATE}-logs",
+            retention=logs.RetentionDays.TWO_WEEKS,
+            removal_policy=cdk.RemovalPolicy.DESTROY,
+        )
+        f = lambda_.Function(
+            self,
+            EVALUATE,
+            function_name=f"poised-{env.name}-{EVALUATE}",
+            # Node 24 (Rahul, 28 Oct): AWS drops Node 22 Lambdas around April 2027. The repo and the
+            # pipeline stay on 22 until they move to 24 before go-live (build.mjs targets node24).
+            runtime=lambda_.Runtime.NODEJS_24_X,
+            architecture=lambda_.Architecture.ARM_64,
+            handler="index.handler",
+            code=lambda_.Code.from_asset(code),
+            # More memory is more CPU: a shorter cold start and a quicker call, while the send's
+            # and the publish's locks are held. Measured on QA (S45 build notes).
+            memory_size=1024,
+            # Go waits 5 s for a send's or a review's call and 20 s for the publish checks.
+            timeout=cdk.Duration.seconds(20),
+            log_group=log_group,
+        )
+        return f
+
     def _alarms(self, env: Environment) -> None:
-        """OPS-05: an email when a text or email isn't delivered, or a jobs run fails. The address
+        """OPS-05: an email when a text or email isn't delivered, a jobs run fails, or the evaluate
+        Lambda can't be reached (S45). The address
         is the budget alarm's (SSM, from `make aws-setup`); AWS asks it to confirm once."""
         topic = sns.Topic(self, "Alarms", topic_name=f"poised-{env.name}-alarms")
         sns.Subscription(
@@ -226,6 +277,32 @@ class ApiStack(cdk.Stack):
                 metric_name="DeliveryFailures",
                 metric_value="1",
             )
+        for fn in EVALUATE_CALLERS:
+            logs.MetricFilter(
+                self,
+                f"{fn}-evaluate-failed",
+                log_group=self.log_groups[fn],
+                filter_pattern=logs.FilterPattern.literal(f'"{EVALUATE_FAILED_MARKER}"'),
+                metric_namespace=namespace,
+                metric_name="EvaluateFailures",
+                metric_value="1",
+            )
+        evaluate_failed = cloudwatch.Alarm(
+            self,
+            "EvaluateFailures",
+            alarm_name=f"poised-{env.name}-evaluate-failures",
+            alarm_description=(
+                "The automatic checks couldn't run (the APIs' EVALUATE_FAILED lines): a sent HQ went to "
+                "Ready for review unchecked, a publish was refused, or a Complete review wasn't re-checked."
+            ),
+            metric=cloudwatch.Metric(
+                namespace=namespace, metric_name="EvaluateFailures", statistic="Sum", period=cdk.Duration.minutes(5)
+            ),
+            threshold=1,
+            evaluation_periods=1,
+            comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+        )
         failures = cloudwatch.Alarm(
             self,
             "DeliveryFailures",
@@ -250,6 +327,6 @@ class ApiStack(cdk.Stack):
             comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
             treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
         )
-        for alarm in (failures, jobs_failed):
+        for alarm in (failures, jobs_failed, evaluate_failed):
             alarm.add_alarm_action(action)
         cdk.CfnOutput(self, "TokenSecretArn", value=self.token_secret.secret_arn)

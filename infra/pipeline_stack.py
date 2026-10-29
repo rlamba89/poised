@@ -40,7 +40,8 @@ SYNTH_COMMANDS = [
     # DB_UP= skips the Makefile's `docker compose up`: the Postgres above is already running.
     "make test-integration DB_UP=",
     "npm run build -w apps/web",
-    # make synth builds the Lambdas (make build-lambdas), then `cdk synth` into infra/cdk.out.
+    # make synth builds the Lambdas (make build-lambdas: the Go ones, and S45's evaluate bundle from
+    # apps/evaluate, with the node_modules `make lint test` installed), then `cdk synth` into infra/cdk.out.
     "make synth PYTHON=python3",
 ]
 
