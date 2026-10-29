@@ -8,8 +8,8 @@
 //   - Shown: on Complete review (S44), the sets shown for the answers that count now, so Go can
 //     refuse while one of them isn't validated.
 //
-// Locally the service is `npm run evaluate` (apps/evaluate), which make dev starts, at EVALUATE_URL;
-// S45 puts it in a Lambda. Tests use Recorder. The shared fixtures in testdata are read by both this
+// Locally the service is `npm run evaluate` (apps/evaluate), which make dev starts, at EVALUATE_URL
+// (HTTP); on AWS it's the evaluate Lambda named by EVALUATE_FUNCTION (Lambda, S45). Tests use Recorder. The shared fixtures in testdata are read by both this
 // package's tests and the TypeScript tests, so the two sides stay in step.
 //
 // Nothing here logs, and no error holds an answer or the service's reply.
@@ -193,16 +193,39 @@ type HTTP struct {
 }
 
 func (h HTTP) Evaluate(ctx context.Context, in Input) (Result, error) {
-	var res Result
-	raw, err := h.post(ctx, "/evaluate", cmpDuration(h.Timeout, EvaluateTimeout), in)
+	return evaluateVia(ctx, h.post, h.Timeout, in)
+}
+
+func (h HTTP) PublishProblems(ctx context.Context, in PublishInput) ([]Problem, error) {
+	return publishProblemsVia(ctx, h.post, h.Timeout, in)
+}
+
+// Shown is the sets shown, in order, for the answers that count now (S44).
+func (h HTTP) Shown(ctx context.Context, in ShownInput) ([]uuid.UUID, error) {
+	return shownVia(ctx, h.post, h.Timeout, in)
+}
+
+// The operations, by name: the HTTP service's paths (/evaluate…) and the Lambda's op (S45).
+const (
+	opEvaluate        = "evaluate"
+	opPublishProblems = "publish-problems"
+	opShown           = "shown"
+)
+
+// caller sends one operation's input and returns its successful reply's body (HTTP's post, the
+// Lambda's invoke). Its errors never hold the body.
+type caller func(ctx context.Context, op string, timeout time.Duration, in any) ([]byte, error)
+
+func evaluateVia(ctx context.Context, call caller, timeout time.Duration, in Input) (Result, error) {
+	raw, err := call(ctx, opEvaluate, cmpDuration(timeout, EvaluateTimeout), in)
 	if err != nil {
-		return res, err
+		return Result{}, err
 	}
 	return decodeResult(raw)
 }
 
-func (h HTTP) PublishProblems(ctx context.Context, in PublishInput) ([]Problem, error) {
-	raw, err := h.post(ctx, "/publish-problems", cmpDuration(h.Timeout, PublishTimeout), in)
+func publishProblemsVia(ctx context.Context, call caller, timeout time.Duration, in PublishInput) ([]Problem, error) {
+	raw, err := call(ctx, opPublishProblems, cmpDuration(timeout, PublishTimeout), in)
 	if err != nil {
 		return nil, err
 	}
@@ -210,14 +233,13 @@ func (h HTTP) PublishProblems(ctx context.Context, in PublishInput) ([]Problem, 
 		Problems *[]Problem `json:"problems"`
 	}
 	if json.Unmarshal(raw, &out) != nil || out.Problems == nil {
-		return nil, errors.New("evaluate: /publish-problems: the reply isn't a list of problems")
+		return nil, errors.New("evaluate: publish-problems: the reply isn't a list of problems")
 	}
 	return *out.Problems, nil
 }
 
-// Shown is the sets shown, in order, for the answers that count now (S44).
-func (h HTTP) Shown(ctx context.Context, in ShownInput) ([]uuid.UUID, error) {
-	raw, err := h.post(ctx, "/shown", cmpDuration(h.Timeout, EvaluateTimeout), in)
+func shownVia(ctx context.Context, call caller, timeout time.Duration, in ShownInput) ([]uuid.UUID, error) {
+	raw, err := call(ctx, opShown, cmpDuration(timeout, EvaluateTimeout), in)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +247,7 @@ func (h HTTP) Shown(ctx context.Context, in ShownInput) ([]uuid.UUID, error) {
 		Shown *[]uuid.UUID `json:"shown"`
 	}
 	if json.Unmarshal(raw, &out) != nil || out.Shown == nil {
-		return nil, errors.New("evaluate: /shown: the reply isn't a list of sets")
+		return nil, errors.New("evaluate: shown: the reply isn't a list of sets")
 	}
 	return *out.Shown, nil
 }
@@ -234,7 +256,7 @@ func (h HTTP) Shown(ctx context.Context, in ShownInput) ([]uuid.UUID, error) {
 func decodeResult(raw []byte) (Result, error) {
 	var res Result
 	if json.Unmarshal(raw, &res) != nil || res.Evaluator == "" {
-		return Result{}, errors.New("evaluate: /evaluate: the reply isn't a result")
+		return Result{}, errors.New("evaluate: evaluate: the reply isn't a result")
 	}
 	res.Raw = raw
 	return res, nil
@@ -247,8 +269,9 @@ func cmpDuration(d, def time.Duration) time.Duration {
 	return def
 }
 
-// post sends in as JSON and returns the 200 reply's body. Its errors never hold the body.
-func (h HTTP) post(ctx context.Context, path string, timeout time.Duration, in any) ([]byte, error) {
+// post sends in as JSON to /<op> and returns the 200 reply's body. Its errors never hold the body.
+func (h HTTP) post(ctx context.Context, op string, timeout time.Duration, in any) ([]byte, error) {
+	path := "/" + op
 	body, err := json.Marshal(in)
 	if err != nil {
 		return nil, fmt.Errorf("evaluate: %s: %w", path, err)

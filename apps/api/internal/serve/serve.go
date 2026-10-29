@@ -16,6 +16,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/lambda"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	lambdasdk "github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/pinpointsmsvoicev2"
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -66,8 +67,34 @@ func Setup(ctx context.Context, name string) httpapi.Deps {
 	if c := cfg.Cognito; c.Enabled() {
 		userPool = &cognito.AWS{PoolID: c.UserPoolID, ClientID: c.ClientID, Domain: c.Domain, RedirectURI: c.RedirectURI}
 	}
-	// The evaluate service (S41): npm run evaluate locally, at EVALUATE_URL.
-	return httpapi.Deps{Pool: pool, Config: cfg, Cognito: userPool, SMS: sms, Email: email, Evaluator: evaluate.HTTP{URL: cfg.EvaluateURL}}
+	evaluator, err := Evaluator(ctx, cfg, NewLambdaClient)
+	if err != nil {
+		log.Fatalf("%s: evaluate: %v", name, err)
+	}
+	return httpapi.Deps{Pool: pool, Config: cfg, Cognito: userPool, SMS: sms, Email: email, Evaluator: evaluator}
+}
+
+// Evaluator is the evaluate service as the config says: the evaluate Lambda on AWS
+// (EVALUATE_FUNCTION, S45), its client made by newClient; else npm run evaluate's address
+// (EVALUATE_URL, S41).
+func Evaluator(ctx context.Context, cfg config.Config, newClient func(context.Context) (evaluate.LambdaClient, error)) (evaluate.Evaluator, error) {
+	if cfg.EvaluateFunction == "" {
+		return evaluate.HTTP{URL: cfg.EvaluateURL}, nil
+	}
+	client, err := newClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return evaluate.Lambda{Client: client, Function: cfg.EvaluateFunction}, nil
+}
+
+// NewLambdaClient is the AWS SDK's Lambda client, in the function's own region and role.
+func NewLambdaClient(ctx context.Context) (evaluate.LambdaClient, error) {
+	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return lambdasdk.NewFromConfig(awsCfg), nil
 }
 
 // senders are the patients' texts and emails as MESSAGING says (S17): captured in sent_messages;
@@ -99,6 +126,14 @@ func messagingMode(cfg config.Config) string {
 	return cfg.Messaging
 }
 
+// evaluateMode describes where the evaluate service is, for the start-up log.
+func evaluateMode(cfg config.Config) string {
+	if cfg.EvaluateFunction != "" {
+		return "Lambda " + cfg.EvaluateFunction
+	}
+	return cfg.EvaluateURL
+}
+
 // Main runs the router built by router until the server fails. name is for the log. With
 // jobsTimer (cmd/api only) it also runs the scheduled jobs every minute, unless JOBS_TIMER=false
 // (S16): on AWS a schedule runs the jobs Lambda instead (S17).
@@ -115,8 +150,8 @@ func Main(name string, router func(httpapi.Deps) http.Handler, jobsTimer bool) {
 		devLogin += ", Cognito sign-in on"
 	}
 	if isLambda {
-		log.Printf("%s on Lambda (dev login %s, messaging %s, locale %s, time zone %s, forwarded hops %d)",
-			name, devLogin, messagingMode(cfg), cfg.Country.Locale, cfg.Country.TimeZone, cfg.ForwardedHops)
+		log.Printf("%s on Lambda (dev login %s, messaging %s, locale %s, time zone %s, forwarded hops %d, evaluate %s)",
+			name, devLogin, messagingMode(cfg), cfg.Country.Locale, cfg.Country.TimeZone, cfg.ForwardedHops, evaluateMode(cfg))
 		lambda.Start(Lambda(handler, cfg.ForwardedHops))
 		return
 	}

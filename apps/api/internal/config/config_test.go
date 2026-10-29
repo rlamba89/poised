@@ -495,3 +495,36 @@ func TestLoadEvaluateURL(t *testing.T) {
 		}
 	}
 }
+
+// The evaluate Lambda (S45): on AWS the API invokes the function EVALUATE_FUNCTION names instead of
+// calling an address; CONFIG_STRICT needs one of the two, and only one may be set.
+func TestLoadEvaluateFunction(t *testing.T) {
+	e := required()
+	e["EVALUATE_FUNCTION"] = "poised-ca-qa-evaluate"
+	c, err := config.Load(e.get)
+	if err != nil || c.EvaluateFunction != "poised-ca-qa-evaluate" || c.EvaluateURL != "" {
+		t.Fatalf("set locally: function %q, URL %q, %v (want the function and no URL)", c.EvaluateFunction, c.EvaluateURL, err)
+	}
+	e = strict()
+	delete(e, "EVALUATE_URL")
+	e["EVALUATE_FUNCTION"] = "arn:aws:lambda:ca-central-1:111111111111:function:poised-ca-qa-evaluate"
+	if c, err := config.Load(e.get); err != nil || c.EvaluateFunction != e["EVALUATE_FUNCTION"] || c.EvaluateURL != "" {
+		t.Fatalf("strict, by ARN: %q, %q, %v", c.EvaluateFunction, c.EvaluateURL, err)
+	}
+	delete(e, "EVALUATE_FUNCTION")
+	if _, err := config.Load(e.get); err == nil || !strings.Contains(err.Error(), "EVALUATE_FUNCTION or EVALUATE_URL") {
+		t.Errorf("strict with neither: %v, want an error naming both", err)
+	}
+	e = strict()
+	e["EVALUATE_FUNCTION"] = "poised-ca-qa-evaluate"
+	if _, err := config.Load(e.get); err == nil || !strings.Contains(err.Error(), "only one") {
+		t.Errorf("both set: %v, want an error saying only one", err)
+	}
+	for _, bad := range []string{"has space", "poised/evaluate", strings.Repeat("x", 65), "arn:aws:s3:::bucket", "https://evaluate.example.test"} {
+		e := required()
+		e["EVALUATE_FUNCTION"] = bad
+		if _, err := config.Load(e.get); err == nil || !strings.Contains(err.Error(), "EVALUATE_FUNCTION") {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
+}

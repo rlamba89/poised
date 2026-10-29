@@ -59,8 +59,11 @@ type Config struct {
 	// EVALUATE_URL (S41, D-1): the evaluate service, which works out an HQ's results when it's sent
 	// and runs the publish checks (internal/evaluate). Locally `npm run evaluate`, which make dev
 	// starts (default http://127.0.0.1:8090, its port read by the service too); required with
-	// CONFIG_STRICT (AWS, S45). No trailing slash.
+	// CONFIG_STRICT unless EVALUATE_FUNCTION is set. No trailing slash.
 	EvaluateURL string
+	// EVALUATE_FUNCTION (S45, D-4): on AWS the evaluate Lambda's name (or ARN), which the API
+	// invokes instead of calling EVALUATE_URL. CONFIG_STRICT needs one of the two; only one may be set.
+	EvaluateFunction string
 	Country     Country
 	// Cognito is the staff user pool (S12): staff sign in through its managed login. Required on
 	// AWS (CONFIG_STRICT); locally it's usually unset and the dev login stands in.
@@ -306,7 +309,7 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, fmt.Errorf("MESSAGING must be %q or %q, not %q", MessagingCapture, MessagingSend, c.Messaging))
 	}
 	errs = append(errs, c.loadSending(getenv, need)...)
-	errs = append(errs, c.loadEvaluateURL(getenv, strict, need)...)
+	errs = append(errs, c.loadEvaluate(getenv, strict, need)...)
 	if len(missing) > 0 {
 		hint := " (copy .env.example to .env)"
 		if strict {
@@ -356,14 +359,26 @@ func (c *Config) loadSending(getenv func(string) string, need func(string) strin
 	return errs
 }
 
-// loadEvaluateURL reads EVALUATE_URL (S41): an http(s) address with no path, the local default
-// outside strict mode.
-func (c *Config) loadEvaluateURL(getenv func(string) string, strict bool, need func(string) string) []error {
-	v := getenv("EVALUATE_URL")
-	if v == "" && !strict {
+// evaluateFunctionRe is a Lambda function's name, or its ARN (with an optional version or alias).
+var evaluateFunctionRe = regexp.MustCompile(`^([A-Za-z0-9_-]{1,64}|arn:aws[a-z-]*:lambda:[a-z0-9-]+:\d{12}:function:[A-Za-z0-9_-]{1,64}(:[A-Za-z0-9_$-]+)?)$`)
+
+// loadEvaluate reads where the evaluate service is: EVALUATE_FUNCTION (S45, the Lambda on AWS), or
+// EVALUATE_URL (S41): an http(s) address with no path, the local default outside strict mode.
+func (c *Config) loadEvaluate(getenv func(string) string, strict bool, need func(string) string) []error {
+	v, fn := getenv("EVALUATE_URL"), getenv("EVALUATE_FUNCTION")
+	switch {
+	case fn != "" && v != "":
+		return []error{errors.New("set only one of EVALUATE_FUNCTION (the evaluate Lambda) and EVALUATE_URL (its local address)")}
+	case fn != "":
+		if !evaluateFunctionRe.MatchString(fn) {
+			return []error{fmt.Errorf("EVALUATE_FUNCTION must be the evaluate Lambda's name or ARN, such as poised-<env>-evaluate, not %q", fn)}
+		}
+		c.EvaluateFunction = fn
+		return nil
+	case v == "" && !strict:
 		v = DefaultEvaluateURL
-	} else if v == "" {
-		need("EVALUATE_URL") // reported as missing
+	case v == "":
+		need("EVALUATE_FUNCTION or EVALUATE_URL") // reported as missing
 		return nil
 	}
 	c.EvaluateURL = strings.TrimSuffix(v, "/")
