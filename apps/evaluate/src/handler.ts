@@ -1,5 +1,6 @@
 // The evaluate service's requests (plan C6, S41), apart from how they arrive: server.ts serves
-// them over HTTP locally (npm run evaluate); S45's Lambda will call handle() the same way.
+// them over HTTP locally (npm run evaluate, through handle()); S45's Lambda (lambda.ts) calls run()
+// with the same operations, so both give the same answers.
 //
 //   POST /evaluate          a sent HQ (EvaluateInput) → what it gives (EvaluateResult)
 //   POST /publish-problems  a version's sets and rules (PublishInput) → { problems }
@@ -36,15 +37,41 @@ function where(e: unknown): string {
   return [e.name, ...frames].join(" | ");
 }
 
-const formIdOf = (v: unknown): string => {
+/** The operations, by name: the HTTP path without its slash, and the Lambda's op (S45). */
+export const OP_NAMES = ["evaluate", "publish-problems", "shown"] as const;
+export type OpName = (typeof OP_NAMES)[number];
+export const isOpName = (v: unknown): v is OpName => typeof v === "string" && (OP_NAMES as readonly string[]).includes(v);
+
+/** The id the logs may name for a request: the episode form's, when it looks like one; else "unknown". */
+export const formIdOf = (v: unknown): string => {
   const id = v && typeof v === "object" ? (v as { formId?: unknown }).formId : undefined;
   return typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id) ? id : "unknown";
 };
 
-export async function handle(method: string, path: string, body: string, version: string, ops: Partial<Ops> = {}): Promise<Reply> {
+/** Runs one operation on its parsed input. Its only log is the error line (no answer, no message). */
+export function run(name: OpName, input: unknown, version: string, ops: Partial<Ops> = {}): Reply {
   const op = { ...real, ...ops };
-  if (path === "/health") return method === "GET" ? { status: 200, body: { ok: true, evaluator: version } } : { status: 405, body: { error: "Use GET." } };
-  if (path !== "/evaluate" && path !== "/publish-problems" && path !== "/shown") return { status: 404, body: { error: "Not found." } };
+  try {
+    const out =
+      name === "evaluate" ? op.evaluate(input as Parameters<Ops["evaluate"]>[0], version)
+      : name === "shown" ? op.shownSetsFor(input as Parameters<Ops["shownSetsFor"]>[0])
+      : op.checkPublish(input as Parameters<Ops["checkPublish"]>[0]);
+    return { status: 200, body: out };
+  } catch (e) {
+    if (e instanceof EvaluateInputError) return { status: 400, body: { error: e.message } };
+    const what = name === "publish-problems" ? "a version's publish checks" : `form ${formIdOf(input)}`;
+    console.error(`evaluate: failed on ${what}: ${where(e)}`);
+    return { status: 500, body: { error: "The checks couldn't be worked out." } };
+  }
+}
+
+/** The health answer: the service is up, and which build it is. */
+export const health = (version: string): Reply => ({ status: 200, body: { ok: true, evaluator: version } });
+
+export async function handle(method: string, path: string, body: string, version: string, ops: Partial<Ops> = {}): Promise<Reply> {
+  if (path === "/health") return method === "GET" ? health(version) : { status: 405, body: { error: "Use GET." } };
+  const name = path.slice(1);
+  if (!isOpName(name)) return { status: 404, body: { error: "Not found." } };
   if (method !== "POST") return { status: 405, body: { error: "Use POST." } };
   let input: unknown;
   try {
@@ -52,16 +79,5 @@ export async function handle(method: string, path: string, body: string, version
   } catch {
     return { status: 400, body: { error: "The body isn't JSON." } };
   }
-  try {
-    const out =
-      path === "/evaluate" ? op.evaluate(input as Parameters<Ops["evaluate"]>[0], version)
-      : path === "/shown" ? op.shownSetsFor(input as Parameters<Ops["shownSetsFor"]>[0])
-      : op.checkPublish(input as Parameters<Ops["checkPublish"]>[0]);
-    return { status: 200, body: out };
-  } catch (e) {
-    if (e instanceof EvaluateInputError) return { status: 400, body: { error: e.message } };
-    const what = path === "/publish-problems" ? "a version's publish checks" : `form ${formIdOf(input)}`;
-    console.error(`evaluate: failed on ${what}: ${where(e)}`);
-    return { status: 500, body: { error: "The checks couldn't be worked out." } };
-  }
+  return run(name, input, version, ops);
 }

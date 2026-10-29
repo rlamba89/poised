@@ -120,7 +120,15 @@ export function parseScore(expression: string | undefined): ScoreForm | undefine
 /** Whether a Calculation is a score that goes Incomplete while an input is missing. */
 export const isGuardedScore = (expression: unknown) => typeof expression === "string" && expression.trim().startsWith(`iif(${ALL_ANSWERED}(`);
 
+/**
+ * The parsed score forms, by expression text. A browser tab sees a handful; the evaluate Lambda's
+ * process (S45) lives across many calls and trusts, so the cache is emptied once it holds this many.
+ */
+export const MAX_PARSED_SCORES = 500;
 const parsed = new Map<string, ScoreForm | null>();
+
+/** How many expressions the cache holds (for its test). */
+export const parsedScoreCount = () => parsed.size;
 
 /**
  * A score's expression as it runs in a survey now (S44a): an "Add N points when…" line that tests an
@@ -130,7 +138,10 @@ const parsed = new Map<string, ScoreForm | null>();
  */
 export function scoreAsShown(survey: SurveyModel, expression: string): string {
   if (!isGuardedScore(expression)) return expression;
-  if (!parsed.has(expression)) parsed.set(expression, parseScore(expression) ?? null);
+  if (!parsed.has(expression)) {
+    if (parsed.size >= MAX_PARSED_SCORES) parsed.clear();
+    parsed.set(expression, parseScore(expression) ?? null);
+  }
   const f = parsed.get(expression);
   if (!f?.lines?.length) return expression;
   const lines = f.lines.filter((l) => !inputHidden(survey, l.rule.left));

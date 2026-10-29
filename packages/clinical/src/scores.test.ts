@@ -8,7 +8,8 @@ import { publishProblems } from "./publish";
 import { registerClinicalProperties } from "./properties";
 import { combineChapters, givenEarlier } from "./questionSets";
 import { earlierContexts, isSetComplete, isSetReadyToSend, shownSets } from "./respondent";
-import { applyEarlier, bandWhenSubjects, formatBandWhen, formatScore, linesToSave, parseBandWhen, parseScore, scoredQuestions, type PointsLine, type ScoreForm } from "./scores";
+import { ALL_ANSWERED, applyEarlier, bandWhenSubjects, formatBandWhen, formatScore, linesToSave, MAX_PARSED_SCORES, parseBandWhen, parsedScoreCount, parseScore, scoreAsShown, scoredQuestions, type PointsLine, type ScoreForm } from "./scores";
+import type { SurveyModel } from "survey-core";
 import { modelFor, runTestCase, type SamplePatient, type TestCase } from "./testcases";
 import { renameReferences } from "./library";
 import { showBands } from "./questionTypes";
@@ -524,5 +525,18 @@ describe("an author's band with \"also when\" (S44a)", () => {
     expect(publishProblems([{ name: "Sleep", doc: doc(gone) }]).map((p) => p.message)).toEqual([
       "\"Sleep score\" band \"High\": it tests something that no longer exists (q_gone)",
     ]);
+  });
+});
+
+// S45: the evaluate Lambda's process serves many calls, so the parsed-score cache has a bound.
+describe("scoreAsShown's cache of parsed scores", () => {
+  it("never holds more than MAX_PARSED_SCORES expressions", () => {
+    const survey = {} as SurveyModel; // unread: these expressions don't parse as score forms
+    for (let i = 0; i < MAX_PARSED_SCORES + 50; i++) {
+      const e = `iif(${ALL_ANSWERED}({q_${i}}), {q_${i}} + ${i}, '')`;
+      expect(scoreAsShown(survey, e)).toBe(e);
+    }
+    expect(parsedScoreCount()).toBeGreaterThan(0);
+    expect(parsedScoreCount()).toBeLessThanOrEqual(MAX_PARSED_SCORES);
   });
 });
