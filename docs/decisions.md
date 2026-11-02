@@ -33,6 +33,43 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 31 Oct 2026: S46's test report 5 (Rahul's answers)
+
+- **A save that changes a trust's observation ranges is refused if someone changed them since the page loaded** (409, "Someone else changed the observation ranges. Reload to see them, then make your change again."). Chosen over merging rows, which would leave two admins changing one row silently overwriting each other, and over last save wins, as other settings work. The ranges are one setting, so a page left open would otherwise put back every row, unseen, on a clinical limit. The page sends what it loaded (`loaded`), and Go compares it under the lock it already takes. No migration. Other settings are unaffected. (`staleRanges`)
+- **A caller who leaves mid-request is audited as Cancelled (status 499), not Refused (500).** A browser moving to another page cancels its requests, which fails the query. Found chasing unexplained 500s in the audit log: 40 dropped requests gave 40 new 500 rows. The row stays, as the request happened; a timeout is still our failure. Holds on every audited route. (`auditStatus`)
+- **A note over the limit is refused, not cut:** the box has no `maxLength` now, and the panel says "The note is too long (2000 characters at most)." with what was pasted still there, so a long ECG report can't lose its end unseen. Go sends the limit (`maxNote`).
+- **With observations off, the web app doesn't call their routes,** so a hospital without them gets no refused audit row per page open. The episode's GET sends `observationsOn`. The routes still answer 403.
+
+### 30 Oct 2026: S46's verification (Rahul's answers and the fixes)
+
+- **A correction marked entered in error doesn't bring back the value it replaced** (Rahul: no harm, they can correct it again). Nothing counts until someone enters a value, and the Entered in error form on a correction says so: "The value it corrected won't count again. To put a value back, use Correct." **This differs from S44b's ASA grades on purpose:** an older grade was a valid judgement, but a corrected reading is one a clinician has already said was wrong, so it shouldn't come back without anyone choosing it. S46's answer 2 stands otherwise. ([verify.md](sessions/S46-observations/verify.md), F-2)
+- **A correction gets the same "Save it anyway?" as a new reading** (OBS-03): it's a value typed by hand, as likely to be mistyped. (F-1)
+- **A reading can't be dated before the patient's date of birth** (400), for a new reading and a correction: the panel can't change a saved time, so a mistyped year would otherwise stay. The limit is the start of that date anywhere, 14 hours ahead of UTC, so a birthday reading in any zone passes. (Rahul, 30 Oct)
+- **The ranges editor sends only the measures that differ from Preopsis's defaults,** so a trust that changes one limit keeps following the defaults for the rest, including the clinician-checked values when they ship. (Rahul, 30 Oct; replaces the builder's choice to save all ten)
+- **A reading's times are compared as times, never as text** (`byTime` in `@poised/clinical`): the API's strings differ in offset and fraction. (F-5)
+
+### 30 Oct 2026: S46 passed manual testing (builder's choices from the fix loop)
+
+- **A reading's Measured at is the time of Save unless the clinician changes it,** not the time the form opened; the box says so until it's changed. A reading entered a few minutes after the form opened would otherwise carry the wrong time. ([build notes](sessions/S46-observations/build-notes.md))
+- **The Settings page's range boxes are plain text boxes, not number inputs:** Mantine's NumberInput dropped a typed minus, so "-1" was saved as 1. What's typed goes to Go, which refuses it with its own message.
+- **The reading boxes take only plain decimals (a comma allowed),** so "1e2" and "0x10" are refused, not read as numbers.
+- **A missing, empty, text or `null` range limit is refused, naming its measurement** ("Weight: give all four limits as numbers."). Before, `null` read as 0.
+
+### 29 Oct 2026: plan C7 split into S46–S49, and S46's answers (Rahul)
+
+- **C7 is split into four sessions:** S46 observations; S47 assessments with STOP-Bang first (attach, pre-fill with sources, Confirm, `obs_precedence`), which makes C7 usable by itself, as the plan's "ship STOP-Bang alone first" asks; S48 DASI, PRISMA-7 and Apfel; S49 MUST, falls risk, VTE and Rockwood. Each later brief's questions are asked when its session starts. ([sessions/README.md](sessions/README.md), Plan C7)
+- **Observation ranges are platform defaults that each trust can change** (Rahul chose this over the recommended platform-only list). Go holds the defaults (made up until a clinician checks them), and a trust's whole-trust admins can change each kind's soft range and hard limits as a trust-level setting. **Some checks stay fixed in Go whatever a trust sets:** no negatives, a diastolic not above its systolic, no future time, and a hard range must contain its soft range (a trust value that breaks one is refused, 400). ([S46 answers](sessions/S46-observations/answers.md), 1)
+- **A reading is corrected, or marked entered in error, each with a reason; the old row is always kept** (superseded), as S44b's ASA grade history works, so clinicians meet one pattern. ([S46 answers](sessions/S46-observations/answers.md), 2)
+- **One stored unit per observation kind; each country's display units come from Go's country config** (A-20). The UK's display units are the stored ones; nothing converts until a second country needs it (e.g. mg/dL glucose, °F). ([S46 answers](sessions/S46-observations/answers.md), 3)
+- **S45 was committed locally on 29 Oct (4 commits, not pushed)** after verification 1, with Rahul's yes; H-2 (a green pipeline) waits for his push.
+
+### 29 Oct 2026: S46 built (observations; builder's choices)
+
+- **Readings don't change the episode's revision or write General notes lines:** they have their own history (who, when, why), and saving one never makes another tab's episode edit stale. The routes still take the episode's lock and refuse a cancelled or archived episode (409). ([build notes](sessions/S46-observations/build-notes.md))
+- **Observations off at a hospital: every observation route is a 403,** and the card and the POA Summary's Hospital BMI line are hidden.
+- **The panel never warns about a value outside the hard limits:** it sends it, and Go's refusal shows (found by J12). A correction keeps the reading's kind and time. The diastolic must be strictly lower than the systolic. Height, weight, temperature and glucose take one decimal place, the rest whole numbers.
+- **Gotcha:** `GLUCOSE_UNIT` and `TEMPERATURE_UNIT` are required with `CONFIG_STRICT`, so QA's functions refuse to start without them; `infra/countries.py` sets them, deployed with the push.
+
 ### 29 Oct 2026: S45 on QA (with Rahul; deployed by hand; tested 29 Oct, test report 1 all passed)
 
 - **The evaluate calls stay inside the locks.** Measured on QA: a cold start loads in about 230 ms, a send's call takes 120–350 ms, Publish's and Complete review's 1–12 ms, so the worst case is about 0.6 s, under the 1 s that would have needed Rahul (S44a answer 12). No provisioned concurrency. ([build notes](sessions/S45-evaluate-lambda/build-notes.md), "QA deploy and measurements"; pending.md's four lock items)

@@ -254,6 +254,27 @@ docker compose up -d --force-recreate db
 - **A non-required question feeding a guarded score stops auto-triage when skipped** (the score is Incomplete). As agreed ("no score is Incomplete"); authors who want such patients auto-triaged make the question required.
 - **The status message's default wording** ("…your pre-operative assessment is complete and you are ready for your operation") was written in S21 for a clinician's decision. It doesn't say "fit for surgery", so it was kept; a trust can change it per hospital. Rahul may want softer default words for auto-triage ("Your answers mean you don't need a pre-op appointment…", the research's example) before go-live.
 
+### From S46's test reports (29–30 Oct; minor, not fixed in S46)
+
+- **Print:** in the POA Summary's print layout the Hospital BMI value wraps ("25.5 (measured 29/10/2026, / 17:19)") and sits slightly left of its column.
+- **An earlier-timed reading** sorts below the newer ones (newest measured first), often off screen, with no other sign it was saved. A short "Saved" note, or briefly highlighting it, would help.
+- **The Tasks card's Complete button is cut off** ("Comple") at 390 px wide (S21's card).
+- **Two "Opened an episode's observations" audit rows per page load** in dev: React's development double effects (and the POA Summary's own load). Check the count on QA.
+- **From test reports 3 and 4 (cosmetic):** at 390 px a reading's text gets about 107 px beside its two buttons, so a correction's line takes five or six short lines, and a 395-character note is about 650 px tall.
+- **From S46's verification 2 (31 Oct; [verify.md](sessions/S46-observations/verify.md)):** reasons are limited in bytes, not characters (`statuses.go`), so about 340 characters of a three-byte script is refused as "too long (1,000 characters at most)". It matters once a country uses a non-Latin script (A-20).
+- **From test report 5 (31 Oct; cosmetic):** a red refusal stays while a new value is typed (the yellow box closes, so the two differ); the Settings page's message pushes Save down the page, so a second click on the same spot misses it.
+- **From test report 6 (31 Oct; cosmetic):** a corrected long note shows twice, once after "Corrected to" on the old row and again on the new one (about 2,000 characters each for a long ECG note); the Add a reading note box grows with its text, so after a long paste Save reading sits at the bottom of a tall form.
+- **From S46's verification 3 (2 Nov; [verify.md](sessions/S46-observations/verify.md); small, none blocking):**
+  - `auditStatus` turns any 5xx into Cancelled (499) once the caller has gone, so a real failure just before a browser leaves shows grey. If that's ever confusing, record 499 only when the error is `context.Canceled`.
+  - `useObservations` doesn't guard against loads finishing out of order: two quick saves could leave the older list showing until the next change (more likely on a cold Lambda).
+  - A Measured at time in the spring-forward gap (01:30 on the day the clocks go forward) is stored an hour later; a reading can only be corrected, not edited.
+  - Tidying: `features/settings/obsRanges.ts` imports `parseNumber` from `features/episodes/observations`; it belongs in `src/lib`.
+- **The audit log's old rows still say Refused (500)** for callers who left before 31 Oct: the log is append-only, so about 90 local rows stay as they are. New ones say Cancelled.
+- **From test report 4 (31 Oct):**
+  - **A reading can be dated the day before the date of birth** (by design: the limit is the earliest that date starts in any zone, 14 hours ahead of UTC), though the message says "can't be before".
+  - **Save reading moves up** when the Measured at hint goes (cosmetic).
+- **From test report 2 (cosmetic):** the "Respiratory rate (breaths/min)" label wraps at desktop width and pushes its row down; the reading kind dropdown can't be typed into to jump to an item (11 kinds; Mantine's `searchable`). One `Listed episodes … REFUSED (500)` audit row for Cara at 17:53 on 29 Oct, during an e2e run before the retest, not from S46's routes: worth a look if it comes back.
+
 ### From S45's verification (29 Oct; minor, none blocking; [verify.md](sessions/S45-evaluate-lambda/verify.md))
 
 - **Before a real customer, reserve concurrency for the evaluate Lambda too.** Each send uses two concurrent executions (the API and the function). QA's account allows 1000, but a new production account can start at 10 (infra/README, "Reserved concurrency"); there a burst would throttle the evaluate calls and send HQs to Ready for review unchecked. Add it to the existing "raise the limit, then reserve some for patient-api" step.

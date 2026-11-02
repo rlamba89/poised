@@ -49,4 +49,10 @@
 
 ## Status
 
-Not started.
+**Split into sessions on 29 Oct 2026; in progress: S46 verified 2 Nov (verification 3).** S46 differs from this plan: a trust's admins may set their own ranges (Rahul's answer 1), and the glucose and temperature display units are country config.
+- **S46:** observations (OBS-01–03, and OBS-04's hospital BMI); J12 starts;
+- **S47:** assessments (attach, pre-fill with sources, Confirm, the POA Summary) with STOP-Bang, plus OBS-04's `obs_precedence`;
+- **S48:** DASI, PRISMA-7 and Apfel;
+- **S49:** MUST, falls risk, VTE and Rockwood.
+
+The briefs are in [docs/sessions/](../sessions/README.md).

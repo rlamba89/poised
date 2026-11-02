@@ -10,7 +10,7 @@ Plans F1–F4 and C1–C2 split into **17 sessions** (plus S02a, a bug fix). Tog
 
 Each session is small enough for one Claude session, and ends with something a tester can try in a browser.
 
-Plan C3 is split into **S18–S22** (20 Oct), plan C4 into **S23–S26** (21 Oct), plan C5 into **S31–S36** (25 Oct), and plan C6 into **S38–S45** (26 Oct). Plans C7–C10 get split the same way when we reach them.
+Plan C3 is split into **S18–S22** (20 Oct), plan C4 into **S23–S26** (21 Oct), plan C5 into **S31–S36** (25 Oct), plan C6 into **S38–S45** (26 Oct), and plan C7 into **S46–S49** (29 Oct). Plans C8–C10 get split the same way when we reach them.
 
 ## How a session runs
 
@@ -199,5 +199,16 @@ Split on 26 Oct; S44a and S44b added on 27 Oct, from Rahul's answers to the open
 | [S44b](S44b-asa-grade-history/brief.md) | C6 | The anaesthetist's ASA grade as a history: added, never changed or cleared; a reason for a re-grade; "entered in error" | Answered 27 Oct ([answers.md](S44b-asa-grade-history/answers.md)) | **Verified** (28 Oct, verification 2, after verification 1's fixes) |
 | [S44c](S44c-c6-last-answers/brief.md) | C6 | C6's last open items: the patient's form clears a hidden question's answer, a held message stays held after Undo or un-archive, a High STOP-Bang holds back the default Low risk auto-triage, STOP-Bang Incomplete for sex "Other", no "patient answered" line on a question the patient never saw, four small fixes | Answered 28 Oct ([answers.md](S44c-c6-last-answers/answers.md)) | **Verified** (28 Oct, [verification 4](S44c-c6-last-answers/verify.md); [test report 5](S44c-c6-last-answers/test-report-5.md) all passed, after verification 3's fixes; [test report 4](S44c-c6-last-answers/test-report-4.md) all passed, after verification 2's fix; [test report 3](S44c-c6-last-answers/test-report-3.md) all passed, after verification 1's fixes; [test report 2](S44c-c6-last-answers/test-report-2.md) all passed; [test report 1](S44c-c6-last-answers/test-report-1.md): F1 fixed; [build notes](S44c-c6-last-answers/build-notes.md)) |
 | [S45](S45-evaluate-lambda/brief.md) | C6 (AWS phase) | The `evaluate` Lambda, its permissions and its failure alarm on QA | Nothing to ask; Rahul there | **Verified** (29 Oct, [verification 1](S45-evaluate-lambda/verify.md); [test report 1](S45-evaluate-lambda/test-report-1.md) all passed, on QA; [build notes](S45-evaluate-lambda/build-notes.md)); H-2, the pipeline after the push, still to do |
+
+### Plan C7: observations and assessments (local, run in this order)
+
+Split on 29 Oct. S46–S49 run locally like C6, with messages captured. Journey J12 starts in S46 (observations) and gets STOP-Bang in S47; S48 and S49 extend it. The plan says to ship STOP-Bang alone first if time is short, so S47 makes a usable C7 by itself.
+
+| ID | Plan | Builds | Needs from you first | Status |
+| --- | --- | --- | --- | --- |
+| [S46](S46-observations/brief.md) | C7 | Observations: the panel, readings with history (correct, entered in error), soft ranges and hard limits, the hospital BMI on the POA Summary (OBS-01–04); J12 starts | Answered 29 Oct ([answers.md](S46-observations/answers.md)) | **Verified** 2 Nov ([verification 3](S46-observations/verify.md); [build notes](S46-observations/build-notes.md); [test report 6](S46-observations/test-report-6.md) all passed) |
+| [S47](S47-assessments-stopbang/brief.md) | C7 | Assessments on the episode, pre-filled from the HQ, observations and profile with each item's source, completed and confirmed by the clinician; STOP-Bang first; `obs_precedence`; J12 | 4 questions (attaching, the neck item, which BMI, an HQ with STOP-Bang) | Not started |
+| [S48](S48-dasi-prisma-apfel/brief.md) | C7 | DASI, PRISMA-7 and Apfel, as assessments and as ready-made scores for the HQ, checked against their published sources | 2 questions (DASI's band, where they appear) | Not started |
+| [S49](S49-must-falls-vte-rockwood/brief.md) | C7 | MUST, falls risk, VTE and Rockwood (clinician-only, with DASI and PRISMA-7 as hints); C7 done | 3 questions (falls tool, licences, MUST's weight loss) | Not started |
 
 **Why this order:** nothing needs AWS until someone outside your laptop has to use the app. Building locally first lets the automatic run go without AWS stops. The cost is that the AWS hosting setup and its near-£0 idle cost are proven later (decided 12 Oct; [decisions.md](../decisions.md)).
