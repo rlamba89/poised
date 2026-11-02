@@ -6,6 +6,7 @@
 import type { Question } from "survey-core";
 import { allElements, findElement, pagesOf, pageTitle, type ChapterJson } from "./doc";
 import { computeOutputs, isClinicianOnlyInTree } from "./outputs";
+import { bmiOf } from "./observations";
 import { registerClinicalProperties } from "./properties";
 import { prefilledAnswers, prefillMarks, type PrefillMark, type SetPrefill } from "./prefill";
 import { describeAnswer, hqSets, sameAnswer, shownSets, shownToPatient, type Answers } from "./respondent";
@@ -160,7 +161,8 @@ export function reportedBmi(sets: SetInput[], answersOf: (setId: string) => Answ
     for (const [h, w] of pairs) {
       const cm = Number(h);
       const kg = Number(w);
-      if (h !== undefined && h !== "" && w !== undefined && w !== "" && cm > 0 && kg > 0) return Math.round((kg / (cm / 100) ** 2) * 10) / 10;
+      const bmi = h !== undefined && h !== "" && w !== undefined && w !== "" ? bmiOf(cm, kg) : undefined;
+      if (bmi !== undefined) return bmi;
     }
   }
   return undefined;

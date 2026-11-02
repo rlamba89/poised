@@ -4,6 +4,7 @@ import { ComponentCollection, FunctionFactory, Serializer, settings, SurveyModel
 import { ALL_ANSWERED, bandIn, bandWhenInputs, earlierPoints, earlierQuestion, inputAnswered, inputHidden, isGuardedScore, scoreAsShown } from "./scores";
 import { registerVideoType } from "./video";
 import { STOP_BANG_KEYS } from "./ready";
+import { bmiOf } from "./observations";
 
 /** Registers Medication, Admissions, BMI, Profile and Video (S34), and the flags the editor stores. Safe to call twice. */
 export function registerQuestionTypes(): void {
@@ -169,7 +170,7 @@ function registerClinicalFunctions(): void {
   });
   FunctionFactory.Instance.register("bmi", (params: unknown[]) => {
     const [h, w] = params.map(Number);
-    return h > 0 && w > 0 ? Math.round((w / ((h / 100) * (h / 100))) * 10) / 10 : null;
+    return bmiOf(h, w) ?? null;
   });
 }
 

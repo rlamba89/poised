@@ -23,6 +23,8 @@ import { StatusBadge } from "./EpisodeList";
 import { SuggestedAsaBlock } from "./SuggestedAsa";
 import { useEpisode } from "./EpisodePage";
 import { GeneralNotes } from "./GeneralNotes";
+import { useObservations } from "./ObservationsPanel";
+import { hospitalBmiRow } from "./observations";
 import { allCurrentAnswers, hqPatient, useEpisodeHQ, type EpisodeHQ } from "./hq";
 import { restoreSpot, saveSpot, takeSpot, validateAt } from "./jump";
 import { sessionStore } from "@/lib/chunkError";
@@ -37,6 +39,9 @@ type Tab = "validated" | "patient";
 export default function PoaSummary({ base, episodeId }: { base: string; episodeId: string }) {
   const { data, error, reload } = useEpisode(base, episodeId);
   const { hq, error: hqError } = useEpisodeHQ(base, episodeId);
+  const path = `${base}/episodes/${episodeId}`;
+  // The hospital BMI (S46, OBS-04): read once here, not per tab, as every read is an audit row.
+  const obs = useObservations(path, data?.observationsOn);
   // The tab is in the address (?tab=patient), so Back from Validate and a reload keep it (S27).
   const [params, setParams] = useSearchParams();
   const tab: Tab = params.get("tab") === "patient" ? "patient" : "validated";
@@ -52,7 +57,6 @@ export default function PoaSummary({ base, episodeId }: { base: string; episodeI
   if (error || hqError) return <Alert color="red">{error || hqError}</Alert>;
   if (!data || !hq) return <Center h="40vh"><Loader /></Center>;
   const e = data.episode;
-  const path = `${base}/episodes/${episodeId}`;
 
   return (
     <Stack maw={960} mx="auto">
@@ -85,7 +89,7 @@ export default function PoaSummary({ base, episodeId }: { base: string; episodeI
             </Tabs.List>
           </Tabs>
           <Summary key={tab} tab={tab} episode={e} events={data.events} grades={data.anaesthetistAsaGrades} hq={hq} path={path} onChanged={reload}
-            episodeId={episodeId} />
+            episodeId={episodeId} hospitalBmi={hospitalBmiRow(obs.view, obs.error)} />
         </Stack>
       </Card>
     </Stack>
@@ -94,9 +98,10 @@ export default function PoaSummary({ base, episodeId }: { base: string; episodeI
 
 type SummaryProps = {
   tab: Tab; episode: Episode; events: EpisodeEvent[]; grades: AnaesthetistGrade[]; hq: EpisodeHQ; path: string; onChanged: () => void; episodeId: string;
+  hospitalBmi: string | null;
 };
 
-function Summary({ tab, episode: e, events, grades, hq, path, onChanged, episodeId }: SummaryProps) {
+function Summary({ tab, episode: e, events, grades, hq, path, onChanged, episodeId, hospitalBmi }: SummaryProps) {
   const vars = useMemo(() => hqPatient(e), [e]);
   const validated = tab === "validated";
   const sets = useMemo(() => {
@@ -148,6 +153,8 @@ function Summary({ tab, episode: e, events, grades, hq, path, onChanged, episode
           <Detail label="POA appointment date" value={e.poaDate ? formatOptionalDate(e.poaDate) : ""} />
           <Detail label="Anaesthetic" value={e.anaesthetic} />
           <Detail label="Patient reported BMI" value={bmi === undefined ? "" : String(bmi)} />
+          {/* Beside the patient's own; not shown with observations off. */}
+          {hospitalBmi !== null && <Detail label="Hospital BMI" value={hospitalBmi} />}
           <Detail label="Anaesthetist ASA grade" value={asaLabel(e.anaesthetistAsa)} />
           <Detail label="Nurse ASA grade" value={asaLabel(e.nurseAsa)} />
         </Stack>

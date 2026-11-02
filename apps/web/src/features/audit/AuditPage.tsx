@@ -12,7 +12,7 @@ import { IconDownload } from "@tabler/icons-react";
 import { api } from "@/lib/api";
 import { canSeeAudit, useHospital } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
-import { auditQuery, badDays, namesOf, readFilters, withoutBadDays, type AuditFilters } from "./filters";
+import { auditQuery, badDays, namesOf, readFilters, withoutBadDays, type AuditFilters, outcome } from "./filters";
 
 /** One row, as GET /api/o/{trust}/audit sends it (internal/httpapi/audit.go, auditListRow). */
 type Row = {
@@ -251,12 +251,7 @@ function Patients({ patients, count }: { patients: Row["patients"]; count: numbe
   );
 }
 
-/** The request's outcome: the data was shown or changed, or it was refused (with the HTTP status). */
 function Result({ status }: { status: number }) {
-  if (status < 300) return <Badge color="green" variant="light">Done</Badge>;
-  return (
-    <Badge color={status >= 500 ? "red" : "orange"} variant="light">
-      Refused ({status})
-    </Badge>
-  );
+  const { label, color } = outcome(status);
+  return <Badge color={color} variant="light">{label}</Badge>;
 }

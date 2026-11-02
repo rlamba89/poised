@@ -12,7 +12,8 @@ import { Alert, Anchor, Button, Card, Container, Group, Loader, NumberInput, Sta
 import { api } from "@/lib/api";
 import { SIGN_IN_FIRST, qaError } from "./access";
 import { formatDateTime } from "@/lib/format";
-import { addDays, ceilMinute, fromLocalInput, offsetMinutes, toLocalInput, whoRuns } from "./jobsTime";
+import { fromLocalInput, toLocalInput } from "@/lib/localTime";
+import { addDays, ceilMinute, offsetMinutes, whoRuns } from "./jobsTime";
 
 type Summary = { asOf: string; jobs: number; reminders: number; notResponding: number; archived: number; failed: number };
 type Clock = { timer: boolean; runner: "timer" | "schedule"; intervalSeconds: number; offsetMinutes: number; lastTickAt: string | null; lastTickAsOf: string | null };

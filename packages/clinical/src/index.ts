@@ -27,3 +27,4 @@ export * from "./asa";
 export * from "./rules";
 export * from "./evaluate";
 export * from "./warnings";
+export * from "./observations";

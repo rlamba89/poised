@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { auditQuery, badDays, namesOf, readFilters, withoutBadDays } from "./filters";
+import { auditQuery, badDays, namesOf, outcome, readFilters, withoutBadDays } from "./filters";
 
 // The Audit screen's filters live in the page's URL (?user=&from=&to=&patient=), as days and text.
 // auditQuery turns them into the API's query: the days become the browser's own midnights, so a
@@ -52,5 +52,14 @@ describe("the audit filters (S11)", () => {
     const f = { user: "u1", from: "2026-02-30", to: "2026-03-05", patient: "Smith" };
     expect(withoutBadDays(f)).toEqual({ user: "u1", from: "", to: "2026-03-05", patient: "Smith" });
     expect(withoutBadDays({ ...f, from: "2026-03-01" })).toEqual({ ...f, from: "2026-03-01" });
+  });
+});
+
+describe("a row's outcome (S46 test report 5)", () => {
+  it("done, refused with the status, or cancelled when the caller left mid-request", () => {
+    expect(outcome(200).label).toBe("Done");
+    expect(outcome(409).label).toBe("Refused (409)");
+    expect(outcome(500).label).toBe("Refused (500)");
+    expect(outcome(499).label).toBe("Cancelled");
   });
 });

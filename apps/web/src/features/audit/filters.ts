@@ -68,3 +68,10 @@ export const withoutBadDays = (f: AuditFilters): AuditFilters => ({
   from: f.from && midnight(f.from) ? f.from : "",
   to: f.to && midnight(f.to) ? f.to : "",
 });
+
+/** A row's outcome: the data was shown or changed, refused (with the status), or the caller left mid-request (Go's statusCallerLeft). */
+export function outcome(status: number): { label: string; color: string } {
+  if (status < 300) return { label: "Done", color: "green" };
+  if (status === 499) return { label: "Cancelled", color: "gray" };
+  return { label: `Refused (${status})`, color: status >= 500 ? "red" : "orange" };
+}

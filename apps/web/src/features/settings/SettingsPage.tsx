@@ -12,6 +12,7 @@ import {
 import { api } from "@/lib/api";
 import { canManageSettings, useHospital } from "@/lib/auth";
 import type { SettingDef } from "@/features/admin/types";
+import { LIMITS, rangesDraft, rangesForSave, sameRanges, withLimit, type Limit, type RangesValue } from "./obsRanges";
 
 type Values = Record<string, unknown>;
 type HospitalSettings = { id: string; name: string; status: "active" | "suspended"; values: Values; effective: Values };
@@ -100,7 +101,7 @@ function SettingsForm({ view, hospital, path, notice, setNotice, onSaved }: {
   const editable = (d: SettingDef) => !d.optIn && (!hospital || d.level === "hospital");
 
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() =>
-    Object.fromEntries(view.defs.map((d) => [d.key, { follow: !(d.key in own), value: d.kind === "dayList" ? daysText(effective[d.key]) : effective[d.key] }])),
+    Object.fromEntries(view.defs.map((d) => [d.key, { follow: !(d.key in own), value: initial(d, effective[d.key]) }])),
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -112,10 +113,10 @@ function SettingsForm({ view, hospital, path, notice, setNotice, onSaved }: {
     const values: Values = {};
     for (const d of view.defs.filter(editable)) {
       const draft = drafts[d.key];
-      const value = d.kind === "dayList" ? parseDays(String(draft.value)) : draft.value;
+      const value = d.kind === "dayList" ? parseDays(String(draft.value)) : d.kind === "obsRanges" ? rangesForSave(draft.value as RangesValue, d.default) : draft.value;
       if (draft.follow) {
         if (d.key in own) values[d.key] = null; // back to following
-      } else if (!(d.key in own) || !same(value, own[d.key])) {
+      } else if (!(d.key in own) || !(d.kind === "obsRanges" ? sameRanges(draft.value as RangesValue, own[d.key], d.default) : same(value, own[d.key]))) {
         values[d.key] = value;
       }
     }
@@ -125,7 +126,9 @@ function SettingsForm({ view, hospital, path, notice, setNotice, onSaved }: {
     }
     setSaving(true);
     try {
-      const v = await api<View>(path, { method: "PATCH", body: JSON.stringify({ hospitalId: hospital?.id ?? null, values }) });
+      // The ranges as this page loaded them: Go refuses the save if someone has changed them since.
+      const loaded = Object.fromEntries(view.defs.filter((d) => d.kind === "obsRanges" && d.key in values).map((d) => [d.key, own[d.key] ?? null]));
+      const v = await api<View>(path, { method: "PATCH", body: JSON.stringify({ hospitalId: hospital?.id ?? null, values, loaded }) });
       onSaved(v);
     } catch (e) {
       setError((e as Error).message);
@@ -153,13 +156,13 @@ function SettingsForm({ view, hospital, path, notice, setNotice, onSaved }: {
                 <div key={d.key}>
                   {editable(d) ? (
                     <Stack gap={4}>
-                      <Field def={d} value={drafts[d.key].follow ? (d.kind === "dayList" ? daysText(parent(d)) : parent(d)) : drafts[d.key].value}
+                      <Field def={d} value={drafts[d.key].follow ? initial(d, parent(d)) : drafts[d.key].value}
                         disabled={drafts[d.key].follow} questionnaires={view.questionnaires} onChange={(value) => set(d.key, { value })} />
                       <Checkbox size="xs" label={followLabel} aria-label={`${followLabel}: ${d.label}`} checked={drafts[d.key].follow}
                         onChange={(e) => {
                           const follow = e.currentTarget.checked;
                           // Starting its own value from what applies now.
-                          set(d.key, { follow, value: follow ? drafts[d.key].value : d.kind === "dayList" ? daysText(parent(d)) : parent(d) });
+                          set(d.key, { follow, value: follow ? drafts[d.key].value : initial(d, parent(d)) });
                         }} />
                     </Stack>
                   ) : (
@@ -182,6 +185,13 @@ function SettingsForm({ view, hospital, path, notice, setNotice, onSaved }: {
   );
 }
 
+/** A value as its field holds it: a day list as text, the observation ranges as a full table (S46). */
+function initial(d: SettingDef, value: unknown): unknown {
+  if (d.kind === "dayList") return daysText(value);
+  if (d.kind === "obsRanges") return rangesDraft(value, d.default);
+  return value;
+}
+
 /** A setting shown but not editable here: an opt-in (Preopsis sets it), or a trust-only one at a hospital. */
 function ReadOnly({ def, value, hospital, questionnaires }: { def: SettingDef; value: unknown; hospital: boolean; questionnaires: View["questionnaires"] }) {
   const why = def.optIn ? "Set by Preopsis's platform admin" : hospital ? "Set for the whole trust" : "";
@@ -201,6 +211,7 @@ function show(def: SettingDef, value: unknown, questionnaires: View["questionnai
   if (def.kind === "bool") return value ? "On" : "Off";
   if (def.kind === "dayList") return daysText(value) || "None";
   if (def.kind === "questionnaire") return questionnaires.find((q) => q.id === value)?.name ?? "None";
+  if (def.kind === "obsRanges") return same(rangesDraft(value, def.default), rangesDraft(def.default, def.default)) ? "Preopsis's defaults" : "The trust's own";
   return String(value ?? "") || "Not set";
 }
 
@@ -227,6 +238,8 @@ function Field({ def, value, disabled, questionnaires, onChange }: {
     case "text":
     case "template":
       return <Textarea {...common} autosize minRows={2} maxRows={8} value={String(value ?? "")} onChange={(e) => onChange(e.currentTarget.value)} />;
+    case "obsRanges":
+      return <ObsRangesField def={def} value={value as RangesValue} disabled={disabled} onChange={onChange} />;
     case "questionnaire": {
       const id = String(value ?? "");
       const data = [{ value: "", label: "None" }, ...questionnaires.map((q) => ({ value: q.id, label: q.name }))];
@@ -237,4 +250,28 @@ function Field({ def, value, disabled, questionnaires, onChange }: {
     default: // url, email, phone
       return <TextInput {...common} value={String(value ?? "")} onChange={(e) => onChange(e.currentTarget.value)} />;
   }
+}
+
+const LIMIT_LABELS: Record<Limit, string> = { softMin: "Usual from", softMax: "Usual to", hardMin: "Refused below", hardMax: "Refused above" };
+
+/** The observation ranges (S46 answers 1): each measure's usual range and hard limits, in its stored unit. */
+function ObsRangesField({ def, value, disabled, onChange }: { def: SettingDef; value: RangesValue; disabled: boolean; onChange: (v: unknown) => void }) {
+  return (
+    <Stack gap={6} role="group" aria-label={def.label}>
+      <Text size="sm" fw={500}>{def.label}</Text>
+      {def.help && <Text size="xs" c="dimmed">{def.help}</Text>}
+      {(def.measures ?? []).map((m) => (
+        <Group key={m.key} gap="xs" align="flex-end" wrap="wrap">
+          <Text size="sm" w={170} pb={8}>{m.label} ({m.unit})</Text>
+          {LIMITS.map((l) => (
+            // A text box, not NumberInput: it keeps exactly what's typed, a minus sign included (F-3), and Go refuses
+            // what it must ("a limit can't be below 0").
+            <TextInput key={l} label={LIMIT_LABELS[l]} aria-label={`${m.label}: ${LIMIT_LABELS[l]}`} w={120} size="xs" disabled={disabled}
+              inputMode="decimal" value={String(value[m.key]?.[l] ?? "")}
+              onChange={(e) => onChange(withLimit(value, m.key, l, e.currentTarget.value))} />
+          ))}
+        </Group>
+      ))}
+    </Stack>
+  );
 }

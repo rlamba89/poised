@@ -13,6 +13,8 @@ export type AppConfig = {
   staffSignIn?: { devLogin: boolean; cognito: Cognito | null };
   /** The estimated time's seconds for each question the patient sees (S36, PX-10; Go's SECONDS_PER_QUESTION). */
   secondsPerQuestion?: number;
+  /** The units observations show by measure (S46, A-20; Go's GLUCOSE_UNIT and TEMPERATURE_UNIT). */
+  observationUnits?: Record<string, string>;
 };
 
 let current: AppConfig | undefined;
@@ -46,6 +48,9 @@ export const nationalIdLabel = () => current?.nationalId?.label ?? "National ID"
  * then no estimate is shown. The number is the deployment's setting, never one of the web app's.
  */
 export const secondsPerQuestion = () => current?.secondsPerQuestion;
+
+/** The unit the deployment shows a measure in (glucose, temperature), or undefined: then the stored unit. */
+export const observationUnit = (measure: string): string | undefined => current?.observationUnits?.[measure];
 
 /** How staff sign in. Without the config (it couldn't be loaded), the dev login is tried. */
 export const staffSignIn = (): { devLogin: boolean; cognito: Cognito | null } =>

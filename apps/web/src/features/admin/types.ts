@@ -8,11 +8,13 @@ export type SettingDef = {
   help?: string;
   group: string;
   level: "trust" | "hospital";
-  kind: "bool" | "int" | "dayList" | "text" | "url" | "email" | "phone" | "questionnaire" | "template";
+  kind: "bool" | "int" | "dayList" | "text" | "url" | "email" | "phone" | "questionnaire" | "template" | "obsRanges";
   optIn: boolean;
   default: unknown;
   min?: number;
   max?: number;
+  /** An obsRanges setting's measures (S46), for its editor. */
+  measures?: { key: string; label: string; unit: string; decimals: number }[];
 };
 
 /** A trust in the list. */

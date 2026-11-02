@@ -1,16 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { addDays, ceilMinute, fromLocalInput, offsetMinutes, toLocalInput, whoRuns } from "./jobsTime";
+import { addDays, ceilMinute, offsetMinutes, whoRuns } from "./jobsTime";
 
 describe("the jobs page's times", () => {
-  it("writes a time for a date-and-time box, in the browser's zone, to the minute", () => {
-    const d = new Date(2026, 9, 15, 9, 5, 42); // 15 Oct 2026 09:05:42 local
-    expect(toLocalInput(d)).toBe("2026-10-15T09:05");
-  });
-  it("reads the box back as an exact time", () => {
-    expect(fromLocalInput("2026-10-15T09:05")).toBe(new Date(2026, 9, 15, 9, 5).toISOString());
-    expect(fromLocalInput("")).toBeNull();
-    expect(fromLocalInput("not a date")).toBeNull();
-  });
   it("rounds up to the next whole minute, so a preset is never early", () => {
     expect(ceilMinute(new Date(2026, 9, 15, 9, 5, 42, 10))).toEqual(new Date(2026, 9, 15, 9, 6));
     expect(ceilMinute(new Date(2026, 9, 15, 9, 59, 0, 1))).toEqual(new Date(2026, 9, 15, 10, 0));
