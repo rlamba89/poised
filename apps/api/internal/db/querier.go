@@ -37,6 +37,7 @@ type Querier interface {
 	AddFormOutput(ctx context.Context, arg AddFormOutputParams) error
 	AddHit(ctx context.Context, arg AddHitParams) error
 	AddMembership(ctx context.Context, arg AddMembershipParams) error
+	AddObservation(ctx context.Context, arg AddObservationParams) (uuid.UUID, error)
 	// Makes the user a superadmin (A-21); nothing changes if they already are.
 	AddPlatformAdmin(ctx context.Context, userID uuid.UUID) error
 	// An episode's flags from the HQ's rules (plan C6, session S43; migration 00034). The handlers have
@@ -225,6 +226,7 @@ type Querier interface {
 	// A link that works: not replaced, not expired, its episode's patient the link's. Locked links
 	// are returned (locked_at), so the patient is told to ask for a new one.
 	GetLinkByHash(ctx context.Context, arg GetLinkByHashParams) (GetLinkByHashRow, error)
+	GetObservation(ctx context.Context, arg GetObservationParams) (GetObservationRow, error)
 	// Whose the list is: NULL for the trust's, else the hospital whose own it is.
 	GetOptionListOwner(ctx context.Context, arg GetOptionListOwnerParams) (uuid.NullUUID, error)
 	GetOrgForAdmin(ctx context.Context, id uuid.UUID) (GetOrgForAdminRow, error)
@@ -331,6 +333,11 @@ type Querier interface {
 	// and hospitals are left out (ORG-03), and so is a trust whose hospitals are all suspended: it
 	// isn't new, and there's nowhere to work (S10 verification 1, finding 2).
 	ListMyHospitals(ctx context.Context, userID uuid.UUID) ([]ListMyHospitalsRow, error)
+	// An episode's observations (plan C7, session S46; migration 00037): a history, never edited. The
+	// handlers have checked the episode is the caller's hospital's (GetEpisode), and hold
+	// LockEpisodeStatus while they add, correct or mark one.
+	// Every reading, oldest first, with who entered it and, for one entered in error, who marked it.
+	ListObservations(ctx context.Context, episodeID uuid.UUID) ([]ListObservationsRow, error)
 	// Option lists (OPT-07) belong to a trust: hospital_id NULL is the whole trust's, as every list
 	// made so far is; otherwise only that hospital sees it. Names are unique in the trust.
 	ListOptionLists(ctx context.Context, arg ListOptionListsParams) ([]ListOptionListsRow, error)
@@ -467,6 +474,8 @@ type Querier interface {
 	MarkFormPrefilled(ctx context.Context, id uuid.UUID) error
 	// No row: already marked, the HQ has been sent, or the episode was cancelled.
 	MarkNotResponding(ctx context.Context, arg MarkNotRespondingParams) (int64, error)
+	// No row: it's already superseded or entered in error.
+	MarkObservationInError(ctx context.Context, arg MarkObservationInErrorParams) (int64, error)
 	MarkUndone(ctx context.Context, id uuid.UUID) error
 	// The trust's patients that a "Patient" filter names: part of their name ("Jane Smith" or
 	// "Smith Jane"), part of a hospital number on one of their episodes (S13 moved it there), their
@@ -637,6 +646,8 @@ type Querier interface {
 	// No row: the form was already submitted.
 	// Only while the episode is HQ not complete (S20: the transition table; not once cancelled).
 	SubmitPatientHQ(ctx context.Context, arg SubmitPatientHQParams) (int64, error)
+	// No row: it's already superseded or entered in error.
+	SupersedeObservation(ctx context.Context, arg SupersedeObservationParams) (int64, error)
 	// Every patient request: the session's account, if the session is live (not signed out, seen
 	// since idle_since) and its link wasn't replaced by a resend or locked. It counts as activity.
 	// A link's expiry governs only opening it: a session from a 15-minute sign-in link lasts like any

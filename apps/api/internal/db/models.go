@@ -278,6 +278,25 @@ type Membership struct {
 	OrgID      uuid.UUID     `json:"orgId"`
 }
 
+type Observation struct {
+	ID           uuid.UUID          `json:"id"`
+	EpisodeID    uuid.UUID          `json:"episodeId"`
+	Kind         string             `json:"kind"`
+	Value        *float64           `json:"value"`
+	Value2       *float64           `json:"value2"`
+	Unit         *string            `json:"unit"`
+	Note         *string            `json:"note"`
+	TakenAt      time.Time          `json:"takenAt"`
+	EnteredBy    uuid.UUID          `json:"enteredBy"`
+	EnteredAt    time.Time          `json:"enteredAt"`
+	Corrects     uuid.NullUUID      `json:"corrects"`
+	Reason       *string            `json:"reason"`
+	SupersededBy uuid.NullUUID      `json:"supersededBy"`
+	ErrorBy      uuid.NullUUID      `json:"errorBy"`
+	ErrorAt      pgtype.Timestamptz `json:"errorAt"`
+	ErrorReason  *string            `json:"errorReason"`
+}
+
 type OptionList struct {
 	ID         uuid.UUID       `json:"id"`
 	HospitalID uuid.NullUUID   `json:"hospitalId"`

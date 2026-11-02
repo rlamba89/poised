@@ -3,7 +3,9 @@
 package httpapi_test
 
 import (
+	"context"
 	"encoding/csv"
+	"errors"
 	"net/http"
 	"net/url"
 	"slices"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/rlamba89/poised/apps/api/internal/apitest"
 )
@@ -351,6 +354,54 @@ func TestAuditFailsClosed(t *testing.T) {
 		if strings.Contains(string(r.Body), last) {
 			t.Errorf("patient data sent without an audit row: %s", r)
 		}
+	}
+}
+
+// S46 test report 5: a caller who leaves mid-request (a browser moving to another page) isn't a
+// server failure. The row stays, as the request happened, with the status for "the caller left".
+func TestAuditCallerLeft(t *testing.T) {
+	t.Parallel()
+	w := newAuditWorld(t)
+	// Holds the list's query in the database, so the request is mid-way when it's dropped.
+	tx, err := w.db.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(t.Context())
+	if _, err := tx.Exec(t.Context(), `LOCK TABLE episodes IN ACCESS EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan *apitest.Resp, 1)
+	go func() { done <- w.clinician.DoContext(ctx, "GET", at(w.a, "/episodes"), nil) }()
+	var waiting bool
+	for range 200 {
+		if err := w.db.QueryRow(t.Context(), `SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND datname = current_database())`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !waiting {
+		t.Fatal("the request never reached the lock")
+	}
+	cancel()
+	<-done
+	var status int
+	for range 200 {
+		err := w.db.QueryRow(t.Context(), `SELECT status FROM audit_log WHERE action = 'episode.list'`).Scan(&status)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if status != 499 {
+		t.Errorf("status = %d, want 499 (the caller left)", status)
 	}
 }
 

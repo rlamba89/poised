@@ -260,13 +260,23 @@ func (s *server) getEpisode(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "grades", err)
 		return
 	}
+	v, err := s.hospitalSettings(r.Context(), orgID(r), hospitalID(r))
+	if err != nil {
+		serverError(w, "settings", err)
+		return
+	}
+	obsOn, err := observationsOn(v)
+	if err != nil {
+		serverError(w, "settings", err)
+		return
+	}
 	// A message held for Checked (S42) is shown as waiting only while the episode is at the status
 	// it tells the patient about (S44c): it stays held through On hold or an archive, for an Undo or
 	// an un-archive back, and Checked sends it only there.
 	e.TriageMessagePending = e.TriageMessagePending && episode.StatusMessage(episode.AutoTriage, e.Status) != ""
 	writeJSON(w, http.StatusOK, map[string]any{"episode": e, "events": events, "invite": invite, "undelivered": undelivered,
 		"moves": status.Moves, "undo": status.Undo, "unarchive": status.Unarchive, "statusHistory": status.History, "flags": flags,
-		"anaesthetistAsaGrades": grades})
+		"anaesthetistAsaGrades": grades, "observationsOn": obsOn})
 }
 
 // episodeChange is what updateEpisode changes. A field sent as null decodes to a nil pointer;

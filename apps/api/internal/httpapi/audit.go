@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -33,38 +34,42 @@ import (
 
 // auditActions are the actions written to audit_log.action, and how people read them.
 var auditActions = map[string]string{
-	"patient.search":     "Searched patients",
-	"patient.view":       "Opened a patient",
-	"patient.list":       "Listed patients", // before S13
-	"patient.create":     "Added a patient", // before S13: now with the episode (episode.create)
-	"episode.list":       "Listed episodes",
-	"episode.list_trust": "Listed episodes (all hospitals)",
-	"episode.create":     "Created an episode",
-	"episode.view":       "Opened an episode",
-	"episode.update":     "Changed an episode",
-	"episode.note":       "Added a note",
-	"episode.status":     "Changed an episode's status", // S20
-	"episode.cancel":     "Cancelled an episode",
-	"episode.reopen":     "Re-opened the HQ review",
-	"episode.undo":       "Undid a status change",
-	"episode.archive":    "Archived an episode", // S22
-	"episode.unarchive":  "Un-archived an episode",
-	"task.list":          "Opened an episode's tasks", // S21
-	"task.create":        "Added a task",
-	"task.update":        "Completed or re-opened a task",
-	"asa.add":            "Added the anaesthetist's ASA grade", // S44b
-	"asa.error":          "Marked an anaesthetist's ASA grade entered in error",
-	"information.list":   "Opened an episode's Information", // S36
-	"information.add":    "Added Information to an episode",
-	"information.remove": "Removed Information from an episode",
-	"answers.view":       "Opened the answers",
-	"answers.save":       "Saved the clinician's answers",
-	"review.complete":    "Completed the HQ review",
-	"invite.resend":      "Resent the patient's invite",
-	"behalf.view":        "Opened the patient's HQ to fill in for them",
-	"behalf.save":        "Saved answers for the patient",
-	"behalf.submit":      "Sent the HQ for the patient",
-	"behalf.prefill":     "Checked pre-filled answers with the patient", // S25–S28: the opening card's button, before S29
+	"patient.search":      "Searched patients",
+	"patient.view":        "Opened a patient",
+	"patient.list":        "Listed patients", // before S13
+	"patient.create":      "Added a patient", // before S13: now with the episode (episode.create)
+	"episode.list":        "Listed episodes",
+	"episode.list_trust":  "Listed episodes (all hospitals)",
+	"episode.create":      "Created an episode",
+	"episode.view":        "Opened an episode",
+	"episode.update":      "Changed an episode",
+	"episode.note":        "Added a note",
+	"episode.status":      "Changed an episode's status", // S20
+	"episode.cancel":      "Cancelled an episode",
+	"episode.reopen":      "Re-opened the HQ review",
+	"episode.undo":        "Undid a status change",
+	"episode.archive":     "Archived an episode", // S22
+	"episode.unarchive":   "Un-archived an episode",
+	"task.list":           "Opened an episode's tasks", // S21
+	"task.create":         "Added a task",
+	"task.update":         "Completed or re-opened a task",
+	"asa.add":             "Added the anaesthetist's ASA grade", // S44b
+	"asa.error":           "Marked an anaesthetist's ASA grade entered in error",
+	"observation.list":    "Opened an episode's observations", // S46
+	"observation.add":     "Recorded an observation",
+	"observation.correct": "Corrected an observation",
+	"observation.error":   "Marked an observation entered in error",
+	"information.list":    "Opened an episode's Information", // S36
+	"information.add":     "Added Information to an episode",
+	"information.remove":  "Removed Information from an episode",
+	"answers.view":        "Opened the answers",
+	"answers.save":        "Saved the clinician's answers",
+	"review.complete":     "Completed the HQ review",
+	"invite.resend":       "Resent the patient's invite",
+	"behalf.view":         "Opened the patient's HQ to fill in for them",
+	"behalf.save":         "Saved answers for the patient",
+	"behalf.submit":       "Sent the HQ for the patient",
+	"behalf.prefill":      "Checked pre-filled answers with the patient", // S25–S28: the opening card's button, before S29
 	// S29: each of the opening card's buttons has its own action (prefillChoice), by staff and by the patient.
 	"behalf.prefill_check_each":    "Checked each pre-filled answer with the patient",
 	"behalf.prefill_still_correct": "Confirmed pre-filled answers with the patient",
@@ -196,14 +201,28 @@ func (s *server) audited(action string, next http.HandlerFunc) http.HandlerFunc 
 		next(held, r.WithContext(context.WithValue(r.Context(), auditKey, e)))
 		// None: the patient's link with a token that names no episode, or a patient request that
 		// touched no trust's records.
+		status := auditStatus(r.Context(), held.code())
 		for _, row := range e.rows() {
-			if err := s.writeAudit(r, row, held.code()); err != nil {
+			if err := s.writeAudit(r, row, status); err != nil {
 				serverError(w, "audit "+row.action, err)
 				return
 			}
 		}
 		held.sendTo(w)
 	}
+}
+
+// statusCallerLeft is the row's status for a caller who left mid-request (a browser moving to
+// another page): the usual code for it, as no status fits and nobody receives this one.
+const statusCallerLeft = 499
+
+// auditStatus is the status a row records: what the handler answered, unless it failed because
+// the caller had gone, which is no failure of ours. A timeout still is (S46 test report 5).
+func auditStatus(ctx context.Context, code int) int {
+	if code >= http.StatusInternalServerError && errors.Is(ctx.Err(), context.Canceled) {
+		return statusCallerLeft
+	}
+	return code
 }
 
 func (s *server) writeAudit(r *http.Request, e *auditEntry, status int) error {

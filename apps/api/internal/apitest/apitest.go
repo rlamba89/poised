@@ -394,6 +394,11 @@ func (c *Client) withJar(jar http.CookieJar) *Client {
 // it is, so tests can send broken JSON. A request that gets no response (the server
 // dropped the connection) comes back with Code 0 and the error in Body.
 func (c *Client) Do(method, path string, body any) *Resp {
+	return c.DoContext(context.Background(), method, path, body)
+}
+
+// DoContext is Do with a context: cancelling it drops the connection, as a browser leaving a page does.
+func (c *Client) DoContext(ctx context.Context, method, path string, body any) *Resp {
 	var rd io.Reader
 	switch b := body.(type) {
 	case nil:
@@ -406,7 +411,7 @@ func (c *Client) Do(method, path string, body any) *Resp {
 		}
 		rd = bytes.NewReader(j)
 	}
-	req, err := http.NewRequest(method, c.base+path, rd)
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, rd)
 	if err != nil {
 		return &Resp{Body: []byte("apitest: " + err.Error())}
 	}
