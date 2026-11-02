@@ -20,6 +20,11 @@ import zoneinfo
 
 STAGES = ("qa", "training", "production")
 
+# The display units the Go API accepts (internal/observation's DisplayUnitOK): the stored ones only,
+# until a country needs another and its conversion is built.
+GLUCOSE_UNITS = ("mmol/L",)
+TEMPERATURE_UNITS = ("°C",)
+
 
 @dataclasses.dataclass(frozen=True)
 class Environment:
@@ -31,6 +36,10 @@ class Environment:
     locale: str  # DEFAULT_LOCALE: language-REGION, for formatting dates
     phone_country: str  # PHONE_COUNTRY: the only country SMS goes to (PAT-11)
     national_id_type: str  # NATIONAL_ID_TYPE: a scheme in apps/api/internal/nationalid
+    # GLUCOSE_UNIT and TEMPERATURE_UNIT (S46): the units observations show blood glucose and
+    # temperature in. Nothing converts yet, so only the stored units (Go's internal/observation).
+    glucose_unit: str
+    temperature_unit: str
     # The web address. None until there's a domain: then it's Amplify's own address,
     # https://main.<app id>.amplifyapp.com, which is known only once the app exists.
     app_url: str | None = None
@@ -73,6 +82,8 @@ class Environment:
         check(bool(re.fullmatch(r"[a-z]{2,3}-[A-Z]{2}", self.locale)), "locale", "language-REGION, e.g. en-CA")
         check(bool(re.fullmatch(r"[A-Z]{2}", self.phone_country)), "phone_country", "a two-letter country code")
         check(bool(re.fullmatch(r"[a-z]+", self.national_id_type)), "national_id_type", "a scheme name, e.g. nhs")
+        check(self.glucose_unit in GLUCOSE_UNITS, "glucose_unit", f"one of {GLUCOSE_UNITS} (nothing converts yet)")
+        check(self.temperature_unit in TEMPERATURE_UNITS, "temperature_unit", f"one of {TEMPERATURE_UNITS} (nothing converts yet)")
         check(
             self.app_url is None or bool(re.fullmatch(r"https://[a-z0-9.-]+", self.app_url)),
             "app_url",
@@ -118,6 +129,8 @@ ENVIRONMENTS: list[Environment] = [
         locale="en-GB",
         phone_country="GB",
         national_id_type="nhs",
+        glucose_unit="mmol/L",
+        temperature_unit="°C",
         app_url=None,  # no domain yet: Amplify's own address
         # S17: still captured, and also really sent to the test recipients in SSM (Rahul's own, in
         # SES's and SMS's sandbox). Remove the parameter to send to no one.

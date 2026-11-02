@@ -25,6 +25,8 @@ CA_QA = Environment(
     locale="en-CA",
     phone_country="CA",
     national_id_type="nhs",
+    glucose_unit="mmol/L",
+    temperature_unit="°C",
 )
 
 UK_VALUES = ["eu-west-2", "Europe/London", "en-GB", "London", '"GB"']
@@ -102,6 +104,8 @@ def test_two_arm64_go_functions(lambda_code):
         assert env["DEFAULT_LOCALE"] == "en-CA"
         assert env["PHONE_COUNTRY"] == "CA"
         assert env["NATIONAL_ID_TYPE"] == "nhs"
+        assert env["GLUCOSE_UNIT"] == "mmol/L"  # S46: the observations' display units
+        assert env["TEMPERATURE_UNIT"] == "°C"
         assert "DEV_LOGIN" not in env  # S12: Cognito on AWS
         # The staff user pool, written by AuthStack (after WebStack: its callback needs the web
         # address), read at cold start.

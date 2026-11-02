@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/mail"
 	"net/url"
 	"regexp"
@@ -26,6 +27,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+
+	"github.com/rlamba89/poised/apps/api/internal/observation"
 )
 
 // Level says where a setting can be set.
@@ -57,6 +60,9 @@ const (
 	Phone         Kind = "phone"         // "" or a phone number: digits, spaces, + ( ) -
 	Questionnaire Kind = "questionnaire" // "" or the id of one of the trust's questionnaires
 	Template      Kind = "template"      // patient message text with {{placeholders}}; must hold {{link}} unless LinkOptional
+	// ObsRanges is the observations' soft ranges and hard limits by measure (S46), checked by
+	// internal/observation: the measures not given keep the platform's.
+	ObsRanges Kind = "obsRanges"
 )
 
 // Def is one setting.
@@ -74,6 +80,8 @@ type Def struct {
 	// LinkOptional: a template that needn't hold {{link}} (a status message, S21 answers 4). An
 	// invite's and a reminder's must: the link is the point of them.
 	LinkOptional bool `json:"-"`
+	// Measures are what an obsRanges setting covers, for its editor (labels, units, decimals).
+	Measures []observation.Measure `json:"measures,omitempty"`
 }
 
 // Placeholders are the names a message template may use.
@@ -87,6 +95,7 @@ const (
 	gTemplates = "Patient messages"
 	gWorklists = "Worklists"
 	gStatus    = "Messages when the status changes"
+	gObs       = "Observations"
 )
 
 const (
@@ -100,6 +109,11 @@ var Defs = []Def{
 		Help:    "After this many years from the end of an episode, its data is deleted (EPI-06). The trust, as controller, confirms it.",
 		Default: j(8), Min: 1, Max: 100},
 
+	// S46 answers 1: the platform's ranges until the trust's admins set their own (hospitals follow).
+	{Key: "observations.ranges", Label: "Observation ranges", Group: gObs, Level: TrustOnly, Kind: ObsRanges,
+		Help:     "Outside the usual range, a reading is saved with a warning; outside the hard limits, it's refused.",
+		Default:  j(observation.Defaults()),
+		Measures: observation.Measures},
 	{Key: "feature.assessments", Label: "Assessments", Group: gOptIns, Level: Hospital, Kind: Bool, OptIn: true, Default: j(true)},
 	{Key: "feature.proms", Label: "PROMs", Group: gOptIns, Level: Hospital, Kind: Bool, OptIn: true, Default: j(false)},
 	{Key: "feature.files", Label: "Files", Group: gOptIns, Level: Hospital, Kind: Bool, OptIn: true, Default: j(true)},
@@ -248,6 +262,15 @@ func Validate(key string, raw json.RawMessage) (json.RawMessage, string) {
 			return nil, fmt.Sprintf("%s: enter a whole number from %d to %d.", d.Label, d.Min, d.Max)
 		}
 		return j(n), ""
+	case ObsRanges:
+		r, msg := parseRanges(d, raw)
+		if msg != "" {
+			return nil, msg
+		}
+		if msg := observation.CheckRanges(r); msg != "" {
+			return nil, msg
+		}
+		return j(r), ""
 	case DayList:
 		var days []int
 		bad := fmt.Sprintf("%s: enter up to 5 different days, each from %d to %d.", d.Label, d.Min, d.Max)
@@ -314,6 +337,44 @@ func Validate(key string, raw json.RawMessage) (json.RawMessage, string) {
 		}
 	}
 	return j(s), ""
+}
+
+// parseRanges reads an obsRanges value. A limit missing, null or not a number would read as 0, so
+// it's refused, naming the measurement.
+func parseRanges(d Def, raw json.RawMessage) (observation.Ranges, string) {
+	bad := d.Label + ": give each measurement's four limits as numbers."
+	var all map[string]map[string]json.RawMessage
+	if len(raw) == 0 || raw[0] != '{' || json.Unmarshal(raw, &all) != nil {
+		return nil, bad
+	}
+	out := observation.Ranges{}
+	for _, key := range slices.Sorted(maps.Keys(all)) {
+		r, ok := rangeOf(all[key])
+		if !ok {
+			if m, known := observation.MeasureOf(key); known {
+				return nil, m.Label + ": give all four limits as numbers." // names the row (S46 test report 2)
+			}
+			return nil, bad
+		}
+		out[key] = r
+	}
+	return out, ""
+}
+
+// rangeOf reads one measure's four limits: exactly those, each a number.
+func rangeOf(row map[string]json.RawMessage) (observation.Range, bool) {
+	var r observation.Range
+	limits := map[string]*float64{"softMin": &r.SoftMin, "softMax": &r.SoftMax, "hardMin": &r.HardMin, "hardMax": &r.HardMax}
+	if len(row) != len(limits) {
+		return r, false
+	}
+	for k, limit := range limits {
+		v, ok := row[k]
+		if !ok || string(v) == "null" || json.Unmarshal(v, limit) != nil {
+			return r, false
+		}
+	}
+	return r, true
 }
 
 // Fill is the message from the template setting key in v (the effective values), with each

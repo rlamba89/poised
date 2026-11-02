@@ -26,7 +26,7 @@ func TestEveryKeyHasAValidDefault(t *testing.T) {
 		}
 	}
 	// ORG-04's list, by level.
-	for _, k := range []string{"retentionYears"} {
+	for _, k := range []string{"retentionYears", "observations.ranges"} {
 		if d, ok := Lookup(k); !ok || d.Level != TrustOnly {
 			t.Errorf("%s should be trust-only", k)
 		}
@@ -293,5 +293,48 @@ func TestGet(t *testing.T) {
 	}
 	if err := Get(Values{}, "reminders.days", &days); err == nil {
 		t.Error("a missing value read")
+	}
+}
+
+// The observations' ranges (S46 answers 1): the platform's by default, a trust's own if its admins
+// set them, always within the rules no trust can change (internal/observation's CheckRanges).
+func TestObservationRanges(t *testing.T) {
+	d, ok := Lookup("observations.ranges")
+	if !ok || d.Kind != ObsRanges || d.OptIn {
+		t.Fatalf("observations.ranges = %+v, want a trust setting of kind %q", d, ObsRanges)
+	}
+	if d.Measures == nil {
+		t.Error("the editor needs the measures (labels, units, decimals) with the definition")
+	}
+	for _, c := range []struct {
+		name, in string
+		want     string // "" or part of the refusal
+	}{
+		{"one measure", `{"heartRate": {"softMin": 50, "softMax": 110, "hardMin": 25, "hardMax": 250}}`, ""},
+		{"none: the platform's", `{}`, ""},
+		{"not an object", `[1]`, "Observation ranges"},
+		// A missing or non-number limit names its measurement (S46 test report 2).
+		{"a missing limit", `{"heartRate": {"softMin": 50, "softMax": 110, "hardMin": 25}}`, "Heart rate: give all four limits as numbers."},
+		{"text for a number", `{"heartRate": {"softMin": "50", "softMax": 110, "hardMin": 25, "hardMax": 250}}`, "Heart rate: give all four limits as numbers."},
+		{"an empty box", `{"heartRate": {"softMin": 50, "softMax": 110, "hardMin": 25, "hardMax": 250}, "weight": {"softMin": "", "softMax": 200, "hardMin": 1, "hardMax": 400}}`, "Weight: give all four limits as numbers."},
+		{"null", `{"spo2": {"softMin": null, "softMax": 100, "hardMin": 50, "hardMax": 100}}`, "SpO₂: give all four limits as numbers."},
+		{"an unknown field", `{"heartRate": {"softMin": 50, "softMax": 110, "hardMin": 25, "hardMax": 250, "x": 1}}`, "Heart rate: give all four limits as numbers."},
+		{"a fixed rule", `{"heartRate": {"softMin": 50, "softMax": 110, "hardMin": -1, "hardMax": 250}}`, "below 0"},
+		{"an unknown measure", `{"pulse": {"softMin": 50, "softMax": 110, "hardMin": 25, "hardMax": 250}}`, "isn't a measurement"},
+	} {
+		v, msg := Validate("observations.ranges", raw(c.in))
+		if (c.want == "") != (msg == "") || !strings.Contains(msg, c.want) {
+			t.Errorf("%s: %q, want %q", c.name, msg, c.want)
+		}
+		if c.want == "" && v == nil {
+			t.Errorf("%s: no stored value", c.name)
+		}
+	}
+	var got map[string]map[string]float64
+	if err := Get(Effective(Platform(), Values{"observations.ranges": raw(`{"heartRate": {"softMin": 50, "softMax": 110, "hardMin": 25, "hardMax": 250}}`)}, nil), "observations.ranges", &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["heartRate"]["hardMax"] != 250 {
+		t.Errorf("the trust's value: %v", got)
 	}
 }

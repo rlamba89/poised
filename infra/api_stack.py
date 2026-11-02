@@ -102,6 +102,8 @@ class ApiStack(cdk.Stack):
             "DEFAULT_LOCALE": env.locale,
             "PHONE_COUNTRY": env.phone_country,
             "NATIONAL_ID_TYPE": env.national_id_type,
+            "GLUCOSE_UNIT": env.glucose_unit,
+            "TEMPERATURE_UNIT": env.temperature_unit,
             "MESSAGING": env.messaging,
             "FORWARDED_HOPS": str(FORWARDED_HOPS),
             # The jobs Lambda's schedule (S17), for the testers' jobs page; no API timer on AWS.

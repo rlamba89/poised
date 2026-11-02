@@ -23,6 +23,7 @@ import (
 	_ "time/tzdata" // the zone database is built in, so no zone depends on the host (e.g. Lambda)
 
 	"github.com/rlamba89/poised/apps/api/internal/nationalid"
+	"github.com/rlamba89/poised/apps/api/internal/observation"
 )
 
 // Config is everything the API reads from its environment.
@@ -64,7 +65,7 @@ type Config struct {
 	// EVALUATE_FUNCTION (S45, D-4): on AWS the evaluate Lambda's name (or ARN), which the API
 	// invokes instead of calling EVALUATE_URL. CONFIG_STRICT needs one of the two; only one may be set.
 	EvaluateFunction string
-	Country     Country
+	Country          Country
 	// Cognito is the staff user pool (S12): staff sign in through its managed login. Required on
 	// AWS (CONFIG_STRICT); locally it's usually unset and the dev login stands in.
 	Cognito Cognito
@@ -136,6 +137,11 @@ type Country struct {
 	PhoneCountry string // PHONE_COUNTRY: ISO 3166-1 alpha-2, the only country SMS goes to (PAT-11)
 	// NATIONAL_ID_TYPE: the patient identifier scheme, a type in internal/nationalid (S13)
 	NationalIDType string
+	// GLUCOSE_UNIT and TEMPERATURE_UNIT: the units observations show blood glucose and temperature
+	// in (S46). Readings are stored in one unit each (internal/observation); until conversions are
+	// built, these must be the stored ones (mmol/L, °C).
+	GlucoseUnit     string
+	TemperatureUnit string
 }
 
 // NationalID is the deployment's patient identifier scheme. Load has checked it exists.
@@ -153,6 +159,8 @@ type Public struct {
 	// SecondsPerQuestion is the estimated time's seconds for each question (S36): packages/clinical's
 	// estimatedMinutes uses it, so the number lives only here.
 	SecondsPerQuestion int `json:"secondsPerQuestion"`
+	// ObservationUnits are the country's display units by measure (S46): glucose and temperature.
+	ObservationUnits map[string]string `json:"observationUnits"`
 }
 
 // PublicSignIn is how staff sign in here (S12): the dev login (local only), Cognito's managed
@@ -183,7 +191,8 @@ func (c Config) Public() Public {
 	id := c.Country.NationalID()
 	p := Public{Locale: c.Country.Locale, TimeZone: c.Country.TimeZone,
 		NationalID:  PublicNationalID{Type: id.Type, Label: id.Label},
-		StaffSignIn: PublicSignIn{DevLogin: c.DevLogin}, SecondsPerQuestion: c.SecondsPerQuestion}
+		StaffSignIn: PublicSignIn{DevLogin: c.DevLogin}, SecondsPerQuestion: c.SecondsPerQuestion,
+		ObservationUnits: map[string]string{"glucose": c.Country.GlucoseUnit, "temperature": c.Country.TemperatureUnit}}
 	if c.Cognito.Enabled() {
 		p.StaffSignIn.Cognito = &PublicCognito{
 			AuthorizeURL: c.Cognito.Domain + "/oauth2/authorize",
@@ -203,6 +212,8 @@ var localDefaults = map[string]string{
 	"DEFAULT_LOCALE":    "en-GB",
 	"PHONE_COUNTRY":     "GB",
 	"NATIONAL_ID_TYPE":  "nhs",
+	"GLUCOSE_UNIT":      "mmol/L",
+	"TEMPERATURE_UNIT":  "°C",
 }
 
 var (
@@ -266,11 +277,13 @@ func Load(getenv func(string) string) (Config, error) {
 		DevLogin:    flag("DEV_LOGIN"),
 		Messaging:   messaging(),
 		Country: Country{
-			AppURL:         strings.TrimSuffix(country("APP_URL"), "/"),
-			TimeZone:       country("DEFAULT_TIME_ZONE"),
-			Locale:         country("DEFAULT_LOCALE"),
-			PhoneCountry:   country("PHONE_COUNTRY"),
-			NationalIDType: country("NATIONAL_ID_TYPE"),
+			AppURL:          strings.TrimSuffix(country("APP_URL"), "/"),
+			TimeZone:        country("DEFAULT_TIME_ZONE"),
+			Locale:          country("DEFAULT_LOCALE"),
+			PhoneCountry:    country("PHONE_COUNTRY"),
+			NationalIDType:  country("NATIONAL_ID_TYPE"),
+			GlucoseUnit:     country("GLUCOSE_UNIT"),
+			TemperatureUnit: country("TEMPERATURE_UNIT"),
 		},
 	}
 	if c.Addr == "" {
@@ -456,6 +469,12 @@ func (c Country) validate() []error {
 		if _, ok := nationalid.Lookup(c.NationalIDType); !ok {
 			errs = append(errs, fmt.Errorf("NATIONAL_ID_TYPE must be a patient identifier scheme the API has a validator for (internal/nationalid), not %q", c.NationalIDType))
 		}
+	}
+	if c.GlucoseUnit != "" && !observation.DisplayUnitOK("glucose", c.GlucoseUnit) {
+		errs = append(errs, fmt.Errorf("GLUCOSE_UNIT must be mmol/L (nothing converts to other units yet), not %q", c.GlucoseUnit))
+	}
+	if c.TemperatureUnit != "" && !observation.DisplayUnitOK("temperature", c.TemperatureUnit) {
+		errs = append(errs, fmt.Errorf("TEMPERATURE_UNIT must be °C (nothing converts to other units yet), not %q", c.TemperatureUnit))
 	}
 	return errs
 }

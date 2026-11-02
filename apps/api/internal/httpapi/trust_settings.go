@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -124,6 +125,7 @@ func (s *server) getTrustSettings(w http.ResponseWriter, r *http.Request) {
 type settingsPatch struct {
 	HospitalID json.RawMessage            `json:"hospitalId"`
 	Values     map[string]json.RawMessage `json:"values"`
+	Loaded     map[string]json.RawMessage `json:"loaded"` // a ranges setting as the page loaded it (null: not set); see staleRanges
 }
 
 // check validates every change before anything is written: the first refusal wins, by key order.
@@ -153,6 +155,32 @@ func (p settingsPatch) check(hospital uuid.NullUUID) (map[string]json.RawMessage
 		out[k] = v
 	}
 	return out, 0, ""
+}
+
+// staleRanges names a ranges setting being changed that's no longer what the page loaded, or "".
+// A table of ranges is one setting, so a page left open would otherwise put back every row as it
+// last read them, the other admin's change included (S46 test report 5). Compared as values, as
+// the database returns the keys in its own order.
+func (p settingsPatch) staleRanges(stored json.RawMessage, changes map[string]json.RawMessage) (string, error) {
+	current, err := settings.Decode(stored)
+	if err != nil {
+		return "", err
+	}
+	for k := range changes {
+		if d, _ := settings.Lookup(k); d.Kind == settings.ObsRanges && !sameValue(current[k], p.Loaded[k]) {
+			return d.Label, nil
+		}
+	}
+	return "", nil
+}
+
+// sameValue compares two JSON values, ignoring key order; a missing value is the same as null.
+func sameValue(a, b json.RawMessage) bool {
+	read := func(raw json.RawMessage) (v any) {
+		_ = json.Unmarshal(raw, &v)
+		return v
+	}
+	return reflect.DeepEqual(read(a), read(b))
 }
 
 // checkQuestionnaires answers 400 unless each questionnaire setting being set names one of the
@@ -213,6 +241,13 @@ func (s *server) patchTrustSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			serverError(w, "lock settings", err)
+			return false
+		}
+		if label, err := in.staleRanges(stored, changes); err != nil {
+			serverError(w, "read settings", err)
+			return false
+		} else if label != "" {
+			writeError(w, http.StatusConflict, "Someone else changed the "+strings.ToLower(label)+". Reload to see them, then make your change again.")
 			return false
 		}
 		next, err := changeSettings(stored, changes)

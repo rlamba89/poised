@@ -235,3 +235,88 @@ func TestPatchTrustSettings(t *testing.T) {
 		}
 	})
 }
+
+// The observations' ranges (S46 answers 1): the platform's until the trust's whole-trust admins set
+// their own, for the whole trust only, within the rules no trust can change.
+func TestObservationRangesSetting(t *testing.T) {
+	t.Parallel()
+	w := newSettingsWorld(t)
+	mine := map[string]any{"heartRate": map[string]any{"softMin": 50, "softMax": 100, "hardMin": 30, "hardMax": 150}}
+	t.Run("the platform's by default", func(t *testing.T) {
+		v := getSettings(t, w.adaC, w.a1.Org)
+		var r map[string]map[string]float64
+		if err := json.Unmarshal(v.Effective["observations.ranges"], &r); err != nil || r["heartRate"]["hardMax"] != 300 || len(r) != 10 {
+			t.Errorf("effective = %s (%v)", v.Effective["observations.ranges"], err)
+		}
+	})
+	t.Run("an admin sets the trust's own; every hospital follows it", func(t *testing.T) {
+		v, _ := patchSettings(t, w, nil, map[string]any{"observations.ranges": mine}, http.StatusOK) // nothing set yet, so nothing to say it loaded
+		var r map[string]map[string]float64
+		if err := json.Unmarshal(v.hospital(w.a2.ID).Effective["observations.ranges"], &r); err != nil || r["heartRate"]["hardMax"] != 150 {
+			t.Errorf("hospital A2's = %s", v.hospital(w.a2.ID).Effective["observations.ranges"])
+		}
+	})
+	t.Run("a fixed rule broken: 400, nothing stored", func(t *testing.T) {
+		bad := map[string]any{"heartRate": map[string]any{"softMin": 50, "softMax": 100, "hardMin": -1, "hardMax": 150}}
+		_, msg := patchSettings(t, w, nil, map[string]any{"observations.ranges": bad}, http.StatusBadRequest)
+		if !strings.Contains(msg, "below 0") {
+			t.Errorf("message %q", msg)
+		}
+	})
+	t.Run("not for one hospital: it's the whole trust's", func(t *testing.T) {
+		_, msg := patchSettings(t, w, w.a1.ID, map[string]any{"observations.ranges": mine}, http.StatusBadRequest)
+		if !strings.Contains(msg, "whole trust only") {
+			t.Errorf("message %q", msg)
+		}
+	})
+	t.Run("a super clinician can't set it (403)", func(t *testing.T) {
+		w.supC.Do("PATCH", settingsPath(w.a1.Org), map[string]any{"hospitalId": nil, "values": map[string]any{"observations.ranges": mine}}).
+			Want(t, http.StatusForbidden)
+	})
+}
+
+// S46 test report 5: the ranges are one setting, so a page left open would put back every row as
+// it last read them. A save that changes them says what it loaded, and is refused if that's gone.
+func TestObservationRangesLeftOpen(t *testing.T) {
+	t.Parallel()
+	w := newSettingsWorld(t)
+	row := func(softMax int) map[string]any {
+		return map[string]any{"softMin": 50, "softMax": softMax, "hardMin": 30, "hardMax": 150}
+	}
+	save := func(loaded, ranges any) *apitest.Resp {
+		return w.adaC.Do("PATCH", settingsPath(w.a1.Org), map[string]any{"hospitalId": nil,
+			"values": map[string]any{"observations.ranges": ranges}, "loaded": map[string]any{"observations.ranges": loaded}})
+	}
+	first := map[string]any{"heartRate": row(100)}
+	// As the API returns it: the database's key order, which a page sends back unchanged.
+	stored := map[string]any{"heartRate": map[string]any{"hardMax": 150, "hardMin": 30, "softMax": 100, "softMin": 50}}
+	theirs := map[string]any{"heartRate": row(105)}
+	save(nil, first).Want(t, http.StatusOK)
+	t.Run("what it loaded is what's stored, in any key order: saved", func(t *testing.T) {
+		save(stored, first).Want(t, http.StatusOK)
+	})
+	save(first, theirs).Want(t, http.StatusOK) // the other admin's save
+	t.Run("the page left open: refused, and nothing stored", func(t *testing.T) {
+		r := save(first, map[string]any{"heartRate": row(100), "weight": map[string]any{"softMin": 35, "softMax": 190, "hardMin": 1, "hardMax": 400}})
+		refused(t, r, http.StatusConflict)
+		if !strings.Contains(r.Message(), "Someone else changed the observation ranges") {
+			t.Errorf("message %q", r.Message())
+		}
+		var got map[string]map[string]float64
+		v := getSettings(t, w.adaC, w.a1.Org)
+		if err := json.Unmarshal(v.Trust["observations.ranges"], &got); err != nil || got["heartRate"]["softMax"] != 105 || len(got) != 1 {
+			t.Errorf("stored = %s (%v)", v.Trust["observations.ranges"], err)
+		}
+	})
+	t.Run("back to the default from a page left open: refused too", func(t *testing.T) {
+		refused(t, save(first, nil), http.StatusConflict)
+	})
+	t.Run("loaded said nothing was set, but it is: refused", func(t *testing.T) {
+		refused(t, save(nil, first), http.StatusConflict)
+	})
+	t.Run("another setting saves from a page left open", func(t *testing.T) {
+		r := w.adaC.Do("PATCH", settingsPath(w.a1.Org), map[string]any{"hospitalId": nil,
+			"values": map[string]any{"reminders.notRespondingDay": 9}})
+		r.Want(t, http.StatusOK)
+	})
+}

@@ -26,6 +26,9 @@ func country() env {
 	e["DEFAULT_LOCALE"] = "en-CA"
 	e["PHONE_COUNTRY"] = "CA"
 	e["NATIONAL_ID_TYPE"] = "nhs" // the only scheme built so far (internal/nationalid)
+	// The observations' display units (S46, A-20): only the stored ones until conversions are built.
+	e["GLUCOSE_UNIT"] = "mmol/L"
+	e["TEMPERATURE_UNIT"] = "°C"
 	return e
 }
 
@@ -54,7 +57,8 @@ func TestLoadLocalDefaults(t *testing.T) {
 	if c.DatabaseURL != "postgres://x" || c.TokenSecret != "s3cret" {
 		t.Errorf("database URL and secret = %q, %q", c.DatabaseURL, c.TokenSecret)
 	}
-	want := config.Country{AppURL: "http://localhost:3000", TimeZone: "Europe/London", Locale: "en-GB", PhoneCountry: "GB", NationalIDType: "nhs"}
+	want := config.Country{AppURL: "http://localhost:3000", TimeZone: "Europe/London", Locale: "en-GB", PhoneCountry: "GB", NationalIDType: "nhs",
+		GlucoseUnit: "mmol/L", TemperatureUnit: "°C"}
 	if c.Country != want {
 		t.Errorf("country = %+v, want the local UK defaults %+v", c.Country, want)
 	}
@@ -90,7 +94,8 @@ func TestLoadReadsEveryValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config.Country{AppURL: "https://ca.example.test", TimeZone: "America/Toronto", Locale: "en-CA", PhoneCountry: "CA", NationalIDType: "nhs"}
+	want := config.Country{AppURL: "https://ca.example.test", TimeZone: "America/Toronto", Locale: "en-CA", PhoneCountry: "CA", NationalIDType: "nhs",
+		GlucoseUnit: "mmol/L", TemperatureUnit: "°C"}
 	if c.Country != want {
 		t.Errorf("country = %+v, want %+v", c.Country, want)
 	}
@@ -169,7 +174,7 @@ func TestLoadStrict(t *testing.T) {
 		if err == nil {
 			t.Fatalf("no error; got %+v", c)
 		}
-		for _, name := range []string{"APP_URL", "DEFAULT_TIME_ZONE", "DEFAULT_LOCALE", "PHONE_COUNTRY", "NATIONAL_ID_TYPE"} {
+		for _, name := range []string{"APP_URL", "DEFAULT_TIME_ZONE", "DEFAULT_LOCALE", "PHONE_COUNTRY", "NATIONAL_ID_TYPE", "GLUCOSE_UNIT", "TEMPERATURE_UNIT"} {
 			if !strings.Contains(err.Error(), name) {
 				t.Errorf("error %q doesn't name %s", err, name)
 			}
@@ -207,6 +212,10 @@ func TestLoadRefusesBadValues(t *testing.T) {
 		{"PHONE_COUNTRY", "GBR"},
 		{"NATIONAL_ID_TYPE", "ssn"}, // no validator for it
 		{"NATIONAL_ID_TYPE", "NHS"},
+		{"GLUCOSE_UNIT", "mg/dL"}, // S46: nothing converts yet
+		{"GLUCOSE_UNIT", "mmol"},
+		{"TEMPERATURE_UNIT", "°F"},
+		{"TEMPERATURE_UNIT", "C"},
 		{"APP_URL", "uk.example.test"},
 		{"APP_URL", "ftp://uk.example.test"},
 		{"APP_URL", "https://"},
@@ -239,7 +248,8 @@ func TestPublic(t *testing.T) {
 	got := c.Public()
 	want := config.Public{Locale: "en-CA", TimeZone: "America/Toronto",
 		NationalID:  config.PublicNationalID{Type: "nhs", Label: "NHS number"},
-		StaffSignIn: config.PublicSignIn{DevLogin: true}, SecondsPerQuestion: 15}
+		StaffSignIn: config.PublicSignIn{DevLogin: true}, SecondsPerQuestion: 15,
+		ObservationUnits: map[string]string{"glucose": "mmol/L", "temperature": "°C"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("public = %+v", got)
 	}

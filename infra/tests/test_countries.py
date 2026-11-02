@@ -19,6 +19,8 @@ GOOD = dict(
     locale="en-CA",
     phone_country="CA",
     national_id_type="nhs",
+    glucose_unit="mmol/L",
+    temperature_unit="°C",
 )
 
 
@@ -54,6 +56,9 @@ def test_get_an_unknown_entry():
         ("locale", "english"),
         ("phone_country", "can"),
         ("national_id_type", ""),
+        # S46: the observations' display units; nothing converts yet, so only the stored ones.
+        ("glucose_unit", "mg/dL"),
+        ("temperature_unit", "°F"),
         ("app_url", "http://ca.example.test"),
         ("app_url", "https://ca.example.test/"),
         ("budget_usd", 0),
