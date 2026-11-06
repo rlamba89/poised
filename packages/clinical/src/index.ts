@@ -28,3 +28,4 @@ export * from "./rules";
 export * from "./evaluate";
 export * from "./warnings";
 export * from "./observations";
+export * from "./assessments";
