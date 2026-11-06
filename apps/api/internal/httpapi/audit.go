@@ -59,6 +59,10 @@ var auditActions = map[string]string{
 	"observation.add":     "Recorded an observation",
 	"observation.correct": "Corrected an observation",
 	"observation.error":   "Marked an observation entered in error",
+	"assessment.list":     "Opened an episode's assessments", // S47
+	"assessment.add":      "Added an assessment",
+	"assessment.save":     "Saved an assessment's answers",
+	"assessment.confirm":  "Confirmed an assessment",
 	"information.list":    "Opened an episode's Information", // S36
 	"information.add":     "Added Information to an episode",
 	"information.remove":  "Removed Information from an episode",

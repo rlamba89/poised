@@ -55,7 +55,7 @@ type Chapter struct {
 	Audience    string          `json:"audience"`
 	Content     json.RawMessage `json:"content"`
 	Revision    int32           `json:"revision"`
-	UpdatedBy   uuid.UUID       `json:"updatedBy"`
+	UpdatedBy   uuid.NullUUID   `json:"updatedBy"`
 	UpdatedAt   time.Time       `json:"updatedAt"`
 }
 
@@ -137,6 +137,7 @@ type EpisodeAnswer struct {
 	PrefillChoiceBy uuid.NullUUID      `json:"prefillChoiceBy"`
 	Started         bool               `json:"started"`
 	ClearedSaves    int32              `json:"clearedSaves"`
+	Sources         json.RawMessage    `json:"sources"`
 }
 
 type EpisodeEvent struct {
@@ -173,6 +174,7 @@ type EpisodeForm struct {
 	SubmittedBy uuid.NullUUID      `json:"submittedBy"`
 	CreatedAt   time.Time          `json:"createdAt"`
 	PrefilledAt pgtype.Timestamptz `json:"prefilledAt"`
+	Assessment  *string            `json:"assessment"`
 }
 
 type EpisodeInfoItem struct {
@@ -386,9 +388,10 @@ type Questionnaire struct {
 	HospitalID  uuid.NullUUID `json:"hospitalId"`
 	Name        string        `json:"name"`
 	Description string        `json:"description"`
-	CreatedBy   uuid.UUID     `json:"createdBy"`
+	CreatedBy   uuid.NullUUID `json:"createdBy"`
 	CreatedAt   time.Time     `json:"createdAt"`
-	OrgID       uuid.UUID     `json:"orgId"`
+	OrgID       uuid.NullUUID `json:"orgId"`
+	Assessment  *string       `json:"assessment"`
 }
 
 type QuestionnaireVersion struct {
@@ -396,7 +399,7 @@ type QuestionnaireVersion struct {
 	QuestionnaireID uuid.UUID       `json:"questionnaireId"`
 	VersionNo       int32           `json:"versionNo"`
 	Status          string          `json:"status"`
-	UpdatedBy       uuid.UUID       `json:"updatedBy"`
+	UpdatedBy       uuid.NullUUID   `json:"updatedBy"`
 	UpdatedAt       time.Time       `json:"updatedAt"`
 	Rules           json.RawMessage `json:"rules"`
 	RulesRevision   int32           `json:"rulesRevision"`

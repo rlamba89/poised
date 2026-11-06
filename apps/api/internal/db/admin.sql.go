@@ -328,7 +328,7 @@ func (q *Queries) LockOrgSettings(ctx context.Context, id uuid.UUID) (json.RawMe
 
 const publishedQuestionnairesInOrg = `-- name: PublishedQuestionnairesInOrg :many
 SELECT q.id, q.name FROM questionnaires q
-WHERE q.org_id = $1 AND q.hospital_id IS NULL
+WHERE q.org_id = $1::uuid AND q.hospital_id IS NULL
   AND EXISTS (SELECT 1 FROM questionnaire_versions v WHERE v.questionnaire_id = q.id AND v.status = 'published')
 ORDER BY lower(q.name), q.id
 `
@@ -339,8 +339,8 @@ type PublishedQuestionnairesInOrgRow struct {
 }
 
 // The trust's questionnaires that have a published version: the choices for its default HQ.
-func (q *Queries) PublishedQuestionnairesInOrg(ctx context.Context, orgID uuid.UUID) ([]PublishedQuestionnairesInOrgRow, error) {
-	rows, err := q.db.Query(ctx, publishedQuestionnairesInOrg, orgID)
+func (q *Queries) PublishedQuestionnairesInOrg(ctx context.Context, dollar_1 uuid.UUID) ([]PublishedQuestionnairesInOrgRow, error) {
+	rows, err := q.db.Query(ctx, publishedQuestionnairesInOrg, dollar_1)
 	if err != nil {
 		return nil, err
 	}

@@ -277,9 +277,15 @@ func (s *server) loadObservation(w http.ResponseWriter, r *http.Request, episode
 	return o, true
 }
 
-// lockedObservations runs change in a transaction holding the episode's lock, after checking it
-// isn't cancelled or archived (409). change returns false (having answered itself) to stop.
+// lockedObservations runs change in a transaction holding the episode's lock (lockedEpisode).
 func (s *server) lockedObservations(w http.ResponseWriter, r *http.Request, episodeID uuid.UUID, change func(q *db.Queries) (bool, error)) bool {
+	return s.lockedEpisode(w, r, episodeID, "observation", change)
+}
+
+// lockedEpisode runs change in a transaction holding the episode's lock, after checking it isn't
+// cancelled or archived (409). change returns false (having answered itself) to stop; what names
+// it in a 500's log line. Observations (S46) and assessments (S47) use it.
+func (s *server) lockedEpisode(w http.ResponseWriter, r *http.Request, episodeID uuid.UUID, what string, change func(q *db.Queries) (bool, error)) bool {
 	return s.inTx(w, r, func(q *db.Queries) bool {
 		now, err := q.LockEpisodeStatus(r.Context(), episodeID)
 		if err != nil {
@@ -292,7 +298,7 @@ func (s *server) lockedObservations(w http.ResponseWriter, r *http.Request, epis
 		}
 		ok, err := change(q)
 		if err != nil {
-			serverError(w, "observation", err)
+			serverError(w, what, err)
 			return false
 		}
 		return ok

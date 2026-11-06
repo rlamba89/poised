@@ -245,6 +245,13 @@ func (s *server) staffRoutes(mux *http.ServeMux) {
 		hosp(s.audited("observation.correct", s.correctObservation)))
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/observations/{obsid}/entered-in-error",
 		hosp(s.audited("observation.error", s.markObservationInError)))
+	// Assessments (S47; §9): any clinician at the hospital adds one (STOP-Bang), saves its answers
+	// and confirms it; the browser pre-fills and scores it (assessments.go).
+	mux.HandleFunc("GET /api/o/{oid}/h/{hid}/episodes/{eid}/assessments", hosp(s.audited("assessment.list", s.listAssessments)))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/assessments", hosp(s.audited("assessment.add", s.addAssessment)))
+	mux.HandleFunc("PUT /api/o/{oid}/h/{hid}/episodes/{eid}/assessments/{fid}", hosp(s.audited("assessment.save", s.saveAssessment)))
+	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/assessments/{fid}/confirm",
+		hosp(s.audited("assessment.confirm", s.confirmAssessment)))
 	// The anaesthetist's ASA grades (S44b): a history, never edited or deleted (asa_grades.go). Any
 	// clinician at the hospital adds one, or marks one entered in error.
 	mux.HandleFunc("POST /api/o/{oid}/h/{hid}/episodes/{eid}/anaesthetist-asa", hosp(s.audited("asa.add", s.addAnaesthetistGrade)))

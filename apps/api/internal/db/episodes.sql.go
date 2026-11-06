@@ -264,7 +264,7 @@ WITH e AS (
     JOIN questionnaires q ON q.id = v.questionnaire_id
     WHERE p.id = $10 AND p.org_id = $1
       AND v.id = $11 AND v.status = 'published'
-      AND q.org_id = $1 AND (q.hospital_id IS NULL OR q.hospital_id = $2::uuid)
+      AND q.org_id = $1::uuid AND (q.hospital_id IS NULL OR q.hospital_id = $2::uuid)
     RETURNING id
 ), hq AS (
     INSERT INTO episode_forms (episode_id, version_id, kind)
@@ -960,7 +960,7 @@ const listPublishedVersions = `-- name: ListPublishedVersions :many
 SELECT v.id AS version_id, v.version_no, q.name, q.id AS questionnaire_id
 FROM questionnaire_versions v
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE q.org_id = $1 AND (q.hospital_id IS NULL OR q.hospital_id = $2::uuid)
+WHERE q.org_id = $1::uuid AND (q.hospital_id IS NULL OR q.hospital_id = $2::uuid)
   AND v.status = 'published'
 ORDER BY q.name
 `

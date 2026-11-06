@@ -16,13 +16,13 @@ import (
 const createNextVersion = `-- name: CreateNextVersion :one
 WITH v AS (
     INSERT INTO questionnaire_versions (questionnaire_id, version_no, status, updated_by, rules)
-    SELECT prev.questionnaire_id, prev.version_no + 1, 'draft', $1,
+    SELECT prev.questionnaire_id, prev.version_no + 1, 'draft', $1::uuid,
            coalesce(prev.rules, $2::jsonb)
     FROM questionnaire_versions prev WHERE prev.id = $3
     RETURNING questionnaire_versions.id
 ), c AS (
     INSERT INTO chapters (version_id, position, name, description, icon, audience, content, updated_by)
-    SELECT v.id, ch.position, ch.name, ch.description, ch.icon, ch.audience, ch.content, $1
+    SELECT v.id, ch.position, ch.name, ch.description, ch.icon, ch.audience, ch.content, $1::uuid
     FROM chapters ch, v
     WHERE ch.version_id = $3
 )
@@ -47,7 +47,7 @@ func (q *Queries) CreateNextVersion(ctx context.Context, arg CreateNextVersionPa
 
 const createQuestionnaire = `-- name: CreateQuestionnaire :one
 INSERT INTO questionnaires (org_id, name, description, created_by)
-VALUES ($1, $2, $3, $4)
+VALUES ($1::uuid, $2, $3, $4::uuid)
 RETURNING id
 `
 
@@ -73,7 +73,7 @@ func (q *Queries) CreateQuestionnaire(ctx context.Context, arg CreateQuestionnai
 
 const createVersion = `-- name: CreateVersion :one
 INSERT INTO questionnaire_versions (questionnaire_id, version_no, status, updated_by, rules)
-VALUES ($1, $2, 'draft', $3, $4::jsonb)
+VALUES ($1, $2, 'draft', $3::uuid, $4::jsonb)
 RETURNING id
 `
 
@@ -98,7 +98,7 @@ func (q *Queries) CreateVersion(ctx context.Context, arg CreateVersionParams) (u
 }
 
 const deleteQuestionnaire = `-- name: DeleteQuestionnaire :exec
-DELETE FROM questionnaires WHERE id = $1 AND org_id = $2
+DELETE FROM questionnaires WHERE id = $1 AND org_id = $2::uuid
 `
 
 type DeleteQuestionnaireParams struct {
@@ -115,7 +115,7 @@ const draftNameExists = `-- name: DraftNameExists :one
 SELECT EXISTS (
     SELECT 1 FROM questionnaires q
     JOIN questionnaire_versions v ON v.questionnaire_id = q.id
-    WHERE q.org_id = $1
+    WHERE q.org_id = $1::uuid
       AND v.status = 'draft'
       AND lower(q.name) = lower($2)
       AND q.id <> $3
@@ -136,7 +136,7 @@ func (q *Queries) DraftNameExists(ctx context.Context, arg DraftNameExistsParams
 }
 
 const getQuestionnaire = `-- name: GetQuestionnaire :one
-SELECT q.id, q.org_id, q.hospital_id, q.name, q.description, q.created_by, q.created_at,
+SELECT q.id, q.org_id::uuid AS org_id, q.hospital_id, q.name, q.description, q.created_by::uuid AS created_by, q.created_at,
        v.id AS version_id, v.version_no, v.status, v.updated_at,
        editor.name AS updated_by_name, v.rules, v.rules_revision
 FROM questionnaires q
@@ -146,7 +146,7 @@ JOIN LATERAL (
     ORDER BY qv.version_no DESC LIMIT 1
 ) v ON true
 JOIN users editor ON editor.id = v.updated_by
-WHERE q.id = $1 AND q.org_id = $2
+WHERE q.id = $1 AND q.org_id = $2::uuid
   AND (q.hospital_id IS NULL OR q.hospital_id = $3::uuid)
 `
 
@@ -210,7 +210,7 @@ func (q *Queries) HasNonDraftVersion(ctx context.Context, questionnaireID uuid.U
 
 const listQuestionnaires = `-- name: ListQuestionnaires :many
 
-SELECT q.id, q.hospital_id, q.name, q.description, q.created_by, q.created_at,
+SELECT q.id, q.hospital_id, q.name, q.description, q.created_by::uuid AS created_by, q.created_at,
        creator.name AS created_by_name,
        v.version_no, v.status, v.updated_at,
        editor.name AS updated_by_name,
@@ -223,7 +223,7 @@ JOIN LATERAL (
     ORDER BY qv.version_no DESC LIMIT 1
 ) v ON true
 JOIN users editor ON editor.id = v.updated_by
-WHERE q.org_id = $1 AND (q.hospital_id IS NULL OR q.hospital_id = $2::uuid)
+WHERE q.org_id = $1::uuid AND (q.hospital_id IS NULL OR q.hospital_id = $2::uuid)
   AND ($3::text = ''
        OR q.name ILIKE '%' || $3 || '%'
        OR q.description ILIKE '%' || $3 || '%')
@@ -328,7 +328,7 @@ func (q *Queries) LockVersionForPublish(ctx context.Context, id uuid.UUID) (Lock
 const publishVersion = `-- name: PublishVersion :one
 WITH pub AS (
     UPDATE questionnaire_versions qv
-    SET status = 'published', updated_by = $1, updated_at = now()
+    SET status = 'published', updated_by = $1::uuid, updated_at = now()
     WHERE qv.id = $2 AND qv.status = 'draft'
     RETURNING qv.questionnaire_id
 ), retired AS (
@@ -356,7 +356,7 @@ func (q *Queries) PublishVersion(ctx context.Context, arg PublishVersionParams) 
 const saveVersionRules = `-- name: SaveVersionRules :one
 UPDATE questionnaire_versions
 SET rules = $1::jsonb, rules_revision = rules_revision + 1,
-    updated_by = $2, updated_at = now()
+    updated_by = $2::uuid, updated_at = now()
 WHERE id = $3 AND status = 'draft' AND rules_revision = $4
 RETURNING rules_revision
 `
@@ -383,18 +383,18 @@ func (q *Queries) SaveVersionRules(ctx context.Context, arg SaveVersionRulesPara
 }
 
 const touchVersion = `-- name: TouchVersion :exec
-UPDATE questionnaire_versions SET updated_by = $2, updated_at = now() WHERE id = $1 AND status = 'draft'
+UPDATE questionnaire_versions SET updated_by = $1::uuid, updated_at = now() WHERE id = $2 AND status = 'draft'
 `
 
 type TouchVersionParams struct {
-	ID        uuid.UUID `json:"id"`
 	UpdatedBy uuid.UUID `json:"updatedBy"`
+	ID        uuid.UUID `json:"id"`
 }
 
 // Only a draft (S44c, S44a verification 3): a save's touch that waited for Publish (it runs after
 // the save, as its own statement) mustn't overwrite the publisher's "last changed by".
 func (q *Queries) TouchVersion(ctx context.Context, arg TouchVersionParams) error {
-	_, err := q.db.Exec(ctx, touchVersion, arg.ID, arg.UpdatedBy)
+	_, err := q.db.Exec(ctx, touchVersion, arg.UpdatedBy, arg.ID)
 	return err
 }
 

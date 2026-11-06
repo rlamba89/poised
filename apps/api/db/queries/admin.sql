@@ -66,7 +66,7 @@ ORDER BY lower(u.name), u.id;
 -- name: PublishedQuestionnairesInOrg :many
 -- The trust's questionnaires that have a published version: the choices for its default HQ.
 SELECT q.id, q.name FROM questionnaires q
-WHERE q.org_id = $1 AND q.hospital_id IS NULL
+WHERE q.org_id = $1::uuid AND q.hospital_id IS NULL
   AND EXISTS (SELECT 1 FROM questionnaire_versions v WHERE v.questionnaire_id = q.id AND v.status = 'published')
 ORDER BY lower(q.name), q.id;
 

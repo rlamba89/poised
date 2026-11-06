@@ -138,9 +138,10 @@ func TestEpisodeFormsMigration(t *testing.T) {
 		})
 	}
 	t.Run("an assessment and PROMs can join the HQ (C7, C9)", func(t *testing.T) {
-		if _, err := m.DB.Exec(t.Context(), `INSERT INTO episode_forms (episode_id, version_id, kind)
-			VALUES ($1, '00000000-0000-0000-0000-00000000000e', 'assessment'),
-			       ($1, '00000000-0000-0000-0000-00000000000e', 'proms')`, ep); err != nil {
+		// An assessment names which it is (S47, migration 00038).
+		if _, err := m.DB.Exec(t.Context(), `INSERT INTO episode_forms (episode_id, version_id, kind, assessment)
+			VALUES ($1, '00000000-0000-0000-0000-00000000000e', 'assessment', 'stopbang'),
+			       ($1, '00000000-0000-0000-0000-00000000000e', 'proms', NULL)`, ep); err != nil {
 			t.Error(err)
 		}
 	})
@@ -641,4 +642,65 @@ INSERT INTO patient_prefill_consents (account_id, org_id, agreed, episode_id) VA
 	if _, err := m.DB.Exec(t.Context(), `INSERT INTO patient_prefill_consents (account_id, org_id, agreed) VALUES ($1, $2, true)`, acc, trust); err != nil {
 		t.Errorf("down: the consents table isn't back: %v", err)
 	}
+}
+
+// S47: an assessment is a platform questionnaire (no trust, no author); a trust's keeps both. An
+// episode has at most one of each assessment. Rolled back, the assessments and their forms go.
+func TestAssessmentsMigration(t *testing.T) {
+	t.Parallel()
+	m := apitest.NewMigrations(t, 38)
+	const setup = `
+INSERT INTO orgs (id, name, code) VALUES ('00000000-0000-0000-0000-00000000000a', 'Trust', 'MIG');
+INSERT INTO hospitals (id, org_id, name) VALUES ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000a', 'Hospital');
+INSERT INTO users (id, name, email) VALUES ('00000000-0000-0000-0000-00000000000c', 'Cara', 'cara@example.test');
+INSERT INTO questionnaires (id, assessment, name, description)
+VALUES ('00000000-0000-0000-0000-00000000000d', 'stopbang', 'STOP-Bang', '');
+INSERT INTO questionnaire_versions (id, questionnaire_id, version_no, status)
+VALUES ('00000000-0000-0000-0000-00000000000e', '00000000-0000-0000-0000-00000000000d', 1, 'published');
+INSERT INTO chapters (id, version_id, position, name, audience)
+VALUES ('00000000-0000-0000-0000-00000000000f', '00000000-0000-0000-0000-00000000000e', 1, 'STOP-Bang', 'clinician');
+INSERT INTO patients (id, org_id, first_name, last_name, date_of_birth, sex)
+VALUES ('00000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-00000000000a', 'Sam', 'Smith', '1970-01-01', 'male');
+INSERT INTO episodes (id, org_id, hospital_id, patient_id, created_by)
+VALUES ('00000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000b',
+        '00000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-00000000000c');
+INSERT INTO episode_forms (id, episode_id, version_id, kind, assessment)
+VALUES ('00000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-00000000000e', 'assessment', 'stopbang');
+INSERT INTO episode_answers (episode_form_id, chapter_id, actor, data, sources)
+VALUES ('00000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-00000000000f', 'clinician', '{"stopbang_neck": "o_no"}', '{"stopbang_neck": "clinician"}');
+`
+	if _, err := m.DB.Exec(t.Context(), setup); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	refused := map[string]string{
+		"a trust's questionnaire with no author": `INSERT INTO questionnaires (org_id, name, description)
+			VALUES ('00000000-0000-0000-0000-00000000000a', 'HQ', '')`,
+		"an assessment that's a trust's": `INSERT INTO questionnaires (org_id, assessment, name, description, created_by)
+			VALUES ('00000000-0000-0000-0000-00000000000a', 'dasi', 'DASI', '', '00000000-0000-0000-0000-00000000000c')`,
+		"an assessment twice": `INSERT INTO questionnaires (assessment, name, description) VALUES ('stopbang', 'Again', '')`,
+		"an assessment form that doesn't say which": `INSERT INTO episode_forms (episode_id, version_id, kind)
+			VALUES ('00000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-00000000000e', 'assessment')`,
+		"one assessment twice on an episode": `INSERT INTO episode_forms (episode_id, version_id, kind, assessment)
+			VALUES ('00000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-00000000000e', 'assessment', 'stopbang')`,
+		"sources that aren't an object": `UPDATE episode_answers SET sources = '[]'`,
+	}
+	for name, sql := range refused {
+		t.Run("refused: "+name, func(t *testing.T) {
+			if _, err := m.DB.Exec(t.Context(), sql); err == nil {
+				t.Error("the database allowed it")
+			}
+		})
+	}
+	t.Run("it rolls back, without the assessments, and forward again", func(t *testing.T) {
+		m.DownTo(t, 37)
+		var n int
+		if err := m.DB.QueryRow(t.Context(), `SELECT (SELECT count(*) FROM questionnaires) + (SELECT count(*) FROM episode_forms)
+			+ (SELECT count(*) FROM episode_answers)`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		if n != 0 {
+			t.Errorf("%d rows left", n)
+		}
+		m.Up(t)
+	})
 }

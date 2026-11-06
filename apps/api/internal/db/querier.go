@@ -22,6 +22,8 @@ type Querier interface {
 	// (S15 answers 6 and 8).
 	AccountsForSignin(ctx context.Context, arg AccountsForSigninParams) ([]AccountsForSigninRow, error)
 	AddAnaesthetistGrade(ctx context.Context, arg AddAnaesthetistGradeParams) (uuid.UUID, error)
+	// The assessment on the episode: no row if it already has one.
+	AddAssessmentForm(ctx context.Context, arg AddAssessmentFormParams) (uuid.UUID, error)
 	AddAutoArchiveJob(ctx context.Context, arg AddAutoArchiveJobParams) error
 	// An entry written by the jobs (S16): a reminder, "not responding", an auto-archive (S22); or by
 	// an undelivered report (S17). at is the run's time (S22 test report 1, F-2): a job run "as of" a
@@ -48,6 +50,8 @@ type Querier interface {
 	// auto-archive, S22), with no user. at: when, for a job run as of its own time (S22 test report 1,
 	// F-2); NULL is now.
 	AddStatusEvent(ctx context.Context, arg AddStatusEventParams) error
+	// The assessment's questionnaire, made the first time it's needed.
+	AssessmentQuestionnaire(ctx context.Context, arg AssessmentQuestionnaireParams) (uuid.UUID, error)
 	// The names of the trust's patients in a page of the log, read now (the log holds only IDs).
 	AuditPatientNames(ctx context.Context, arg AuditPatientNamesParams) ([]AuditPatientNamesRow, error)
 	// Archives the episode, if nothing has changed it since it was read (the same status, and no
@@ -190,6 +194,8 @@ type Querier interface {
 	// What the hospital's auto-archive decides with: its zone, its and its trust's settings, and
 	// whether both are active (nothing is archived while either is suspended, ORG-03).
 	GetArchivePolicy(ctx context.Context, id uuid.UUID) (GetArchivePolicyRow, error)
+	// One of the episode's assessments, with its chapter.
+	GetAssessmentForm(ctx context.Context, arg GetAssessmentFormParams) (GetAssessmentFormRow, error)
 	GetChapter(ctx context.Context, arg GetChapterParams) (GetChapterRow, error)
 	GetChapterMeta(ctx context.Context, arg GetChapterMetaParams) (GetChapterMetaRow, error)
 	// A sign-in or verification link, used or not, expired or not (the handler says which).
@@ -272,6 +278,9 @@ type Querier interface {
 	// no answers names no one who entered them (S44a test report 1, F1: staff filled it in for the
 	// patient, but none of it was sent).
 	KeepSentAnswers(ctx context.Context, arg KeepSentAnswersParams) error
+	// The assessment's published version and its one chapter, and whether that chapter's content is
+	// this one (jsonb equality: key order and spacing don't matter).
+	LatestAssessmentVersion(ctx context.Context, arg LatestAssessmentVersionParams) (LatestAssessmentVersionRow, error)
 	// The newest change that isn't an undo and hasn't been undone: what an undo would step back
 	// (episode.UndoTarget decides whether it can). No row: none.
 	LatestUndoable(ctx context.Context, episodeID uuid.UUID) (LatestUndoableRow, error)
@@ -286,6 +295,9 @@ type Querier interface {
 	// The hospital's episodes either rule could archive (episode.ArchiveDue decides): discharged,
 	// before admission, or cancelled. unarchived_at: the latest un-archive, if any.
 	ListArchiveCandidates(ctx context.Context, hospitalID uuid.UUID) ([]ListArchiveCandidatesRow, error)
+	// The episode's assessments, oldest first, each with its version's content and the clinician's
+	// row (none until the first save). Confirmed: validated_at, by updated_by.
+	ListAssessmentForms(ctx context.Context, episodeID uuid.UUID) ([]ListAssessmentFormsRow, error)
 	// One trust's log, newest first, with the filters that are set: someone (a staff member, staff of
 	// another trust (actor_org_id, S28), or patients_only for the patient's link), a time range
 	// [from_at, to_at), and patients (any of patient_ids, when by_patient).
@@ -410,7 +422,7 @@ type Querier interface {
 	ListTrustContent(ctx context.Context, orgID uuid.NullUUID) ([]ListTrustContentRow, error)
 	// Every Question Set of the trust's published and retired versions (S23): where each question
 	// key is used, and its options as published. Newest version first within each questionnaire.
-	ListTrustPublishedContents(ctx context.Context, orgID uuid.UUID) ([]ListTrustPublishedContentsRow, error)
+	ListTrustPublishedContents(ctx context.Context, dollar_1 uuid.UUID) ([]ListTrustPublishedContentsRow, error)
 	// The episode's messages that didn't reach the patient since its latest invite or Resend (S17):
 	// a later Resend starts afresh. status: for a status message (S21), the status it was sent for.
 	ListUndeliveredMessages(ctx context.Context, episodeID uuid.UUID) ([]ListUndeliveredMessagesRow, error)
@@ -419,6 +431,10 @@ type Querier interface {
 	// A version's Question Sets with their content, for the key checks (S23).
 	ListVersionContents(ctx context.Context, versionID uuid.UUID) ([]ListVersionContentsRow, error)
 	LockAccount(ctx context.Context, id uuid.UUID) (LockAccountRow, error)
+	// Assessments (plan C7, session S47): the platform's assessment questionnaires (no trust; migration
+	// 00038) and the episode forms a clinician adds from them, with the clinician's answers.
+	// Two clinicians adding the same assessment at once publish its version once.
+	LockAssessmentDefinition(ctx context.Context, assessment string) error
 	// Accounts are matched by date of birth: one person's records join one at a time, so two first
 	// visits at once (from two trusts' invites) can't make two accounts.
 	LockBirthDate(ctx context.Context, dateOfBirth pgtype.Date) error
@@ -503,11 +519,13 @@ type Querier interface {
 	// overwritten, and it runs once per set. No row: answers were saved there first. Revision 1, so a
 	// tab that loaded the set before it was pre-filled (it sends 0) gets the stale 409 (S26).
 	PrefillPatientAnswers(ctx context.Context, arg PrefillPatientAnswersParams) (int64, error)
+	// A new published version of the assessment, with its content as one clinician Question Set.
+	PublishAssessmentVersion(ctx context.Context, arg PublishAssessmentVersionParams) (PublishAssessmentVersionRow, error)
 	// Publishes the draft and retires the version published before it (LCY-01), in one statement.
 	// Returns 0 when the version is no longer a draft.
 	PublishVersion(ctx context.Context, arg PublishVersionParams) (int64, error)
 	// The trust's questionnaires that have a published version: the choices for its default HQ.
-	PublishedQuestionnairesInOrg(ctx context.Context, orgID uuid.UUID) ([]PublishedQuestionnairesInOrgRow, error)
+	PublishedQuestionnairesInOrg(ctx context.Context, dollar_1 uuid.UUID) ([]PublishedQuestionnairesInOrgRow, error)
 	// A text or email sent to the patient about the episode (S17): failed_at is set when it
 	// couldn't be sent at all.
 	// kind "status" (S21) names the status it was sent for; the others have none.
@@ -530,6 +548,7 @@ type Querier interface {
 	ResetEpisodeDob(ctx context.Context, id uuid.UUID) error
 	// MESSAGING=capture only (local, QA): a tester's fresh start.
 	ResetRateLimits(ctx context.Context) error
+	RetireAssessmentVersions(ctx context.Context, questionnaireID uuid.UUID) error
 	// Unused sign-in links to the account's mobile or email stop working, unless another account
 	// signs in with that contact too (twins sharing a phone, S15): theirs carries on.
 	RevokeAccountSigninLinks(ctx context.Context, arg RevokeAccountSigninLinksParams) error
@@ -550,6 +569,11 @@ type Querier interface {
 	// they aren't a member, the hospital isn't in that trust, or either is suspended (ORG-03).
 	// Re-read on every request (STF-04).
 	RolesAtHospital(ctx context.Context, arg RolesAtHospitalParams) ([]RolesAtHospitalRow, error)
+	// The clinician's answers and their sources. `confirmed` stamps the row (Confirm: who, when); a
+	// save without it clears the stamp, so a changed item needs a new Confirm. Returns the new
+	// revision, or no row unless `revision` is the row's current one (0: no row yet), checked again
+	// by ON CONFLICT … WHERE, as SaveClinicianAnswers. The caller holds the episode's lock.
+	SaveAssessmentAnswers(ctx context.Context, arg SaveAssessmentAnswersParams) (int32, error)
 	// Saves only if nobody saved since the caller loaded `revision` (LCY-04), and only into a draft:
 	// the version's row is taken FOR SHARE (S44a), so a save waits for a Publish in progress (which
 	// holds it FOR UPDATE) and is then refused, and Publish waits for a save in progress.

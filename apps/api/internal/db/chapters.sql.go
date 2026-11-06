@@ -16,7 +16,7 @@ import (
 const createChapter = `-- name: CreateChapter :one
 
 INSERT INTO chapters (version_id, position, name, updated_by)
-SELECT v.id, (SELECT coalesce(max(position), 0) + 1 FROM chapters WHERE version_id = v.id), $1, $2
+SELECT v.id, (SELECT coalesce(max(position), 0) + 1 FROM chapters WHERE version_id = v.id), $1, $2::uuid
 FROM questionnaire_versions v
 WHERE v.id = $3 AND v.status = 'draft'
 FOR SHARE OF v
@@ -64,7 +64,7 @@ SELECT c.id, c.version_id, c.position, c.name, c.description, c.icon, c.audience
 FROM chapters c
 JOIN questionnaire_versions v ON v.id = c.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE c.id = $1 AND q.org_id = $2
+WHERE c.id = $1 AND q.org_id = $2::uuid
   AND (q.hospital_id IS NULL OR q.hospital_id = $3::uuid)
 `
 
@@ -120,7 +120,7 @@ SELECT c.id, c.version_id, c.name, c.description, c.icon, c.audience, c.revision
 FROM chapters c
 JOIN questionnaire_versions v ON v.id = c.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE c.id = $1 AND q.org_id = $2
+WHERE c.id = $1 AND q.org_id = $2::uuid
   AND (q.hospital_id IS NULL OR q.hospital_id = $3::uuid)
 `
 
@@ -218,7 +218,7 @@ SELECT q.id AS questionnaire_id, q.name AS questionnaire_name, v.id AS version_i
 FROM chapters c
 JOIN questionnaire_versions v ON v.id = c.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE q.org_id = $1 AND v.status IN ('published', 'retired')
+WHERE q.org_id = $1::uuid AND v.status IN ('published', 'retired')
 ORDER BY q.name, q.id, v.version_no DESC, c.position, c.name
 `
 
@@ -234,8 +234,8 @@ type ListTrustPublishedContentsRow struct {
 
 // Every Question Set of the trust's published and retired versions (S23): where each question
 // key is used, and its options as published. Newest version first within each questionnaire.
-func (q *Queries) ListTrustPublishedContents(ctx context.Context, orgID uuid.UUID) ([]ListTrustPublishedContentsRow, error) {
-	rows, err := q.db.Query(ctx, listTrustPublishedContents, orgID)
+func (q *Queries) ListTrustPublishedContents(ctx context.Context, dollar_1 uuid.UUID) ([]ListTrustPublishedContentsRow, error) {
+	rows, err := q.db.Query(ctx, listTrustPublishedContents, dollar_1)
 	if err != nil {
 		return nil, err
 	}
@@ -318,7 +318,7 @@ WITH draft AS (
     FOR SHARE OF v
 )
 UPDATE chapters ch
-SET content = $1, revision = ch.revision + 1, updated_by = $2, updated_at = now()
+SET content = $1, revision = ch.revision + 1, updated_by = $2::uuid, updated_at = now()
 WHERE ch.id = $3 AND ch.revision = $4 AND ch.version_id IN (SELECT draft.id FROM draft)
 RETURNING ch.revision
 `
@@ -368,7 +368,7 @@ WITH draft AS (
 )
 UPDATE chapters ch
 SET name = $1, description = $2, icon = $3, audience = $4,
-    updated_by = $5, updated_at = now()
+    updated_by = $5::uuid, updated_at = now()
 WHERE ch.id = $6 AND ch.version_id IN (SELECT draft.id FROM draft)
 `
 

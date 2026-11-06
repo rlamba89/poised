@@ -6,7 +6,7 @@
 SELECT v.id AS version_id, v.version_no, q.name, q.id AS questionnaire_id
 FROM questionnaire_versions v
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE q.org_id = sqlc.arg(org_id) AND (q.hospital_id IS NULL OR q.hospital_id = sqlc.arg(hospital_id)::uuid)
+WHERE q.org_id = sqlc.arg(org_id)::uuid AND (q.hospital_id IS NULL OR q.hospital_id = sqlc.arg(hospital_id)::uuid)
   AND v.status = 'published'
 ORDER BY q.name;
 
@@ -22,7 +22,7 @@ WITH e AS (
     JOIN questionnaires q ON q.id = v.questionnaire_id
     WHERE p.id = sqlc.arg(patient_id) AND p.org_id = sqlc.arg(org_id)
       AND v.id = sqlc.arg(version_id) AND v.status = 'published'
-      AND q.org_id = sqlc.arg(org_id) AND (q.hospital_id IS NULL OR q.hospital_id = sqlc.arg(hospital_id)::uuid)
+      AND q.org_id = sqlc.arg(org_id)::uuid AND (q.hospital_id IS NULL OR q.hospital_id = sqlc.arg(hospital_id)::uuid)
     RETURNING id
 ), hq AS (
     INSERT INTO episode_forms (episode_id, version_id, kind)

@@ -13,7 +13,7 @@ SELECT c.id, c.version_id, c.name, c.description, c.icon, c.audience, c.revision
 FROM chapters c
 JOIN questionnaire_versions v ON v.id = c.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE c.id = sqlc.arg(id) AND q.org_id = sqlc.arg(org_id)
+WHERE c.id = sqlc.arg(id) AND q.org_id = sqlc.arg(org_id)::uuid
   AND (q.hospital_id IS NULL OR q.hospital_id = sqlc.arg(hospital_id)::uuid);
 
 -- name: GetChapter :one
@@ -24,7 +24,7 @@ SELECT c.id, c.version_id, c.position, c.name, c.description, c.icon, c.audience
 FROM chapters c
 JOIN questionnaire_versions v ON v.id = c.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE c.id = sqlc.arg(id) AND q.org_id = sqlc.arg(org_id)
+WHERE c.id = sqlc.arg(id) AND q.org_id = sqlc.arg(org_id)::uuid
   AND (q.hospital_id IS NULL OR q.hospital_id = sqlc.arg(hospital_id)::uuid);
 
 -- Every change to a version's Question Sets is made only into a draft, holding the version's row
@@ -33,7 +33,7 @@ WHERE c.id = sqlc.arg(id) AND q.org_id = sqlc.arg(org_id)
 
 -- name: CreateChapter :one
 INSERT INTO chapters (version_id, position, name, updated_by)
-SELECT v.id, (SELECT coalesce(max(position), 0) + 1 FROM chapters WHERE version_id = v.id), sqlc.arg(name), sqlc.arg(updated_by)
+SELECT v.id, (SELECT coalesce(max(position), 0) + 1 FROM chapters WHERE version_id = v.id), sqlc.arg(name), sqlc.arg(updated_by)::uuid
 FROM questionnaire_versions v
 WHERE v.id = sqlc.arg(version_id) AND v.status = 'draft'
 FOR SHARE OF v
@@ -47,7 +47,7 @@ WITH draft AS (
 )
 UPDATE chapters ch
 SET name = sqlc.arg(name), description = sqlc.arg(description), icon = sqlc.arg(icon), audience = sqlc.arg(audience),
-    updated_by = sqlc.arg(updated_by), updated_at = now()
+    updated_by = sqlc.arg(updated_by)::uuid, updated_at = now()
 WHERE ch.id = sqlc.arg(id) AND ch.version_id IN (SELECT draft.id FROM draft);
 
 -- name: LockDraftVersion :one
@@ -78,7 +78,7 @@ WITH draft AS (
     FOR SHARE OF v
 )
 UPDATE chapters ch
-SET content = sqlc.arg(content), revision = ch.revision + 1, updated_by = sqlc.arg(updated_by), updated_at = now()
+SET content = sqlc.arg(content), revision = ch.revision + 1, updated_by = sqlc.arg(updated_by)::uuid, updated_at = now()
 WHERE ch.id = sqlc.arg(id) AND ch.revision = sqlc.arg(revision) AND ch.version_id IN (SELECT draft.id FROM draft)
 RETURNING ch.revision;
 
@@ -97,5 +97,5 @@ SELECT q.id AS questionnaire_id, q.name AS questionnaire_name, v.id AS version_i
 FROM chapters c
 JOIN questionnaire_versions v ON v.id = c.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE q.org_id = $1 AND v.status IN ('published', 'retired')
+WHERE q.org_id = $1::uuid AND v.status IN ('published', 'retired')
 ORDER BY q.name, q.id, v.version_no DESC, c.position, c.name;

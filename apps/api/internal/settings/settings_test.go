@@ -26,7 +26,7 @@ func TestEveryKeyHasAValidDefault(t *testing.T) {
 		}
 	}
 	// ORG-04's list, by level.
-	for _, k := range []string{"retentionYears", "observations.ranges"} {
+	for _, k := range []string{"retentionYears", "observations.ranges", "observations.precedence"} {
 		if d, ok := Lookup(k); !ok || d.Level != TrustOnly {
 			t.Errorf("%s should be trust-only", k)
 		}
@@ -336,5 +336,17 @@ func TestObservationRanges(t *testing.T) {
 	}
 	if got["heartRate"]["hardMax"] != 250 {
 		t.Errorf("the trust's value: %v", got)
+	}
+}
+
+// OBS-04 (S47 answers 3): whether a score uses the hospital's measurement first; on by default.
+func TestObservationsPrecedence(t *testing.T) {
+	d, ok := Lookup("observations.precedence")
+	if !ok || d.Kind != Bool || d.OptIn || string(d.Default) != "true" {
+		t.Fatalf("observations.precedence = %+v, want a trust Bool on by default", d)
+	}
+	var on bool
+	if err := Get(Effective(Platform(), Values{"observations.precedence": raw(`false`)}, nil), "observations.precedence", &on); err != nil || on {
+		t.Errorf("the trust's value: %v, %v", on, err)
 	}
 }

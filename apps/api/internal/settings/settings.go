@@ -114,6 +114,10 @@ var Defs = []Def{
 		Help:     "Outside the usual range, a reading is saved with a warning; outside the hard limits, it's refused.",
 		Default:  j(observation.Defaults()),
 		Measures: observation.Measures},
+	// OBS-04 (S47 answers 3): which BMI an assessment's score uses, e.g. STOP-Bang's "over 35".
+	{Key: "observations.precedence", Label: "Observations take precedence in scores", Group: gObs, Level: TrustOnly, Kind: Bool,
+		Help:    "On: a score uses the hospital's measurement (such as the hospital BMI) when there is one, else the patient's own answer. Off: the patient's own answer, else the hospital's.",
+		Default: j(true)},
 	{Key: "feature.assessments", Label: "Assessments", Group: gOptIns, Level: Hospital, Kind: Bool, OptIn: true, Default: j(true)},
 	{Key: "feature.proms", Label: "PROMs", Group: gOptIns, Level: Hospital, Kind: Bool, OptIn: true, Default: j(false)},
 	{Key: "feature.files", Label: "Files", Group: gOptIns, Level: Hospital, Kind: Bool, OptIn: true, Default: j(true)},
