@@ -43,9 +43,9 @@ export function useObservations(path: string, on: boolean | undefined) {
   return { view: on === false ? ("off" as const) : view, error, load };
 }
 
-/** "Hospital BMI: 28.5 (measured …)", or why there's none yet. */
-export function ObservationsPanel({ path, episode, on }: { path: string; episode: Episode; on: boolean }) {
-  const { view, error, load } = useObservations(path, on);
+/** "Hospital BMI: 28.5 (measured …)", or why there's none yet. `obs` is the page's useObservations. */
+export function ObservationsPanel({ path, episode, obs }: { path: string; episode: Episode; obs: ReturnType<typeof useObservations> }) {
+  const { view, error, load } = obs;
   const readOnly = episode.status === "cancelled" || episode.status === "archived";
   if (view === "off") return null;
   return (

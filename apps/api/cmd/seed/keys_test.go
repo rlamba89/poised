@@ -13,7 +13,7 @@ import (
 	"github.com/rlamba89/poised/apps/api/internal/prefill"
 )
 
-// The seeded Demo pre-op HQ, the follow-up HQ (S25) and the e2e journeys' questionnaires (e2e/data)
+// The seeded Demo pre-op HQ, the follow-up HQ (S25), the sleep and STOP-Bang HQs (S47) and the e2e journeys' questionnaires (e2e/data)
 // are published into the same local trusts, so they must agree on every key they share: since S23 a key published with
 // different answers in one trust blocks publishing that question anywhere in it (test report 3,
 // R-05, where old test HQs had done exactly that).
@@ -42,7 +42,8 @@ func TestSeedAndE2EQuestionnairesAgreeOnKeys(t *testing.T) {
 		}
 		return qs
 	}
-	all := map[string][]keys.Placed{"demo-hq.json": walk("demo-hq.json", demoHQ), "demo-followup-hq.json": walk("demo-followup-hq.json", demoFollowUpHQ)}
+	all := map[string][]keys.Placed{"demo-hq.json": walk("demo-hq.json", demoHQ), "demo-followup-hq.json": walk("demo-followup-hq.json", demoFollowUpHQ),
+		"demo-sleep-hq.json": walk("demo-sleep-hq.json", demoSleepHQ), "demo-stopbang-hq.json": walk("demo-stopbang-hq.json", demoStopBangHQ)}
 	for _, f := range files {
 		raw, err := os.ReadFile(f)
 		if err != nil {

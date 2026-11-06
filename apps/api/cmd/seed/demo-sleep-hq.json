@@ -1,0 +1,99 @@
+{
+  "name": "Demo sleep HQ",
+  "description": "Made up (S47): asks four of STOP-Bang's questions (snoring, tiredness, observed stopping breathing, blood pressure) by its keys, and a BMI, so the STOP-Bang assessment opens with 7 of 8 filled.",
+  "chapters": [
+    {
+      "name": "Sleep",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_measure",
+            "title": "Your measurements",
+            "elements": [
+              {
+                "type": "bmi",
+                "name": "q_demo_bmi",
+                "title": "Your height and weight"
+              }
+            ]
+          },
+          {
+            "name": "p_sleep",
+            "title": "Your sleep",
+            "elements": [
+              {
+                "type": "radiogroup",
+                "name": "stopbang_snoring",
+                "title": "Do you snore loudly?",
+                "isRequired": true,
+                "colCount": 0,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "radiogroup",
+                "name": "stopbang_tired",
+                "title": "Do you often feel tired or sleepy during the day?",
+                "isRequired": true,
+                "colCount": 0,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "radiogroup",
+                "name": "stopbang_observed",
+                "title": "Has anyone seen you stop breathing in your sleep?",
+                "isRequired": true,
+                "colCount": 0,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              },
+              {
+                "type": "radiogroup",
+                "name": "stopbang_pressure",
+                "title": "Do you have, or are you treated for, high blood pressure?",
+                "isRequired": true,
+                "colCount": 0,
+                "choices": [
+                  {
+                    "value": "o_yes",
+                    "text": "Yes"
+                  },
+                  {
+                    "value": "o_no",
+                    "text": "No"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,165 @@
+{
+  "description": "Made-up HQ for J12 (S47): the ready-made STOP-Bang and a BMI, so the assessment opens complete, waiting for Confirm.",
+  "chapters": [
+    {
+      "name": "Sleep",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_measure",
+            "title": "Your measurements",
+            "elements": [
+              {
+                "type": "bmi",
+                "name": "q_e2e_sb_bmi",
+                "title": "Your height and weight"
+              }
+            ]
+          },
+          {
+            "name": "p_sleep",
+            "title": "Your sleep",
+            "elements": [
+              {
+                "type": "panel",
+                "name": "stopbang",
+                "title": "STOP-Bang",
+                "readyScore": "stopbang",
+                "readyScoreBmi": "q_e2e_sb_bmi.bmi",
+                "elements": [
+                  {
+                    "type": "radiogroup",
+                    "name": "stopbang_snoring",
+                    "title": "Do you snore loudly (loud enough to be heard through closed doors, or your bed partner elbows you for snoring at night)?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "stopbang_tired",
+                    "title": "Do you often feel tired, fatigued or sleepy during the daytime (such as falling asleep while driving or talking to someone)?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "stopbang_observed",
+                    "title": "Has anyone observed you stop breathing, or choking or gasping, during your sleep?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "stopbang_pressure",
+                    "title": "Do you have, or are you being treated for, high blood pressure?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "stopbang_neck",
+                    "title": "Is your neck large? For a man: is your shirt collar 17 inches (43 cm) or larger? For a woman: is your shirt collar 16 inches (41 cm) or larger?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "expression",
+                    "name": "stopbang_score",
+                    "title": "STOP-Bang score",
+                    "clinicianOnly": true,
+                    "calcKind": "score",
+                    "expression": "iif(allAnswered('stopbang_snoring', 'stopbang_tired', 'stopbang_observed', 'stopbang_pressure', 'stopbang_neck', 'q_e2e_sb_bmi.bmi', 'patientAge', 'patientSex'), score('stopbang_snoring', 'stopbang_tired', 'stopbang_observed', 'stopbang_pressure', 'stopbang_neck') + iif({q_e2e_sb_bmi.bmi} > 35, 1, 0) + iif({patientAge} > 50, 1, 0) + iif({patientSex} = 'male', 1, 0), '')",
+                    "bands": [
+                      {
+                        "id": "b_low",
+                        "label": "Low risk",
+                        "max": 2
+                      },
+                      {
+                        "id": "b_intermediate",
+                        "label": "Intermediate risk",
+                        "max": 4
+                      },
+                      {
+                        "id": "b_high",
+                        "label": "High risk",
+                        "whenText": "Yes to 2 or more of the 4 STOP questions, and male, a BMI over 35 or a large neck",
+                        "when": "score('stopbang_snoring', 'stopbang_tired', 'stopbang_observed', 'stopbang_pressure') >= 2 and ({patientSex} = 'male' or {q_e2e_sb_bmi.bmi} > 35 or {stopbang_neck} = 'o_yes')"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

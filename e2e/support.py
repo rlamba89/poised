@@ -407,13 +407,14 @@ class Api:
         return {"id": eid, "name": f"{e['firstName']} {e['lastName']}", "hq": hq, "patientId": e["patientId"],
                 "email": e["email"], "mobile": e["mobile"], "dob": details["dateOfBirth"]}
 
-    def validate(self, episode: dict, set_name: str, answers: dict) -> None:
-        """Saves the clinician's answers for one Question Set and validates it."""
+    def validate(self, episode: dict, set_name: str, answers: dict, validated: bool = True) -> None:
+        """Saves the clinician's answers for one Question Set and validates it (or, with
+        validated=False, saves them as a clinician part-way through Validate)."""
         cid = episode["hq"]["chapters"][set_name]
         rows = self.call("GET", self.h(f"/episodes/{episode['id']}/hq"))["answers"]
         revision = next((a["revision"] for a in rows if a["chapterId"] == cid and a["actor"] == "clinician"), 0)
         self.call("PUT", self.h(f"/episodes/{episode['id']}/answers/{cid}"),
-                  {"data": answers, "validated": True, "revision": revision})
+                  {"data": answers, "validated": validated, "revision": revision})
 
     def complete_review(self, episode: dict) -> None:
         self.call("POST", self.h(f"/episodes/{episode['id']}/complete-review"))

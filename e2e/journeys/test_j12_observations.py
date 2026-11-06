@@ -1,4 +1,4 @@
-"""J12: observations (plan C7, session S46; OBS-01–04). S47 adds STOP-Bang.
+"""J12: observations (plan C7, session S46; OBS-01–04), and STOP-Bang as an assessment (S47; §9).
 
   - Cara records height, weight and two blood pressures on an episode. A negative weight is refused
     with Go's reason; a heart rate of 220 warns ("outside the usual range"), then saves with Save
@@ -6,6 +6,13 @@
   - She corrects the weight, with a reason: the old reading stays, struck through, and the hospital
     BMI follows the corrected weight. A blood pressure marked entered in error stays in the history.
   - The POA Summary shows the hospital BMI beside the patient's own (their HQ's BMI question).
+  - S47: on a sent HQ that asked S, T, O and P, Cara records height and weight and adds STOP-Bang:
+    it opens with 7 of 8 items filled, each with its source, the neck missing. She answers it and
+    confirms; the score and band show on the POA Summary beside the hospital BMI. A change needs a
+    new Confirm. An HQ holding the ready-made STOP-Bang opens it with every item filled, waiting.
+  - S47 answers 5 and 6: the pre-fill uses the clinician's copy of a set once they've started it,
+    and a confirmed STOP-Bang says when a value it used has changed since (a corrected weight),
+    while its score stays as confirmed.
 """
 
 from playwright.sync_api import Page, expect
@@ -305,3 +312,251 @@ def test_a_trust_range_below_zero_is_refused(page: Page):
     expect(box).to_have_value("-1")
     page.get_by_role("button", name="Save the trust's settings").click()
     expect(page.get_by_text("Heart rate: a limit can't be below 0.")).to_be_visible()
+
+
+def add_stop_bang(page: Page) -> None:
+    """Add assessment → STOP-Bang on the episode page."""
+    page.get_by_role("combobox", name="Add assessment").click()
+    page.get_by_role("option", name="STOP-Bang", exact=True).click()
+    expect(page.get_by_test_id("assessment-stopbang")).to_be_visible()
+
+
+def item(page: Page, letter: str):
+    return page.get_by_test_id("assessment-stopbang").get_by_test_id(f"item-{letter}")
+
+
+def test_stop_bang_opens_7_of_8_filled_and_is_confirmed(page: Page, as_user, patient_link):
+    hq = as_user("Alex Author").published_hq("stopbang-items-hq.json", f"E2E J12 STOP-Bang {unique()}")
+    # Made up: a man of 66, so his age and sex each score.
+    episode = as_user("Cara Clinician").episode(hq, f"J12 SB {unique()}", dateOfBirth="1960-03-01", sex="male")
+    patient = patient_link(episode)
+    # His own BMI (170 cm, 82 kg → 28.4), and S, T and P Yes, O No.
+    patient.answer("Sleep", {"q_e2e_bmi": {"height": 170, "weight": 82}, "stopbang_snoring": "o_yes", "stopbang_tired": "o_yes",
+                             "stopbang_observed": "o_no", "stopbang_pressure": "o_yes"})
+    patient.submit()
+
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}")
+    expect(page.get_by_test_id("assessments").get_by_text("No assessments yet.")).to_be_visible()
+    # Height and weight: the hospital BMI, 180 cm and 120 kg → 37.0.
+    add(page, "Height", {"Height (cm)": "180"})
+    add(page, "Weight", {"Weight (kg)": "120"})
+    expect(page.get_by_test_id("hospital-bmi")).to_contain_text("37")
+
+    add_stop_bang(page)
+    sb = page.get_by_test_id("assessment-stopbang")
+    expect(sb.get_by_test_id("assessment-filled")).to_contain_text("7 of 8 filled")
+    for letter, source in [("S", "HQ"), ("T", "HQ"), ("O", "HQ"), ("P", "HQ"), ("B", "Hospital BMI"), ("A", "Profile"), ("N", "Missing"), ("G", "Profile")]:
+        expect(item(page, letter).get_by_test_id("item-source")).to_have_text(source)
+    expect(item(page, "N")).to_have_attribute("data-missing", "true")
+    expect(item(page, "B").get_by_role("textbox")).to_have_value("37")
+    expect(sb.get_by_test_id("assessment-result")).to_have_text("Incomplete")
+    expect(sb.get_by_role("button", name="Confirm")).to_be_disabled()
+    expect(sb.get_by_test_id("assessment-confirmed")).to_have_text("Not confirmed")
+
+    # The neck, then Confirm: S, T, P, B, A and G score → 6, High risk.
+    sb.get_by_role("button", name="N: No").click()
+    expect(item(page, "N").get_by_test_id("item-source")).to_have_text("Clinician")
+    expect(sb.get_by_test_id("assessment-result")).to_have_text("6 (High risk)")
+    sb.get_by_role("button", name="Confirm").click()
+    expect(sb.get_by_test_id("assessment-confirmed")).to_contain_text("Confirmed by Cara Clinician")
+    page.reload()
+    expect(sb.get_by_test_id("assessment-confirmed")).to_contain_text("Confirmed by Cara Clinician")
+    expect(item(page, "N").get_by_test_id("item-source")).to_have_text("Clinician")
+    expect(sb.get_by_role("button", name="Confirm")).to_be_disabled()  # nothing changed since
+    expect(page.get_by_role("combobox", name="Add assessment")).to_have_count(0)  # one STOP-Bang per episode
+
+    # The POA Summary: the score and band beside the hospital BMI.
+    page.goto(f"{base}/episodes/{episode['id']}/poa")
+    expect(page.get_by_test_id("poa-detail-Hospital BMI")).to_contain_text("37")
+    expect(page.get_by_test_id("poa-detail-STOP-Bang")).to_have_text("STOP-Bang6 (High risk)")
+
+    # A change needs a new Confirm: saved without it, the POA Summary says Not confirmed.
+    page.goto(f"{base}/episodes/{episode['id']}")
+    sb.get_by_role("button", name="N: Yes").click()
+    expect(sb.get_by_test_id("assessment-confirmed")).to_have_text("Changed: confirm it again")
+    expect(sb.get_by_test_id("assessment-result")).to_have_text("7 (High risk)")
+    sb.get_by_role("button", name="Save").click()
+    expect(sb.get_by_test_id("assessment-confirmed")).to_have_text("Not confirmed")
+    page.goto(f"{base}/episodes/{episode['id']}/poa")
+    expect(page.get_by_test_id("poa-detail-STOP-Bang")).to_contain_text("Not confirmed")
+    page.goto(f"{base}/episodes/{episode['id']}")
+    sb.get_by_role("button", name="Confirm").click()
+    expect(sb.get_by_test_id("assessment-confirmed")).to_contain_text("Confirmed by Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}/poa")
+    expect(page.get_by_test_id("poa-detail-STOP-Bang")).to_contain_text("7 (High risk)")
+
+
+def test_an_hq_with_stop_bang_opens_it_complete_waiting_for_confirm(page: Page, as_user, patient_link):
+    hq = as_user("Alex Author").published_hq("stopbang-hq.json", f"E2E J12 STOP-Bang HQ {unique()}")
+    episode = as_user("Cara Clinician").episode(hq, f"J12 SB HQ {unique()}")  # a woman of 46
+    patient = patient_link(episode)
+    patient.answer("Sleep", {"q_e2e_sb_bmi": {"height": 170, "weight": 82}, "stopbang_snoring": "o_yes", "stopbang_tired": "o_no",
+                             "stopbang_observed": "o_no", "stopbang_pressure": "o_no", "stopbang_neck": "o_no"})
+    patient.submit()
+
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}")
+    add_stop_bang(page)
+    sb = page.get_by_test_id("assessment-stopbang")
+    expect(sb.get_by_test_id("assessment-filled")).to_contain_text("8 of 8 filled")
+    expect(item(page, "N").get_by_test_id("item-source")).to_have_text("HQ")
+    expect(item(page, "B").get_by_test_id("item-source")).to_have_text("Patient reported BMI")  # no readings yet
+    expect(sb.get_by_test_id("assessment-result")).to_have_text("1 (Low risk)")
+    expect(sb.get_by_test_id("assessment-confirmed")).to_have_text("Not confirmed")
+    page.goto(f"{base}/episodes/{episode['id']}/poa")
+    expect(page.get_by_test_id("poa-detail-STOP-Bang")).to_contain_text("Not confirmed")
+    page.goto(f"{base}/episodes/{episode['id']}")
+    # A hospital BMI recorded with the assessment open takes the item's place at once (observations
+    # come first: the trust's precedence is on), in the box too: 180 cm, 125 kg → 38.6.
+    expect(item(page, "B").get_by_role("textbox")).to_have_value("28.4")
+    add(page, "Height", {"Height (cm)": "180"})
+    add(page, "Weight", {"Weight (kg)": "125"})
+    expect(item(page, "B").get_by_test_id("item-source")).to_have_text("Hospital BMI")
+    expect(item(page, "B").get_by_role("textbox")).to_have_value("38.6")
+    expect(sb.get_by_test_id("assessment-result")).to_have_text("2 (Low risk)")
+    sb.get_by_role("button", name="Confirm").click()
+    expect(sb.get_by_test_id("assessment-confirmed")).to_contain_text("Confirmed by Cara Clinician")
+
+
+def test_a_second_tab_adding_stop_bang_is_told_it_is_already_there(page: Page, as_user):
+    """S47 test report 1, F-1: the 409's message stays on screen once the card has reloaded."""
+    hq = as_user("Alex Author").published_hq("stopbang-items-hq.json", f"E2E J12 STOP-Bang {unique()}")
+    episode = as_user("Cara Clinician").episode(hq, f"J12 SB tabs {unique()}")
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}")
+    expect(page.get_by_test_id("assessments").get_by_text("No assessments yet.")).to_be_visible()
+    other = page.context.new_page()
+    other.goto(f"{base}/episodes/{episode['id']}")
+    add_stop_bang(other)
+
+    page.get_by_role("combobox", name="Add assessment").click()
+    page.get_by_role("option", name="STOP-Bang", exact=True).click()
+    cards = page.get_by_test_id("assessments")
+    expect(cards.get_by_test_id("assessment-stopbang")).to_have_count(1)
+    expect(cards.get_by_text("STOP-Bang is already on this episode.")).to_be_visible()
+    page.wait_for_timeout(500)  # it stays, after the reload
+    expect(cards.get_by_text("STOP-Bang is already on this episode.")).to_be_visible()
+
+
+def test_a_bmi_outside_its_limits_is_flagged_and_not_saved(page: Page, as_user):
+    """S47 test report 1: the box says the limits, and Save and Confirm wait for a BMI that fits."""
+    hq = as_user("Alex Author").published_hq("stopbang-items-hq.json", f"E2E J12 STOP-Bang {unique()}")
+    episode = as_user("Cara Clinician").episode(hq, f"J12 SB BMI {unique()}")
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}")
+    add_stop_bang(page)
+    sb = page.get_by_test_id("assessment-stopbang")
+    box = item(page, "B").get_by_role("textbox")
+    save = sb.get_by_role("button", name="Save")
+    page.set_viewport_size({"width": 1456, "height": 829})
+    x = box.bounding_box()["x"]  # B Missing
+    # Verification 2, minor 2: a box that started empty can be emptied again, leaving B missing.
+    box.fill("40")
+    box.fill("")
+    expect(item(page, "B").get_by_test_id("item-source")).to_have_text("Missing")
+    expect(item(page, "B").get_by_text("Enter a BMI")).to_have_count(0)
+    expect(sb.get_by_role("button", name="Undo changes")).to_have_count(0)
+    box.fill("40")
+    expect(item(page, "B").get_by_test_id("item-source")).to_have_text("Entered by clinician")
+    assert box.bounding_box()["x"] == x  # the box doesn't move as the source changes (report 2)
+    # The badge shows its words whole (report 1: they were cut off at 1456 wide).
+    badge = item(page, "B").get_by_test_id("item-source")
+    assert badge.evaluate("b => [b, ...b.querySelectorAll('*')].every(e => e.scrollWidth <= e.clientWidth)")
+    expect(save).to_be_enabled()
+    box.fill("2")
+    expect(item(page, "B").get_by_text("Between 5 and 150")).to_be_visible()
+    expect(save).to_be_disabled()
+    # Report 2: B is missing while its box is wrong; the score doesn't use the 40 typed before.
+    expect(item(page, "B").get_by_test_id("item-source")).to_have_text("Missing")
+    box.fill("abc")  # not the 40 typed before
+    expect(item(page, "B").get_by_text("A number, one decimal place")).to_be_visible()
+    expect(save).to_be_disabled()
+    box.fill("36,5")
+    expect(save).to_be_enabled()
+    save.click()
+    expect(sb.get_by_test_id("assessment-confirmed")).to_have_text("Not confirmed")
+    expect(item(page, "B").get_by_role("textbox")).to_have_value("36.5")
+    item(page, "B").get_by_role("textbox").fill("")
+    expect(item(page, "B").get_by_text("Enter a BMI")).to_be_visible()
+    expect(item(page, "B").get_by_test_id("item-source")).to_have_text("Missing")
+    expect(save).to_be_disabled()
+    sb.get_by_role("button", name="Undo changes").click()
+    expect(item(page, "B").get_by_role("textbox")).to_have_value("36.5")
+    expect(item(page, "B").get_by_test_id("item-source")).to_have_text("Entered by clinician")
+
+
+def test_stop_bang_waits_for_the_observations(page: Page, as_user, patient_link):
+    """S47 verification 1, finding 2: with the observations failing to load, the card says so and
+    can't be confirmed, or B would quietly be the patient's BMI against the trust's setting."""
+    hq = as_user("Alex Author").published_hq("stopbang-hq.json", f"E2E J12 STOP-Bang HQ {unique()}")
+    episode = as_user("Cara Clinician").episode(hq, f"J12 SB load {unique()}")
+    patient = patient_link(episode)
+    patient.answer("Sleep", {"q_e2e_sb_bmi": {"height": 170, "weight": 82}, "stopbang_snoring": "o_yes", "stopbang_tired": "o_no",
+                             "stopbang_observed": "o_no", "stopbang_pressure": "o_no", "stopbang_neck": "o_no"})
+    patient.submit()
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}")
+    add_stop_bang(page)
+    sb = page.get_by_test_id("assessment-stopbang")
+    expect(sb.get_by_role("button", name="Confirm")).to_be_enabled()  # 8 of 8 filled
+
+    page.route("**/observations", lambda route: route.fulfill(status=500, json={"error": "Something went wrong."}))
+    page.reload()
+    expect(sb.get_by_test_id("assessment-filled")).to_contain_text("8 of 8 filled")
+    expect(sb.get_by_test_id("assessment-inputs")).to_have_text(
+        "The observations didn't load, so the hospital BMI can't be checked. Reload the page to save or confirm.")
+    expect(sb.get_by_role("button", name="Confirm")).to_be_disabled()
+
+
+def test_the_poa_summary_says_when_the_assessments_did_not_load(page: Page, as_user):
+    """S47 verification 2: a confirmed STOP-Bang mustn't silently vanish from the POA Summary."""
+    hq = as_user("Alex Author").published_hq("stopbang-items-hq.json", f"E2E J12 STOP-Bang {unique()}")
+    episode = as_user("Cara Clinician").episode(hq, f"J12 SB POA load {unique()}")
+    base = sign_in(page.context, "Cara Clinician")
+    page.route("**/assessments", lambda route: route.fulfill(status=500, json={"error": "Something went wrong."}))
+    page.goto(f"{base}/episodes/{episode['id']}/poa")
+    expect(page.get_by_test_id("poa-detail-Assessments")).to_contain_text("Couldn't be loaded")
+
+
+def test_a_confirmed_stop_bang_says_what_has_changed_since(page: Page, as_user, patient_link):
+    """S47 answers 5 and 6 (Rahul, 6 Nov)."""
+    hq = as_user("Alex Author").published_hq("stopbang-items-hq.json", f"E2E J12 STOP-Bang {unique()}")
+    cara = as_user("Cara Clinician")
+    episode = cara.episode(hq, f"J12 SB since {unique()}", dateOfBirth="1960-03-01", sex="male")  # made up: a man of 66
+    answers = {"q_e2e_bmi": {"height": 170, "weight": 82}, "stopbang_snoring": "o_yes", "stopbang_tired": "o_yes",
+               "stopbang_observed": "o_no", "stopbang_pressure": "o_yes"}
+    patient = patient_link(episode)
+    patient.answer("Sleep", answers)
+    patient.submit()
+    # Answers 5: Cara has started validating Sleep and changed Tired to No, but not pressed Validate.
+    cara.validate(episode, "Sleep", {**answers, "stopbang_tired": "o_no"}, validated=False)
+
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}")
+    add(page, "Height", {"Height (cm)": "180"})
+    add(page, "Weight", {"Weight (kg)": "120"})  # 37.0
+    add_stop_bang(page)
+    sb = page.get_by_test_id("assessment-stopbang")
+    expect(item(page, "T").get_by_role("button", name="T: No")).to_have_attribute("aria-pressed", "true")
+    expect(item(page, "T").get_by_test_id("item-source")).to_have_text("HQ")
+    # S, P, B, A and G score → 5, High risk.
+    sb.get_by_role("button", name="N: No").click()
+    expect(sb.get_by_test_id("assessment-result")).to_have_text("5 (High risk)")
+    sb.get_by_role("button", name="Confirm").click()
+    expect(sb.get_by_test_id("assessment-confirmed")).to_contain_text("Confirmed by Cara Clinician")
+    expect(sb.get_by_test_id("assessment-since")).to_have_count(0)
+
+    # Answers 6: the weight corrected, the card says so; the score stays as confirmed.
+    page.get_by_role("button", name="Correct Weight 120.0 kg").click()
+    fix = page.get_by_test_id("observation-correct")
+    fix.get_by_label("Weight (kg)").fill("90")
+    fix.get_by_label("Why is it corrected?").fill("Made-up: scale not zeroed")
+    fix.get_by_role("button", name="Save correction").click()
+    expect(page.get_by_test_id("hospital-bmi")).to_contain_text("27.8")
+    expect(sb.get_by_test_id("assessment-since")).to_contain_text("The hospital BMI is now 27.8 (37 when confirmed).")
+    expect(item(page, "B").get_by_role("textbox")).to_have_value("37")
+    expect(sb.get_by_test_id("assessment-result")).to_have_text("5 (High risk)")
+    expect(sb.get_by_test_id("assessment-confirmed")).to_contain_text("Confirmed by Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}/poa")
+    expect(page.get_by_test_id("poa-detail-STOP-Bang")).to_contain_text("5 (High risk)")

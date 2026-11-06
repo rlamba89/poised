@@ -25,6 +25,7 @@ import { useEpisode } from "./EpisodePage";
 import { GeneralNotes } from "./GeneralNotes";
 import { useObservations } from "./ObservationsPanel";
 import { hospitalBmiRow } from "./observations";
+import { poaLines, useAssessments } from "./assessments";
 import { allCurrentAnswers, hqPatient, useEpisodeHQ, type EpisodeHQ } from "./hq";
 import { restoreSpot, saveSpot, takeSpot, validateAt } from "./jump";
 import { sessionStore } from "@/lib/chunkError";
@@ -42,6 +43,8 @@ export default function PoaSummary({ base, episodeId }: { base: string; episodeI
   const path = `${base}/episodes/${episodeId}`;
   // The hospital BMI (S46, OBS-04): read once here, not per tab, as every read is an audit row.
   const obs = useObservations(path, data?.observationsOn);
+  // Each assessment's score and band as confirmed (S47), beside the hospital BMI; read once here too.
+  const assessments = useAssessments(path, data?.assessmentsOn);
   // The tab is in the address (?tab=patient), so Back from Validate and a reload keep it (S27).
   const [params, setParams] = useSearchParams();
   const tab: Tab = params.get("tab") === "patient" ? "patient" : "validated";
@@ -89,7 +92,7 @@ export default function PoaSummary({ base, episodeId }: { base: string; episodeI
             </Tabs.List>
           </Tabs>
           <Summary key={tab} tab={tab} episode={e} events={data.events} grades={data.anaesthetistAsaGrades} hq={hq} path={path} onChanged={reload}
-            episodeId={episodeId} hospitalBmi={hospitalBmiRow(obs.view, obs.error)} />
+            episodeId={episodeId} hospitalBmi={hospitalBmiRow(obs.view, obs.error)} assessments={poaLines(assessments.view, e, assessments.error)} />
         </Stack>
       </Card>
     </Stack>
@@ -99,9 +102,11 @@ export default function PoaSummary({ base, episodeId }: { base: string; episodeI
 type SummaryProps = {
   tab: Tab; episode: Episode; events: EpisodeEvent[]; grades: AnaesthetistGrade[]; hq: EpisodeHQ; path: string; onChanged: () => void; episodeId: string;
   hospitalBmi: string | null;
+  /** S47: each assessment's "5 (High risk)", or "Not confirmed". */
+  assessments: { name: string; text: string }[];
 };
 
-function Summary({ tab, episode: e, events, grades, hq, path, onChanged, episodeId, hospitalBmi }: SummaryProps) {
+function Summary({ tab, episode: e, events, grades, hq, path, onChanged, episodeId, hospitalBmi, assessments }: SummaryProps) {
   const vars = useMemo(() => hqPatient(e), [e]);
   const validated = tab === "validated";
   const sets = useMemo(() => {
@@ -155,6 +160,7 @@ function Summary({ tab, episode: e, events, grades, hq, path, onChanged, episode
           <Detail label="Patient reported BMI" value={bmi === undefined ? "" : String(bmi)} />
           {/* Beside the patient's own; not shown with observations off. */}
           {hospitalBmi !== null && <Detail label="Hospital BMI" value={hospitalBmi} />}
+          {assessments.map((a) => <Detail key={a.name} label={a.name} value={a.text} />)}
           <Detail label="Anaesthetist ASA grade" value={asaLabel(e.anaesthetistAsa)} />
           <Detail label="Nurse ASA grade" value={asaLabel(e.nurseAsa)} />
         </Stack>

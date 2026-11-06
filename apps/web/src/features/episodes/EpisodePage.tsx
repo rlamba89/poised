@@ -16,13 +16,15 @@ import { EpisodeInformation } from "@/features/information/EpisodeInformation";
 import { EditProcedure } from "./EditProcedure";
 import { FlagBadge, StatusBadge } from "./EpisodeList";
 import { GeneralNotes } from "./GeneralNotes";
-import { allCurrentAnswers, hqPatient, useEpisodeHQ } from "./hq";
+import { allCurrentAnswers, hqPatient, useEpisodeHQ, type EpisodeHQ } from "./hq";
 import { awaitingCheck, historyWho, notResponding, standingFlagNames, triageStamp, type StatusEvent, type StatusOption, type UndoOption } from "./status";
 import { StatusControl, StatusHistory } from "./StatusControl";
 import { isStale, SaveError } from "./StatusControl";
 import { SuggestedAsaLine } from "./SuggestedAsa";
 import { TasksPanel } from "./TasksPanel";
-import { ObservationsPanel } from "./ObservationsPanel";
+import { ObservationsPanel, useObservations } from "./ObservationsPanel";
+import { AssessmentsPanel } from "./AssessmentsPanel";
+import { inputsState, useAssessments } from "./assessments";
 import type { AnaesthetistGrade } from "./asaGrades";
 import { patientName, STATUS_LABELS, type Episode, type EpisodeEvent, type EpisodeFlag, type EpisodeInvite } from "./types";
 import { inviteUndelivered, statusUndelivered, undeliveredText, type Undelivered } from "./undelivered";
@@ -47,6 +49,8 @@ export type EpisodeDetail = {
   anaesthetistAsaGrades: AnaesthetistGrade[];
   /** S46: whether the hospital has observations; off, the panel never calls their routes. */
   observationsOn: boolean;
+  /** S47: whether the hospital has assessments; off, the card never calls their routes. */
+  assessmentsOn: boolean;
 };
 
 /** Loads an episode and its events; `reload` refetches both. */
@@ -70,6 +74,11 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
   const { data, error, reload } = useEpisode(base, episodeId);
   const [editing, setEditing] = useState(false);
   const path = `${base}/episodes/${episodeId}`;
+  // Read once for the cards that use them (S47: the assessments pre-fill from the HQ and the hospital
+  // BMI), as every read is an audit row.
+  const hq = useEpisodeHQ(base, episodeId);
+  const obs = useObservations(path, data?.observationsOn);
+  const assessments = useAssessments(path, data?.assessmentsOn);
   if (!data) return error ? <Alert color="red">{error}</Alert> : <Center h="40vh"><Loader /></Center>;
   const e = data.episode;
   const cancelled = e.status === "cancelled";
@@ -153,7 +162,7 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
 
       {e.status === "hq_not_complete" && <Invite path={path} episode={e} invite={data.invite} undelivered={inviteFailed} onSent={reload} />}
 
-      <QuestionSets base={base} episode={e} onReviewed={reload} />
+      <QuestionSets base={base} episode={e} hq={hq} onReviewed={reload} />
 
       <Card withBorder>
         <StatusControl path={path} detail={data} onChanged={reload} />
@@ -172,7 +181,10 @@ export function EpisodePage({ base, episodeId }: { base: string; episodeId: stri
 
       <TasksPanel path={path} episode={e} onChanged={reload} />
 
-      <ObservationsPanel path={path} episode={e} on={data.observationsOn} />
+      <ObservationsPanel path={path} episode={e} obs={obs} />
+
+      <AssessmentsPanel path={path} episode={e} assessments={assessments} hq={hq.hq}
+        readings={obs.view && obs.view !== "off" ? obs.view.readings : undefined} inputs={inputsState(hq, obs)} />
 
       <EpisodeInformation path={path} episode={e} onChanged={reload} />
 
@@ -409,8 +421,9 @@ function Detail({ label, value }: { label: string; value: string }) {
 }
 
 /** The Question Sets shown for this patient, each with its validation state, and "Complete HQ review". */
-function QuestionSets({ base, episode, onReviewed }: { base: string; episode: Episode; onReviewed: () => void }) {
-  const { hq, error, reload } = useEpisodeHQ(base, episode.id);
+function QuestionSets({ base, episode, hq: { hq, error, reload }, onReviewed }: {
+  base: string; episode: Episode; hq: { hq: EpisodeHQ | null; error: string; reload: () => void }; onReviewed: () => void;
+}) {
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState("");
   // S39: from the answers that count now (the clinician's where they've started, else the patient's);
