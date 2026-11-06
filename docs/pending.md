@@ -57,6 +57,22 @@ docker compose up -d --force-recreate db
 
 ## 3. Small gaps in what's built
 
+### From S47's answers 6 (6 Nov; [build notes](sessions/S47-assessments-stopbang/build-notes.md), not blocking)
+
+- **A confirmed assessment's "changed since" line has no "Use the new values" button.** To take a new hospital BMI the clinician types it, so B says "Entered by clinician", not "Hospital BMI". A button that drafts the fresh items with their sources (then Confirm) would keep the source. Add it if clinicians ask. It would also clear a box whose only lines are the record's age or sex: today that needs another item changed, as a change back to the confirmed value isn't a change (S47 test report 4).
+
+### From S47's verification 2 (6 Nov; [verify.md](sessions/S47-assessments-stopbang/verify.md), minor, none blocking)
+
+- **"Today" in the Assessments card is the browser's clock, but the Confirm day is the server's `now()`.**
+  - Since S47's answers 7, a Confirm stores the age the card worked out: the browser's "today", taken when the card's items were last built (`prefillFrom` → `patientOn`). It isn't taken at the click.
+  - So a card left open across midnight before the patient's 51st birthday, or a browser whose clock is a day off, can store 50 against a Confirm dated the birthday. The score is then one point (A) lower than the day's.
+  - The next load's yellow box then says "The patient's record now gives an age of 51 that day (50 when confirmed)", so it shows itself.
+  - Fix if it matters: take the age at the click, or have Go stamp the Confirm with the day the browser sent (S47 verification 4).
+- **From S47's verification 3 (minor, none blocking):**
+  - **`questionnaire_versions.updated_by` and `chapters.updated_by` may now be NULL for a trust's rows too** (migration 00038; only `questionnaires` has the owner check). Every Go write passes a real user, so only hand-written SQL could do it. Such a version would drop out of the trust's list (the editor join is an inner join). Fix: a check or trigger tying a NULL `updated_by` to a platform questionnaire.
+  - **A JSON `null` answer to the BMI gets the BMI's limits message** ("BMI: a number from 5 to 150."), as `fits`/`isNumber` read `null` as 0. Only a hand-made request sends one, and it's still refused (400). Cosmetic.
+- **`useEpisodeHQ` keeps its error after a later reload succeeds** (`apps/web/src/features/episodes/hq.ts`, from before S47). The Assessments card then stays blocked with "Reload the page to save or confirm", which is the remedy, so it fails safe. Clear the error on success when the hook is next touched.
+
 ### From S44c's build (28 Oct; [build notes](sessions/S44c-c6-last-answers/build-notes.md), none blocking)
 
 - **Checked clicked while an auto-triaged episode is On hold (or Not ready) ends the held message** (no text), so an Undo back to Ready for admission afterwards sends nothing: the clinician has checked it. Keeping it held would need Checked to wait for the status too; say if that matters.

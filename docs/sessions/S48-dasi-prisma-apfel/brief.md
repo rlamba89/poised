@@ -28,6 +28,18 @@
 - **`packages/clinical`, test-first:** each instrument as a locked ready-made score in `ready.ts`, with its published wording, points and bands, and the Incomplete state while an item has no answer. **Its scoring is checked against worked examples from its published source** (`ready.test.ts`), including each band's edges. Keys follow STOP-Bang's pattern (`dasi_*`, `prisma7_*`, `apfel_*`).
 - **As assessments** (S47's mechanism): each becomes an assessment a clinician can add, pre-filled by key, with Apfel's post-op opioids item left to the clinician. Patient sex comes from the profile, as STOP-Bang's does.
 - **In the HQ** (question 2): Insert offers them beside STOP-Bang, and Publish refuses a changed one (`readyScoreProblems`).
+- **From S47's verification (minor 6):** Go's list of assessments (`assessment.All`: id and name) is kept by hand beside `packages/clinical`'s `ASSESSMENTS`, and the Vitest check compares only the JSON. With three new ones, have `npm run assessments` write the id and name list too (or test that they agree).
+- **From S47's verification 2 (minors 5 and 7):**
+  - Go's `assessment.Check` accepts any of the three sources on any item (e.g. `observation` on Snoring). With more items, allow `observation` on number items only.
+  - `poaLines` runs in render without `useMemo`, one SurveyJS model per confirmed assessment. The card's memos follow the `episode` object, so each page reload walks the HQ again. With four assessments, memoise both.
+- **From S47's verifications 3 and 4 (minor, none blocking):**
+  - **Two queries' trust argument is named `dollar_1`:** `PublishedQuestionnairesInOrg` (`admin.sql`) and `ListTrustPublishedContents` (`chapters.sql`) cast `$1::uuid`. Write `sqlc.arg(org_id)::uuid`, as the other queries do, then `make sqlc`.
+  - **`publishedAssessment` compares only with the latest published version** (`httpapi/assessments.go`). Two builds with different wording serving at once (an overlapping deploy, a rollback) would retire each other's version on every add. Reuse any version whose content matches before publishing a new one.
+  - **The pre-fill runs on every keystroke once a card is changed:** `changedItems` calls `assessmentItems` twice, and each call builds a SurveyJS model per shown HQ set. The pre-fill doesn't depend on the draft: work it out once per `from`, then apply the draft and the profile swap on top. Do this with the memo work above.
+  - **Go's Confirm doesn't require the age and sex** (`patientAge`, `patientSex`) when the content names them. A hand-made Confirm without them falls back to the record on the day of Confirm, as a row from before S47's answers 7 does. Have `assessment.Unanswered` cover the profile items the content names. Its `null` test can't happen, as `Check` refuses `null` first; drop it.
+  - **`label()` in `internal/assessment` names STOP-Bang's keys** (`stopbang_bmi` → "BMI"). Each new instrument would need another case. Have `assessments.ts` write a short label into the content instead.
+  - **`countingHqAnswers`** (`packages/clinical`) **and `currentAnswers`** (web `hq.ts`) are now the same rule (S47 answers 5). Have `hq.ts` use the clinical one, so they can't drift apart.
+  - **A renamed assessment keeps its old name** on its questionnaire row: `AssessmentQuestionnaire` inserts with `ON CONFLICT DO NOTHING`. Update the name there if a name ever changes.
 - **POA Summary:** each confirmed one's score and band (DASI with its METs).
 - **Integration:** attach each one; pre-fill sources per item; Confirm.
 - **E2E:** extend J12: an HQ embedding DASI, sent by the patient (phone); the DASI assessment opens complete; Confirm; its METs show on the POA Summary.
