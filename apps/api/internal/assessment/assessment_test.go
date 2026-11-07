@@ -147,3 +147,27 @@ func TestUnanswered(t *testing.T) {
 		t.Errorf("Apfel without the sex: %q", got)
 	}
 }
+
+// S48 verification 1 (Rahul, 7 Nov): a "profile" age or sex must be the patient's record's: the
+// age on the day at the hospital, and the sex as recorded.
+func TestProfileProblem(t *testing.T) {
+	for _, c := range []struct {
+		name, data, want string
+	}{
+		{"both as the record", `{"patientAge": 46, "patientSex": "female"}`, ""},
+		{"neither sent", `{"dasi_run": "o_yes"}`, ""},
+		{"a sex the record doesn't say", `{"patientSex": "male"}`, "Sex doesn't match the patient's record"},
+		{"an age that isn't today's", `{"patientAge": 47}`, "Age doesn't match the patient's record"},
+	} {
+		var data map[string]json.RawMessage
+		_ = json.Unmarshal([]byte(c.data), &data)
+		got := ProfileProblem(data, 46, "female")
+		if (c.want == "") != (got == "") || !strings.Contains(got, c.want) {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+	// A record of Other or Not known can't back a male or female sex.
+	if got := ProfileProblem(map[string]json.RawMessage{"patientSex": json.RawMessage(`"male"`)}, 46, "other"); got == "" {
+		t.Error("male accepted for a patient recorded as Other")
+	}
+}

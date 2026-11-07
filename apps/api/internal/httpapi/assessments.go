@@ -211,6 +211,12 @@ func (s *server) storeAssessment(w http.ResponseWriter, r *http.Request, confirm
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	// A "Profile" age or sex is the record's: the age today at the hospital, as the browser works it
+	// out (S48 verification 1, Rahul 7 Nov).
+	if msg := assessment.ProfileProblem(in.Data, ageOn(e.DateOfBirth, s.today(e.HospitalTimeZone)), e.Sex); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 	if missing := assessment.Unanswered(form.Content, in.Data); confirm && missing != "" {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("Answer every item before confirming: %s has no answer.", missing))
 		return

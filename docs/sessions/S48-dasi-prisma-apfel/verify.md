@@ -6,7 +6,10 @@
 
 ### Rahul's answers (7 Nov)
 
-- **Finding 1:** refuse a mismatch, as a fix commit on top of S48, before S49.
+- **Finding 1:** refuse a mismatch, as a fix commit on top of S48, before S49. **Built 7 Nov, test-first:**
+  - `assessment.ProfileProblem` (unit test `TestProfileProblem`), called by `storeAssessment` on every save and Confirm, with the age worked out today in the hospital's time zone (as the browser does). The reply is a 400: "Sex doesn't match the patient's record. Reload the page and try again." or "Age doesn't match the patient's record (63 today). …"
+  - Integration case: "an age or sex that isn't the record's is 400, and nothing is stored".
+  - The assessment tests now give their patient a record that backs what they send (`asmEpisode`, `recordAs`).
 - **Finding 2:** each form keeps its own version's name. Carried into S49's brief.
 - **Commit:** the five suggested commits, local only.
 

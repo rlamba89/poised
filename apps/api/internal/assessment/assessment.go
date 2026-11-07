@@ -155,6 +155,27 @@ func Unanswered(content json.RawMessage, data map[string]json.RawMessage) string
 	return ""
 }
 
+// ProfileProblem returns a plain-language problem when an age or sex sent from the profile isn't
+// the patient's record's, or "": the age must be theirs today at the hospital (`age`), and the sex
+// as recorded (`sex`; a record of Other or Not known backs neither male nor female). A "Profile"
+// source is always the record's (S48 verification 1, Rahul 7 Nov). Check has refused any other
+// shape first. It compares stored values; it evaluates nothing.
+func ProfileProblem(data map[string]json.RawMessage, age int, sex string) string {
+	if raw, ok := data["patientAge"]; ok {
+		var got int
+		if json.Unmarshal(raw, &got) != nil || got != age {
+			return fmt.Sprintf("Age doesn't match the patient's record (%d today). Reload the page and try again.", age)
+		}
+	}
+	if raw, ok := data["patientSex"]; ok {
+		var got string
+		if json.Unmarshal(raw, &got) != nil || got != sex {
+			return "Sex doesn't match the patient's record. Reload the page and try again."
+		}
+	}
+	return ""
+}
+
 // label is how a problem names an item: what the content's labels call it, else its first words.
 func label(el element, labels map[string]string) string {
 	if l := labels[el.Name]; l != "" {

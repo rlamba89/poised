@@ -59,7 +59,7 @@ docker compose up -d --force-recreate db
 
 ### From S48's test report 1 (6 Nov; [report](sessions/S48-dasi-prisma-apfel/test-report-1.md), all passed; none blocking)
 
-- **Go accepts a `profile` age or sex that differs from the patient's record.** *Rahul, 7 Nov: refuse it (400); a fix commit on top of S48.* Only a hand-made request does it. A Confirm with `patientSex: "male"` on a patient recorded as Other gave a confirmed PRISMA-7 of 4 (Increased risk), shown on the card and the POA Summary as "Profile". *Recommended:* Go refuses a mismatch (400). It holds the date of birth, the sex and the hospital's time zone, so it can compare without evaluating anything.
+- **Go accepts a `profile` age or sex that differs from the patient's record.** *Rahul, 7 Nov: refuse it (400). Fixed 7 Nov: `assessment.ProfileProblem`, on every save and Confirm.* Only a hand-made request does it. A Confirm with `patientSex: "male"` on a patient recorded as Other gave a confirmed PRISMA-7 of 4 (Increased risk), shown on the card and the POA Summary as "Profile". *Recommended:* Go refuses a mismatch (400). It holds the date of birth, the sex and the hospital's time zone, so it can compare without evaluating anything.
 - **For Rahul: "answer the item highlighted" when the highlighted item is the record's sex** (Other or Not known: PRISMA-7's 2, Apfel's 1, STOP-Bang's G). The card can't answer it; the note under the card explains. *Recommended:* the headline says the record has no male or female instead.
 - **Cosmetic:**
   - the result badge is in capitals, so "6.9 METs" reads "6.9 METS" (`tt="none"` on the badge);
