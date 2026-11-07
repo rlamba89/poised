@@ -14,7 +14,7 @@ import { computeOutputs, type ProducedOutput, type ScoreResult } from "./outputs
 import { normalizeOutput, registerClinicalProperties } from "./properties";
 import { hqResult, type Answers } from "./respondent";
 import { modelFor, type SamplePatient, type TestResult } from "./testcases";
-import { STOP_BANG_KEYS, stopBangGroup } from "./ready";
+import { STOP_BANG } from "./ready";
 import type { Earlier } from "./scores";
 import type { ClinicalOutput, CodeRef } from "./types";
 
@@ -179,7 +179,8 @@ export type RuleNames = { scores: Map<string, { title: string; bands: Map<string
  * STOP-Bang in every HQ), so the words still read well.
  */
 const READY_NAMES = new Map(
-  [stopBangGroup("")].flatMap((g) => (g.elements ?? []).filter((el) => el.name === STOP_BANG_KEYS.score))
+  // Only STOP-Bang: the defaults name it. A rule on another ready-made score names one in the HQ.
+  [STOP_BANG].flatMap((r) => (r.build("").elements ?? []).filter((el) => el.type === "expression" && bandsOf(el).length > 0))
     .map((el) => [el.name, { title: textOf(el.title) || el.name, bands: new Map(bandsOf(el).map((b) => [b.id, b.label])) }]),
 );
 

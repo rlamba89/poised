@@ -7,7 +7,7 @@ import { Alert, Anchor, Avatar, Badge, Button, Center, Group, Loader, Menu, Moda
 import { IconAlertTriangle, IconArrowLeft, IconCopyPlus, IconEye, IconLanguage, IconListCheck, IconLogout, IconSend } from "@tabler/icons-react";
 import {
   addElement, addPage, adoptKey, chapterConditionProblems, combineChapters, copyPage, deleteElement, deletePage, dependentsOf, elementLabel,
-  adoptionLosses, findElement, findPage, insertFromLibrary, insertReadyScore, namesInElement, READY_SCORES, stopBangGroup, logicProblems, optionMapFor, renameReferences, movePage, movePageTo, pageTitle, pagesOf, ruleSetOf, takenNames, type ChapterJson,
+  adoptionLosses, findElement, findPage, insertFromLibrary, insertReadyScore, namesInElement, READY_SCORES, logicProblems, optionMapFor, renameReferences, movePage, movePageTo, pageTitle, pagesOf, ruleSetOf, takenNames, type ChapterJson,
   type ElementJson, type Kind, type Target,
 } from "@poised/clinical";
 import { api } from "@/lib/api";
@@ -261,11 +261,13 @@ export function QuestionnaireEditor({ base, questionnaireId }: { base: string; q
   const insertReadyScoreHere = (id: string, bmi: string): string => {
     if (!readyTarget) return "";
     if (data && !data.chapters.every((c) => store.get(c.id))) return "The questionnaire is still loading. Try again in a moment.";
-    const name = READY_SCORES.find((r) => r.id === id)?.name ?? id;
+    const ready = READY_SCORES.find((r) => r.id === id);
+    if (!ready) return "";
+    const name = ready.name;
     // A copy: findElement gives a page without elements an empty list, and the store's documents mustn't change.
     if (allSets().some((d) => findElement(structuredClone(d), id))) return `This HQ already has ${name}. A ready-made score can be in an HQ only once.`;
     // Its questions' keys are fixed: one adopted elsewhere with Same as… would repeat (verification 1, F3).
-    const taken = alreadyHere(stopBangGroup(bmi));
+    const taken = alreadyHere(ready.build(bmi));
     if (taken) return taken;
     let added = "";
     change((d) => {

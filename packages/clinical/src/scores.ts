@@ -224,8 +224,9 @@ export function inputHidden(survey: SurveyModel | undefined, name: string): bool
  * Whether a score's input has an answer (`allAnswered`). An input a condition hides counts as
  * answered, adding 0 (S44a; inputHidden); a shown one left unanswered makes the score Incomplete.
  * An earlier set's answer counts only if that set was shown (earlierContexts). "Unknown" isn't an
- * answer to the patient's sex; for the ready-made STOP-Bang, neither is "other" (`otherSexUnscored`,
- * S44c, Rahul 28 Oct: its male point can't be decided, so it fails safe). `q.bmi` is the BMI part of
+ * answer to the patient's sex; for the ready-made scores with a sex point (STOP-Bang, PRISMA-7, Apfel:
+ * ready.ts STRICT_SEX_SCORES), neither is "other" (`otherSexUnscored`, S44c, Rahul 28 Oct: the point
+ * can't be decided, so it fails safe). `q.bmi` is the BMI part of
  * a BMI question's answer.
  */
 export function inputAnswered(survey: SurveyModel | undefined, name: string, otherSexUnscored = false): boolean {

@@ -1,5 +1,6 @@
-// Insert a ready-made score (S38): STOP-Bang, with its published wording, points and bands, locked.
-// Its BMI comes from a BMI question or BMI Calculation in this Question Set or an earlier one.
+// Insert a ready-made score (S38; S48): STOP-Bang, DASI, PRISMA-7 or Apfel, with its published
+// wording, points and bands, locked. STOP-Bang's BMI comes from a BMI question or BMI Calculation in
+// this Question Set or an earlier one.
 import { useEffect, useState } from "react";
 import { Alert, Button, Group, Modal, Select, Stack, Text } from "@mantine/core";
 import { POINTS_MENUS, pointsSubjects, READY_SCORES, type ChapterJson } from "@poised/clinical";
@@ -42,6 +43,7 @@ export function ReadyScoreWindow(props: {
         />
         <div>
           <Text size="sm">Inserted as a Group with its published questions, points and bands. It can&apos;t be changed: you can give the Group a condition and add disclosures.</Text>
+          {chosen.note && <Text size="sm" mt={6} data-testid="ready-score-note">{chosen.note}</Text>}
           <Text size="xs" c="dimmed" mt={6}>{chosen.source}</Text>
           <Text size="xs" c="dimmed">{chosen.licence}</Text>
         </div>

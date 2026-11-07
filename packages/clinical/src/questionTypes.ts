@@ -3,7 +3,7 @@
 import { ComponentCollection, FunctionFactory, Serializer, settings, SurveyModel, type Question } from "survey-core";
 import { ALL_ANSWERED, bandIn, bandWhenInputs, earlierPoints, earlierQuestion, inputAnswered, inputHidden, isGuardedScore, scoreAsShown } from "./scores";
 import { registerVideoType } from "./video";
-import { STOP_BANG_KEYS } from "./ready";
+import { STRICT_SEX_SCORES } from "./ready";
 import { bmiOf } from "./observations";
 
 /** Registers Medication, Admissions, BMI, Profile and Video (S34), and the flags the editor stores. Safe to call twice. */
@@ -164,8 +164,8 @@ function registerClinicalFunctions(): void {
     // A band's "also when" inputs count too (S44a): without them the band can't be decided.
     const q = this.question;
     const also = q && q.getType() === "expression" ? bandWhenInputs(q.name, q.getPropertyValue("bands")) : [];
-    // STOP-Bang (S44c): a patient whose sex is "Other" makes it Incomplete, as "Not known" does.
-    const strictSex = q?.name === STOP_BANG_KEYS.score;
+    // STOP-Bang and the other ready-made scores with a sex point (S44c, S48): a patient whose sex is "Other" makes it Incomplete, as "Not known" does.
+    const strictSex = !!q && STRICT_SEX_SCORES.has(q.name);
     return [...params.map(String), ...also].every((name) => inputAnswered(this.survey, name, strictSex));
   });
   FunctionFactory.Instance.register("bmi", (params: unknown[]) => {

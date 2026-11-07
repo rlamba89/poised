@@ -8,7 +8,7 @@
 // change: they're the trust's response to an answer or a result, not the score. Anything else is a
 // publish problem (readyScoreProblems).
 import { allElements, edit, findElement, pagesOf, textOf, type ChapterJson, type ElementJson, type Target } from "./doc";
-import { formatScore, type ScoreForm } from "./scores";
+import { ALL_ANSWERED, formatScore, type ScoreForm } from "./scores";
 
 export type ReadyScore = {
   id: string;
@@ -19,6 +19,10 @@ export type ReadyScore = {
   licence: string;
   /** What the author must choose when inserting it. */
   needsBmi: boolean;
+  /** What the author should know before inserting it, if anything. */
+  note?: string;
+  /** The Group as inserted, with the BMI it uses (`bmi`, when it needs one). */
+  build: (bmi: string) => ElementJson;
 };
 
 export const STOP_BANG: ReadyScore = {
@@ -29,9 +33,8 @@ export const STOP_BANG: ReadyScore = {
     "Chung F, Abdullah HR, Liao P. STOP-Bang Questionnaire: a practical approach to screen for obstructive sleep apnea. Chest 2016;149(3):631–8.",
   licence: "© Dr Frances Chung and University Health Network (stopbang.ca). Use beyond education and research needs a licence from UHN.",
   needsBmi: true,
+  build: (bmi) => stopBangGroup(bmi),
 };
-
-export const READY_SCORES: ReadyScore[] = [STOP_BANG];
 
 const KEY = {
   group: "stopbang",
@@ -100,6 +103,222 @@ export function stopBangGroup(bmi: string): ElementJson {
   };
 }
 
+// ---------------------------------------------------------------- DASI (S48)
+
+export const DASI: ReadyScore = {
+  id: "dasi",
+  name: "DASI",
+  source:
+    "Duke Activity Status Index: twelve items, each Yes its published weight (0–58.2); METs = (0.43 × DASI + 9.6) / 3.5. " +
+    "Hlatky MA et al. A brief self-administered questionnaire to determine functional capacity. Am J Cardiol 1989;64(10):651–4. " +
+    "Poor functional capacity at 34 or less: Wijeysundera DN et al. Br J Anaesth 2020;124(3):261–70.",
+  licence: "© Mark Hlatky. Licensed by Greenlight Health (the exclusive licensor), by use case: a licence is needed before go-live.",
+  needsBmi: false,
+  build: () => dasiGroup(),
+};
+
+const DASI_ITEMS: [key: string, title: string, weight: number][] = [
+  ["dasi_selfcare", "Can you take care of yourself, that is, eating, dressing, bathing or using the toilet?", 2.75],
+  ["dasi_walk_indoors", "Can you walk indoors, such as around your house?", 1.75],
+  ["dasi_walk_block", "Can you walk a block or two on level ground?", 2.75],
+  ["dasi_stairs", "Can you climb a flight of stairs or walk up a hill?", 5.5],
+  ["dasi_run", "Can you run a short distance?", 8],
+  ["dasi_light_work", "Can you do light work around the house like dusting or washing dishes?", 2.7],
+  ["dasi_moderate_work", "Can you do moderate work around the house like vacuuming, sweeping floors, or carrying in groceries?", 3.5],
+  ["dasi_heavy_work", "Can you do heavy work around the house like scrubbing floors, or lifting or moving heavy furniture?", 8],
+  ["dasi_yardwork", "Can you do yardwork like raking leaves, weeding or pushing a power mower?", 4.5],
+  ["dasi_sexual", "Can you have sexual relations?", 5.25],
+  ["dasi_moderate_recreation", "Can you participate in moderate recreational activities like golf, bowling, dancing, doubles tennis, or throwing a baseball or football?", 6],
+  ["dasi_strenuous_sports", "Can you participate in strenuous sports like swimming, singles tennis, football, basketball or skiing?", 7.5],
+];
+
+/** DASI's keys: the twelve items in order, the score and the METs. */
+export const DASI_KEYS = { group: "dasi", items: DASI_ITEMS.map(([k]) => k), score: "dasi_score", mets: "dasi_mets" };
+
+/** A Yes/No question whose Yes scores `points` (and No 0). */
+const yesNoPoints = (name: string, title: string, yes: number, no = 0): ElementJson => ({
+  type: "radiogroup", name, title, yesNo: true, colCount: 0, isRequired: true,
+  choices: [{ value: YES, text: "Yes", score: yes }, { value: "o_no", text: "No", score: no }],
+});
+
+/**
+ * DASI as a Group: each Yes adds its weight (0–58.2), rounded to 2 places so the sum of decimals
+ * never misses the cut-off; Incomplete while any item has no answer. Its METs are worked out from
+ * the score, to one decimal place: (0.43 × DASI + 9.6) / 3.5. One band, "Poor functional capacity",
+ * at 34 or less (S48 answers 2); above it, no band.
+ */
+export function dasiGroup(): ElementJson {
+  const keys = DASI_KEYS.items.map((k) => `'${k}'`).join(", ");
+  return {
+    type: "panel",
+    name: DASI_KEYS.group,
+    title: "DASI",
+    readyScore: DASI.id,
+    elements: [
+      ...DASI_ITEMS.map(([k, title, w]) => yesNoPoints(k, title, w)),
+      {
+        type: "expression",
+        name: DASI_KEYS.score,
+        title: "DASI score",
+        clinicianOnly: true,
+        calcKind: "score",
+        expression: `iif(${ALL_ANSWERED}(${keys}), round(score(${keys}), 2), '')`,
+        bands: [{ id: "b_poor", label: "Poor functional capacity", max: 34 }],
+      },
+      {
+        type: "expression",
+        name: DASI_KEYS.mets,
+        title: "DASI METs",
+        clinicianOnly: true,
+        calcKind: "custom",
+        expression: `iif({${DASI_KEYS.score}} notempty, round((0.43 * {${DASI_KEYS.score}} + 9.6) / 3.5, 1), '')`,
+        format: "{0} METs",
+        displayStyle: "decimal",
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      },
+    ],
+  };
+}
+
+// ---------------------------------------------------------------- PRISMA-7 (S48)
+
+export const PRISMA_7: ReadyScore = {
+  id: "prisma7",
+  name: "PRISMA-7",
+  source:
+    "PRISMA-7 questionnaire: one point per Yes, and older than 85 and male one point each (0–7); 3 or more is an increased risk of frailty. " +
+    "Raîche M, Hébert R, Dubois MF. PRISMA-7: a case-finding tool to identify older adults with moderate to severe disabilities. Arch Gerontol Geriatr 2008;47(1):9–18. " +
+    "Wording as BCGuidelines.ca prints it (Frailty in Older Adults, 2017).",
+  licence: "© CESS (Centre d'expertise en santé de Sherbrooke). An electronic version needs its permission before go-live.",
+  needsBmi: false,
+  build: () => prisma7Group(),
+};
+
+const PRISMA7_ITEMS: [key: string, title: string][] = [
+  ["prisma7_limit", "In general, do you have any health problems that require you to limit your activities?"],
+  ["prisma7_help", "Do you need someone to help you on a regular basis?"],
+  ["prisma7_home", "In general, do you have any health problems that require you to stay at home?"],
+  ["prisma7_count_on", "If you need help, can you count on someone close to you?"],
+  ["prisma7_aid", "Do you regularly use a stick, walker or wheelchair to move about?"],
+];
+
+/** PRISMA-7's keys: questions 3 to 7 in order (1 and 2 are the age and sex), and the score. */
+export const PRISMA7_KEYS = { group: "prisma7", items: PRISMA7_ITEMS.map(([k]) => k), score: "prisma7_score" };
+
+/**
+ * PRISMA-7 as a Group: questions 3 to 7, each Yes 1 point (question 6 too, as published), plus 1
+ * point for older than 85 and 1 for male, from the patient's record (0–7). 3 or more is "Increased
+ * risk of frailty"; Incomplete while any of the seven has no answer (a sex of Other or Not known
+ * can't decide the male point, as for STOP-Bang).
+ */
+export function prisma7Group(): ElementJson {
+  const form: ScoreForm = {
+    kind: "score",
+    questions: PRISMA7_KEYS.items,
+    lines: [
+      { points: 1, rule: { left: "patientAge", op: "gt", value: 85 } },
+      { points: 1, rule: { left: "patientSex", op: "eq", value: "male" } },
+    ],
+  };
+  return {
+    type: "panel",
+    name: PRISMA7_KEYS.group,
+    title: "PRISMA-7",
+    readyScore: PRISMA_7.id,
+    elements: [
+      ...PRISMA7_ITEMS.map(([k, title]) => yesNoPoints(k, title, 1)),
+      {
+        type: "expression",
+        name: PRISMA7_KEYS.score,
+        title: "PRISMA-7 score",
+        clinicianOnly: true,
+        calcKind: "score",
+        expression: formatScore(form),
+        bands: [
+          { id: "b_not_increased", label: "Not at increased risk", max: 2 },
+          { id: "b_increased", label: "Increased risk of frailty" },
+        ],
+      },
+    ],
+  };
+}
+
+// ---------------------------------------------------------------- Apfel (S48)
+
+export const APFEL: ReadyScore = {
+  id: "apfel",
+  name: "Apfel PONV",
+  source:
+    "Apfel simplified risk score for postoperative nausea and vomiting: female, non-smoker, a history of PONV or motion sickness, and post-op opioids, " +
+    "1 point each; PONV in about 10%, 21%, 39%, 61% and 79% with 0 to 4. " +
+    "Apfel CC, Läärä E, Koivuranta M, Greim CA, Roewer N. Anesthesiology 1999;91(3):693–700.",
+  licence: "A published risk score: no licence found.",
+  needsBmi: false,
+  note: "In an HQ it's the patient's two questions only, with no score: the post-op opioids item is the clinician's, so the score is the Apfel assessment's, on the episode.",
+  build: () => apfelGroup(),
+};
+
+/** Apfel's keys: the patient's two questions, the clinician's opioids item, and the score. */
+export const APFEL_KEYS = { group: "apfel", smoking: "apfel_smoking", ponv: "apfel_ponv", opioids: "apfel_opioids", score: "apfel_score" };
+
+/**
+ * Apfel's patient part, as an HQ has it (S48 answers 4): smoking (a No is a non-smoker's point) and
+ * a history of PONV or motion sickness. The sex is the patient's record's. No score: it needs the
+ * clinician's post-op opioids item (apfelClinicianPart), so in an HQ it would never be complete.
+ */
+export function apfelGroup(): ElementJson {
+  return {
+    type: "panel",
+    name: APFEL_KEYS.group,
+    title: "Sickness after an anaesthetic",
+    readyScore: APFEL.id,
+    elements: [
+      yesNoPoints(APFEL_KEYS.smoking, "Do you smoke?", 0, 1),
+      yesNoPoints(APFEL_KEYS.ponv, "Have you ever felt or been sick after an anaesthetic, or do you get travel sickness (motion sickness)?", 1),
+    ],
+  };
+}
+
+/**
+ * The rest of the Apfel score, for the assessment: the clinician's post-op opioids item and the
+ * score (0–4), female 1 point, banded by the published incidence of PONV. Incomplete while an item
+ * is missing, or the sex is Other or Not known (the female point can't be decided).
+ */
+export function apfelClinicianPart(): ElementJson[] {
+  const form: ScoreForm = {
+    kind: "score",
+    questions: [APFEL_KEYS.smoking, APFEL_KEYS.ponv, APFEL_KEYS.opioids],
+    lines: [{ points: 1, rule: { left: "patientSex", op: "eq", value: "female" } }],
+  };
+  return [
+    yesNoPoints(APFEL_KEYS.opioids, "Will the patient be given opioids after surgery?", 1),
+    {
+      type: "expression",
+      name: APFEL_KEYS.score,
+      title: "Apfel score",
+      calcKind: "score",
+      expression: formatScore(form),
+      bands: [
+        { id: "b_10", label: "PONV risk about 10%", max: 0 },
+        { id: "b_21", label: "PONV risk about 21%", max: 1 },
+        { id: "b_39", label: "PONV risk about 39%", max: 2 },
+        { id: "b_61", label: "PONV risk about 61%", max: 3 },
+        { id: "b_79", label: "PONV risk about 79%" },
+      ],
+    },
+  ];
+}
+
+/** The ready-made scores an author can insert. */
+export const READY_SCORES: ReadyScore[] = [STOP_BANG, DASI, PRISMA_7, APFEL];
+
+/**
+ * The ready-made scores whose sex point a sex of Other can't decide (S44c), so it's Incomplete, as
+ * Not known is: STOP-Bang's and PRISMA-7's male point, and Apfel's female point (S48).
+ */
+export const STRICT_SEX_SCORES = new Set([KEY.score, PRISMA7_KEYS.score, APFEL_KEYS.score]);
+
 /** The ready-made score a Group is (its `readyScore`), if any. */
 export const readyScoreOf = (el: ElementJson | undefined): ReadyScore | undefined =>
   el && el.type === "panel" ? READY_SCORES.find((r) => r.id === el.readyScore) : undefined;
@@ -116,8 +335,9 @@ export function readyScoreAround(doc: ChapterJson, name: string): { group: Eleme
 
 /** Inserts a ready-made score as a Group at `target` (a page or a Group). */
 export function insertReadyScore(doc: ChapterJson, target: Target, id: string, bmi: string): { doc: ChapterJson; name: string } {
-  if (id !== STOP_BANG.id) return { doc, name: "" };
-  const group = stopBangGroup(bmi);
+  const score = READY_SCORES.find((r) => r.id === id);
+  if (!score) return { doc, name: "" };
+  const group = score.build(bmi);
   return {
     doc: edit(doc, (d) => {
       const parent = target.parent ? findElement(d, target.parent)?.el : undefined;
@@ -163,7 +383,7 @@ export function readyScoreProblems(doc: ChapterJson): string[] {
       continue;
     }
     const bmi = typeof el.readyScoreBmi === "string" ? el.readyScoreBmi : "";
-    if (!bmi || JSON.stringify(lockedPart(el)) !== JSON.stringify(lockedPart(stopBangGroup(bmi)))) {
+    if ((score.needsBmi && !bmi) || JSON.stringify(lockedPart(el)) !== JSON.stringify(lockedPart(score.build(bmi)))) {
       out.push(`${score.name} has been changed: a ready-made score can't be changed. Delete it and insert it again.`);
     }
   }
