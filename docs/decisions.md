@@ -33,6 +33,32 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 7 Nov 2026: S48 verification 1, Rahul's answers
+
+([verify.md](sessions/S48-dasi-prisma-apfel/verify.md))
+- **Go refuses an assessment's `profile` age or sex that differs from the patient's record (400),** built as a fix commit on top of S48, before S49. A "Profile" source must always be the record's: Go works out the age from the date of birth on the day of Confirm, in the hospital's time zone, and compares the sex. Go still evaluates nothing; this is a comparison with stored data.
+- **Each assessment form keeps the name of its own version:** a renamed assessment changes the name on new forms only, not on episodes already holding an older version. Carried into S49 (read the version's chapter name, not the questionnaire's).
+- **S48 is committed as five local commits** (not pushed).
+
+### 6 Nov 2026: S48 built (DASI, PRISMA-7 and Apfel; builder's choices; tested 6 Nov, test report 1 all passed, 17 of 17; verified 6 Nov, verification 1: minor notes only, one decision for Rahul (Go refusing a profile age or sex that differs from the record), [verify.md](sessions/S48-dasi-prisma-apfel/verify.md))
+
+([build notes](sessions/S48-dasi-prisma-apfel/build-notes.md))
+- **Sources:** DASI from Hlatky 1989 (weights; METs = (0.43 × DASI + 9.6) / 3.5) with the 34 cut-off from Wijeysundera 2020; PRISMA-7's wording and scoring from the BCGuidelines.ca form (2017); Apfel from Apfel 1999. The CESS guide and the Apfel and Gan full texts couldn't be read (403 or paywalled), so a clinician checks wording and bands before go-live (pending.md).
+- **PRISMA-7 scores every Yes, question 6's too,** as the form says ("3 or more 'yes' answers"); "older than 85" means 86 and up. Its lower band, "Not at increased risk", is ours.
+- **Apfel's bands are named by the published incidence** ("PONV risk about 39%"), not low/moderate/high, which Apfel doesn't define. Its three questions' wording is ours; the smoking question's No scores.
+- **DASI's score is rounded to 2 places, its METs to 1;** 34 is Poor. The result reads "34 (Poor functional capacity), 6.9 METs" on the card and the POA Summary.
+- **An assessment's content carries `labels`** (what Go's messages call each item) and **`list.json`** the list, both written by `npm run assessments`, so Go names no instrument. STOP-Bang's assessment therefore publishes a version 2 on its next add; episodes keep version 1.
+- **Go:** an observation fills only a number item; an empty answer is refused; a Confirm needs the age and sex the content names; any version with the same content is reused (published or retired); a renamed assessment's questionnaire takes its new name.
+- **The Rules page's "(not in this HQ)" scores stay STOP-Bang's only** (the default rules name it).
+
+### 6 Nov 2026: S48's answers (Rahul, asked at the start of `/build-session S48`)
+
+All four are the recommended options. ([S48 answers](sessions/S48-dasi-prisma-apfel/answers.md))
+- **DASI, PRISMA-7 and Apfel are built now; their licences are go-live items.** DASI's exclusive licensor is Greenlight Health (licences "based on use case"). PRISMA-7 is © CESS Sherbrooke (an electronic version needs its permission). Apfel has no licence found. Add both to the go-live list beside STOP-Bang's.
+- **DASI gives its score, the METs, and one band, "Poor functional capacity", at 34 or less** (Wijeysundera et al., BJA 2020). A clinician checks it before go-live.
+- **All three are both assessments and ready-made scores for the HQ,** from one definition, as STOP-Bang is.
+- **The HQ's Apfel is the patient's items only, with no score:** smoking and sickness after an anaesthetic or travel sickness (the sex is the profile's). Post-op opioids is the clinician's, so a score in the HQ would be Incomplete at every send and hold auto-triage. The Apfel assessment waits only for that item.
+
 ### 6 Nov 2026: S47 verification 3: Rahul's answers (to make in S47 before it's committed)
 
 Asked after verification 3 found S47 Verified ([verify.md](sessions/S47-assessments-stopbang/verify.md)). All three are the recommended options. Rahul chose to have them built into S47 first, then re-verified, then committed.

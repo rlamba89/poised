@@ -34,6 +34,7 @@
 - **Falls** as question 1 says.
 - **POA Summary:** each confirmed result.
 - **E2E:** extend J12 with MUST, with BMI from the observations.
+- **From S48's verification 1 (Rahul, 7 Nov):** each assessment form keeps the name of its own version. Today `ListAssessmentForms` reads `q.name`, which S48's upsert changes on a rename, so an old confirmed card and its POA line take the new name. Read the version's chapter name (`c.name`, stored per version by `PublishAssessmentVersion`) instead, with an integration case: rename, then the old episode keeps the old name and a new one shows the new name.
 
 ## Not in this session
 

@@ -57,6 +57,28 @@ docker compose up -d --force-recreate db
 
 ## 3. Small gaps in what's built
 
+### From S48's test report 1 (6 Nov; [report](sessions/S48-dasi-prisma-apfel/test-report-1.md), all passed; none blocking)
+
+- **Go accepts a `profile` age or sex that differs from the patient's record.** *Rahul, 7 Nov: refuse it (400); a fix commit on top of S48.* Only a hand-made request does it. A Confirm with `patientSex: "male"` on a patient recorded as Other gave a confirmed PRISMA-7 of 4 (Increased risk), shown on the card and the POA Summary as "Profile". *Recommended:* Go refuses a mismatch (400). It holds the date of birth, the sex and the hospital's time zone, so it can compare without evaluating anything.
+- **For Rahul: "answer the item highlighted" when the highlighted item is the record's sex** (Other or Not known: PRISMA-7's 2, Apfel's 1, STOP-Bang's G). The card can't answer it; the note under the card explains. *Recommended:* the headline says the record has no male or female instead.
+- **Cosmetic:**
+  - the result badge is in capitals, so "6.9 METs" reads "6.9 METS" (`tt="none"` on the badge);
+  - the POA Summary's assessment values start about 25 px right of the other values' column.
+- **A Poor DASI (or an Increased risk PRISMA-7) doesn't hold auto-triage:** the default rules don't know them. Add rules or defaults with the rules work (S49 or later), if trusts want it.
+- **Unsaved changes on an assessment card are lost on reload without a warning** (as before S48), and **option points reach the patient's browser** (as for STOP-Bang; nothing is shown).
+
+### From S48's build (6 Nov; [build notes](sessions/S48-dasi-prisma-apfel/build-notes.md); go-live items, none blocking now)
+
+- **Licences before go-live (C10; S48 answers 1),** beside STOP-Bang's from UHN:
+  - **DASI:** a licence from Greenlight Health, its exclusive licensor (for Dr Mark Hlatky), "based on use case"; no fee is published.
+  - **PRISMA-7:** permission from CESS (Centre d'expertise en santé de Sherbrooke) for an electronic version.
+  - **Apfel:** no licence found (a published risk score); confirm.
+- **A clinician checks the wording and bands before go-live:**
+  - **DASI:** the twelve items as Hlatky et al. (1989) are commonly reproduced (US wording: "a block or two", "yardwork"); check them against the licensed version. The band "Poor functional capacity" at 34 or less is from Wijeysundera et al. (BJA 2020).
+  - **PRISMA-7:** the wording and scoring of the BCGuidelines.ca form (2017), every Yes one point, question 6 too. The lower band's label, "Not at increased risk", is ours (the source names only the 3-or-more band).
+  - **Apfel:** the three questions' wording is ours (Apfel names risk factors, not questions): "Do you smoke?", the PONV or travel sickness question, and "Will the patient be given opioids after surgery?". The bands are named by the published incidence ("PONV risk about 39%"); Apfel defines no low, moderate or high.
+- **The Rules page's "(not in this HQ)" scores are STOP-Bang's only,** as the default rules name it. A rule on DASI's or PRISMA-7's band is written in an HQ that holds the score.
+
 ### From S47's answers 6 (6 Nov; [build notes](sessions/S47-assessments-stopbang/build-notes.md), not blocking)
 
 - **A confirmed assessment's "changed since" line has no "Use the new values" button.** To take a new hospital BMI the clinician types it, so B says "Entered by clinician", not "Hospital BMI". A button that drafts the fresh items with their sources (then Confirm) would keep the source. Add it if clinicians ask. It would also clear a box whose only lines are the record's age or sex: today that needs another item changed, as a change back to the confirmed value isn't a change (S47 test report 4).
@@ -70,7 +92,7 @@ docker compose up -d --force-recreate db
   - Fix if it matters: take the age at the click, or have Go stamp the Confirm with the day the browser sent (S47 verification 4).
 - **From S47's verification 3 (minor, none blocking):**
   - **`questionnaire_versions.updated_by` and `chapters.updated_by` may now be NULL for a trust's rows too** (migration 00038; only `questionnaires` has the owner check). Every Go write passes a real user, so only hand-written SQL could do it. Such a version would drop out of the trust's list (the editor join is an inner join). Fix: a check or trigger tying a NULL `updated_by` to a platform questionnaire.
-  - **A JSON `null` answer to the BMI gets the BMI's limits message** ("BMI: a number from 5 to 150."), as `fits`/`isNumber` read `null` as 0. Only a hand-made request sends one, and it's still refused (400). Cosmetic.
+  - **A JSON `null` answer to the BMI gets the BMI's limits message** ("BMI: a number from 5 to 150."), as `fits`/`isNumber` read `null` as 0. Only a hand-made request sends one, and it's still refused (400). Cosmetic. *Fixed in S48: Go refuses any empty (`null`) answer as "that answer isn't one this assessment takes", the age's too (which `fits` had let through).*
 - **`useEpisodeHQ` keeps its error after a later reload succeeds** (`apps/web/src/features/episodes/hq.ts`, from before S47). The Assessments card then stays blocked with "Reload the page to save or confirm", which is the remedy, so it fails safe. Clear the error on success when the hook is next touched.
 
 ### From S44c's build (28 Oct; [build notes](sessions/S44c-c6-last-answers/build-notes.md), none blocking)
@@ -954,3 +976,12 @@ docker compose up -d --force-recreate db
   - pre-filling answers (PX-06)
   - hospital branding (PX-07)
 - **Validated scoring tools** (PNL-07, Could): STOP-BANG, PHQ-9 and others, with locked wording.
+
+### From S48's verification 1 (6 Nov; [verify.md](sessions/S48-dasi-prisma-apfel/verify.md); minor, none blocking)
+
+- **A rename relabels every existing form** (`ListAssessmentForms` reads `q.name`, which the upsert changes). *Rahul, 7 Nov: each form keeps its own version's name; in S49's brief.*
+- **A matching retired version is reused without being published again,** so after a rollback new forms sit on a "retired" version while a version no build serves stays "published". Harmless while nothing picks an assessment version by status.
+- **Apfel's score has no `clinicianOnly`** (`ready.ts` `apfelClinicianPart`), unlike the other ready-made scores. No effect today (assessment content only); add it for consistency.
+- **`itemsOf` guesses the assessment from its content's keys** (`packages/clinical/src/assessments.ts`); pass the row's `assessment` id instead before a variant shares another's keys.
+- **The pre-fill's two caches rely on object identity** (web `hqParts` keeps `from.hq` stable for clinical's `WeakMap`); a spread of `from.hq` would silently bring back the per-keystroke cost.
+- **A stray blank line** in `AssessmentsPanel.tsx` where the sex note was.
