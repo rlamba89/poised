@@ -130,19 +130,20 @@ func (s *server) addAssessment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]uuid.UUID{"id": id})
 }
 
-// publishedAssessment is the assessment's published platform version with its content as Go
-// holds it: made the first time, and made anew (the old one retired) when the wording changed.
+// publishedAssessment is the assessment's platform version with its content as Go holds it: any
+// version with that content (published, or retired by another build serving at once), else a new
+// one, published with the others retired, made the first time and whenever the wording changed.
 // Forms on an older version keep it, so each shows what its clinician saw.
 func publishedAssessment(r *http.Request, q *db.Queries, def assessment.Def) (uuid.UUID, error) {
 	ctx := r.Context()
 	if err := q.LockAssessmentDefinition(ctx, def.ID); err != nil {
 		return uuid.Nil, err
 	}
-	latest, err := q.LatestAssessmentVersion(ctx, db.LatestAssessmentVersionParams{Content: def.Content, Assessment: &def.ID})
-	if err == nil && latest.Same {
-		return latest.VersionID, nil
+	same, err := q.MatchingAssessmentVersion(ctx, db.MatchingAssessmentVersionParams{Content: def.Content, Assessment: &def.ID})
+	if err == nil {
+		return same, nil
 	}
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if !errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, err
 	}
 	qid, err := q.AssessmentQuestionnaire(ctx, db.AssessmentQuestionnaireParams{Assessment: &def.ID, Name: def.Name})

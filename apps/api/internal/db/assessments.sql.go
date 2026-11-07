@@ -36,16 +36,10 @@ func (q *Queries) AddAssessmentForm(ctx context.Context, arg AddAssessmentFormPa
 }
 
 const assessmentQuestionnaire = `-- name: AssessmentQuestionnaire :one
-WITH made AS (
-    INSERT INTO questionnaires (assessment, name, description)
-    VALUES ($1, $2, '')
-    ON CONFLICT (assessment) WHERE assessment IS NOT NULL DO NOTHING
-    RETURNING id
-)
-SELECT id FROM made
-UNION ALL
-SELECT id FROM questionnaires WHERE assessment = $1
-LIMIT 1
+INSERT INTO questionnaires (assessment, name, description)
+VALUES ($1, $2, '')
+ON CONFLICT (assessment) WHERE assessment IS NOT NULL DO UPDATE SET name = EXCLUDED.name
+RETURNING id
 `
 
 type AssessmentQuestionnaireParams struct {
@@ -53,7 +47,8 @@ type AssessmentQuestionnaireParams struct {
 	Name       string  `json:"name"`
 }
 
-// The assessment's questionnaire, made the first time it's needed.
+// The assessment's questionnaire, made the first time it's needed, with the name Go has now: a
+// renamed assessment's questionnaire takes its new name with its new version (S47 verification 4).
 func (q *Queries) AssessmentQuestionnaire(ctx context.Context, arg AssessmentQuestionnaireParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, assessmentQuestionnaire, arg.Assessment, arg.Name)
 	var id uuid.UUID
@@ -89,45 +84,6 @@ func (q *Queries) GetAssessmentForm(ctx context.Context, arg GetAssessmentFormPa
 		&i.Assessment,
 		&i.ChapterID,
 		&i.Content,
-	)
-	return i, err
-}
-
-const latestAssessmentVersion = `-- name: LatestAssessmentVersion :one
-SELECT q.id AS questionnaire_id, v.id AS version_id, v.version_no, c.id AS chapter_id,
-       (c.content = $1::jsonb)::boolean AS same
-FROM questionnaires q
-JOIN questionnaire_versions v ON v.questionnaire_id = q.id AND v.status = 'published'
-JOIN chapters c ON c.version_id = v.id
-WHERE q.assessment = $2
-ORDER BY v.version_no DESC
-LIMIT 1
-`
-
-type LatestAssessmentVersionParams struct {
-	Content    json.RawMessage `json:"content"`
-	Assessment *string         `json:"assessment"`
-}
-
-type LatestAssessmentVersionRow struct {
-	QuestionnaireID uuid.UUID `json:"questionnaireId"`
-	VersionID       uuid.UUID `json:"versionId"`
-	VersionNo       int32     `json:"versionNo"`
-	ChapterID       uuid.UUID `json:"chapterId"`
-	Same            bool      `json:"same"`
-}
-
-// The assessment's published version and its one chapter, and whether that chapter's content is
-// this one (jsonb equality: key order and spacing don't matter).
-func (q *Queries) LatestAssessmentVersion(ctx context.Context, arg LatestAssessmentVersionParams) (LatestAssessmentVersionRow, error) {
-	row := q.db.QueryRow(ctx, latestAssessmentVersion, arg.Content, arg.Assessment)
-	var i LatestAssessmentVersionRow
-	err := row.Scan(
-		&i.QuestionnaireID,
-		&i.VersionID,
-		&i.VersionNo,
-		&i.ChapterID,
-		&i.Same,
 	)
 	return i, err
 }
@@ -209,6 +165,32 @@ SELECT pg_advisory_xact_lock(hashtext('assessment:' || $1::text))
 func (q *Queries) LockAssessmentDefinition(ctx context.Context, assessment string) error {
 	_, err := q.db.Exec(ctx, lockAssessmentDefinition, assessment)
 	return err
+}
+
+const matchingAssessmentVersion = `-- name: MatchingAssessmentVersion :one
+SELECT v.id AS version_id
+FROM questionnaires q
+JOIN questionnaire_versions v ON v.questionnaire_id = q.id AND v.status IN ('published', 'retired')
+JOIN chapters c ON c.version_id = v.id
+WHERE q.assessment = $1 AND c.content = $2::jsonb
+ORDER BY v.version_no DESC
+LIMIT 1
+`
+
+type MatchingAssessmentVersionParams struct {
+	Assessment *string         `json:"assessment"`
+	Content    json.RawMessage `json:"content"`
+}
+
+// The assessment's newest version, published or retired, whose one chapter's content is this one
+// (jsonb equality: key order and spacing don't matter). Any version, not only the latest: two
+// builds serving at once (an overlapping deploy, a rollback) then reuse each other's versions
+// instead of each publishing its own on every add (S47 verification 4).
+func (q *Queries) MatchingAssessmentVersion(ctx context.Context, arg MatchingAssessmentVersionParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, matchingAssessmentVersion, arg.Assessment, arg.Content)
+	var version_id uuid.UUID
+	err := row.Scan(&version_id)
+	return version_id, err
 }
 
 const publishAssessmentVersion = `-- name: PublishAssessmentVersion :one

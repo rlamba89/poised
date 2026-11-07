@@ -234,8 +234,8 @@ type ListTrustPublishedContentsRow struct {
 
 // Every Question Set of the trust's published and retired versions (S23): where each question
 // key is used, and its options as published. Newest version first within each questionnaire.
-func (q *Queries) ListTrustPublishedContents(ctx context.Context, dollar_1 uuid.UUID) ([]ListTrustPublishedContentsRow, error) {
-	rows, err := q.db.Query(ctx, listTrustPublishedContents, dollar_1)
+func (q *Queries) ListTrustPublishedContents(ctx context.Context, orgID uuid.UUID) ([]ListTrustPublishedContentsRow, error) {
+	rows, err := q.db.Query(ctx, listTrustPublishedContents, orgID)
 	if err != nil {
 		return nil, err
 	}

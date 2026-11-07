@@ -339,8 +339,8 @@ type PublishedQuestionnairesInOrgRow struct {
 }
 
 // The trust's questionnaires that have a published version: the choices for its default HQ.
-func (q *Queries) PublishedQuestionnairesInOrg(ctx context.Context, dollar_1 uuid.UUID) ([]PublishedQuestionnairesInOrgRow, error) {
-	rows, err := q.db.Query(ctx, publishedQuestionnairesInOrg, dollar_1)
+func (q *Queries) PublishedQuestionnairesInOrg(ctx context.Context, orgID uuid.UUID) ([]PublishedQuestionnairesInOrgRow, error) {
+	rows, err := q.db.Query(ctx, publishedQuestionnairesInOrg, orgID)
 	if err != nil {
 		return nil, err
 	}

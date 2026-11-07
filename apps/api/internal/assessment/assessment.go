@@ -28,15 +28,27 @@ type Def struct {
 	Content json.RawMessage `json:"-"`
 }
 
-// All are the assessments a clinician can add, in the order they're offered.
-var All = []Def{load("stopbang", "STOP-Bang")}
+// All are the assessments a clinician can add, in the order they're offered: list.json's, which
+// packages/clinical writes beside each one's content (S48), so the two lists can't drift apart.
+var All = loadAll()
 
-func load(id, name string) Def {
-	b, err := files.ReadFile(id + ".json")
+func loadAll() []Def {
+	b, err := files.ReadFile("list.json")
 	if err != nil {
 		panic(err)
 	}
-	return Def{ID: id, Name: name, Content: bytes.TrimSpace(b)}
+	var all []Def
+	if err := json.Unmarshal(b, &all); err != nil {
+		panic(err)
+	}
+	for i := range all {
+		c, err := files.ReadFile(all[i].ID + ".json")
+		if err != nil {
+			panic(err)
+		}
+		all[i].Content = bytes.TrimSpace(c)
+	}
+	return all
 }
 
 // Lookup finds an assessment by its id.
@@ -48,8 +60,8 @@ func Lookup(id string) (Def, bool) {
 	return All[i], true
 }
 
-// Sources are where a stored answer may come from: the HQ, an observation, or the clinician. The
-// patient's age and sex come from their record (source profile) and only they may.
+// Sources are where a stored answer may come from: the HQ, an observation (a number item only), or
+// the clinician. The patient's age and sex come from their record (source profile) and only they may.
 var Sources = []string{"hq", "observation", "clinician"}
 
 // profileItems are the patient's age and sex as of Confirm, stored with the confirmed answers so a
@@ -74,17 +86,25 @@ type element struct {
 	Elements []element         `json:"elements"`
 }
 
+// doc is the part of an assessment's content the checks read: its pages, and what its messages
+// call each item (labels, written by packages/clinical; a version from before S48 has none).
+type doc struct {
+	Pages []struct {
+		Elements []element `json:"elements"`
+	} `json:"pages"`
+	Labels map[string]string `json:"labels"`
+}
+
+func parse(content json.RawMessage) doc {
+	var d doc
+	_ = json.Unmarshal(content, &d)
+	return d
+}
+
 // questionList is the content's questions in order: not its Groups, Calculations or texts.
 func questionList(content json.RawMessage) []element {
-	var doc struct {
-		Pages []struct {
-			Elements []element `json:"elements"`
-		} `json:"pages"`
-	}
+	doc := parse(content)
 	var out []element
-	if json.Unmarshal(content, &doc) != nil {
-		return out
-	}
 	var walk func([]element)
 	walk = func(els []element) {
 		for _, el := range els {
@@ -112,24 +132,33 @@ func questions(content json.RawMessage) map[string]element {
 	return out
 }
 
-// Unanswered names the first question with no answer, or "" when every one has one: a Confirm
-// needs them all (the browser's check too; Go only reads the JSON, it doesn't evaluate).
+// namesProfile says whether the content's score reads the patient's age or sex ({patientAge}).
+func namesProfile(content json.RawMessage, name string) bool {
+	return bytes.Contains(content, []byte("{"+name+"}"))
+}
+
+// Unanswered names the first item with no answer, or "" when every one has one: a Confirm needs
+// them all, the age and sex too where the content names them (S47 verification 4), as the browser
+// does. Go only reads the JSON, it doesn't evaluate. Check has refused an empty (null) answer first.
 func Unanswered(content json.RawMessage, data map[string]json.RawMessage) string {
+	labels := parse(content).Labels
 	for _, el := range questionList(content) {
-		if raw, ok := data[el.Name]; !ok || string(bytes.TrimSpace(raw)) == "null" {
-			return label(el)
+		if _, ok := data[el.Name]; !ok {
+			return label(el, labels)
+		}
+	}
+	for _, name := range []string{"patientAge", "patientSex"} {
+		if _, ok := data[name]; !ok && namesProfile(content, name) {
+			return label(profileItems[name], labels)
 		}
 	}
 	return ""
 }
 
-// label is how a problem names a question: its first words.
-func label(el element) string {
-	switch el.Name {
-	case "stopbang_bmi":
-		return "BMI"
-	case "stopbang_neck":
-		return "Neck"
+// label is how a problem names an item: what the content's labels call it, else its first words.
+func label(el element, labels map[string]string) string {
+	if l := labels[el.Name]; l != "" {
+		return l
 	}
 	if len([]rune(el.Title)) > 40 {
 		return string([]rune(el.Title)[:40]) + "…"
@@ -139,25 +168,30 @@ func label(el element) string {
 
 // Check returns a plain-language problem with a clinician's answers and their sources, or "":
 // every answer is one of the content's questions, an option it offers or a number within its
-// limits, and each has exactly one source.
+// limits (never empty), and each has exactly one source: an observation only on a number item
+// (the BMI, S47 verification 2), the profile only on the age and sex.
 func Check(content json.RawMessage, data map[string]json.RawMessage, sources map[string]string) string {
 	qs := questions(content)
+	labels := parse(content).Labels
 	for name, raw := range data {
 		el, ok := qs[name]
 		profile, isProfile := profileItems[name]
-		if isProfile && !ok && bytes.Contains(content, []byte("{"+name+"}")) {
+		if isProfile && !ok && namesProfile(content, name) {
 			el, ok = profile, true
 		}
 		if !ok {
 			return "An answer doesn't belong to this assessment."
 		}
-		if !fits(el, raw) || (isProfile && len(el.Choices) == 0 && !isWhole(raw)) {
-			if el.Min != nil && el.Max != nil && len(el.Choices) == 0 && isNumber(raw) {
-				return fmt.Sprintf("%s: a number from %s to %s.", label(el), num(*el.Min), num(*el.Max))
+		empty := string(bytes.TrimSpace(raw)) == "null"
+		if empty || !fits(el, raw) || (isProfile && len(el.Choices) == 0 && !isWhole(raw)) {
+			if !empty && el.Min != nil && el.Max != nil && len(el.Choices) == 0 && isNumber(raw) {
+				return fmt.Sprintf("%s: a number from %s to %s.", label(el, labels), num(*el.Min), num(*el.Max))
 			}
-			return fmt.Sprintf("%s: that answer isn't one this assessment takes.", label(el))
+			return fmt.Sprintf("%s: that answer isn't one this assessment takes.", label(el, labels))
 		}
-		if isProfile != (sources[name] == "profile") || (!isProfile && !slices.Contains(Sources, sources[name])) {
+		source := sources[name]
+		if isProfile != (source == "profile") || (!isProfile && !slices.Contains(Sources, source)) ||
+			(source == "observation" && len(el.Choices) > 0) {
 			return "Say where each answer came from."
 		}
 	}

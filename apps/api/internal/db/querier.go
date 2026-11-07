@@ -50,7 +50,8 @@ type Querier interface {
 	// auto-archive, S22), with no user. at: when, for a job run as of its own time (S22 test report 1,
 	// F-2); NULL is now.
 	AddStatusEvent(ctx context.Context, arg AddStatusEventParams) error
-	// The assessment's questionnaire, made the first time it's needed.
+	// The assessment's questionnaire, made the first time it's needed, with the name Go has now: a
+	// renamed assessment's questionnaire takes its new name with its new version (S47 verification 4).
 	AssessmentQuestionnaire(ctx context.Context, arg AssessmentQuestionnaireParams) (uuid.UUID, error)
 	// The names of the trust's patients in a page of the log, read now (the log holds only IDs).
 	AuditPatientNames(ctx context.Context, arg AuditPatientNamesParams) ([]AuditPatientNamesRow, error)
@@ -278,9 +279,6 @@ type Querier interface {
 	// no answers names no one who entered them (S44a test report 1, F1: staff filled it in for the
 	// patient, but none of it was sent).
 	KeepSentAnswers(ctx context.Context, arg KeepSentAnswersParams) error
-	// The assessment's published version and its one chapter, and whether that chapter's content is
-	// this one (jsonb equality: key order and spacing don't matter).
-	LatestAssessmentVersion(ctx context.Context, arg LatestAssessmentVersionParams) (LatestAssessmentVersionRow, error)
 	// The newest change that isn't an undo and hasn't been undone: what an undo would step back
 	// (episode.UndoTarget decides whether it can). No row: none.
 	LatestUndoable(ctx context.Context, episodeID uuid.UUID) (LatestUndoableRow, error)
@@ -422,7 +420,7 @@ type Querier interface {
 	ListTrustContent(ctx context.Context, orgID uuid.NullUUID) ([]ListTrustContentRow, error)
 	// Every Question Set of the trust's published and retired versions (S23): where each question
 	// key is used, and its options as published. Newest version first within each questionnaire.
-	ListTrustPublishedContents(ctx context.Context, dollar_1 uuid.UUID) ([]ListTrustPublishedContentsRow, error)
+	ListTrustPublishedContents(ctx context.Context, orgID uuid.UUID) ([]ListTrustPublishedContentsRow, error)
 	// The episode's messages that didn't reach the patient since its latest invite or Resend (S17):
 	// a later Resend starts afresh. status: for a status message (S21), the status it was sent for.
 	ListUndeliveredMessages(ctx context.Context, episodeID uuid.UUID) ([]ListUndeliveredMessagesRow, error)
@@ -497,6 +495,11 @@ type Querier interface {
 	// "Smith Jane"), part of a hospital number on one of their episodes (S13 moved it there), their
 	// national ID (exactly, as normalised), or their record's id.
 	MatchAuditPatients(ctx context.Context, arg MatchAuditPatientsParams) ([]uuid.UUID, error)
+	// The assessment's newest version, published or retired, whose one chapter's content is this one
+	// (jsonb equality: key order and spacing don't matter). Any version, not only the latest: two
+	// builds serving at once (an overlapping deploy, a rollback) then reuse each other's versions
+	// instead of each publishing its own on every add (S47 verification 4).
+	MatchingAssessmentVersion(ctx context.Context, arg MatchingAssessmentVersionParams) (uuid.UUID, error)
 	// The user's role in one membership: the whole trust (hospital_id NULL) or one hospital.
 	MembershipRole(ctx context.Context, arg MembershipRoleParams) (string, error)
 	// Staff see it on each of the records' episodes, dated at the episode's hospital.
@@ -525,7 +528,7 @@ type Querier interface {
 	// Returns 0 when the version is no longer a draft.
 	PublishVersion(ctx context.Context, arg PublishVersionParams) (int64, error)
 	// The trust's questionnaires that have a published version: the choices for its default HQ.
-	PublishedQuestionnairesInOrg(ctx context.Context, dollar_1 uuid.UUID) ([]PublishedQuestionnairesInOrgRow, error)
+	PublishedQuestionnairesInOrg(ctx context.Context, orgID uuid.UUID) ([]PublishedQuestionnairesInOrgRow, error)
 	// A text or email sent to the patient about the episode (S17): failed_at is set when it
 	// couldn't be sent at all.
 	// kind "status" (S21) names the status it was sent for; the others have none.

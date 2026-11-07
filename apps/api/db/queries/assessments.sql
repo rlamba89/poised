@@ -5,30 +5,26 @@
 -- Two clinicians adding the same assessment at once publish its version once.
 SELECT pg_advisory_xact_lock(hashtext('assessment:' || sqlc.arg(assessment)::text));
 
--- name: LatestAssessmentVersion :one
--- The assessment's published version and its one chapter, and whether that chapter's content is
--- this one (jsonb equality: key order and spacing don't matter).
-SELECT q.id AS questionnaire_id, v.id AS version_id, v.version_no, c.id AS chapter_id,
-       (c.content = sqlc.arg(content)::jsonb)::boolean AS same
+-- name: MatchingAssessmentVersion :one
+-- The assessment's newest version, published or retired, whose one chapter's content is this one
+-- (jsonb equality: key order and spacing don't matter). Any version, not only the latest: two
+-- builds serving at once (an overlapping deploy, a rollback) then reuse each other's versions
+-- instead of each publishing its own on every add (S47 verification 4).
+SELECT v.id AS version_id
 FROM questionnaires q
-JOIN questionnaire_versions v ON v.questionnaire_id = q.id AND v.status = 'published'
+JOIN questionnaire_versions v ON v.questionnaire_id = q.id AND v.status IN ('published', 'retired')
 JOIN chapters c ON c.version_id = v.id
-WHERE q.assessment = sqlc.arg(assessment)
+WHERE q.assessment = sqlc.arg(assessment) AND c.content = sqlc.arg(content)::jsonb
 ORDER BY v.version_no DESC
 LIMIT 1;
 
 -- name: AssessmentQuestionnaire :one
--- The assessment's questionnaire, made the first time it's needed.
-WITH made AS (
-    INSERT INTO questionnaires (assessment, name, description)
-    VALUES (sqlc.arg(assessment), sqlc.arg(name), '')
-    ON CONFLICT (assessment) WHERE assessment IS NOT NULL DO NOTHING
-    RETURNING id
-)
-SELECT id FROM made
-UNION ALL
-SELECT id FROM questionnaires WHERE assessment = sqlc.arg(assessment)
-LIMIT 1;
+-- The assessment's questionnaire, made the first time it's needed, with the name Go has now: a
+-- renamed assessment's questionnaire takes its new name with its new version (S47 verification 4).
+INSERT INTO questionnaires (assessment, name, description)
+VALUES (sqlc.arg(assessment), sqlc.arg(name), '')
+ON CONFLICT (assessment) WHERE assessment IS NOT NULL DO UPDATE SET name = EXCLUDED.name
+RETURNING id;
 
 -- name: RetireAssessmentVersions :exec
 UPDATE questionnaire_versions SET status = 'retired', updated_at = now()

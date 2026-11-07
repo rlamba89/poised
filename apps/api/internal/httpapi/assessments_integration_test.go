@@ -40,15 +40,49 @@ func addStopBang(t *testing.T, w *clinic, e apitest.Episode) uuid.UUID {
 	return out.ID
 }
 
-// stopBangAnswers: S, T, O and P from the HQ, the BMI from an observation, the neck the clinician's.
+// stopBangAnswers: S, T, O and P from the HQ, the BMI from an observation, the neck the
+// clinician's, the age and sex the profile's (the browser sends them on every save, S47 answers 7).
 func stopBangAnswers(revision int) map[string]any {
 	return map[string]any{
 		"data": map[string]any{"stopbang_snoring": "o_yes", "stopbang_tired": "o_yes", "stopbang_observed": "o_no",
-			"stopbang_pressure": "o_yes", "stopbang_bmi": 36.4, "stopbang_neck": "o_no"},
+			"stopbang_pressure": "o_yes", "stopbang_bmi": 36.4, "stopbang_neck": "o_no", "patientAge": 62, "patientSex": "male"},
 		"sources": map[string]string{"stopbang_snoring": "hq", "stopbang_tired": "hq", "stopbang_observed": "hq",
-			"stopbang_pressure": "hq", "stopbang_bmi": "observation", "stopbang_neck": "clinician"},
+			"stopbang_pressure": "hq", "stopbang_bmi": "observation", "stopbang_neck": "clinician", "patientAge": "profile", "patientSex": "profile"},
 		"revision": revision,
 	}
+}
+
+// addAssessment adds an assessment to the episode as Cara and returns its form's id.
+func addAssessment(t *testing.T, w *clinic, e apitest.Episode, id string) uuid.UUID {
+	t.Helper()
+	r := w.clinician.Do("POST", asmPath(w.a, e, ""), map[string]string{"assessment": id})
+	r.Want(t, http.StatusCreated)
+	var out struct{ ID uuid.UUID }
+	r.Decode(t, &out)
+	return out.ID
+}
+
+// answers builds a save's body: each key's value and source.
+func answers(revision int, items map[string][2]any) map[string]any {
+	data, sources := map[string]any{}, map[string]string{}
+	for k, v := range items {
+		data[k], sources[k] = v[0], v[1].(string)
+	}
+	return map[string]any{"data": data, "sources": sources, "revision": revision}
+}
+
+// dasiAnswers: the twelve items, each from the HQ, Yes to those given.
+func dasiAnswers(revision int, yes ...string) map[string]any {
+	items := map[string][2]any{}
+	for _, k := range []string{"dasi_selfcare", "dasi_walk_indoors", "dasi_walk_block", "dasi_stairs", "dasi_run", "dasi_light_work",
+		"dasi_moderate_work", "dasi_heavy_work", "dasi_yardwork", "dasi_sexual", "dasi_moderate_recreation", "dasi_strenuous_sports"} {
+		v := "o_no"
+		if slices.Contains(yes, k) {
+			v = "o_yes"
+		}
+		items[k] = [2]any{v, "hq"}
+	}
+	return answers(revision, items)
 }
 
 // asmView is GET …/assessments.
@@ -123,7 +157,7 @@ func TestAddAssessment(t *testing.T) {
 		if len(v.Assessments) != 1 || v.Assessments[0].Name != "STOP-Bang" || v.Assessments[0].Revision != 0 || v.Assessments[0].ConfirmedAt != nil {
 			t.Errorf("list: %+v", v.Assessments)
 		}
-		if len(v.Available) != 0 {
+		if slices.ContainsFunc(v.Available, func(a struct{ ID, Name string }) bool { return a.ID == "stopbang" }) {
 			t.Errorf("STOP-Bang is offered again: %+v", v.Available)
 		}
 	})
@@ -147,6 +181,55 @@ func TestAddAssessment(t *testing.T) {
 		if n := count(t, w.db, `SELECT count(*) FROM episode_forms f JOIN questionnaire_versions v ON v.id = f.version_id
 			WHERE f.id = $1 AND v.status = 'retired'`, oldForm); n != 1 {
 			t.Error("the old episode's form moved off its version")
+		}
+	})
+	t.Run("DASI, PRISMA-7 and Apfel PONV (S48): each its own platform questionnaire, all four on one episode", func(t *testing.T) {
+		e := w.fx.Episode(t, w.hq, w.cara)
+		for _, id := range []string{"stopbang", "dasi", "prisma7", "apfel"} {
+			addAssessment(t, w, e, id)
+		}
+		v := listAssessments(t, w.clinician, w.a, e)
+		var names []string
+		for _, a := range v.Assessments {
+			names = append(names, a.Name)
+		}
+		if strings.Join(names, ",") != "STOP-Bang,DASI,PRISMA-7,Apfel PONV" || len(v.Available) != 0 {
+			t.Errorf("listed %v, still to add %+v", names, v.Available)
+		}
+		if n := count(t, w.db, `SELECT count(DISTINCT q.id) FROM episode_forms f JOIN questionnaire_versions v ON v.id = f.version_id
+			JOIN questionnaires q ON q.id = v.questionnaire_id WHERE f.episode_id = $1 AND q.org_id IS NULL`, e.ID); n != 4 {
+			t.Errorf("%d platform questionnaires, want 4", n)
+		}
+	})
+	t.Run("a version with the same content is reused, not only the latest (S47 verification 4: two builds at once)", func(t *testing.T) {
+		w := newClinic(t)
+		first := addAssessment(t, w, w.fx.Episode(t, w.hq, w.cara), "dasi")
+		// Another build (an overlapping deploy) published different wording since.
+		sqlExec(t, w, `UPDATE questionnaire_versions SET status = 'retired' WHERE id = (SELECT version_id FROM episode_forms WHERE id = $1)`, first)
+		sqlExec(t, w, `INSERT INTO questionnaire_versions (questionnaire_id, version_no, status)
+			SELECT questionnaire_id, 2, 'published' FROM questionnaire_versions WHERE id = (SELECT version_id FROM episode_forms WHERE id = $1)`, first)
+		sqlExec(t, w, `INSERT INTO chapters (version_id, position, name, audience, content)
+			SELECT v.id, 1, 'DASI', 'clinician', '{"pages": []}' FROM questionnaire_versions v JOIN questionnaires q ON q.id = v.questionnaire_id
+			WHERE q.assessment = 'dasi' AND v.version_no = 2`)
+		second := addAssessment(t, w, w.fx.Episode(t, w.hq, w.cara), "dasi")
+		if n := count(t, w.db, `SELECT count(DISTINCT version_id) FROM episode_forms WHERE id IN ($1, $2)`, first, second); n != 1 {
+			t.Error("this build's wording was published again")
+		}
+		if n := count(t, w.db, `SELECT count(*) FROM questionnaire_versions v JOIN questionnaires q ON q.id = v.questionnaire_id
+			WHERE q.assessment = 'dasi'`); n != 2 {
+			t.Errorf("%d versions, want 2", n)
+		}
+	})
+	t.Run("a renamed assessment's questionnaire takes the new name with its new version (S47 verification 4)", func(t *testing.T) {
+		w := newClinic(t)
+		addAssessment(t, w, w.fx.Episode(t, w.hq, w.cara), "prisma7")
+		sqlExec(t, w, `UPDATE questionnaires SET name = 'PRISMA 7 (old name)' WHERE assessment = 'prisma7'`)
+		sqlExec(t, w, `UPDATE chapters SET content = '{"pages": []}' WHERE version_id IN (SELECT v.id FROM questionnaire_versions v
+			JOIN questionnaires q ON q.id = v.questionnaire_id WHERE q.assessment = 'prisma7')`)
+		e := w.fx.Episode(t, w.hq, w.cara)
+		addAssessment(t, w, e, "prisma7")
+		if a := listAssessments(t, w.clinician, w.a, e).Assessments[0]; a.Name != "PRISMA-7" {
+			t.Errorf("name %q", a.Name)
 		}
 	})
 	t.Run("twice on one episode: 409, one form", func(t *testing.T) {
@@ -181,7 +264,7 @@ func TestAddAssessment(t *testing.T) {
 	})
 	t.Run("invalid input: an unknown assessment or not JSON is 400", func(t *testing.T) {
 		e := w.fx.Episode(t, w.hq, w.cara)
-		refused(t, w.clinician.Do("POST", asmPath(w.a, e, ""), map[string]string{"assessment": "dasi"}), http.StatusBadRequest)
+		refused(t, w.clinician.Do("POST", asmPath(w.a, e, ""), map[string]string{"assessment": "mmse"}), http.StatusBadRequest)
 		refused(t, w.clinician.Do("POST", asmPath(w.a, e, ""), "nope"), http.StatusBadRequest)
 		if asmForms(t, w, e) != 0 {
 			t.Error("added")
@@ -244,7 +327,11 @@ func TestListAssessments(t *testing.T) {
 
 	t.Run("happy path: none yet, STOP-Bang to add, and the trust's precedence (on by default)", func(t *testing.T) {
 		v := listAssessments(t, w.clinician, w.a, e)
-		if len(v.Assessments) != 0 || len(v.Available) != 1 || v.Available[0].ID != "stopbang" || v.Available[0].Name != "STOP-Bang" {
+		var offered []string
+		for _, a := range v.Available {
+			offered = append(offered, a.ID+":"+a.Name)
+		}
+		if len(v.Assessments) != 0 || strings.Join(offered, ",") != "stopbang:STOP-Bang,dasi:DASI,prisma7:PRISMA-7,apfel:Apfel PONV" {
 			t.Errorf("%+v", v)
 		}
 		if v.ObsPrecedence == nil || !*v.ObsPrecedence {
@@ -263,6 +350,17 @@ func TestListAssessments(t *testing.T) {
 			t.Errorf("sources %v", a.Sources)
 		}
 		if a.Data["stopbang_bmi"] != 36.4 || a.Revision != 1 || a.UpdatedByName == nil || len(a.Content) < 100 {
+			t.Errorf("%+v", a)
+		}
+	})
+	t.Run("pre-fill sources per item for Apfel (S48): the HQ's two, the profile's sex, the clinician's opioids", func(t *testing.T) {
+		e := w.fx.Episode(t, w.hq, w.cara)
+		id := addAssessment(t, w, e, "apfel")
+		w.clinician.Do("PUT", asmPath(w.a, e, "/"+id.String()), answers(0, map[string][2]any{
+			"apfel_smoking": {"o_no", "hq"}, "apfel_ponv": {"o_yes", "hq"}, "apfel_opioids": {"o_yes", "clinician"}, "patientSex": {"female", "profile"},
+		})).Want(t, http.StatusOK)
+		a := listAssessments(t, w.clinician, w.a, e).Assessments[0]
+		if a.Assessment != "apfel" || a.Sources["apfel_smoking"] != "hq" || a.Sources["apfel_opioids"] != "clinician" || a.Sources["patientSex"] != "profile" {
 			t.Errorf("%+v", a)
 		}
 	})
@@ -336,6 +434,43 @@ func TestSaveAndConfirmAssessment(t *testing.T) {
 		if a.Data["patientAge"] != float64(62) || a.Sources["patientSex"] != "profile" {
 			t.Errorf("listed: %+v", a)
 		}
+	})
+	t.Run("Confirm DASI, PRISMA-7 and Apfel (S48): every item, the age and sex where each names them", func(t *testing.T) {
+		e := w.fx.Episode(t, w.hq, w.cara)
+		dasi := addAssessment(t, w, e, "dasi")
+		w.clinician.Do("POST", asmPath(w.a, e, "/"+dasi.String()+"/confirm"), dasiAnswers(0, "dasi_selfcare", "dasi_run")).Want(t, http.StatusOK)
+		prisma := addAssessment(t, w, e, "prisma7")
+		five := map[string][2]any{}
+		for _, k := range []string{"prisma7_limit", "prisma7_help", "prisma7_home", "prisma7_count_on", "prisma7_aid"} {
+			five[k] = [2]any{"o_no", "hq"}
+		}
+		r := w.clinician.Do("POST", asmPath(w.a, e, "/"+prisma.String()+"/confirm"), answers(0, five))
+		refused(t, r, http.StatusBadRequest)
+		if r.Message() != "Answer every item before confirming: Age has no answer." {
+			t.Errorf("message %q", r.Message())
+		}
+		five["patientAge"], five["patientSex"] = [2]any{87, "profile"}, [2]any{"female", "profile"}
+		w.clinician.Do("POST", asmPath(w.a, e, "/"+prisma.String()+"/confirm"), answers(0, five)).Want(t, http.StatusOK)
+		apfel := addAssessment(t, w, e, "apfel")
+		three := map[string][2]any{"apfel_smoking": {"o_no", "hq"}, "apfel_ponv": {"o_yes", "hq"}, "patientSex": {"female", "profile"}}
+		r = w.clinician.Do("POST", asmPath(w.a, e, "/"+apfel.String()+"/confirm"), answers(0, three))
+		refused(t, r, http.StatusBadRequest)
+		if r.Message() != "Answer every item before confirming: Opioids after surgery has no answer." {
+			t.Errorf("message %q", r.Message())
+		}
+		three["apfel_opioids"] = [2]any{"o_yes", "clinician"}
+		w.clinician.Do("POST", asmPath(w.a, e, "/"+apfel.String()+"/confirm"), answers(0, three)).Want(t, http.StatusOK)
+		for _, f := range []uuid.UUID{dasi, prisma, apfel} {
+			if row, _ := asmRowOf(t, w, f); row.ValidatedAt == nil {
+				t.Errorf("%s not confirmed", f)
+			}
+		}
+		// Apfel names no age: one sent is refused; an observation fills only a number item.
+		three["patientAge"] = [2]any{40, "profile"}
+		refused(t, w.clinician.Do("PUT", asmPath(w.a, e, "/"+apfel.String()), answers(2, three)), http.StatusBadRequest)
+		delete(three, "patientAge")
+		three["apfel_ponv"] = [2]any{"o_yes", "observation"}
+		refused(t, w.clinician.Do("PUT", asmPath(w.a, e, "/"+apfel.String()), answers(2, three)), http.StatusBadRequest)
 	})
 	t.Run("a stale revision is 409, and nothing changes", func(t *testing.T) {
 		e := w.fx.Episode(t, w.hq, w.cara)

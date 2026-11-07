@@ -97,5 +97,5 @@ SELECT q.id AS questionnaire_id, q.name AS questionnaire_name, v.id AS version_i
 FROM chapters c
 JOIN questionnaire_versions v ON v.id = c.version_id
 JOIN questionnaires q ON q.id = v.questionnaire_id
-WHERE q.org_id = $1::uuid AND v.status IN ('published', 'retired')
+WHERE q.org_id = sqlc.arg(org_id)::uuid AND v.status IN ('published', 'retired')
 ORDER BY q.name, q.id, v.version_no DESC, c.position, c.name;
