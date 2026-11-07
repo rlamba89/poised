@@ -1,13 +1,14 @@
 // Assessments (S47): STOP-Bang on an episode, pre-filled from the HQ, the observations and the
 // profile, each item with its source; the clinician completes and confirms it.
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import goStopBang from "../../../apps/api/internal/assessment/stopbang.json";
 import {
   ASSESSMENTS, assessmentAnswers, assessmentContent, assessmentItems, assessmentResult, countingHqAnswers, filledCount, STOP_BANG_BMI,
   withDraft, type PrefillFrom,
 } from "./assessments";
 import type { ChapterJson } from "./doc";
-import { insertReadyScore, STOP_BANG_KEYS as K, stopBangGroup } from "./ready";
+import { APFEL_KEYS, apfelGroup, DASI_KEYS, dasiGroup, insertReadyScore, PRISMA7_KEYS, prisma7Group, STOP_BANG_KEYS as K, stopBangGroup } from "./ready";
 
 const content = assessmentContent("stopbang")!;
 
@@ -37,7 +38,7 @@ const item = (items: ReturnType<typeof assessmentItems>, key: string) => items.f
 
 describe("the STOP-Bang assessment's definition", () => {
   it("is offered, by its id and name", () => {
-    expect(ASSESSMENTS).toEqual([{ id: "stopbang", name: "STOP-Bang" }]);
+    expect(ASSESSMENTS[0]).toEqual({ id: "stopbang", name: "STOP-Bang" });
     expect(assessmentContent("nope")).toBeUndefined();
   });
   it("is the ready-made score's Group, word for word, with a BMI the clinician can see filled", () => {
@@ -249,5 +250,88 @@ describe("each item's point, and the clinician's changes on screen", () => {
         expect(assessmentResult(content, assessmentAnswers(items).data, { name: "Pat", age, sex }).score).toBe(points);
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------- DASI, PRISMA-7 and Apfel (S48)
+
+/** One HQ Question Set holding these elements; the answers given. */
+const hqWith = (elements: ChapterJson["pages"] extends (infer P)[] | undefined ? P extends { elements?: infer E } ? E : never : never, answers: Record<string, unknown>, patient = { name: "Pat", age: 70, sex: "female" }): PrefillFrom => ({
+  hq: { sets: [{ id: "s1", name: "Set", content: { pages: [{ name: "p_1", title: "Set", elements }] } }], answers: { s1: answers }, patient },
+  patient,
+  obsPrecedence: true,
+});
+const yesTo = (keys: string[], yes: string[]) => Object.fromEntries(keys.map((k) => [k, yes.includes(k) ? "o_yes" : "o_no"]));
+
+describe("the assessments offered (S48)", () => {
+  it("are STOP-Bang, DASI, PRISMA-7 and Apfel PONV, in that order", () => {
+    expect(ASSESSMENTS).toEqual([
+      { id: "stopbang", name: "STOP-Bang" }, { id: "dasi", name: "DASI" }, { id: "prisma7", name: "PRISMA-7" }, { id: "apfel", name: "Apfel PONV" },
+    ]);
+  });
+  it("each is what Go stores, and so is the list (regenerate with `npm run assessments -w packages/clinical`)", () => {
+    const dir = new URL("../../../apps/api/internal/assessment/", import.meta.url);
+    expect(JSON.parse(readFileSync(new URL("list.json", dir), "utf8"))).toEqual(ASSESSMENTS);
+    for (const { id } of ASSESSMENTS) expect(JSON.parse(readFileSync(new URL(`${id}.json`, dir), "utf8"))).toEqual(JSON.parse(JSON.stringify(assessmentContent(id))));
+  });
+  it("each names its items with short labels, for Go's messages", () => {
+    expect(assessmentContent("stopbang")!.labels).toMatchObject({ stopbang_bmi: "BMI", stopbang_neck: "Neck", stopbang_snoring: "Snoring" });
+    expect(assessmentContent("dasi")!.labels).toMatchObject({ dasi_run: "Run a short distance" });
+    expect(assessmentContent("apfel")!.labels).toMatchObject({ apfel_opioids: "Opioids after surgery" });
+  });
+});
+
+describe("DASI on an episode", () => {
+  const dasi = assessmentContent("dasi")!;
+  it("an HQ with the ready-made DASI fills all 12, each from the HQ", () => {
+    const items = assessmentItems(dasi, hqWith([dasiGroup()], yesTo(DASI_KEYS.items, ["dasi_selfcare", "dasi_walk_indoors"])));
+    expect(items.map((i) => i.letter)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]);
+    expect(items.every((i) => i.source === "hq")).toBe(true);
+    expect(filledCount(items)).toBe(12);
+    expect(items.map((i) => i.yes)).toEqual([true, true, false, false, false, false, false, false, false, false, false, false]);
+  });
+  it("gives the score, its band and the METs", () => {
+    const yes = ["dasi_selfcare", "dasi_walk_indoors", "dasi_stairs", "dasi_run", "dasi_moderate_work", "dasi_heavy_work", "dasi_yardwork"];
+    expect(assessmentResult(dasi, yesTo(DASI_KEYS.items, yes), { name: "Pat", age: 70, sex: "female" }))
+      .toEqual({ score: 34, band: "Poor functional capacity", text: "34 (Poor functional capacity), 6.9 METs" });
+    expect(assessmentResult(dasi, yesTo(DASI_KEYS.items, DASI_KEYS.items), { name: "Pat" }).text).toBe("58.2, 9.9 METs");
+  });
+  it("an item the HQ didn't ask is missing", () => {
+    const items = assessmentItems(dasi, hqWith([], {}));
+    expect(filledCount(items)).toBe(0);
+    expect(assessmentResult(dasi, {}, { name: "Pat" }).text).toBe("Incomplete");
+  });
+});
+
+describe("PRISMA-7 on an episode", () => {
+  const prisma = assessmentContent("prisma7")!;
+  it("an HQ with the ready-made PRISMA-7 fills all 7: questions 3–7 from the HQ, the age and sex from the profile", () => {
+    const items = assessmentItems(prisma, hqWith([prisma7Group()], yesTo(PRISMA7_KEYS.items, ["prisma7_help", "prisma7_aid"]), { name: "Pat", age: 87, sex: "female" }));
+    expect(items.map((i) => [i.letter, i.source])).toEqual([["1", "profile"], ["2", "profile"], ["3", "hq"], ["4", "hq"], ["5", "hq"], ["6", "hq"], ["7", "hq"]]);
+    expect(items.map((i) => i.yes)).toEqual([true, false, false, true, false, false, true]);
+    expect(assessmentResult(prisma, assessmentAnswers(items).data, { name: "Pat", age: 87, sex: "female" }).text).toBe("3 (Increased risk of frailty)");
+  });
+  it("85 isn't older than 85; a sex of Other leaves question 2 missing", () => {
+    const items = assessmentItems(prisma, hqWith([prisma7Group()], {}, { name: "Pat", age: 85, sex: "other" }));
+    expect(items[0]).toMatchObject({ value: 85, source: "profile", yes: false });
+    expect(items[1].source).toBeUndefined();
+  });
+});
+
+describe("Apfel PONV on an episode", () => {
+  const apfel = assessmentContent("apfel")!;
+  const from = hqWith([apfelGroup()], { [APFEL_KEYS.smoking]: "o_no", [APFEL_KEYS.ponv]: "o_yes" }, { name: "Pat", age: 40, sex: "female" });
+  it("an HQ with Apfel's questions fills 3 of 4: only the post-op opioids is left, for the clinician", () => {
+    const items = assessmentItems(apfel, from);
+    expect(items.map((i) => [i.letter, i.label, i.source ?? null])).toEqual([
+      ["1", "Female", "profile"], ["2", "Smoking", "hq"], ["3", "PONV or travel sickness before", "hq"], ["4", "Opioids after surgery", null],
+    ]);
+    expect(items.map((i) => i.yes)).toEqual([true, true, true, undefined]); // a No to smoking is a non-smoker's point
+    expect(assessmentResult(apfel, assessmentAnswers(items).data, from.patient).text).toBe("Incomplete");
+  });
+  it("with the clinician's answer, gives the score and the published risk", () => {
+    const items = withDraft(apfel, assessmentItems(apfel, from), { [APFEL_KEYS.opioids]: "o_yes" });
+    expect(items[3]).toMatchObject({ source: "clinician", yes: true });
+    expect(assessmentResult(apfel, assessmentAnswers(items).data, from.patient).text).toBe("4 (PONV risk about 79%)");
   });
 });

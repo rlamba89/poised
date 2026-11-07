@@ -16,7 +16,9 @@ import type { Question } from "survey-core";
 import { allElements, textOf, type ChapterJson, type ElementJson } from "./doc";
 import { registerClinicalProperties } from "./properties";
 import { reportedBmi } from "./poa";
-import { STOP_BANG, STOP_BANG_KEYS as K, stopBangGroup } from "./ready";
+import {
+  APFEL, APFEL_KEYS, apfelClinicianPart, apfelGroup, DASI, DASI_KEYS, dasiGroup, PRISMA_7, PRISMA7_KEYS, prisma7Group, STOP_BANG, STOP_BANG_KEYS as K, stopBangGroup,
+} from "./ready";
 import { hqSets, type Answers } from "./respondent";
 import { modelFor, type SamplePatient } from "./testcases";
 import { bandIn, isGuardedScore } from "./scores";
@@ -24,28 +26,10 @@ import { showBands, INCOMPLETE } from "./questionTypes";
 
 export type ItemSource = "hq" | "observation" | "profile" | "clinician";
 
-/** The assessments a clinician can add to an episode. */
-export const ASSESSMENTS: { id: string; name: string }[] = [{ id: STOP_BANG.id, name: STOP_BANG.name }];
-
 /** The BMI the assessment's STOP-Bang uses: a number the pre-fill (or the clinician) gives. */
 export const STOP_BANG_BMI = "stopbang_bmi";
 
-/** An assessment's locked SurveyJS JSON, or undefined for one Preopsis hasn't. */
-export function assessmentContent(id: string): ChapterJson | undefined {
-  if (id !== STOP_BANG.id) return undefined;
-  return {
-    pages: [{
-      name: "p_stopbang",
-      title: STOP_BANG.name,
-      elements: [
-        { type: "text", name: STOP_BANG_BMI, title: "BMI (kg/m²)", inputType: "number", min: 5, max: 150, isRequired: true },
-        stopBangGroup(STOP_BANG_BMI),
-      ],
-    }],
-  };
-}
-
-/** One item as the clinician sees it: the acronym's letter, what it asks, its value and source. */
+/** One item as the clinician sees it: its number or letter, what it asks, its value and source. */
 export type AssessmentItem = {
   key: string;
   letter: string;
@@ -64,20 +48,99 @@ export type AssessmentItem = {
   yes?: boolean;
 };
 
-type ItemDef = { key: string; letter: string; label: string; kind: AssessmentItem["kind"]; scores: (v: unknown) => boolean };
-const isYes = (v: unknown) => v === "o_yes";
-/** STOP-Bang's eight items, in the acronym's order. */
-const STOP_BANG_ITEMS: ItemDef[] = [
-  { key: K.snoring, letter: "S", label: "Snoring", kind: "yesNo", scores: isYes },
-  { key: K.tired, letter: "T", label: "Tired", kind: "yesNo", scores: isYes },
-  { key: K.observed, letter: "O", label: "Observed stopping breathing", kind: "yesNo", scores: isYes },
-  { key: K.pressure, letter: "P", label: "High blood pressure", kind: "yesNo", scores: isYes },
-  // The same limits as the ready-made score's lines (ready.ts); assessments.test.ts checks they agree.
-  { key: STOP_BANG_BMI, letter: "B", label: "BMI over 35", kind: "number", scores: (v) => Number(v) > 35 },
-  { key: "patientAge", letter: "A", label: "Age over 50", kind: "profile", scores: (v) => Number(v) > 50 },
-  { key: K.neck, letter: "N", label: "Neck large", kind: "yesNo", scores: isYes },
-  { key: "patientSex", letter: "G", label: "Gender male", kind: "profile", scores: (v) => v === "male" },
+type ItemDef = {
+  key: string; letter: string; label: string; kind: AssessmentItem["kind"]; scores: (v: unknown) => boolean;
+  /** What Go's messages call it, if not its label ("BMI: a number from 5 to 150."). */
+  short?: string;
+};
+const isYes = (v: unknown): boolean => v === "o_yes";
+const yesNo = (key: string, letter: string, label: string, scores: (v: unknown) => boolean = isYes): ItemDef => ({ key, letter, label, kind: "yesNo", scores });
+const profile = (key: "patientAge" | "patientSex", letter: string, label: string, scores: (v: unknown) => boolean): ItemDef =>
+  ({ key, letter, label, kind: "profile", scores, short: key === "patientAge" ? "Age" : "Sex" });
+
+/**
+ * An assessment: its id and name, its locked content (built from the ready-made score in ready.ts,
+ * so the HQ and the assessment share wording, points and keys), and its items in the published order.
+ */
+type AssessmentDef = { id: string; name: string; elements: () => ElementJson[]; items: ItemDef[] };
+
+const DASI_LABELS = [
+  "Self-care", "Walk indoors", "Walk a block or two", "Stairs or a hill", "Run a short distance", "Light housework", "Moderate housework",
+  "Heavy housework", "Yardwork", "Sexual relations", "Moderate recreation", "Strenuous sports",
 ];
+const PRISMA7_LABELS = ["Health limits activities", "Needs regular help", "Health keeps them at home", "Someone close to count on", "Stick, walker or wheelchair"];
+
+const DEFS: AssessmentDef[] = [
+  {
+    id: STOP_BANG.id,
+    name: STOP_BANG.name,
+    elements: () => [
+      { type: "text", name: STOP_BANG_BMI, title: "BMI (kg/m²)", inputType: "number", min: 5, max: 150, isRequired: true },
+      stopBangGroup(STOP_BANG_BMI),
+    ],
+    // In the acronym's order. The same limits as the ready-made score's lines (ready.ts); assessments.test.ts checks they agree.
+    items: [
+      yesNo(K.snoring, "S", "Snoring"),
+      yesNo(K.tired, "T", "Tired"),
+      yesNo(K.observed, "O", "Observed stopping breathing"),
+      yesNo(K.pressure, "P", "High blood pressure"),
+      { key: STOP_BANG_BMI, letter: "B", label: "BMI over 35", short: "BMI", kind: "number", scores: (v) => Number(v) > 35 },
+      profile("patientAge", "A", "Age over 50", (v) => Number(v) > 50),
+      { ...yesNo(K.neck, "N", "Neck large"), short: "Neck" },
+      profile("patientSex", "G", "Gender male", (v) => v === "male"),
+    ],
+  },
+  {
+    id: DASI.id,
+    name: DASI.name,
+    elements: () => [dasiGroup()],
+    items: DASI_KEYS.items.map((k, n) => yesNo(k, String(n + 1), DASI_LABELS[n])),
+  },
+  {
+    id: PRISMA_7.id,
+    name: PRISMA_7.name,
+    elements: () => [prisma7Group()],
+    items: [
+      profile("patientAge", "1", "Older than 85", (v) => Number(v) > 85),
+      profile("patientSex", "2", "Male", (v) => v === "male"),
+      ...PRISMA7_KEYS.items.map((k, n) => yesNo(k, String(n + 3), PRISMA7_LABELS[n])),
+    ],
+  },
+  {
+    id: APFEL.id,
+    name: APFEL.name,
+    // S48 answers 4: the HQ's two questions, then the clinician's opioids item and the score.
+    elements: () => [apfelGroup(), ...apfelClinicianPart()],
+    items: [
+      profile("patientSex", "1", "Female", (v) => v === "female"),
+      yesNo(APFEL_KEYS.smoking, "2", "Smoking", (v) => v === "o_no"), // a non-smoker's point
+      yesNo(APFEL_KEYS.ponv, "3", "PONV or travel sickness before"),
+      yesNo(APFEL_KEYS.opioids, "4", "Opioids after surgery"),
+    ],
+  },
+];
+
+/** The assessments a clinician can add to an episode, in the order they're offered. */
+export const ASSESSMENTS: { id: string; name: string }[] = DEFS.map(({ id, name }) => ({ id, name }));
+
+/**
+ * An assessment's locked SurveyJS JSON, or undefined for one Preopsis hasn't. `labels` gives what
+ * Go's messages call each item, by key ("Answer every item before confirming: Neck has no answer.").
+ */
+export function assessmentContent(id: string): (ChapterJson & { labels: Record<string, string> }) | undefined {
+  const def = DEFS.find((d) => d.id === id);
+  if (!def) return undefined;
+  return {
+    pages: [{ name: `p_${def.id}`, title: def.name, elements: def.elements() }],
+    labels: Object.fromEntries(def.items.map((i) => [i.key, i.short ?? i.label])),
+  };
+}
+
+/** The items of the assessment a content is: the definition whose questions it has. */
+function itemsOf(content: ChapterJson): ItemDef[] {
+  const names = new Set(allElements(content).map(({ el }) => el.name));
+  return DEFS.find((d) => d.items.every((i) => i.kind === "profile" || names.has(i.key)))?.items ?? [];
+}
 
 /** The answers a confirmed or saved assessment holds, with each one's source. */
 export type SavedAssessment = { data: Answers; sources: Record<string, ItemSource>; confirmed: boolean };
@@ -124,6 +187,24 @@ function hqValues(from: PrefillFrom["hq"], keys: string[]): Answers {
   return out;
 }
 
+/**
+ * What the pre-fill reads from the HQ, worked out once per HQ (`from.hq`, the same object while the
+ * HQ, its answers and the patient are unchanged) and set of keys: every survey it takes is built
+ * once, not again on each keystroke or for each card (S47 verifications 2–4).
+ */
+const hqParts = new WeakMap<PrefillFrom["hq"], Map<string, { asked: Answers; reported?: number }>>();
+function hqPart(hq: PrefillFrom["hq"], keys: string[]): { asked: Answers; reported?: number } {
+  let byKeys = hqParts.get(hq);
+  if (!byKeys) hqParts.set(hq, (byKeys = new Map()));
+  const k = keys.join(",");
+  let part = byKeys.get(k);
+  if (!part) {
+    part = { asked: hqValues(hq, keys), reported: reportedBmi(hq.sets, (id) => hq.answers[id], hq.patient) };
+    byKeys.set(k, part);
+  }
+  return part;
+}
+
 const optionsOf = (el: ElementJson | undefined) =>
   Array.isArray(el?.choices) ? (el.choices as { value: string; text: unknown }[]).map((c) => ({ value: String(c.value), text: textOf(c.text) })) : [];
 
@@ -135,13 +216,13 @@ const optionsOf = (el: ElementJson | undefined) =>
  */
 export function assessmentItems(content: ChapterJson, from: PrefillFrom, saved?: SavedAssessment): AssessmentItem[] {
   const els = new Map(allElements(content).map(({ el }) => [el.name, el]));
-  const defs = els.has(K.group) ? STOP_BANG_ITEMS : [];
-  const asked = hqValues(from.hq, defs.filter((d) => d.kind === "yesNo").map((d) => d.key));
+  const defs = itemsOf(content);
+  const { asked, reported } = hqPart(from.hq, defs.filter((d) => d.kind === "yesNo").map((d) => d.key));
   // A BMI outside the question's limits isn't used (Go would refuse it): the other one, else missing.
   const bmiEl = els.get(STOP_BANG_BMI);
   const fits = (v: number | undefined) =>
     v !== undefined && (typeof bmiEl?.min !== "number" || v >= bmiEl.min) && (typeof bmiEl?.max !== "number" || v <= bmiEl.max) ? v : undefined;
-  const own = fits(reportedBmi(from.hq.sets, (id) => from.hq.answers[id], from.hq.patient));
+  const own = fits(reported);
   const hospital = fits(from.hospitalBmi);
   const bmi: Pick<AssessmentItem, "value" | "source"> =
     hospital !== undefined && (from.obsPrecedence || own === undefined) ? { value: hospital, source: "observation" }
@@ -175,7 +256,7 @@ export function assessmentItems(content: ChapterJson, from: PrefillFrom, saved?:
  * item can't be changed.
  */
 export function withDraft(content: ChapterJson, items: AssessmentItem[], draft: Answers): AssessmentItem[] {
-  const defs = allElements(content).some(({ el }) => el.name === K.group) ? STOP_BANG_ITEMS : [];
+  const defs = itemsOf(content);
   return items.map((i) => {
     const d = defs.find((x) => x.key === i.key);
     if (!d || i.kind === "profile" || !(i.key in draft) || empty(draft[i.key]) || draft[i.key] === i.value) return i;
@@ -203,7 +284,8 @@ export function assessmentAnswers(items: AssessmentItem[]): { data: Answers; sou
 
 /**
  * The assessment's score and band for these answers and this patient, e.g. "5 (High risk)", worked
- * out by its own score expression, as in the HQ; "Incomplete" while an item is missing. An age and
+ * out by its own score expression, as in the HQ, then its other Calculations as they show (DASI's
+ * "34 (Poor functional capacity), 6.9 METs"); "Incomplete" while an item is missing. An age and
  * sex stored with the answers (at Confirm) win over the patient's.
  */
 export function assessmentResult(content: ChapterJson, data: Answers, patient: SamplePatient): { score?: number; band?: string; text: string } {
@@ -222,8 +304,15 @@ export function assessmentResult(content: ChapterJson, data: Answers, patient: S
   const q = m.getQuestionByName(calc.name) as unknown as { value: unknown };
   const value = q.value;
   const band = bandIn(m, calc.bands, value);
+  // Its other Calculations, as they show (DASI's "6.9 METs"), after the score.
+  const extras = allElements(content)
+    .filter(({ el }) => el.type === "expression" && el.name !== calc.name)
+    .map(({ el }) => m.getQuestionByName(el.name) as unknown as { value: unknown; formatedValue: string })
+    .filter((x) => x && !empty(x.value))
+    .map((x) => x.formatedValue);
   m.dispose();
   if (empty(value)) return { text: INCOMPLETE };
   const score = Number(value);
-  return band ? { score, band: band.label, text: `${score} (${band.label})` } : { score, text: String(score) };
+  const text = [band ? `${score} (${band.label})` : String(score), ...extras].join(", ");
+  return band ? { score, band: band.label, text } : { score, text };
 }

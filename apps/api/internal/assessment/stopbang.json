@@ -150,5 +150,15 @@
         }
       ]
     }
-  ]
+  ],
+  "labels": {
+    "stopbang_snoring": "Snoring",
+    "stopbang_tired": "Tired",
+    "stopbang_observed": "Observed stopping breathing",
+    "stopbang_pressure": "High blood pressure",
+    "stopbang_bmi": "BMI",
+    "patientAge": "Age",
+    "stopbang_neck": "Neck",
+    "patientSex": "Sex"
+  }
 }

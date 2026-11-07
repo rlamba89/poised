@@ -45,6 +45,11 @@ export default function PoaSummary({ base, episodeId }: { base: string; episodeI
   const obs = useObservations(path, data?.observationsOn);
   // Each assessment's score and band as confirmed (S47), beside the hospital BMI; read once here too.
   const assessments = useAssessments(path, data?.assessmentsOn);
+  // Worked out once per load, not on every render: one survey per confirmed assessment (S47 verification 2).
+  const assessmentLines = useMemo(
+    () => (data ? poaLines(assessments.view, data.episode, assessments.error) : []),
+    [assessments.view, assessments.error, data],
+  );
   // The tab is in the address (?tab=patient), so Back from Validate and a reload keep it (S27).
   const [params, setParams] = useSearchParams();
   const tab: Tab = params.get("tab") === "patient" ? "patient" : "validated";
@@ -92,7 +97,7 @@ export default function PoaSummary({ base, episodeId }: { base: string; episodeI
             </Tabs.List>
           </Tabs>
           <Summary key={tab} tab={tab} episode={e} events={data.events} grades={data.anaesthetistAsaGrades} hq={hq} path={path} onChanged={reload}
-            episodeId={episodeId} hospitalBmi={hospitalBmiRow(obs.view, obs.error)} assessments={poaLines(assessments.view, e, assessments.error)} />
+            episodeId={episodeId} hospitalBmi={hospitalBmiRow(obs.view, obs.error)} assessments={assessmentLines} />
         </Stack>
       </Card>
     </Stack>

@@ -1,6 +1,6 @@
 // The episode's Question Sets with both actors' answers (GET …/episodes/{eid}/hq).
 import { useCallback, useEffect, useState } from "react";
-import { patientVariables, type Answers, type ChapterJson, type PrefillChoice, type PrefillEntry, type SamplePatient, type SetPrefill } from "@poised/clinical";
+import { countingHqAnswers, patientVariables, type Answers, type ChapterJson, type PrefillChoice, type PrefillEntry, type SamplePatient, type SetPrefill } from "@poised/clinical";
 import type { Audience } from "@/features/chapters/types";
 import { api } from "@/lib/api";
 import { deploymentTimeZone } from "@/lib/config";
@@ -33,8 +33,11 @@ export type EpisodeHQ = {
   prefill: Record<string, SetPrefill>;
 };
 
-/** The answers that count for a Question Set: the clinician's if they've started, else the patient's. */
-export const currentAnswers = (hq: EpisodeHQ, id: string): Answers => hq.clinician[id]?.data ?? hq.patient[id] ?? {};
+/**
+ * The answers that count for a Question Set: the clinician's if they've started, else the patient's.
+ * One rule with the assessments' pre-fill (@poised/clinical countingHqAnswers), so they can't drift.
+ */
+export const currentAnswers = (hq: EpisodeHQ, id: string): Answers => countingHqAnswers([{ id }], hq.patient, hq.clinician)[id] ?? {};
 
 /** Every Question Set's answers that count, by set. */
 export const allCurrentAnswers = (hq: EpisodeHQ): Record<string, Answers> => Object.fromEntries(hq.chapters.map((c) => [c.id, currentAnswers(hq, c.id)]));

@@ -1,0 +1,117 @@
+{
+  "pages": [
+    {
+      "name": "p_apfel",
+      "title": "Apfel PONV",
+      "elements": [
+        {
+          "type": "panel",
+          "name": "apfel",
+          "title": "Sickness after an anaesthetic",
+          "readyScore": "apfel",
+          "elements": [
+            {
+              "type": "radiogroup",
+              "name": "apfel_smoking",
+              "title": "Do you smoke?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 0
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 1
+                }
+              ]
+            },
+            {
+              "type": "radiogroup",
+              "name": "apfel_ponv",
+              "title": "Have you ever felt or been sick after an anaesthetic, or do you get travel sickness (motion sickness)?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "apfel_opioids",
+          "title": "Will the patient be given opioids after surgery?",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "expression",
+          "name": "apfel_score",
+          "title": "Apfel score",
+          "calcKind": "score",
+          "expression": "iif(allAnswered('apfel_smoking', 'apfel_ponv', 'apfel_opioids', 'patientSex'), score('apfel_smoking', 'apfel_ponv', 'apfel_opioids') + iif({patientSex} = 'female', 1, 0), '')",
+          "bands": [
+            {
+              "id": "b_10",
+              "label": "PONV risk about 10%",
+              "max": 0
+            },
+            {
+              "id": "b_21",
+              "label": "PONV risk about 21%",
+              "max": 1
+            },
+            {
+              "id": "b_39",
+              "label": "PONV risk about 39%",
+              "max": 2
+            },
+            {
+              "id": "b_61",
+              "label": "PONV risk about 61%",
+              "max": 3
+            },
+            {
+              "id": "b_79",
+              "label": "PONV risk about 79%"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "labels": {
+    "patientSex": "Sex",
+    "apfel_smoking": "Smoking",
+    "apfel_ponv": "PONV or travel sickness before",
+    "apfel_opioids": "Opioids after surgery"
+  }
+}

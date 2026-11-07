@@ -77,15 +77,49 @@ export const patientOn = (e: Episode, at?: string) =>
  */
 export function prefillFrom(hq: EpisodeHQ | null, e: Episode, readings: Reading[] | undefined, obsPrecedence: boolean, at?: string): PrefillFrom {
   return {
-    hq: {
-      sets: hq?.chapters ?? [],
-      answers: hq && e.patientSubmittedAt ? countingHqAnswers(hq.chapters, hq.patient, hq.clinician) : {},
-      patient: hqPatient(e),
-    },
+    hq: hqPart(hq, e),
     patient: patientOn(e, at),
     hospitalBmi: readings ? hospitalBmi(readings)?.bmi : undefined,
     obsPrecedence,
   };
+}
+
+/**
+ * The pre-fill's HQ part, one object per loaded HQ and patient: @poised/clinical works out what it
+ * reads from the HQ once per object, so the cards, a re-confirm's other day and each keystroke share
+ * one walk of the HQ's surveys (S47 verifications 2–4). A reloaded HQ, a send or a corrected record
+ * gives a new one.
+ */
+const hqParts = new WeakMap<EpisodeHQ, Map<string, PrefillFrom["hq"]>>();
+function hqPart(hq: EpisodeHQ | null, e: Episode): PrefillFrom["hq"] {
+  const patient = hqPatient(e);
+  const make = (): PrefillFrom["hq"] => ({
+    sets: hq?.chapters ?? [],
+    answers: hq && e.patientSubmittedAt ? countingHqAnswers(hq.chapters, hq.patient, hq.clinician) : {},
+    patient,
+  });
+  if (!hq) return make();
+  let byPatient = hqParts.get(hq);
+  if (!byPatient) hqParts.set(hq, (byPatient = new Map()));
+  const key = JSON.stringify([e.patientSubmittedAt, patient]);
+  let part = byPatient.get(key);
+  if (!part) byPatient.set(key, (part = make()));
+  return part;
+}
+
+/**
+ * The card's notes on the age and sex, for an assessment that uses them: which day's age it is
+ * (`day`: the day it was confirmed, while shown as confirmed and unchanged; else today), and why the
+ * score stays Incomplete when the record doesn't say male or female.
+ */
+export function cardNotes(items: AssessmentItem[], day: string | undefined): string[] {
+  const out: string[] = [];
+  const age = items.find((i) => i.key === "patientAge");
+  if (age) out.push(`The age is the patient's ${day ? `on the day it was confirmed (${age.source ? String(age.value) : "not known"})` : "today"}.`);
+  if (items.some((i) => i.key === "patientSex" && !i.source)) {
+    out.push("The patient's record doesn't say male or female, so the score stays Incomplete, as in the HQ.");
+  }
+  return out;
 }
 
 /**

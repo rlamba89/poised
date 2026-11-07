@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { assessmentAnswers, assessmentContent, assessmentResult, STOP_BANG_BMI, STOP_BANG_KEYS as K, type Reading } from "@poised/clinical";
+import { assessmentAnswers, assessmentContent, assessmentResult, DASI_KEYS, STOP_BANG_BMI, STOP_BANG_KEYS as K, type Reading } from "@poised/clinical";
 import { formatDateTime } from "@/lib/format";
-import { bmiInput, changedItems, confirmText, sinceConfirmed, filledText, inputsState, patientOn, scoreDay, withoutInvalid, poaLines, prefillFrom, saveRequest, shownItems, sourceText, valueText, type AssessmentRow, type AssessmentsView } from "./assessments";
+import { bmiInput, cardNotes, changedItems, confirmText, sinceConfirmed, filledText, inputsState, patientOn, scoreDay, withoutInvalid, poaLines, prefillFrom, saveRequest, shownItems, sourceText, valueText, type AssessmentRow, type AssessmentsView } from "./assessments";
 import type { EpisodeHQ } from "./hq";
 import type { Episode } from "./types";
 
@@ -251,5 +251,38 @@ describe("a confirmed assessment beside newer values (S47 answers 6)", () => {
     const before = row({ data: { ...data, patientAge: 65 }, sources, revision: 2, confirmedAt: "2026-02-15T10:00:00Z" }); // 66 on 1 March
     const f = prefillFrom(hq, episode, readings, true, before.confirmedAt!);
     expect(sinceConfirmed(shownItems(before, f, {}), shownItems(row(), f, {}))).toEqual([]);
+  });
+});
+
+describe("DASI, PRISMA-7 and Apfel on the card and the POA Summary (S48)", () => {
+  const dasi = assessmentContent("dasi")!;
+  const yes = ["dasi_selfcare", "dasi_walk_indoors", "dasi_stairs", "dasi_run", "dasi_moderate_work", "dasi_heavy_work", "dasi_yardwork"];
+  const dasiData = Object.fromEntries(DASI_KEYS.items.map((k) => [k, yes.includes(k) ? "o_yes" : "o_no"]));
+  it("the POA Summary gives DASI's score, band and METs", () => {
+    const r = row({ assessment: "dasi", name: "DASI", content: dasi, data: dasiData, sources: {}, revision: 1, confirmedAt: "2026-11-05T10:00:00Z" });
+    expect(poaLines({ assessments: [r], available: [], obsPrecedence: true }, episode, "")).toEqual([{ name: "DASI", text: "34 (Poor functional capacity), 6.9 METs" }]);
+  });
+  it("the card's notes name only the age and sex an assessment uses", () => {
+    const dasiItems = shownItems(row({ assessment: "dasi", content: dasi }), prefillFrom(hq, episode, readings, true), {});
+    expect(cardNotes(dasiItems, undefined)).toEqual([]);
+    const unknownSex = { ...episode, sex: "unknown" } as Episode;
+    const apfel = shownItems(row({ assessment: "apfel", content: assessmentContent("apfel")! }), prefillFrom(hq, unknownSex, readings, true), {});
+    expect(cardNotes(apfel, undefined)).toEqual(["The patient's record doesn't say male or female, so the score stays Incomplete, as in the HQ."]);
+    const stopBang = shownItems(row(), prefillFrom(hq, episode, readings, true), {});
+    expect(cardNotes(stopBang, undefined)).toEqual(["The age is the patient's today."]);
+    expect(cardNotes(stopBang, "2026-11-05T10:00:00Z")).toEqual(["The age is the patient's on the day it was confirmed (66)."]);
+  });
+});
+
+describe("the pre-fill's HQ part is worked out once (S47 verification 4)", () => {
+  it("is the same for any day, BMI and setting while the HQ and the patient are unchanged", () => {
+    const a = prefillFrom(hq, episode, readings, true).hq;
+    expect(prefillFrom(hq, { ...episode }, undefined, false, "2026-11-05T10:00:00Z").hq).toBe(a);
+  });
+  it("is worked out afresh for a reloaded HQ, a send, or a corrected record", () => {
+    const a = prefillFrom(hq, episode, readings, true).hq;
+    expect(prefillFrom({ ...hq }, episode, readings, true).hq).not.toBe(a);
+    expect(prefillFrom(hq, { ...episode, patientSubmittedAt: null }, readings, true).hq).not.toBe(a);
+    expect(prefillFrom(hq, { ...episode, dateOfBirth: "1970-03-01" }, readings, true).hq).not.toBe(a);
   });
 });

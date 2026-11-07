@@ -10,7 +10,7 @@ import { assessmentAnswers, assessmentItems, assessmentResult, withDraft, type A
 import { api } from "@/lib/api";
 import { isStale, SaveError } from "./StatusControl";
 import {
-  bmiInput, changedItems, confirmText, filledText, withoutInvalid, scoreDay, prefillFrom, saveRequest, shownItems, sourceText, valueText, type AssessmentRow, type AssessmentsView, sinceConfirmed,
+  bmiInput, cardNotes, changedItems, confirmText, filledText, withoutInvalid, scoreDay, prefillFrom, saveRequest, shownItems, sourceText, valueText, type AssessmentRow, type AssessmentsView, sinceConfirmed,
 } from "./assessments";
 import type { EpisodeHQ } from "./hq";
 import type { Episode } from "./types";
@@ -120,8 +120,6 @@ function Assessment({ path, episode, row, view, hq, readings, readOnly, inputs, 
     () => (row.confirmedAt && !changed ? sinceConfirmed(base, assessmentItems(row.content, shownFrom)) : []),
     [row.confirmedAt, row.content, changed, base, shownFrom],
   );
-  const age = items.find((i) => i.key === "patientAge");
-  const sexKnown = !!items.find((i) => i.key === "patientSex")?.source;
   const undo = () => { setDraft({}); setInvalid({}); setResets((n) => n + 1); };
 
   const send = async (confirm: boolean) => {
@@ -188,9 +186,7 @@ function Assessment({ path, episode, row, view, hq, readings, readOnly, inputs, 
           </Text>
         </Alert>
       )}
-      {!sexKnown && (
-        <Text size="xs" c="dimmed" mt={4}>The patient&apos;s record doesn&apos;t say male or female, so the score stays Incomplete, as in the HQ.</Text>
-      )}
+
       {!readOnly && (
         <Stack gap="xs" mt="xs">
           <SaveError error={error} stale={stale} onReload={() => { setError(""); setStale(false); onSaved(); }} />
@@ -204,7 +200,7 @@ function Assessment({ path, episode, row, view, hq, readings, readOnly, inputs, 
           {!complete && <Text size="xs" c="dimmed">Confirm once every item has an answer.</Text>}
         </Stack>
       )}
-      <Text size="xs" c="dimmed" mt={4}>The age is the patient&apos;s {day ? `on the day it was confirmed (${age?.source ? String(age.value) : "not known"})` : "today"}.</Text>
+      {cardNotes(items, day).map((n) => <Text key={n} size="xs" c="dimmed" mt={4} data-testid="assessment-note">{n}</Text>)}
     </Card>
   );
 }

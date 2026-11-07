@@ -1,0 +1,146 @@
+{
+  "pages": [
+    {
+      "name": "p_prisma7",
+      "title": "PRISMA-7",
+      "elements": [
+        {
+          "type": "panel",
+          "name": "prisma7",
+          "title": "PRISMA-7",
+          "readyScore": "prisma7",
+          "elements": [
+            {
+              "type": "radiogroup",
+              "name": "prisma7_limit",
+              "title": "In general, do you have any health problems that require you to limit your activities?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "type": "radiogroup",
+              "name": "prisma7_help",
+              "title": "Do you need someone to help you on a regular basis?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "type": "radiogroup",
+              "name": "prisma7_home",
+              "title": "In general, do you have any health problems that require you to stay at home?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "type": "radiogroup",
+              "name": "prisma7_count_on",
+              "title": "If you need help, can you count on someone close to you?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "type": "radiogroup",
+              "name": "prisma7_aid",
+              "title": "Do you regularly use a stick, walker or wheelchair to move about?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "type": "expression",
+              "name": "prisma7_score",
+              "title": "PRISMA-7 score",
+              "clinicianOnly": true,
+              "calcKind": "score",
+              "expression": "iif(allAnswered('prisma7_limit', 'prisma7_help', 'prisma7_home', 'prisma7_count_on', 'prisma7_aid', 'patientAge', 'patientSex'), score('prisma7_limit', 'prisma7_help', 'prisma7_home', 'prisma7_count_on', 'prisma7_aid') + iif({patientAge} > 85, 1, 0) + iif({patientSex} = 'male', 1, 0), '')",
+              "bands": [
+                {
+                  "id": "b_not_increased",
+                  "label": "Not at increased risk",
+                  "max": 2
+                },
+                {
+                  "id": "b_increased",
+                  "label": "Increased risk of frailty"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "labels": {
+    "patientAge": "Age",
+    "patientSex": "Sex",
+    "prisma7_limit": "Health limits activities",
+    "prisma7_help": "Needs regular help",
+    "prisma7_home": "Health keeps them at home",
+    "prisma7_count_on": "Someone close to count on",
+    "prisma7_aid": "Stick, walker or wheelchair"
+  }
+}
