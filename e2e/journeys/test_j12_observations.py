@@ -13,11 +13,15 @@
   - S47 answers 5 and 6: the pre-fill uses the clinician's copy of a set once they've started it,
     and a confirmed STOP-Bang says when a value it used has changed since (a corrected weight),
     while its score stays as confirmed.
+  - S48: a patient sends, on their phone, an HQ holding the ready-made DASI, PRISMA-7 and Apfel's
+    questions. DASI opens complete (12 of 12) with its score, band and METs; Cara confirms it, and
+    its METs show on the POA Summary. PRISMA-7 opens 7 of 7; Apfel 3 of 4, waiting only for the
+    post-op opioids.
 """
 
-from playwright.sync_api import Page, expect
+from playwright.sync_api import BrowserContext, Page, expect
 
-from support import pick, sign_in, unique
+from support import choose, invite_path, pick, sign_in, unique
 
 
 def add(page: Page, kind: str, values: dict[str, str]) -> None:
@@ -364,7 +368,11 @@ def test_stop_bang_opens_7_of_8_filled_and_is_confirmed(page: Page, as_user, pat
     expect(sb.get_by_test_id("assessment-confirmed")).to_contain_text("Confirmed by Cara Clinician")
     expect(item(page, "N").get_by_test_id("item-source")).to_have_text("Clinician")
     expect(sb.get_by_role("button", name="Confirm")).to_be_disabled()  # nothing changed since
-    expect(page.get_by_role("combobox", name="Add assessment")).to_have_count(0)  # one STOP-Bang per episode
+    # One STOP-Bang per episode: the menu offers only the others (S48).
+    page.get_by_role("combobox", name="Add assessment").click()
+    expect(page.get_by_role("option", name="DASI", exact=True)).to_be_visible()
+    expect(page.get_by_role("option", name="STOP-Bang", exact=True)).to_have_count(0)
+    page.keyboard.press("Escape")
 
     # The POA Summary: the score and band beside the hospital BMI.
     page.goto(f"{base}/episodes/{episode['id']}/poa")
@@ -560,3 +568,100 @@ def test_a_confirmed_stop_bang_says_what_has_changed_since(page: Page, as_user, 
     expect(sb.get_by_test_id("assessment-confirmed")).to_contain_text("Confirmed by Cara Clinician")
     page.goto(f"{base}/episodes/{episode['id']}/poa")
     expect(page.get_by_test_id("poa-detail-STOP-Bang")).to_contain_text("5 (High risk)")
+
+
+DASI = [
+    ("Can you take care of yourself, that is, eating, dressing, bathing or using the toilet?", "Yes"),
+    ("Can you walk indoors, such as around your house?", "Yes"),
+    ("Can you walk a block or two on level ground?", "No"),
+    ("Can you climb a flight of stairs or walk up a hill?", "Yes"),
+    ("Can you run a short distance?", "Yes"),
+    ("Can you do light work around the house like dusting or washing dishes?", "No"),
+    ("Can you do moderate work around the house like vacuuming, sweeping floors, or carrying in groceries?", "Yes"),
+    ("Can you do heavy work around the house like scrubbing floors, or lifting or moving heavy furniture?", "Yes"),
+    ("Can you do yardwork like raking leaves, weeding or pushing a power mower?", "Yes"),
+    ("Can you have sexual relations?", "No"),
+    ("Can you participate in moderate recreational activities like golf, bowling, dancing, doubles tennis, or throwing a baseball or football?", "No"),
+    ("Can you participate in strenuous sports like swimming, singles tennis, football, basketball or skiing?", "No"),
+]  # 2.75 + 1.75 + 5.5 + 8 + 3.5 + 8 + 4.5 = 34: Poor functional capacity, the cut-off itself
+
+
+def add_assessment(page: Page, name: str, test_id: str):
+    """Add assessment → <name> on the episode page; its card."""
+    page.get_by_role("combobox", name="Add assessment").click()
+    page.get_by_role("option", name=name, exact=True).click()
+    card = page.get_by_test_id(f"assessment-{test_id}")
+    expect(card).to_be_visible()
+    return card
+
+
+def test_an_hq_with_dasi_sent_on_a_phone_opens_dasi_complete(page: Page, phone: BrowserContext, as_user):
+    hq = as_user("Alex Author").published_hq("fitness-hq.json", f"E2E J12 fitness HQ {unique()}")
+    episode = as_user("Cara Clinician").episode(hq, f"J12 DASI {unique()}")  # a woman of 46
+
+    # The patient, on their phone: DASI, PRISMA-7 and Apfel's questions, one page each.
+    patient = phone.new_page()
+    patient.goto(invite_path(episode["email"]))
+    patient.get_by_role("button", name="Continue").click()
+    patient.get_by_label("Day").fill("17")
+    patient.get_by_label("Month").fill("5")
+    patient.get_by_label("Year").fill("1980")
+    patient.get_by_role("button", name="Continue").click()
+    patient.get_by_test_id("set-Fitness and recovery").get_by_role("button", name="Start").click()
+    for question, answer in DASI:
+        choose(patient, question, answer)
+    expect(patient.get_by_text("DASI score")).to_have_count(0)  # the score and METs are the clinician's
+    assert patient.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    patient.get_by_role("button", name="Next", exact=True).click()
+    choose(patient, "In general, do you have any health problems that require you to limit your activities?", "No")
+    choose(patient, "Do you need someone to help you on a regular basis?", "No")
+    choose(patient, "In general, do you have any health problems that require you to stay at home?", "No")
+    choose(patient, "If you need help, can you count on someone close to you?", "Yes")
+    choose(patient, "Do you regularly use a stick, walker or wheelchair to move about?", "No")
+    patient.get_by_role("button", name="Next", exact=True).click()
+    choose(patient, "Do you smoke?", "No")
+    choose(patient, "Have you ever felt or been sick after an anaesthetic, or do you get travel sickness (motion sickness)?", "Yes")
+    assert patient.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    patient.get_by_role("button", name="Finish this section").click()
+    patient.get_by_role("button", name="Send my answers").click()
+    patient.get_by_role("dialog", name="Send your answers?").get_by_role("button", name="Send my answers").click()
+    expect(patient.get_by_role("heading", name="Thank you, Sam")).to_be_visible()
+
+    # Cara: DASI opens complete, from the HQ, with its score, band and METs; she confirms it.
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}")
+    dasi = add_assessment(page, "DASI", "dasi")
+    expect(dasi.get_by_test_id("assessment-filled")).to_have_text("12 of 12 filled.")
+    expect(dasi.get_by_test_id("item-source").filter(has_text="HQ")).to_have_count(12)
+    expect(dasi.get_by_test_id("assessment-result")).to_have_text("34 (Poor functional capacity), 6.9 METs")
+    # The badge shows its words whole, at a laptop's width (S47 report 1's lesson for the source badges).
+    page.set_viewport_size({"width": 1456, "height": 829})
+    badge = dasi.get_by_test_id("assessment-result")
+    assert badge.evaluate("b => [b, ...b.querySelectorAll('*')].every(e => e.scrollWidth <= e.clientWidth)")
+    expect(dasi.get_by_test_id("assessment-note")).to_have_count(0)  # DASI uses no age or sex
+    dasi.get_by_role("button", name="Confirm").click()
+    expect(dasi.get_by_test_id("assessment-confirmed")).to_contain_text("Confirmed by Cara Clinician")
+
+    # PRISMA-7: 7 of 7, questions 1 and 2 from her record (46, female); question 6's Yes scores.
+    prisma = add_assessment(page, "PRISMA-7", "prisma7")
+    expect(prisma.get_by_test_id("assessment-filled")).to_have_text("7 of 7 filled.")
+    expect(prisma.get_by_test_id("item-1").get_by_test_id("item-source")).to_have_text("Profile")
+    expect(prisma.get_by_test_id("assessment-result")).to_have_text("1 (Not at increased risk)")
+
+    # Apfel: 3 of 4, only the post-op opioids missing; with it, the score and the published risk.
+    apfel = add_assessment(page, "Apfel PONV", "apfel")
+    expect(apfel.get_by_test_id("assessment-filled")).to_have_text("3 of 4 filled: answer the item highlighted.")
+    expect(apfel.locator("[data-missing=true]")).to_have_count(1)
+    expect(apfel.get_by_test_id("item-4")).to_have_attribute("data-missing", "true")
+    expect(apfel.get_by_test_id("assessment-result")).to_have_text("Incomplete")
+    apfel.get_by_role("button", name="4: Yes").click()
+    expect(apfel.get_by_test_id("item-4").get_by_test_id("item-source")).to_have_text("Clinician")
+    expect(apfel.get_by_test_id("assessment-result")).to_have_text("4 (PONV risk about 79%)")
+    apfel.get_by_role("button", name="Confirm").click()
+    expect(apfel.get_by_test_id("assessment-confirmed")).to_contain_text("Confirmed by Cara Clinician")
+
+    # The POA Summary: DASI with its METs, Apfel's risk, PRISMA-7 not confirmed.
+    page.goto(f"{base}/episodes/{episode['id']}/poa")
+    expect(page.get_by_test_id("poa-detail-DASI")).to_contain_text("34 (Poor functional capacity), 6.9 METs")
+    expect(page.get_by_test_id("poa-detail-Apfel PONV")).to_contain_text("4 (PONV risk about 79%)")
+    expect(page.get_by_test_id("poa-detail-PRISMA-7")).to_contain_text("Not confirmed")

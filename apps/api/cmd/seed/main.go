@@ -103,6 +103,12 @@ var demoSleepHQ []byte
 //go:embed demo-stopbang-hq.json
 var demoStopBangHQ []byte
 
+// demoFitnessHQ is made up (S48): DASI, PRISMA-7 and Apfel's questions, ready-made, so their
+// assessments open filled from it.
+//
+//go:embed demo-fitness-hq.json
+var demoFitnessHQ []byte
+
 // The platform's starter question library (S24): seeded into every deployment, like the codes.
 //
 //go:embed library.json
@@ -156,6 +162,11 @@ var demoSleep = []struct{ trust, questionnaire, version, chapterBase, author str
 }
 var demoStopBang = []struct{ trust, questionnaire, version, chapterBase, author string }{
 	{trustA, "00000000-0000-4000-8000-000000000601", "00000000-0000-4000-8000-000000000602", "00000000-0000-4000-8000-00000000061", "00000000-0000-4000-8000-0000000000a1"},
+}
+
+// demoFitness is the S48 HQ's copy (Trust A only), with fixed ids as demoHQs.
+var demoFitness = []struct{ trust, questionnaire, version, chapterBase, author string }{
+	{trustA, "00000000-0000-4000-8000-000000000701", "00000000-0000-4000-8000-000000000702", "00000000-0000-4000-8000-00000000071", "00000000-0000-4000-8000-0000000000a1"},
 }
 
 // demoProcedures are each trust's procedure list (S19): made-up codes, a hospital of "" is every
@@ -412,11 +423,11 @@ func seedDemo(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	fmt.Printf("trusts: %d, users: %d, patients: %d, demo HQs: %d, procedures: %d\n",
-		len(demoTrusts), len(demoUsers), len(demoPatients), len(demoHQs)+len(demoFollowUps)+len(demoSleep)+len(demoStopBang), len(demoProcedures))
+		len(demoTrusts), len(demoUsers), len(demoPatients), len(demoHQs)+len(demoFollowUps)+len(demoSleep)+len(demoStopBang)+len(demoFitness), len(demoProcedures))
 	return nil
 }
 
-// seedHQs adds each trust's published demo HQ, and Trust A's follow-up, sleep and STOP-Bang HQs (S47), the first time. Later
+// seedHQs adds each trust's published demo HQ, and Trust A's follow-up, sleep and STOP-Bang HQs (S47) and fitness HQ (S48), the first time. Later
 // runs leave them as they are: a published version can't change, and a tester may have made a new
 // version of one.
 func seedHQs(ctx context.Context, tx pgx.Tx, orgs map[string]string) error {
@@ -425,7 +436,8 @@ func seedHQs(ctx context.Context, tx pgx.Tx, orgs map[string]string) error {
 		raw    []byte
 		copies []struct{ trust, questionnaire, version, chapterBase, author string }
 	}{{"demo-hq.json", demoHQ, demoHQs}, {"demo-followup-hq.json", demoFollowUpHQ, demoFollowUps},
-		{"demo-sleep-hq.json", demoSleepHQ, demoSleep}, {"demo-stopbang-hq.json", demoStopBangHQ, demoStopBang}} {
+		{"demo-sleep-hq.json", demoSleepHQ, demoSleep}, {"demo-stopbang-hq.json", demoStopBangHQ, demoStopBang},
+		{"demo-fitness-hq.json", demoFitnessHQ, demoFitness}} {
 		var hq struct {
 			Name, Description string
 			Chapters          []struct {

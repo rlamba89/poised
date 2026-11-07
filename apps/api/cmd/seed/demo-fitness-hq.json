@@ -1,0 +1,482 @@
+{
+  "name": "Demo fitness HQ",
+  "description": "Made up (S48): holds the ready-made DASI, PRISMA-7 and Apfel's questions, so their assessments open filled (Apfel waiting only for the post-op opioids).",
+  "chapters": [
+    {
+      "name": "Fitness and recovery",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_fitness",
+            "title": "How active you are",
+            "elements": [
+              {
+                "type": "panel",
+                "name": "dasi",
+                "title": "DASI",
+                "readyScore": "dasi",
+                "elements": [
+                  {
+                    "type": "radiogroup",
+                    "name": "dasi_selfcare",
+                    "title": "Can you take care of yourself, that is, eating, dressing, bathing or using the toilet?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 2.75
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "dasi_walk_indoors",
+                    "title": "Can you walk indoors, such as around your house?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1.75
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "dasi_walk_block",
+                    "title": "Can you walk a block or two on level ground?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 2.75
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "dasi_stairs",
+                    "title": "Can you climb a flight of stairs or walk up a hill?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 5.5
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "dasi_run",
+                    "title": "Can you run a short distance?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 8
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "dasi_light_work",
+                    "title": "Can you do light work around the house like dusting or washing dishes?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 2.7
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "dasi_moderate_work",
+                    "title": "Can you do moderate work around the house like vacuuming, sweeping floors, or carrying in groceries?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 3.5
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "dasi_heavy_work",
+                    "title": "Can you do heavy work around the house like scrubbing floors, or lifting or moving heavy furniture?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 8
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "dasi_yardwork",
+                    "title": "Can you do yardwork like raking leaves, weeding or pushing a power mower?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 4.5
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "dasi_sexual",
+                    "title": "Can you have sexual relations?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 5.25
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "dasi_moderate_recreation",
+                    "title": "Can you participate in moderate recreational activities like golf, bowling, dancing, doubles tennis, or throwing a baseball or football?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 6
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "dasi_strenuous_sports",
+                    "title": "Can you participate in strenuous sports like swimming, singles tennis, football, basketball or skiing?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 7.5
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "expression",
+                    "name": "dasi_score",
+                    "title": "DASI score",
+                    "clinicianOnly": true,
+                    "calcKind": "score",
+                    "expression": "iif(allAnswered('dasi_selfcare', 'dasi_walk_indoors', 'dasi_walk_block', 'dasi_stairs', 'dasi_run', 'dasi_light_work', 'dasi_moderate_work', 'dasi_heavy_work', 'dasi_yardwork', 'dasi_sexual', 'dasi_moderate_recreation', 'dasi_strenuous_sports'), round(score('dasi_selfcare', 'dasi_walk_indoors', 'dasi_walk_block', 'dasi_stairs', 'dasi_run', 'dasi_light_work', 'dasi_moderate_work', 'dasi_heavy_work', 'dasi_yardwork', 'dasi_sexual', 'dasi_moderate_recreation', 'dasi_strenuous_sports'), 2), '')",
+                    "bands": [
+                      {
+                        "id": "b_poor",
+                        "label": "Poor functional capacity",
+                        "max": 34
+                      }
+                    ]
+                  },
+                  {
+                    "type": "expression",
+                    "name": "dasi_mets",
+                    "title": "DASI METs",
+                    "clinicianOnly": true,
+                    "calcKind": "custom",
+                    "expression": "iif({dasi_score} notempty, round((0.43 * {dasi_score} + 9.6) / 3.5, 1), '')",
+                    "format": "{0} METs",
+                    "displayStyle": "decimal",
+                    "minimumFractionDigits": 1,
+                    "maximumFractionDigits": 1
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "p_frailty",
+            "title": "Your health and help at home",
+            "elements": [
+              {
+                "type": "panel",
+                "name": "prisma7",
+                "title": "PRISMA-7",
+                "readyScore": "prisma7",
+                "elements": [
+                  {
+                    "type": "radiogroup",
+                    "name": "prisma7_limit",
+                    "title": "In general, do you have any health problems that require you to limit your activities?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "prisma7_help",
+                    "title": "Do you need someone to help you on a regular basis?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "prisma7_home",
+                    "title": "In general, do you have any health problems that require you to stay at home?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "prisma7_count_on",
+                    "title": "If you need help, can you count on someone close to you?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "prisma7_aid",
+                    "title": "Do you regularly use a stick, walker or wheelchair to move about?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "expression",
+                    "name": "prisma7_score",
+                    "title": "PRISMA-7 score",
+                    "clinicianOnly": true,
+                    "calcKind": "score",
+                    "expression": "iif(allAnswered('prisma7_limit', 'prisma7_help', 'prisma7_home', 'prisma7_count_on', 'prisma7_aid', 'patientAge', 'patientSex'), score('prisma7_limit', 'prisma7_help', 'prisma7_home', 'prisma7_count_on', 'prisma7_aid') + iif({patientAge} > 85, 1, 0) + iif({patientSex} = 'male', 1, 0), '')",
+                    "bands": [
+                      {
+                        "id": "b_not_increased",
+                        "label": "Not at increased risk",
+                        "max": 2
+                      },
+                      {
+                        "id": "b_increased",
+                        "label": "Increased risk of frailty"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "p_ponv",
+            "title": "Sickness after an anaesthetic",
+            "elements": [
+              {
+                "type": "panel",
+                "name": "apfel",
+                "title": "Sickness after an anaesthetic",
+                "readyScore": "apfel",
+                "elements": [
+                  {
+                    "type": "radiogroup",
+                    "name": "apfel_smoking",
+                    "title": "Do you smoke?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 0
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 1
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "apfel_ponv",
+                    "title": "Have you ever felt or been sick after an anaesthetic, or do you get travel sickness (motion sickness)?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
