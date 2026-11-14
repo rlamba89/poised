@@ -14,7 +14,7 @@ import secrets
 
 from playwright.sync_api import BrowserContext, Page, expect
 
-from support import choose, invite_path, pick, qa_page, sign_in, unique
+from support import captured, choose, invite_path, pick, qa_page, sign_in, unique
 
 DOB = re.compile(r"^Date of birth\W*$")  # the new patient's (Mantine adds " *"), not the search's
 
@@ -41,6 +41,9 @@ def test_j7_invite_by_text_and_email_then_date_of_birth_and_send(page: Page, pho
     last_name = f"J7 {unique()}"
     typed, mobile = made_up_mobile()
     email = f"j7.{secrets.token_hex(4)}@e2e.example"
+    # The made-up mobile is one of 1,000, so a local database may hold earlier texts to it: count
+    # only those captured from now on (S49 verification 7, S49a).
+    newest_before = max((m["id"] for m in captured(mobile)), default=0)
 
     # The clinician creates the patient and episode on the New episode page.
     base = sign_in(page.context, "Cara Clinician")
@@ -62,13 +65,19 @@ def test_j7_invite_by_text_and_email_then_date_of_birth_and_send(page: Page, pho
     qa.goto("/qa/messages")
     qa.get_by_label("To").fill(mobile)
     qa.get_by_role("button", name="Show").click()
-    sms = qa.get_by_test_id("captured-message")
-    expect(sms).to_have_count(1)
+    sms = qa.get_by_test_id("captured-message").first  # newest first
     expect(sms).to_contain_text("Text message")
     expect(sms).to_contain_text("Hospital A1: please complete your pre-op health questionnaire:")
+    new_texts = [m for m in captured(mobile) if m["id"] > newest_before]
+    assert len(new_texts) == 1 and new_texts[0]["channel"] == "sms", new_texts
+    expect(sms).to_contain_text(new_texts[0]["body"])
     qa.get_by_label("To").fill(email)
     qa.get_by_role("button", name="Show").click()
-    expect(qa.get_by_test_id("captured-message")).to_contain_text("Hospital A1: your health questionnaire")
+    # The email is new on every run, so it has one message (the mobile's list may still be showing at first).
+    mail = qa.get_by_test_id("captured-message")
+    expect(mail.first).to_contain_text(email)
+    expect(mail).to_have_count(1)
+    expect(mail).to_contain_text("Hospital A1: your health questionnaire")
     link = invite_path(mobile)
 
     # The patient taps the text's link. The page says nothing about them until their date of birth.
