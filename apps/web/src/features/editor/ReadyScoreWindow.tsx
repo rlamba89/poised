@@ -1,5 +1,5 @@
-// Insert a ready-made score (S38; S48): STOP-Bang, DASI, PRISMA-7 or Apfel, with its published
-// wording, points and bands, locked. STOP-Bang's BMI comes from a BMI question or BMI Calculation in
+// Insert a ready-made score (S38; S48; S49): STOP-Bang, DASI, PRISMA-7 or Apfel, with its published
+// wording, points and bands, locked; MUST, Morse or VTE as the patient's questions only, no score. STOP-Bang's BMI comes from a BMI question or BMI Calculation in
 // this Question Set or an earlier one.
 import { useEffect, useState } from "react";
 import { Alert, Button, Group, Modal, Select, Stack, Text } from "@mantine/core";

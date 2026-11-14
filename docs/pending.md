@@ -64,8 +64,31 @@ docker compose up -d --force-recreate db
 - **Cosmetic:**
   - the result badge is in capitals, so "6.9 METs" reads "6.9 METS" (`tt="none"` on the badge);
   - the POA Summary's assessment values start about 25 px right of the other values' column.
-- **A Poor DASI (or an Increased risk PRISMA-7) doesn't hold auto-triage:** the default rules don't know them. Add rules or defaults with the rules work (S49 or later), if trusts want it.
+- **A Poor DASI (or an Increased risk PRISMA-7) doesn't hold auto-triage:** the default rules don't know them. Add rules or defaults with the rules work (after C7), if trusts want it.
 - **Unsaved changes on an assessment card are lost on reload without a warning** (as before S48), and **option points reach the patient's browser** (as for STOP-Bang; nothing is shown).
+
+### From S49's build (7 Nov; [build notes](sessions/S49-must-falls-vte-rockwood/build-notes.md); go-live items, none blocking now)
+
+- **Licences before go-live (C10; S49 answers 2):**
+  - **MUST:** BAPEN's permission, a signed licence and a fee for commercial use (its form lists £20,000 + VAT per country for an EPR that trusts pay for; 12-month contracts). Keep the cut-offs and scores unchanged, call it a *screening* tool, and show BAPEN's attribution line (in `MUST.source`).
+  - **Clinical Frailty Scale:** ask Dalhousie through its permission portal; a vendor "may require a license", fees by duration and scope.
+  - **Morse Fall Scale:** the author's (Dr Janice Morse's) permission; free of charge.
+  - **VTE:** © Crown copyright 2010, free under the Open Government Licence; confirm the attribution wording.
+- **A clinician checks the wording and bands before go-live:**
+  - **MUST:** the weight lost as a % of the weight before (now + lost), rounded to 1 decimal place and scored as shown; the patient's two questions are ours. Two edges to decide (S49 verification 3): 89.6 kg now and 10 kg lost is 10.04%, shown "10%" and scored 1 (BAPEN's >10% is 2); 95.8 kg and 5 kg is 4.96%, shown "5%" and scored 1 (BAPEN's <5% is 0). Scoring the unrounded figure would fix both but could show "10%" beside a score for over 10%.
+  - **Morse:** the bands 0–24 Low, 25–44 Moderate, 45+ High (Morse leaves the cut-offs to each hospital); the patient's two questions and the clinician's option labels are ours.
+  - **VTE:** the form's mobility step is left out (every pre-op patient is surgical); the result's band names are ours; the patient's 9 questions are ours.
+  - **Clinical Frailty Scale:** the level names only, no descriptions; check that clinicians want the descriptions (they're Dalhousie's copyright).
+- **The VTE card is long (30 Yes/No items, 19 for the clinician).** A "No to the rest" button would save clicks but is a blanket answer; add it only if clinicians ask.
+- **For Rahul: the mouse wheel changes a focused number answer** (S49 test report 1, exploring 1). On a desktop, scrolling over a number box that has focus moves its value (a patient's 6 kg became 5). It's the browser's behaviour for every number question in every HQ, older than S49; phones are unaffected. A fix would stop the wheel changing number boxes in the patient's form (and the clinician's). **Recommended:** fix it in the next small session, since a number feeds scores.
+- **For Rahul: should the audit log's "Listed episodes" row keep every episode id?** (S49 verification 3; older than S49, S11.) One list request's row holds every id listed, and its export cell grows with the hospital's list: a spreadsheet cell holds 32,767 characters, about 860 episodes. Options: keep them all (the log is complete), or store the count and the filter and export the ids elsewhere.
+- **For a clinician: a confirmed assessment card hides its "since Confirm" line while it has unsaved changes** (S49 test report 8, exploring 3). The yellow line ("The HQ now gives 3 kg…") is worked out only for the card as confirmed (`!changed`, S47 answers 6); once an item is changed it goes, and Save takes the HQ's new value for the items not typed. Undo brings the line back. Ask a clinician whether the line should stay while editing.
+- **For a clinician: a saved MUST weight can't be emptied back to the hospital's** (S49 test report 8, exploring 2). Emptying a box that had a value asks for one ("Enter a number"), and Undo goes back to the saved card, so the hospital's numbers have to be typed in. As designed since S47; noted in case clinicians want a "use the hospital's" action.
+- **Cosmetic: an assessment card's menu list opens to the right of its box** (S49 test report 6, exploring 3). On the Morse card the Gait menu's open list starts about 110 px right of the closed box (`comboboxProps` width 300, position `bottom-end` in `AssessmentsPanel.tsx`). Readable, and each choice can be picked.
+- **Go accepts any source but profile on an assessment item** (S49 verification 1, finding 4): `Check` refuses only an observation on a choice item, so a hand-made save could call the CFS level "HQ" or MUST's weight lost "observation". Provenance only, from an authorised clinician; the score is the same. Tighten it (each item's allowed sources in the content, beside `labels`) if audits need it.
+- **MUST, Morse, VTE and the CFS don't feed the rules or auto-triage** (out of scope, as DASI's and PRISMA-7's).
+- **Flaky e2e: J7 can find 2 captured texts for its "new" mobile** (S49 verification 7). `made_up_mobile` picks one of 1,000 numbers, and a local database with thousands of captured messages makes a repeat likely. Ofcom's drama range has only these 1,000. Fix: also filter the captured messages by time, or by the patient's surname.
+- **For Rahul: on MUST, changing a saved BMI that was typed where the hospital has no height empties the hospital weight on screen** (S49 verification 7, finding 1). A reload brings the weight back, as Rahul's 13 Nov rule says. `withDraft` takes "typed into a gap" to mean "had no source", and a saved BMI has one. The card goes Incomplete until the weight is typed again: it never under-scores. **Recommended:** fix it in the next small session with a gap flag worked out once in `assessmentItems`, which also removes the pairing rule's duplication.
 
 ### From S48's build (6 Nov; [build notes](sessions/S48-dasi-prisma-apfel/build-notes.md); go-live items, none blocking now)
 

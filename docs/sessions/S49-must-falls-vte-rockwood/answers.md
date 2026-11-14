@@ -1,0 +1,9 @@
+# S49 answers (Rahul, 7 Nov 2026, asked at the start of `/build-session S49`)
+
+1. **Falls risk: build one common published tool now** (the brief recommended leaving it out; Rahul chose to build one). The builder proposed the **Morse Fall Scale**, the most widely used hospital falls tool. Rahul asked "what is a falls tool?" first; it was explained as a short checklist that rates how likely a patient is to fall in hospital (e.g. Morse, STRATIFY), and that NICE advises against scoring falls risk for over-65s.
+2. **Licences: build all three (MUST, VTE, Rockwood CFS) now; the licences are go-live items,** as DASI and PRISMA-7 in S48. What the builder found before asking:
+   - **VTE:** the Department of Health's "Risk assessment for venous thromboembolism (VTE)" (2010) is **© Crown copyright 2010**, so it can be reused free under the Open Government Licence (attribution).
+   - **MUST:** © BAPEN. Free for hospitals' own non-commercial use; **commercial use needs permission, a signed licence and a fee** (BAPEN's application form lists "'MUST' use in an electronic patient record: in a single country where a charge is levied for use of the EPR £20,000 + VAT"). The cut-offs and scores must not be changed, it's called a *screening* tool, and the attribution line is required.
+   - **Clinical Frailty Scale:** © Dalhousie University. Permission through their portal; "an EMR vendor who wishes to add a tool to their menu of offerings may require a license", fees "based on the duration and scope". Free for not-for-profit hospitals' own use.
+   - **Morse Fall Scale:** "free of charge but permission from the author is required" (Fall TIPS FAQ; Dr Janice Morse).
+3. **MUST's weight loss: ask the patient in the HQ** (whether they've lost weight without trying in the last 3–6 months, and how much), and take today's weight and BMI from the observations (S47's precedence). The clinician can change it.

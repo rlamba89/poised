@@ -33,6 +33,74 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 14 Nov 2026: S49 verification 7 (Verified)
+
+([verify.md](sessions/S49-must-falls-vte-rockwood/verify.md), verification 7)
+- **Verified with one minor finding left open:** on MUST, changing a saved BMI typed where the hospital has no height empties the hospital weight on screen, though a reload brings it back (pending.md, for Rahul). It wasn't held against the session: it never under-scores, and nothing wrong can be confirmed.
+- **Gotcha:** `make test-integration` starts the database with `docker compose`. Where `docker` isn't on the shell's PATH but Postgres is already up, run `make test-integration DB_UP=`, as the pipeline does.
+
+### 14 Nov 2026: S49 verification 6 (Needs fixes; fixed 14 Nov; test report 9 all passed)
+
+([verify.md](sessions/S49-must-falls-vte-rockwood/verify.md), verification 6)
+- **Fixed (builder):** on an assessment card the draft keeps only the boxes whose value still changes the card. `draftAfter` drops every key whose removal leaves every item as shown, not only the box just typed in, so a MUST box typed in earlier counts as untouched again once the other box is put back, and the pairing rule clears it on the next change. Why: otherwise the old BMI stayed "Entered by clinician" beside a new weight, which under-scored and could be confirmed. A side effect: beside a BMI the clinician saved, the hospital's own weight typed back is now the clinician's (verification 4's rule).
+
+### 13 Nov 2026: S49 verification 5, Rahul's answer (Needs fixes; fixed 13 Nov; test report 7's F-1 fixed 13 Nov; test report 8 all passed, 14 Nov)
+
+([verify.md](sessions/S49-must-falls-vte-rockwood/verify.md), verification 5)
+- **On a MUST card where the hospital has a weight but no height, the BMI the clinician types keeps the hospital's weight beside it** (still "Hospital weight"). A BMI or weight typed over a pre-filled one still empties the other (13 Nov). Why: the BMI box is empty only because the hospital has no height, so the clinician is filling in the BMI for that weight; making them retype the weight they can see added nothing. Asked by the builder; Rahul chose it over leaving the 13 Nov rule as written.
+- **Built (builder):** a box typed in and put back counts as untouched (`draftAfter` in `packages/clinical`: the draft keeps what changed, not every box typed in), so a mistyped BMI put right no longer counts as the clinician's when a weight is then typed (finding 1). A box the pairing rule emptied doesn't ask for a value once touched (`shownWithout`, finding 2). A number from the HQ that changed since Confirm reads "The HQ now gives 3 kg for … (2 kg when confirmed)." (finding 3).
+
+### 13 Nov 2026: S49 verification 4 (Needs fixes; fixed 13 Nov; test report 6 all passed)
+
+([verify.md](sessions/S49-must-falls-vte-rockwood/verify.md), verification 4)
+- **On a MUST card, once the clinician has typed one of the BMI and the weight, a number typed in the other box is theirs too, even the hospital's own number typed back.** Why: a value typed back to the one shown otherwise keeps its source, so the pairing rule cleared it again and the true weight (or BMI) couldn't be entered on the screen, verification 1's case included (a hospital weight with no height, the BMI typed). Typed back with the other untouched, it still keeps its source.
+- **The pairing rule runs on the screen only when a BMI or weight changed there,** so a confirmed card shows exactly what was confirmed (it had been applied to every card, an unchanged confirmed one included).
+
+### 13 Nov 2026: S49 verification 3, Rahul's answer (Needs fixes; built 13 Nov; test report 5 all passed)
+
+([verify.md](sessions/S49-must-falls-vte-rockwood/verify.md), verification 3)
+- **On a MUST card, a weight the clinician types clears a pre-filled BMI, and a typed BMI clears a pre-filled weight.** The cleared item is Missing, so the clinician enters it before Confirm. Why: as built, the 8 Nov one-source rule held only for the pre-fill. A typed weight of 50 kept "Hospital BMI 20.8" (from 60 kg) beside it, and the card scored Medium risk where the true BMI (17.3) is High. Rahul chose this over a warning line and over leaving it to the source labels.
+- **Built (builder, 13 Nov):** `unpaired` in `packages/clinical`'s `assessments.ts`, applied to the pre-fill (a saved, unconfirmed clinician's value too) and to the screen's changes; a confirmed card shows exactly what was confirmed. A card with a BMI only is unchanged. A confirmed MUST whose BMI is now left Missing beside a hospital weight says "The hospital has a weight but no height now (BMI 25.7 when confirmed)."
+- **Gotcha:** the audit export's "Listed episodes" row holds every id listed, so on a local database with thousands of e2e episodes one CSV field passes Python's 131,072-character default; the audit journey raises `csv.field_size_limit`.
+
+### 13 Nov 2026: S49 verification 2, Rahul's answers (asked by the builder; fixed 13 Nov; test report 4 all passed)
+
+([verify.md](sessions/S49-must-falls-vte-rockwood/verify.md), verification 2)
+- **S49's four recent-time questions are always asked fresh** (`alwaysFresh`), never copied from an earlier HQ: MUST's "lost weight without trying in the last 3 to 6 months?" and "about how much (kg)?", Morse's "a fall in the last 3 months?", VTE's "pregnant, or had a baby in the last 6 weeks?". Why: an answer from months ago would open the assessment marked "HQ", as the library's own weight and pregnancy questions already avoid. The assessments' copies don't carry the mark, so their JSON is unchanged (no new platform versions).
+- **With observations' precedence off, MUST prefers the hospital's full pair over a patient's weight without a height** (the patient's own pair, when it gives a BMI, still comes first; a patient's weight alone still beats a hospital weight alone). Why: the card then opens with both numbers, from one source.
+- **Fixed (builder):** an assessment's result is Incomplete while any of its results is (VTE's bleeding count has its own inputs), and the card offers Confirm only once no item is missing.
+
+### 8 Nov 2026: S49 verification 1, Rahul's answers (Needs fixes; fixed 8 Nov; test report 3 all passed, 13 Nov)
+
+([verify.md](sessions/S49-must-falls-vte-rockwood/verify.md))
+- **MUST's BMI and weight always come from one source.** With a hospital weight but no hospital height, MUST takes the hospital weight and leaves the BMI for the clinician (highlighted Missing); it never shows a BMI worked out from a weight other than the one shown. Why: as built, the patient's own BMI (from their HQ weight) sat beside the hospital weight, two different bodies, and the BMI step could under-score malnutrition risk.
+- **VTE's pregnancy, oestrogen contraceptive and HRT questions are hidden in the HQ for a patient recorded as male.** Why: as built, every patient was asked "Are you pregnant…?".
+- **How they were built (builder, 8 Nov):** a card with both a BMI and a weight (MUST) takes them as a pair, the hospital's whenever it has a weight (by the precedence); a card with a BMI only (STOP-Bang, VTE) is unchanged. The VTE assessment keeps its own copy of the HQ part **without** those conditions, so the clinician answers all 30 items (a man's ticked HRT counts), a question the HQ hid pre-fills nothing, and the assessment's JSON didn't change (no new platform version). The patient's weight without a height now fills MUST's weight. Go still accepts any non-profile source on an item (provenance only; pending.md).
+- **Gotcha:** `make seed` never overwrites a published demo HQ, so a changed seed HQ reaches an existing local database only by hand (S49's Demo risk HQ was updated in place on Rahul's Mac).
+
+### 7 Nov 2026: S49 built (MUST, Morse, VTE and the Clinical Frailty Scale; builder's choices; tested 8 Nov: test report 1, 20 of 21, F-1 cosmetic fixed; test report 2 all passed)
+
+([build notes](sessions/S49-must-falls-vte-rockwood/build-notes.md))
+- **Sources read before building:** BAPEN's MUST flowchart; the Morse Fall Scale as the Fall TIPS trial shows it (Dykes et al., JAMA 2010, whose worked example scores 65); the DoH VTE form (2010) in full; Dalhousie's CFS guidance (version 2.0's level names). NICE, AHRQ and LOINC refused automated reads.
+- **MUST's weight lost is a percentage of the weight before (now + lost), to 1 decimal place, scored as shown.** The assessment holds the kg lost (a No in the HQ pre-fills 0); the HQ's Yes/No stays in the HQ. MUST's BMI and weight follow the trust's `observations.precedence`, as STOP-Bang's BMI does.
+- **Morse's bands are 0–24 Low, 25–44 Moderate, 45+ High** (Morse leaves cut-offs to each hospital); the patient's two questions and the option labels are ours.
+- **VTE leaves out the form's mobility step** (every pre-op patient is surgical); its result is the thrombosis count (age over 60 and a BMI over 30 count as ticks) with our band names, and the bleeding count.
+- **The Clinical Frailty Scale shows the level names only, not Dalhousie's descriptions;** it's never pre-filled or in an HQ; its hints are DASI's and PRISMA-7's results as confirmed.
+- **An assessment item is a `choice` (was `yesNo`) or a `number` filled by a `measure` (BMI, weight) or the HQ (`fromHq`).** No Go logic changed; Go's checks handled all four.
+- **Gotcha:** the "Same as…" list shows the first 50 candidates; a seeded HQ can push a question out of the unfiltered list, so e2e checks shouldn't expect a particular one there (S24's journey changed).
+- **Open for Rahul:** the mouse wheel changes a focused number answer on desktops (every HQ, older than S49), in pending.md.
+
+### 7 Nov 2026: S49's answers (Rahul, asked at the start of `/build-session S49`)
+
+([S49 answers](sessions/S49-must-falls-vte-rockwood/answers.md))
+- **Falls risk: the Morse Fall Scale is built now,** not left until a trust names its tool (the brief's recommendation). Rahul chose to have one to show; a trust that uses another tool gets it added the same way.
+- **MUST, the DoH VTE risk assessment, the Clinical Frailty Scale and Morse are built now; their licences are go-live items,** as DASI's and PRISMA-7's are. The builder checked the terms first:
+  - VTE: © Crown copyright 2010, reusable free under the Open Government Licence (with attribution);
+  - MUST: © BAPEN; commercial use needs a signed licence and a fee (their form lists £20,000 + VAT per country for an EPR that trusts pay for); cut-offs and scores unchanged, called a *screening* tool, BAPEN's attribution line;
+  - Clinical Frailty Scale: © Dalhousie; a vendor "may require a license" (fees by duration and scope), asked through their permission portal;
+  - Morse Fall Scale: "free of charge but permission from the author is required".
+- **MUST's weight loss is asked in the HQ** (unplanned weight loss in the last 3–6 months, and how much); today's weight and BMI come from the observations (S47's precedence). No reading across episodes.
+
 ### 7 Nov 2026: S48 verification 1, Rahul's answers
 
 ([verify.md](sessions/S48-dasi-prisma-apfel/verify.md))
