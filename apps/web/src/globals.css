@@ -243,3 +243,14 @@ div.sj-info > :first-child {
   padding: 10px 12px;
   background: var(--mantine-color-white);
 }
+
+/* A number answer is a plain box: no up/down arrows (S49a; lib/numberBoxes.ts stops the wheel and arrow keys). */
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

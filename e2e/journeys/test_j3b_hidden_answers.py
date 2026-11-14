@@ -204,3 +204,45 @@ def test_editing_a_bmi_weight_keeps_the_follow_up_it_still_shows(page: Page, pho
     expect(why).to_have_value("Diet plan")
     data = stored()
     assert data.get("q_e2e_weight_why") == "Diet plan" and data["q_e2e_bmi"]["weight"] == 125, data
+
+
+def test_a_scroll_over_a_focused_number_box_never_changes_it(page: Page, phone: BrowserContext, as_user):
+    """S49a (Rahul, 14 Nov): a number answer is a plain box, no wheel and no spinner. On Chromium a
+    scroll over a focused number box stepped it (a patient's 6 became 5); WebKit (the phone fixture)
+    never did, so this runs on Chromium at phone size (390×844)."""
+    hq = as_user("Alex Author").published_hq("hidden-number-hq.json", f"E2E J3b wheel {unique()}")
+    cara = as_user("Cara Clinician")
+    episode = cara.episode(hq, f"J3b {unique()}")
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(invite_path(episode["email"]))
+    page.get_by_role("button", name="Continue").click()
+    page.get_by_label("Day").fill("17")
+    page.get_by_label("Month").fill("5")
+    page.get_by_label("Year").fill("1980")
+    page.get_by_role("button", name="Continue").click()
+    page.get_by_test_id("set-Alcohol").get_by_role("button", name="Review").click()
+    units = page.get_by_role("spinbutton", name="How many units of alcohol a week?")
+    units.fill("6")
+    expect(units).to_be_focused()
+
+    # A scroll down and up over the focused box: the value stays, and the page still scrolls.
+    box = units.bounding_box()
+    assert box
+    page.mouse.move(box["x"] + 10, box["y"] + box["height"] / 2)
+    page.mouse.wheel(0, 120)
+    page.mouse.wheel(0, -120)
+    page.wait_for_timeout(300)
+    expect(units).to_have_value("6")
+    # The arrow keys don't step it either.
+    units.focus()
+    units.press("ArrowUp")
+    units.press("ArrowDown")
+    units.press("ArrowDown")
+    expect(units).to_have_value("6")
+    # No up/down arrows drawn in the box.
+    assert units.evaluate("e => getComputedStyle(e).appearance") == "textfield"
+    page.wait_for_timeout(1500)  # past the autosave's pause
+    expect(page.get_by_test_id("patient-save-status")).to_have_text("Saved")
+    rows = cara.call("GET", cara.h(f"/episodes/{episode['id']}/hq"))["answers"]
+    assert next(r["data"] for r in rows if r["actor"] == "patient")["q_e2e_units"] == 6

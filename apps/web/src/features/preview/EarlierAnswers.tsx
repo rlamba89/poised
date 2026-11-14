@@ -1,10 +1,11 @@
 // A one-set preview can't see the earlier Question Sets' answers (S38). When a score here uses them,
 // the preview says so, and lets the author give them, as a test case can (TestCase.earlier).
 import { useEffect, useState } from "react";
-import { Alert, MultiSelect, NumberInput, Select, Stack, Text } from "@mantine/core";
+import { Alert, MultiSelect, Select, Stack, Text, TextInput } from "@mantine/core";
 import { IconArrowBackUp } from "@tabler/icons-react";
 import { findElement, kindOf, optionsOf, textOf, type Answers, type ChapterJson } from "@poised/clinical";
 import { api } from "@/lib/api";
+import { typedNumber } from "@/lib/numberBoxes";
 
 type Detail = { chapters: { id: string; name: string }[] };
 
@@ -67,13 +68,31 @@ export function EarlierAnswers(props: { earlier: ChapterJson | null; keys: strin
             }
             if (kind === "bmi") {
               const v = (values[key] as { bmi?: number } | undefined)?.bmi;
-              return <NumberInput key={key} {...common} label={`${label} (BMI)`} value={v ?? ""} onChange={(x) => set(key, x === "" ? undefined : { bmi: Number(x) })} decimalScale={1} />;
+              return <PlainNumber key={key} {...common} label={`${label} (BMI)`} value={v} onChange={(n) => set(key, n === undefined ? undefined : { bmi: n })} />;
             }
             const v = values[key];
-            return <NumberInput key={key} {...common} value={typeof v === "number" ? v : ""} onChange={(x) => set(key, x === "" ? undefined : Number(x))} />;
+            return <PlainNumber key={key} {...common} value={typeof v === "number" ? v : undefined} onChange={(n) => set(key, n)} />;
           })}
         </Stack>
       )}
     </Alert>
+  );
+}
+
+/**
+ * A number answer as a plain text box (S49a, Rahul 14 Nov): no up/down arrows, and no wheel or
+ * arrow key steps it (verification 1, finding 2). It shows what was typed while that is the value.
+ */
+function PlainNumber({ label, size, value, onChange }: { label: string; size: "xs"; value: number | undefined; onChange: (n: number | undefined) => void }) {
+  const [typed, setTyped] = useState<string | null>(null);
+  const text = typed !== null && typedNumber(typed) === value ? typed : value === undefined ? "" : String(value);
+  return (
+    <TextInput size={size} label={label} inputMode="decimal" value={text}
+      onChange={(e) => {
+        const t = e.currentTarget.value;
+        setTyped(t);
+        onChange(typedNumber(t));
+      }}
+      error={typed !== null && typed.trim() && typedNumber(typed) === undefined ? "A number" : undefined} />
   );
 }

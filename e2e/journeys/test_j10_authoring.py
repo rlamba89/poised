@@ -695,3 +695,34 @@ def test_the_asa_guide_fills_in_or_asks_for_the_grade(page: Page, as_user):
     main.get_by_label("Question", exact=True).click()
     expect(page.get_by_role("option", name="Patient's age")).to_be_visible()
     expect(page.get_by_role("option", name="Suggested ASA")).to_have_count(0)
+
+
+def test_the_previews_earlier_number_answers_are_plain_boxes(page: Page, as_user):
+    """S49a verification 1, finding 2: a number answer is a plain box everywhere, the Preview's
+    earlier answers included. The arrow keys and the mouse wheel never change one."""
+    alex = as_user("Alex Author")
+    hq = alex.draft_hq("scores-hq.json", f"E2E J10 earlier numbers {unique()}")
+
+    def add(cid: str, element: dict) -> None:
+        chapter = alex.call("GET", alex.h(f"/chapters/{cid}"))
+        content = chapter["content"]
+        content["pages"][0]["elements"].append(element)
+        alex.call("PUT", alex.h(f"/chapters/{cid}/content"), {"content": content, "revision": chapter["revision"]})
+
+    # Sleep gets a number question; Neck a score using it and Sleep's BMI.
+    add(hq["chapters"]["Sleep"], {"type": "text", "inputType": "number", "name": "q_e2e_drinks", "title": "Drinks a week"})
+    add(hq["chapters"]["Neck"], {"type": "expression", "name": "e2e_neck_sum", "title": "Neck sum", "expression": "{q_e2e_drinks} + {q_e2e_bmi}"})
+
+    base = sign_in(page.context, "Alex Author")
+    page.goto(f"{base}/chapters/{hq['chapters']['Neck']}/preview")
+    page.get_by_test_id("viewer-switch").get_by_text("Clinician").click()
+    note = page.get_by_test_id("earlier-answers")
+    for name, value in (("Drinks a week", "14"), ("(BMI)", "20.8")):
+        box = note.get_by_role("textbox", name=re.compile(re.escape(name)))
+        box.fill(value)
+        box.press("ArrowUp")
+        box.press("ArrowDown")
+        box.press("ArrowUp")
+        box.hover()
+        page.mouse.wheel(0, 300)
+        expect(box).to_have_value(value)
