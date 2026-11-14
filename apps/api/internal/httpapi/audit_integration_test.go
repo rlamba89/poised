@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/csv"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -787,4 +788,87 @@ func TestAuditLimitAndCSV(t *testing.T) {
 			t.Errorf("csv = %.200s", r.Body)
 		}
 	})
+}
+
+// S49a (Rahul, 14 Nov): the log keeps every id a list showed; the CSV splits a row whose ids pass
+// a spreadsheet cell's 32,767 characters (about 860 ids) across rows, "part 1 of N", so the file
+// opens whole in Excel and LibreOffice.
+func TestAuditCSVSplitsALongList(t *testing.T) {
+	t.Parallel()
+	w := newAuditWorld(t)
+	var rowID int64
+	err := w.db.QueryRow(t.Context(), `INSERT INTO audit_log (at, org_id, hospital_id, actor, user_id, action, route, status, patient_ids, episode_ids)
+		SELECT now() - interval '1 hour', $1, $2, 'staff', $3, 'episode.list', 'GET /api/o/{oid}/h/{hid}/episodes', 200,
+			array_agg(gen_random_uuid()), array_agg(gen_random_uuid())
+		FROM generate_series(1, 900)
+		RETURNING id`, w.a.Org, w.a.ID, w.cara.ID).Scan(&rowID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var patients, episodes []uuid.UUID
+	if err := w.db.QueryRow(t.Context(), `SELECT patient_ids, episode_ids FROM audit_log WHERE id = $1`, rowID).Scan(&patients, &episodes); err != nil {
+		t.Fatal(err)
+	}
+
+	r := w.adaC.Do("GET", auditPath(w.a.Org, url.Values{"format": {"csv"}, "user": {w.cara.ID.String()}}), nil)
+	r.Want(t, http.StatusOK)
+	recs, err := csv.NewReader(strings.NewReader(string(r.Body))).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The header and the list's two parts (900 ids of 36 characters and "; " is 34,198).
+	if len(recs) != 3 {
+		t.Fatalf("%d records, want the header and 2 parts", len(recs))
+	}
+	seenP, seenE := map[string]int{}, map[string]int{}
+	for n, rec := range recs[1:] {
+		if want := fmt.Sprintf("Listed episodes (part %d of 2)", n+1); rec[3] != want {
+			t.Errorf("action %q, want %q", rec[3], want)
+		}
+		if rec[0] != recs[1][0] || rec[1] != recs[1][1] || rec[2] != recs[1][2] || rec[4] != recs[1][4] || rec[8] != recs[1][8] || rec[9] != "200" {
+			t.Errorf("part %d isn't the same request: %q", n+1, rec)
+		}
+		for _, c := range rec {
+			if len([]rune(c)) > 32767 {
+				t.Errorf("part %d has a cell of %d characters", n+1, len([]rune(c)))
+			}
+		}
+		names, pids := strings.Split(rec[5], "; "), strings.Split(rec[6], "; ")
+		if len(names) != len(pids) {
+			t.Errorf("part %d: %d names beside %d ids", n+1, len(names), len(pids))
+		}
+		for _, id := range pids {
+			seenP[id]++
+		}
+		for _, id := range strings.Split(rec[7], "; ") {
+			seenE[id]++
+		}
+	}
+	for what, c := range map[string]struct {
+		ids  []uuid.UUID
+		seen map[string]int
+	}{"patient": {patients, seenP}, "episode": {episodes, seenE}} {
+		if len(c.seen) != len(c.ids) {
+			t.Errorf("%d %s ids in the CSV, want %d", len(c.seen), what, len(c.ids))
+		}
+		for _, id := range c.ids {
+			if c.seen[id.String()] != 1 {
+				t.Errorf("%s %s is in the CSV %d times", what, id, c.seen[id.String()])
+			}
+		}
+	}
+
+	// The log itself still holds every id on its one row.
+	var nP, nE int
+	if err := w.db.QueryRow(t.Context(), `SELECT cardinality(patient_ids), cardinality(episode_ids) FROM audit_log WHERE id = $1`, rowID).Scan(&nP, &nE); err != nil {
+		t.Fatal(err)
+	}
+	if nP != 900 || nE != 900 {
+		t.Errorf("the audit row holds %d patients and %d episodes, want 900 each", nP, nE)
+	}
+	// The screen's list is as before: one row, its counts whole.
+	l := getAudit(t, w.adaC, w.a.Org, url.Values{"user": {w.cara.ID.String()}})
+	if len(l.Rows) != 1 || l.Rows[0].EpisodeCount != 900 || l.Rows[0].PatientCount != 900 {
+		t.Errorf("screen rows %+v", l.Rows)
+	}
 }

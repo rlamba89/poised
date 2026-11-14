@@ -117,12 +117,42 @@ def test_an_admin_finds_a_clinicians_actions_filters_them_and_exports_the_csv(pa
     # database (about 138,000 characters at 3,600 episodes): past Python's 131,072 default (S49 verification 3).
     csv.field_size_limit(16 * 1024 * 1024)
     with open(download.value.path(), encoding="utf-8", newline="") as f:  # read as a stream
-        records = list(csv.DictReader(f))
+        records = fold_parts(list(csv.DictReader(f)))
     assert len(records) == shown, f"{len(records)} CSV rows, {shown} listed"
     for rec, text in zip(records, listed):
         assert rec["Who"] == "Cara Clinician" and rec["Action"] in text and rec["Hospital"] in text, (rec, text)
         assert rec["Result"] in {"200", "201", "204"}
     assert any(f"Sam {surname}" in rec["Patients"] for rec in records)
+
+
+PART = re.compile(r"^(.*) \(part (\d+) of (\d+)\)$")
+
+
+def fold_parts(records: list[dict]) -> list[dict]:
+    """One row per request: a list too long for a spreadsheet cell is exported as "(part N of M)"
+    rows (S49a), each the same request; fold them back, checking they are parts 1 to M, in order,
+    of one request (same time, who, hospital, route and result) (S49a verification 1, finding 1)."""
+    out: list[dict] = []
+    expect_part = None  # (action, next part, of) while a split request is being folded
+    for rec in records:
+        m = PART.match(rec["Action"])
+        if expect_part:
+            action, n, of = expect_part
+            assert m and (m.group(1), int(m.group(2)), int(m.group(3))) == (action, n, of), (rec, expect_part)
+            first = out[-1]
+            for col in ("Time", "Who", "Email", "Hospital", "Route", "Result"):
+                assert rec[col] == first[col], (col, rec, first)
+            for col in ("Patients", "Patient record IDs", "Episode IDs"):
+                first[col] = "; ".join(x for x in (first[col], rec[col]) if x)
+            expect_part = (action, n + 1, of) if n < of else None
+            continue
+        if m:
+            assert m.group(2) == "1" and int(m.group(3)) > 1, rec
+            expect_part = (m.group(1), 2, int(m.group(3)))
+            rec = dict(rec, Action=m.group(1))
+        out.append(rec)
+    assert expect_part is None, f"a split request's last parts are missing: {expect_part}"
+    return out
 
 
 def test_a_clinician_cant_see_the_audit_screen(page: Page):

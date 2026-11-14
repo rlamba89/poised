@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -560,10 +561,27 @@ func (s *server) writeAuditCSV(w http.ResponseWriter, r *http.Request, rows []au
 		for _, id := range row.EpisodeIDs {
 			eids = append(eids, id.String())
 		}
-		cw.Write(csvSafe(
-			row.At.In(zone).Format(time.RFC3339), who, row.UserEmail, row.ActionLabel, row.HospitalName,
-			strings.Join(names, "; "), strings.Join(pids, "; "), strings.Join(eids, "; "), row.Route, strconv.Itoa(int(row.Status)),
-		))
+		// A list of hundreds of episodes doesn't fit one spreadsheet cell (S49a): the request's
+		// ids go across as many rows as they need, the same request on each, "part 1 of N".
+		pParts, eParts := cellParts(names, pids), cellParts(eids)
+		parts := max(len(pParts), len(eParts), 1)
+		for n := range parts {
+			action := row.ActionLabel
+			if parts > 1 {
+				action = fmt.Sprintf("%s (part %d of %d)", action, n+1, parts)
+			}
+			var pn, pi, ei []string
+			if n < len(pParts) {
+				pn, pi = names[pParts[n][0]:pParts[n][1]], pids[pParts[n][0]:pParts[n][1]]
+			}
+			if n < len(eParts) {
+				ei = eids[eParts[n][0]:eParts[n][1]]
+			}
+			cw.Write(csvSafe(
+				row.At.In(zone).Format(time.RFC3339), who, row.UserEmail, action, row.HospitalName,
+				strings.Join(pn, "; "), strings.Join(pi, "; "), strings.Join(ei, "; "), row.Route, strconv.Itoa(int(row.Status)),
+			))
+		}
 	}
 	cw.Flush()
 	if err := cw.Error(); err != nil {
@@ -575,6 +593,54 @@ func (s *server) writeAuditCSV(w http.ResponseWriter, r *http.Request, rows []au
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	w.WriteHeader(http.StatusOK)
 	w.Write(buf.Bytes())
+}
+
+// csvCellMax is the most characters (UTF-16 units) a spreadsheet cell holds (Excel's limit; LibreOffice's is
+// larger). One less is used, for the apostrophe csvSafe may add.
+const csvCellMax = 32767
+
+// cellLen is a cell's length as a spreadsheet counts it: UTF-16 units, so a character outside the
+// Basic Multilingual Plane (an emoji, some CJK) is two (S49a verification 1, finding 3).
+func cellLen(s string) int {
+	n := 0
+	for _, r := range s {
+		n += max(utf16.RuneLen(r), 1)
+	}
+	return n
+}
+
+// cellParts splits a row's list (one or more columns of the same length, side by side: the
+// patients' names and their ids) into runs, [from, to), whose cells joined with "; " each fit in
+// a spreadsheet cell. An empty list has no runs.
+func cellParts(columns ...[]string) [][2]int {
+	if len(columns) == 0 {
+		return nil
+	}
+	var parts [][2]int
+	from, lens := 0, make([]int, len(columns))
+	for i := range columns[0] {
+		fits := true
+		for c, col := range columns {
+			if lens[c] > 0 && lens[c]+2+cellLen(col[i]) > csvCellMax-1 {
+				fits = false
+			}
+		}
+		if !fits {
+			parts = append(parts, [2]int{from, i})
+			from = i
+			clear(lens)
+		}
+		for c, col := range columns {
+			if i > from {
+				lens[c] += 2 // "; "
+			}
+			lens[c] += cellLen(col[i])
+		}
+	}
+	if len(columns[0]) > from {
+		parts = append(parts, [2]int{from, len(columns[0])})
+	}
+	return parts
 }
 
 // csvSafe defuses cells a spreadsheet would run as a formula (CSV injection): a cell starting
