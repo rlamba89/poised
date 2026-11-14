@@ -141,7 +141,12 @@ def test_library_and_same_as(page: Page, as_user):
     expect(same).to_be_hidden()
     page.get_by_role("complementary").get_by_role("button", name="Same as…").click()
     expect(same.get_by_label("Search")).to_have_value("")
-    expect(same.get_by_test_id("candidate-snoring")).to_be_visible()
+    # The whole list again, not the one "snore" match: it starts with a compatible question, which
+    # the search left out. (Not by "snoring" itself: the list shows the first 50, compatible ones
+    # first, and the seeded HQs now hold more than 50 others, S49.)
+    first = same.locator("[data-testid^='candidate-']").first
+    expect(first).not_to_have_attribute("data-testid", "candidate-snoring")
+    expect(first.get_by_role("button", name="Use this")).to_be_enabled()
     page.keyboard.press("Escape")
     expect(same).to_be_hidden()
 

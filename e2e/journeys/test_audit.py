@@ -113,6 +113,9 @@ def test_an_admin_finds_a_clinicians_actions_filters_them_and_exports_the_csv(pa
     with page.expect_download() as download:
         page.get_by_role("link", name="Export CSV").click()
     assert download.value.suggested_filename.endswith(".csv")
+    # A "Listed episodes" row's Episode IDs cell holds every id listed, so it grows with the local
+    # database (about 138,000 characters at 3,600 episodes): past Python's 131,072 default (S49 verification 3).
+    csv.field_size_limit(16 * 1024 * 1024)
     with open(download.value.path(), encoding="utf-8", newline="") as f:  # read as a stream
         records = list(csv.DictReader(f))
     assert len(records) == shown, f"{len(records)} CSV rows, {shown} listed"

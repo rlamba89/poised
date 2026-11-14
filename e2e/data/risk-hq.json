@@ -1,0 +1,334 @@
+{
+  "name": "E2E risk HQ",
+  "description": "Made up (S49): MUST, Morse and VTE's patient questions, as the Demo risk HQ.",
+  "chapters": [
+    {
+      "name": "Weight, falls and clots",
+      "audience": "patient",
+      "content": {
+        "pages": [
+          {
+            "name": "p_body",
+            "title": "Your height and weight",
+            "elements": [
+              {
+                "type": "text",
+                "inputType": "number",
+                "name": "height",
+                "unit": "cm",
+                "isRequired": true,
+                "title": "How tall are you?"
+              },
+              {
+                "type": "text",
+                "inputType": "number",
+                "name": "weight",
+                "unit": "kg",
+                "isRequired": true,
+                "alwaysFresh": true,
+                "title": "What do you weigh now?"
+              },
+              {
+                "type": "panel",
+                "name": "must",
+                "title": "Weight loss",
+                "readyScore": "must",
+                "elements": [
+                  {
+                    "type": "radiogroup",
+                    "name": "must_wtloss",
+                    "title": "Have you lost weight without trying in the last 3 to 6 months?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 0
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ],
+                    "alwaysFresh": true
+                  },
+                  {
+                    "type": "text",
+                    "name": "must_wtloss_kg",
+                    "title": "About how much weight have you lost without trying (kg)?",
+                    "inputType": "number",
+                    "min": 0,
+                    "max": 100,
+                    "isRequired": true,
+                    "visibleIf": "{must_wtloss} = 'o_yes'",
+                    "alwaysFresh": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "p_falls",
+            "title": "Falls",
+            "elements": [
+              {
+                "type": "panel",
+                "name": "morse",
+                "title": "Falls",
+                "readyScore": "morse",
+                "elements": [
+                  {
+                    "type": "radiogroup",
+                    "name": "morse_falls",
+                    "title": "Have you had a fall in the last 3 months?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 25
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ],
+                    "alwaysFresh": true
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "morse_aid",
+                    "title": "Do you use anything to help you walk?",
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_aid_none",
+                        "text": "Nothing",
+                        "score": 0
+                      },
+                      {
+                        "value": "o_aid_walker",
+                        "text": "Crutches, a stick or a walking frame",
+                        "score": 15
+                      },
+                      {
+                        "value": "o_aid_furniture",
+                        "text": "I hold on to furniture",
+                        "score": 30
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "p_clots",
+            "title": "Blood clots and bleeding",
+            "elements": [
+              {
+                "type": "panel",
+                "name": "vte",
+                "title": "Blood clots",
+                "readyScore": "vte",
+                "elements": [
+                  {
+                    "type": "radiogroup",
+                    "name": "vte_cancer",
+                    "title": "Do you have cancer, or are you having treatment for cancer?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "vte_thrombophilia",
+                    "title": "Have you been told you have a condition that makes your blood clot more easily (thrombophilia)?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "vte_history",
+                    "title": "Have you, or a parent, brother, sister or child of yours, ever had a blood clot in a leg or lung (DVT or pulmonary embolism)?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "vte_hrt",
+                    "title": "Are you taking hormone replacement therapy (HRT)?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ],
+                    "visibleIf": "{patientSex} <> 'male'"
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "vte_contraceptive",
+                    "title": "Are you using a contraceptive that contains oestrogen (such as the combined pill, patch or ring)?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ],
+                    "visibleIf": "{patientSex} <> 'male'"
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "vte_varicose",
+                    "title": "Do you have varicose veins that have been red, hot and painful (phlebitis)?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "vte_pregnancy",
+                    "title": "Are you pregnant, or have you had a baby in the last 6 weeks?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ],
+                    "visibleIf": "{patientSex} <> 'male'",
+                    "alwaysFresh": true
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "vte_anticoagulant",
+                    "title": "Do you take medicine to thin your blood (an anticoagulant, such as warfarin, apixaban or rivaroxaban)?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  },
+                  {
+                    "type": "radiogroup",
+                    "name": "vte_inherited_bleeding",
+                    "title": "Do you have an inherited bleeding disorder, such as haemophilia or von Willebrand disease?",
+                    "yesNo": true,
+                    "colCount": 0,
+                    "isRequired": true,
+                    "choices": [
+                      {
+                        "value": "o_yes",
+                        "text": "Yes",
+                        "score": 1
+                      },
+                      {
+                        "value": "o_no",
+                        "text": "No",
+                        "score": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -17,6 +17,9 @@
     questions. DASI opens complete (12 of 12) with its score, band and METs; Cara confirms it, and
     its METs show on the POA Summary. PRISMA-7 opens 7 of 7; Apfel 3 of 4, waiting only for the
     post-op opioids.
+  - S49: on a sent HQ holding MUST's, Morse's and VTE's patient questions, MUST opens 3 of 4: the
+    hospital BMI and weight from Cara's readings, the weight lost from the HQ. A corrected weight
+    changes its BMI, weight and score before Confirm; the POA Summary shows the result.
 """
 
 from playwright.sync_api import BrowserContext, Page, expect
@@ -513,7 +516,7 @@ def test_stop_bang_waits_for_the_observations(page: Page, as_user, patient_link)
     page.reload()
     expect(sb.get_by_test_id("assessment-filled")).to_contain_text("8 of 8 filled")
     expect(sb.get_by_test_id("assessment-inputs")).to_have_text(
-        "The observations didn't load, so the hospital BMI can't be checked. Reload the page to save or confirm.")
+        "The observations didn't load, so the hospital's readings can't be checked. Reload the page to save or confirm.")
     expect(sb.get_by_role("button", name="Confirm")).to_be_disabled()
 
 
@@ -665,3 +668,206 @@ def test_an_hq_with_dasi_sent_on_a_phone_opens_dasi_complete(page: Page, phone: 
     expect(page.get_by_test_id("poa-detail-DASI")).to_contain_text("34 (Poor functional capacity), 6.9 METs")
     expect(page.get_by_test_id("poa-detail-Apfel PONV")).to_contain_text("4 (PONV risk about 79%)")
     expect(page.get_by_test_id("poa-detail-PRISMA-7")).to_contain_text("Not confirmed")
+
+
+def test_must_takes_the_hospital_bmi_and_follows_a_corrected_weight(page: Page, as_user, patient_link):
+    hq = as_user("Alex Author").published_hq("risk-hq.json", f"E2E J12 risk HQ {unique()}")
+    episode = as_user("Cara Clinician").episode(hq, f"J12 MUST {unique()}")  # a woman of 46
+    patient = patient_link(episode)
+    # Her own height and weight (165 cm, 70 kg), 6 kg lost without trying; no falls, no clot risks.
+    patient.answer("Weight, falls and clots", {
+        "height": 165, "weight": 70, "must_wtloss": "o_yes", "must_wtloss_kg": 6, "morse_falls": "o_no", "morse_aid": "o_aid_none",
+        **{k: "o_no" for k in ["vte_cancer", "vte_thrombophilia", "vte_history", "vte_hrt", "vte_contraceptive", "vte_varicose",
+                               "vte_pregnancy", "vte_anticoagulant", "vte_inherited_bleeding"]},
+    })
+    patient.submit()
+
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}")
+    add(page, "Height", {"Height (cm)": "170"})
+    add(page, "Weight", {"Weight (kg)": "60"})
+    expect(page.get_by_test_id("hospital-bmi")).to_contain_text("20.8")
+
+    # MUST opens 3 of 4: the hospital BMI and weight, the weight lost from the HQ; the acute disease effect is hers.
+    must = add_assessment(page, "MUST", "must")
+    expect(must.get_by_test_id("assessment-filled")).to_have_text("3 of 4 filled: answer the item highlighted.")
+    for letter, source in [("1", "Hospital BMI"), ("2", "Hospital weight"), ("3", "HQ"), ("4", "Missing")]:
+        expect(must.get_by_test_id(f"item-{letter}").get_by_test_id("item-source")).to_have_text(source)
+    expect(must.get_by_test_id("item-1").get_by_role("textbox")).to_have_value("20.8")
+    expect(must.get_by_test_id("item-2").get_by_role("textbox")).to_have_value("60")
+    expect(must.get_by_test_id("item-3").get_by_role("textbox")).to_have_value("6")
+    expect(must.get_by_test_id("assessment-result")).to_have_text("Incomplete")
+    must.get_by_role("button", name="4: No").click()
+    # BMI 20.8 is 0; 6 kg of 66 is 9.1%, 1.
+    expect(must.get_by_test_id("assessment-result")).to_have_text("1 (Medium risk), 9.1% of body weight lost")
+    must.get_by_role("button", name="Save").click()
+    expect(must.get_by_test_id("assessment-confirmed")).to_have_text("Not confirmed")
+
+    # The weight corrected (S46) before Confirm: MUST takes the new BMI and weight.
+    page.get_by_role("button", name="Correct Weight 60.0 kg").click()
+    fix = page.get_by_test_id("observation-correct")
+    fix.get_by_label("Weight (kg)").fill("55")
+    fix.get_by_label("Why is it corrected?").fill("Made-up: weighed in outdoor clothes")
+    fix.get_by_role("button", name="Save correction").click()
+    expect(page.get_by_test_id("hospital-bmi")).to_contain_text("19")
+    expect(must.get_by_test_id("item-1").get_by_role("textbox")).to_have_value("19")
+    expect(must.get_by_test_id("item-2").get_by_role("textbox")).to_have_value("55")
+    # BMI 19 is 1; 6 kg of 61 is 9.8%, 1.
+    expect(must.get_by_test_id("assessment-result")).to_have_text("2 (High risk), 9.8% of body weight lost")
+    must.get_by_role("button", name="Confirm").click()
+    expect(must.get_by_test_id("assessment-confirmed")).to_contain_text("Confirmed by Cara Clinician")
+
+    # A weight typed on the card leaves the BMI for her: never one body's BMI beside another's weight (verification 3).
+    must.get_by_role("textbox", name="2: Weight now").fill("50")
+    expect(must.get_by_test_id("item-1").get_by_test_id("item-source")).to_have_text("Missing")
+    expect(must.get_by_test_id("item-1").get_by_role("textbox")).to_have_value("")
+    expect(must.get_by_test_id("assessment-result")).to_have_text("Incomplete")
+    expect(must.get_by_role("button", name="Confirm")).to_be_disabled()
+    must.get_by_role("textbox", name="1: BMI").fill("17.3")
+    expect(must.get_by_test_id("assessment-result")).to_have_text("4 (High risk), 10.7% of body weight lost")
+    must.get_by_role("button", name="Undo changes").click()
+    expect(must.get_by_test_id("assessment-result")).to_have_text("2 (High risk), 9.8% of body weight lost")
+    # A BMI typed, then the hospital's own weight typed back: that weight is hers too (verification 4, finding 1).
+    must.get_by_role("textbox", name="1: BMI").fill("30")
+    expect(must.get_by_test_id("item-2").get_by_test_id("item-source")).to_have_text("Missing")
+    must.get_by_role("textbox", name="2: Weight now").fill("55")
+    expect(must.get_by_test_id("item-2").get_by_test_id("item-source")).to_have_text("Entered by clinician")
+    # BMI 30 is 0; 6 kg of 61 is 9.8%, 1.
+    expect(must.get_by_test_id("assessment-result")).to_have_text("1 (Medium risk), 9.8% of body weight lost")
+    expect(must.get_by_role("button", name="Confirm")).to_be_enabled()
+    must.get_by_role("button", name="Undo changes").click()
+    expect(must.get_by_test_id("assessment-result")).to_have_text("2 (High risk), 9.8% of body weight lost")
+    # A BMI mistyped and put right, then a weight typed: the BMI is still left for her (verification 5, finding 1).
+    bmi_box = must.get_by_role("textbox", name="1: BMI")
+    bmi_box.fill("36")
+    bmi_box.fill("19")
+    expect(must.get_by_test_id("item-1").get_by_test_id("item-source")).to_have_text("Hospital BMI")
+    must.get_by_role("textbox", name="2: Weight now").fill("50")
+    expect(must.get_by_test_id("item-1").get_by_test_id("item-source")).to_have_text("Missing")
+    # Its box is empty too, not the 19 typed before (test report 7, F-1).
+    expect(bmi_box).to_have_value("")
+    # Typing in the emptied box and deleting it isn't a mistake: Save stays on (finding 2).
+    bmi_box.fill("1")
+    bmi_box.fill("")
+    expect(must.get_by_text("Enter a BMI")).to_have_count(0)
+    expect(must.get_by_role("button", name="Save")).to_be_enabled()
+    must.get_by_role("button", name="Undo changes").click()
+    expect(must.get_by_test_id("assessment-result")).to_have_text("2 (High risk), 9.8% of body weight lost")
+    # The weight changed, the BMI typed into its emptied box, the weight put back, then another weight:
+    # the BMI typed earlier is left for her again (verification 6, finding 1).
+    weight_box = must.get_by_role("textbox", name="2: Weight now")
+    weight_box.fill("56")
+    bmi_box.fill("19")
+    expect(must.get_by_test_id("item-1").get_by_test_id("item-source")).to_have_text("Entered by clinician")
+    weight_box.fill("55")
+    expect(must.get_by_test_id("item-1").get_by_test_id("item-source")).to_have_text("Hospital BMI")
+    expect(must.get_by_test_id("item-2").get_by_test_id("item-source")).to_have_text("Hospital weight")
+    weight_box.fill("50")
+    expect(must.get_by_test_id("item-1").get_by_test_id("item-source")).to_have_text("Missing")
+    expect(bmi_box).to_have_value("")
+    expect(must.get_by_test_id("assessment-result")).to_have_text("Incomplete")
+    expect(must.get_by_role("button", name="Confirm")).to_be_disabled()
+    must.get_by_role("button", name="Undo changes").click()
+    expect(must.get_by_test_id("assessment-result")).to_have_text("2 (High risk), 9.8% of body weight lost")
+    # The mirror: a weight typed and put back, then a BMI typed: the weight's box is empty (F-1).
+    weight_box.fill("61")
+    weight_box.fill("55")
+    expect(must.get_by_test_id("item-2").get_by_test_id("item-source")).to_have_text("Hospital weight")
+    bmi_box.fill("17.3")
+    expect(must.get_by_test_id("item-2").get_by_test_id("item-source")).to_have_text("Missing")
+    expect(weight_box).to_have_value("")
+    must.get_by_role("button", name="Undo changes").click()
+    expect(must.get_by_test_id("assessment-result")).to_have_text("2 (High risk), 9.8% of body weight lost")
+
+    # The POA Summary: MUST beside the hospital BMI.
+    page.goto(f"{base}/episodes/{episode['id']}/poa")
+    expect(page.get_by_test_id("poa-detail-Hospital BMI")).to_contain_text("19")
+    expect(page.get_by_test_id("poa-detail-MUST")).to_contain_text("2 (High risk), 9.8% of body weight lost")
+
+
+def test_must_with_a_hospital_weight_but_no_height_keeps_the_weight_when_the_bmi_is_typed(page: Page, as_user):
+    """S49 verification 5, Rahul 13 Nov: the BMI the card asks for keeps the hospital's weight beside it."""
+    hq = as_user("Alex Author").published_hq("risk-hq.json", f"E2E J12 MUST weight {unique()}")
+    episode = as_user("Cara Clinician").episode(hq, f"J12 MUST weight {unique()}")
+    base = sign_in(page.context, "Cara Clinician")
+    page.goto(f"{base}/episodes/{episode['id']}")
+    add(page, "Weight", {"Weight (kg)": "60"})
+    must = add_assessment(page, "MUST", "must")
+    expect(must.get_by_test_id("item-1").get_by_test_id("item-source")).to_have_text("Missing")
+    expect(must.get_by_test_id("item-2").get_by_test_id("item-source")).to_have_text("Hospital weight")
+    must.get_by_role("textbox", name="1: BMI").fill("20.8")
+    expect(must.get_by_test_id("item-1").get_by_test_id("item-source")).to_have_text("Entered by clinician")
+    expect(must.get_by_test_id("item-2").get_by_test_id("item-source")).to_have_text("Hospital weight")
+    expect(must.get_by_test_id("item-2").get_by_role("textbox")).to_have_value("60")
+
+
+def test_a_long_result_lines_up_on_the_poa_summary(page: Page, as_user, patient_link):
+    """S49 test report 1: VTE's result is the longest; its value starts where the others do (F-1). The
+    Frailty Scale's longest level shows whole in its menu (exploring 2)."""
+    hq = as_user("Alex Author").published_hq("risk-hq.json", f"E2E J12 VTE {unique()}")
+    episode = as_user("Cara Clinician").episode(hq, f"J12 VTE {unique()}", dateOfBirth="1950-03-01")
+    patient = patient_link(episode)
+    patient.answer("Weight, falls and clots", {
+        "height": 165, "weight": 70, "must_wtloss": "o_no", "morse_falls": "o_no", "morse_aid": "o_aid_none",
+        **{k: "o_no" for k in ["vte_cancer", "vte_thrombophilia", "vte_history", "vte_hrt", "vte_contraceptive", "vte_varicose",
+                               "vte_pregnancy", "vte_anticoagulant", "vte_inherited_bleeding"]},
+    })
+    patient.submit()
+
+    base = sign_in(page.context, "Cara Clinician")
+    page.set_viewport_size({"width": 1456, "height": 900})
+    page.goto(f"{base}/episodes/{episode['id']}")
+    add(page, "Height", {"Height (cm)": "170"})
+    add(page, "Weight", {"Weight (kg)": "95"})
+    vte = add_assessment(page, "VTE risk", "vte")
+    expect(vte.get_by_test_id("assessment-filled")).to_have_text("11 of 30 filled: answer the 19 items highlighted.")
+    missing = vte.locator("[data-missing=true]")
+    for left in range(19, 0, -1):  # each No takes its row off the missing list
+        expect(missing).to_have_count(left)
+        if left == 1:  # every thrombosis item answered, the last bleeding one not (verification 2, finding 1)
+            expect(vte.get_by_test_id("assessment-result")).to_have_text("Incomplete")
+            expect(vte.get_by_role("button", name="Confirm")).to_be_disabled()
+        missing.first.get_by_role("button", name="No").click()
+    expect(vte.get_by_test_id("assessment-result")).to_have_text("2 (Thrombosis risk: consider thromboprophylaxis), Bleeding risk factors: 0")
+    vte.get_by_role("button", name="Confirm").click()
+    expect(vte.get_by_test_id("assessment-confirmed")).to_contain_text("Confirmed by Cara Clinician")
+
+    # The Frailty Scale's menu shows the longest level whole (report 1, exploring 2).
+    cfs = add_assessment(page, "Clinical Frailty Scale", "rockwood")
+    cfs.get_by_label("1: Level").click()
+    page.get_by_role("option", name="8: Living with Very Severe Frailty").click()
+    level = cfs.get_by_label("1: Level")
+    expect(level).to_have_value("8: Living with Very Severe Frailty")
+    assert level.evaluate("e => e.scrollWidth <= e.clientWidth")
+
+    page.goto(f"{base}/episodes/{episode['id']}/poa")
+    long = page.get_by_test_id("poa-detail-VTE risk")
+    expect(long).to_contain_text("2 (Thrombosis risk: consider thromboprophylaxis), Bleeding risk factors: 0")
+    value_x = lambda label: page.get_by_test_id(f"poa-detail-{label}").locator("p").nth(1).bounding_box()["x"]
+    assert value_x("VTE risk") == value_x("Hospital BMI")
+
+
+def test_a_man_is_not_asked_about_pregnancy_contraception_or_hrt(phone: BrowserContext, as_user):
+    """S49 verification 1 (Rahul's answer 2): VTE's HQ part skips three questions for a patient recorded as male."""
+    hq = as_user("Alex Author").published_hq("risk-hq.json", f"E2E J12 VTE male {unique()}")
+    episode = as_user("Cara Clinician").episode(hq, f"J12 VTE man {unique()}", dateOfBirth="1960-03-01", sex="male")
+    patient = phone.new_page()
+    patient.goto(invite_path(episode["email"]))
+    patient.get_by_role("button", name="Continue").click()
+    patient.get_by_label("Day").fill("1")
+    patient.get_by_label("Month").fill("3")
+    patient.get_by_label("Year").fill("1960")
+    patient.get_by_role("button", name="Continue").click()
+    patient.get_by_test_id("set-Weight, falls and clots").get_by_role("button", name="Start").click()
+    patient.get_by_label("How tall are you?").fill("178")
+    patient.get_by_label("What do you weigh now?").fill("80")
+    choose(patient, "Have you lost weight without trying in the last 3 to 6 months?", "No")
+    patient.get_by_role("button", name="Next", exact=True).click()
+    choose(patient, "Have you had a fall in the last 3 months?", "No")
+    choose(patient, "Do you use anything to help you walk?", "Nothing")
+    patient.get_by_role("button", name="Next", exact=True).click()
+    expect(patient.get_by_text("Do you have cancer, or are you having treatment for cancer?")).to_be_visible()
+    for question in ["Are you pregnant, or have you had a baby in the last 6 weeks?", "Are you taking hormone replacement therapy (HRT)?",
+                     "Are you using a contraceptive that contains oestrogen (such as the combined pill, patch or ring)?"]:
+        expect(patient.get_by_text(question)).to_have_count(0)
+    assert patient.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
