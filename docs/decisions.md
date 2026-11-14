@@ -39,6 +39,14 @@ Format: **decision**, then the reason, then where it's recorded in more detail.
 - **Verified with one minor finding left open:** on MUST, changing a saved BMI typed where the hospital has no height empties the hospital weight on screen, though a reload brings it back (pending.md, for Rahul). It wasn't held against the session: it never under-scores, and nothing wrong can be confirmed.
 - **Gotcha:** `make test-integration` starts the database with `docker compose`. Where `docker` isn't on the shell's PATH but Postgres is already up, run `make test-integration DB_UP=`, as the pipeline does.
 
+### 14 Nov 2026: C7's open items answered (Rahul; → S49a)
+
+- **A follow-up session, S49a, before C8** ([brief](sessions/S49a-c7-followups/brief.md)): MUST's saved typed BMI keeps the hospital weight when changed (verification 7, finding 1); J7's flaky mobile; the Gait menu's position; and number boxes.
+- **Number answers have no mouse wheel and no spinner, anywhere** (Rahul: "we should not have it at all; keep it a simple input box"). Why: on a desktop a scroll over a focused number box changed a patient's 6 kg to 5, and numbers feed scores.
+- **The audit log keeps every listed episode id** (as on 27 Oct); only the CSV export splits a row too long for a spreadsheet cell. Why: the log is the record of who saw which patients.
+- **When an assessment's sex item can't be answered (the record says Other or Not known), the card says the record has no male or female sex,** not "answer the item highlighted".
+- **A retired starter question's key stays offered by "Same as…" through a trust's own copies,** as built: a copy in a trust's questionnaire is the trust's own question.
+
 ### 14 Nov 2026: S49 verification 6 (Needs fixes; fixed 14 Nov; test report 9 all passed)
 
 ([verify.md](sessions/S49-must-falls-vte-rockwood/verify.md), verification 6)
