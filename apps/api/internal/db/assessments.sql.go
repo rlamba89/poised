@@ -89,12 +89,11 @@ func (q *Queries) GetAssessmentForm(ctx context.Context, arg GetAssessmentFormPa
 }
 
 const listAssessmentForms = `-- name: ListAssessmentForms :many
-SELECT f.id, f.assessment::text AS assessment, q.name, f.created_at, v.version_no, c.id AS chapter_id, c.content,
+SELECT f.id, f.assessment::text AS assessment, c.name, f.created_at, v.version_no, c.id AS chapter_id, c.content,
        a.data, a.sources, coalesce(a.revision, 0)::int AS revision, a.updated_at, a.validated_at AS confirmed_at,
        u.name AS updated_by_name
 FROM episode_forms f
 JOIN questionnaire_versions v ON v.id = f.version_id
-JOIN questionnaires q ON q.id = v.questionnaire_id
 JOIN chapters c ON c.version_id = v.id
 LEFT JOIN episode_answers a ON a.episode_form_id = f.id AND a.chapter_id = c.id AND a.actor = 'clinician'
 LEFT JOIN users u ON u.id = a.updated_by
@@ -119,7 +118,9 @@ type ListAssessmentFormsRow struct {
 }
 
 // The episode's assessments, oldest first, each with its version's content and the clinician's
-// row (none until the first save). Confirmed: validated_at, by updated_by.
+// row (none until the first save). Confirmed: validated_at, by updated_by. The name is the
+// version's own (its chapter's, stored by PublishAssessmentVersion), so a rename shows on new forms
+// only (S48 verification 1, Rahul 7 Nov).
 func (q *Queries) ListAssessmentForms(ctx context.Context, episodeID uuid.UUID) ([]ListAssessmentFormsRow, error) {
 	rows, err := q.db.Query(ctx, listAssessmentForms, episodeID)
 	if err != nil {

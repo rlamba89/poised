@@ -294,7 +294,9 @@ type Querier interface {
 	// before admission, or cancelled. unarchived_at: the latest un-archive, if any.
 	ListArchiveCandidates(ctx context.Context, hospitalID uuid.UUID) ([]ListArchiveCandidatesRow, error)
 	// The episode's assessments, oldest first, each with its version's content and the clinician's
-	// row (none until the first save). Confirmed: validated_at, by updated_by.
+	// row (none until the first save). Confirmed: validated_at, by updated_by. The name is the
+	// version's own (its chapter's, stored by PublishAssessmentVersion), so a rename shows on new forms
+	// only (S48 verification 1, Rahul 7 Nov).
 	ListAssessmentForms(ctx context.Context, episodeID uuid.UUID) ([]ListAssessmentFormsRow, error)
 	// One trust's log, newest first, with the filters that are set: someone (a staff member, staff of
 	// another trust (actor_org_id, S28), or patients_only for the patient's link), a time range
