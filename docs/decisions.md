@@ -33,6 +33,28 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 14 Nov 2026: S49a verification 2 (Verified)
+
+([verify.md](sessions/S49a-c7-followups/verify.md), verification 2)
+- **Number boxes keep ignoring Up/Down as well as the wheel** (Rahul, 14 Nov, on verification 2's finding 2): a number feeds scores, so no key or wheel should change it by accident. The `spinbutton` a screen reader announces is checked in C10's accessibility review (pending.md).
+- **Verified.** All four of verification 1's findings are fixed. Four minor findings are in pending.md ("From S49a's verification 2"). One of them is for Rahul: blocking Up/Down on number boxes leaves a `spinbutton` with inert arrow keys. Recommended: keep it, and check it in C10's accessibility review.
+- **Gotcha: `make test-integration` and `make e2e` need `docker` on the PATH** (their `db-up` step). A shell without Docker Desktop's `/Applications/Docker.app/Contents/Resources/bin` fails with "docker: No such file or directory".
+
+### 14 Nov 2026: S49a verification 1 (Needs fixes; fixed 14 Nov; test report 2 all passed)
+
+([verify.md](sessions/S49a-c7-followups/verify.md))
+- **Fixed (builder):** the Preview's earlier-answers number boxes are plain text boxes too (`PlainNumber`, `typedNumber`), as every other number answer; the audit CSV's cell limit counts UTF-16 units, as a spreadsheet does; the Audit journey folds a split request's rows back into one.
+- **Gotcha: `make dev` doesn't rebuild Go on a change.** After a Go change, restart it (or the second stack's API) before running a journey, or the journey tests the old API (S49a's first full e2e did).
+
+### 14 Nov 2026: S49a built and tested (builder's choices; test report 1 all passed)
+
+([build notes](sessions/S49a-c7-followups/build-notes.md))
+- **Number boxes: one app-wide fix, and the arrow keys too.** `apps/web/src/lib/numberBoxes.ts` (installed in `main.tsx`): a wheel over a focused `<input type="number">` takes the focus off it (the page still scrolls), and Up/Down don't step it; `globals.css` hides the spinner. Why: SurveyJS draws every Number question as one, in every view, and a plain box doesn't step on the arrow keys either. Easy to drop the arrow keys if Rahul prefers.
+- **Gotcha: React 19 sets an input's `type` again on every update** (react-dom's `updateInput`), so turning SurveyJS's number box into `type="text"` from `onAfterRenderQuestion` doesn't hold. The box stays a number box, so SurveyJS's checks are unchanged.
+- **Gotcha: only Chromium steps a focused number on the wheel;** WebKit (the journeys' `phone` fixture) doesn't. A journey checking it runs on Chromium at 390×844.
+- **The audit CSV splits any row whose list cell would pass 32,767 characters,** "(part N of M)" in the Action, the same request on each part. The log and the screen are unchanged.
+- **An assessment card no longer repeats the record's sex under the card:** the headline says it (Rahul's 14 Nov answer).
+
 ### 14 Nov 2026: S49 verification 7 (Verified)
 
 ([verify.md](sessions/S49-must-falls-vte-rockwood/verify.md), verification 7)
@@ -1415,6 +1437,7 @@ Recorded in [plan.md](plan.md) (§2, §6, §10, §12) and the README's "Deviatio
 
 ## 4. Environment gotchas
 
+- **`make dev` doesn't rebuild the Go API on a change** (S49a verification 1). Restart it after a Go change before a journey run or a manual test, or they test the old code.
 - **Docker keeps dying / the disk fills up (on Rahul's Mac).**
   - **Cause:** Microsoft Defender's network extension (`com.microsoft.wdav.netext.systemextension`) isn't pre-approved by the Mac's management (Jamf). It loops, copying 121 MB into `/Library/SystemExtensions/.staging` every 12–20 s (~29 GB/hour).
   - **Check:** `df -h /System/Volumes/Data`, `ls /Library/SystemExtensions/.staging | wc -l`, `mdatp health`, `systemextensionsctl list`.

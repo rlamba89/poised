@@ -54,5 +54,6 @@
 - **S47:** assessments (attach, pre-fill with sources, Confirm, the POA Summary) with STOP-Bang, plus OBS-04's `obs_precedence`;
 - **S48:** DASI, PRISMA-7 and Apfel;
 - **S49:** MUST, falls risk, VTE and Rockwood.
+- **S49a** (follow-ups, Rahul's 14 Nov answers): built and tested 14 Nov (test report 1 all passed); verification 1 needed fixes, done 14 Nov; test report 2 all passed (14 Nov); **verified 14 Nov (verification 2)** ([build notes](../sessions/S49a-c7-followups/build-notes.md)).
 
 The briefs are in [docs/sessions/](../sessions/README.md).
