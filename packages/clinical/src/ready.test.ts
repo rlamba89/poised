@@ -2,11 +2,12 @@
 // Chest 2016; stopbang.ca), each as a worked example. These are the ready-made score's test cases:
 // they run with `make test`, and the score can't be changed in an HQ (readyScoreProblems).
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import type { ChapterJson } from "./doc";
 import { publishProblems } from "./publish";
 import { registerClinicalProperties } from "./properties";
 import { showBands } from "./questionTypes";
-import { APFEL_KEYS, apfelClinicianPart, apfelGroup, DASI_KEYS, dasiGroup, PRISMA7_KEYS, prisma7Group, READY_SCORES, insertReadyScore, readyScoreAround, readyScoreProblems, STOP_BANG_KEYS as K, stopBangGroup } from "./ready";
+import { APFEL_KEYS, apfelClinicianPart, apfelGroup, cfsElements, DASI_KEYS, MORSE_KEYS, morseClinicianPart, morseGroup, MUST_KEYS, mustClinicianPart, mustGroup, VTE_KEYS, vteClinicianPart, vteGroup, dasiGroup, PRISMA7_KEYS, prisma7Group, READY_SCORES, insertReadyScore, readyScoreAround, readyScoreProblems, STOP_BANG_KEYS as K, stopBangGroup } from "./ready";
 import { earlierContexts } from "./respondent";
 import { renameReferences } from "./library";
 import { modelFor, type SamplePatient } from "./testcases";
@@ -251,8 +252,8 @@ describe("Apfel, as published", () => {
 });
 
 describe("every ready-made score in an HQ", () => {
-  const ids = ["stopbang", "dasi", "prisma7", "apfel"];
-  it("is offered: STOP-Bang, DASI, PRISMA-7 and Apfel", () => {
+  const ids = ["stopbang", "dasi", "prisma7", "apfel", "must", "morse", "vte"];
+  it("is offered: STOP-Bang, DASI, PRISMA-7, Apfel, and the patient's parts of MUST, Morse and VTE", () => {
     expect(READY_SCORES.map((r) => r.id)).toEqual(ids);
   });
   for (const id of ids) {
@@ -264,8 +265,230 @@ describe("every ready-made score in an HQ", () => {
       changed.pages![0].elements![0].elements![0].title = "Changed wording";
       expect(readyScoreProblems(changed)).toHaveLength(1);
       const points = inserted();
-      ((points.pages![0].elements![0].elements![1].choices as { score?: number }[])[0]).score = 9;
+      const scored = points.pages![0].elements![0].elements!.find((e) => Array.isArray(e.choices))!;
+      ((scored.choices as { score?: number }[])[0]).score = 9;
       expect(readyScoreProblems(points)).toHaveLength(1);
+    });
+  }
+});
+
+// ---------------------------------------------------------------- MUST (S49)
+// BAPEN's 'Malnutrition Universal Screening Tool' flowchart (© BAPEN): Step 1 BMI kg/m² >20 (>30
+// obese) = 0, 18.5–20 = 1, <18.5 = 2; Step 2 unplanned weight loss in past 3–6 months % <5 = 0,
+// 5–10 = 1, >10 = 2; Step 3 "If patient is acutely ill and there has been or is likely to be no
+// nutritional intake for >5 days" Score 2; Step 4 add them: 0 Low Risk, 1 Medium Risk, 2 or more
+// High Risk. In an HQ it's the patient's weight-loss questions only (S49 answers 3).
+describe("MUST, as published", () => {
+  const page = (): ChapterJson => ({ pages: [{ name: "p_1", title: "MUST", elements: mustClinicianPart() }] });
+  const run = (bmi: number | undefined, weight: number | undefined, lost: number | undefined, acute: boolean | undefined) => {
+    const data: Record<string, unknown> = {};
+    if (bmi !== undefined) data[MUST_KEYS.bmi] = bmi;
+    if (weight !== undefined) data[MUST_KEYS.weight] = weight;
+    if (lost !== undefined) data[MUST_KEYS.lostKg] = lost;
+    if (acute !== undefined) data[MUST_KEYS.acute] = acute ? "o_yes" : "o_no";
+    const m = modelFor(page(), "clinician", { name: "Sam Sample", age: 60, sex: "female" });
+    showBands(m);
+    m.data = data;
+    const q = (n: string) => (m.getQuestionByName(n) as unknown as { formatedValue: string }).formatedValue;
+    const out = { score: q(MUST_KEYS.score), pct: q(MUST_KEYS.pct) };
+    m.dispose();
+    return out;
+  };
+  const EXAMPLES: [string, number, number, number, boolean, string][] = [
+    ["BMI over 20, no weight lost, not acutely ill: 0, low risk", 22, 70, 0, false, "0 (Low risk)"],
+    ["BMI over 30 (obese) is 0", 34, 100, 0, false, "0 (Low risk)"],
+    ["BMI 20.1 is over 20: 0", 20.1, 60, 0, false, "0 (Low risk)"],
+    ["BMI 20 is 18.5–20: 1, medium risk", 20, 60, 0, false, "1 (Medium risk)"],
+    ["BMI 18.5 is 18.5–20: 1", 18.5, 55, 0, false, "1 (Medium risk)"],
+    ["BMI 18.4 is under 18.5: 2, high risk", 18.4, 55, 0, false, "2 (High risk)"],
+    ["4.9% weight lost is under 5: 0", 22, 95.1, 4.9, false, "0 (Low risk)"],
+    ["5% weight lost is 5–10: 1", 22, 95, 5, false, "1 (Medium risk)"],
+    ["10% weight lost is 5–10: 1", 22, 90, 10, false, "1 (Medium risk)"],
+    ["10.1% weight lost is over 10: 2", 22, 89.9, 10.1, false, "2 (High risk)"],
+    ["Acutely ill with no intake for over 5 days: 2", 22, 70, 0, true, "2 (High risk)"],
+    ["All three steps at their highest: 6", 17, 44, 6, true, "6 (High risk)"],
+  ];
+  for (const [name, bmi, weight, lost, acute, want] of EXAMPLES) {
+    it(name, () => expect(run(bmi, weight, lost, acute).score).toBe(want));
+  }
+  it("shows the weight lost as a percentage of the weight before, to one decimal place", () => {
+    expect(run(22, 94, 6, false).pct).toBe("6% of body weight lost");
+    expect(run(22, 63.5, 4.2, false).pct).toBe("6.2% of body weight lost");
+  });
+  it("is Incomplete while the BMI, the weight, the weight lost or the acute disease effect is missing", () => {
+    expect(run(undefined, 70, 0, false).score).toBe("Incomplete");
+    expect(run(22, undefined, 0, false).score).toBe("Incomplete");
+    expect(run(22, 70, undefined, false).score).toBe("Incomplete");
+    expect(run(22, 70, 0, undefined).score).toBe("Incomplete");
+  });
+  it("words Step 3 as BAPEN requires", () => {
+    const acute = mustClinicianPart().find((e) => e.name === MUST_KEYS.acute)!;
+    expect(acute.title).toBe("Acute disease effect: is the patient acutely ill and there has been or is likely to be no nutritional intake for >5 days?");
+  });
+  it("in an HQ is the patient's weight-loss questions, with no score: how much only when they say Yes", () => {
+    const g = mustGroup();
+    expect(g.elements!.map((e) => [e.name, e.type])).toEqual([[MUST_KEYS.lost, "radiogroup"], [MUST_KEYS.lostKg, "text"]]);
+    expect(g.elements![1]).toMatchObject({ inputType: "number", min: 0, max: 100, visibleIf: `{${MUST_KEYS.lost}} = 'o_yes'` });
+    expect(mustClinicianPart().map((e) => e.name)).toEqual([MUST_KEYS.bmi, MUST_KEYS.weight, MUST_KEYS.lostKg, MUST_KEYS.acute, MUST_KEYS.pct, MUST_KEYS.score]);
+  });
+});
+
+// ---------------------------------------------------------------- Morse Fall Scale (S49)
+// Morse JM, Morse RM, Tylko SJ. Can J Aging 1989;8(4):366–77, as the Fall TIPS trial shows it
+// (Dykes PC et al., JAMA 2010;304(17):1912–8, Figure 1): history of falls 25, secondary diagnosis
+// 15, ambulatory aid 0/15/30, IV or heparin lock 20, gait 0/10/20, mental status 0/15 (0–125). The
+// figure's worked example: a fall, a walker, weak gait and forgets limitations = 65.
+describe("the Morse Fall Scale, as published", () => {
+  const page = (): ChapterJson => ({ pages: [{ name: "p_1", title: "Falls", elements: [morseGroup(), ...morseClinicianPart()] }] });
+  const score = (data: Record<string, unknown>) => {
+    const m = modelFor(page(), "clinician", { name: "Sam Sample", age: 70, sex: "female" });
+    showBands(m);
+    m.data = data;
+    const out = (m.getQuestionByName(MORSE_KEYS.score) as unknown as { formatedValue: string }).formatedValue;
+    m.dispose();
+    return out;
+  };
+  const none = { [MORSE_KEYS.falls]: "o_no", [MORSE_KEYS.secondary]: "o_no", [MORSE_KEYS.aid]: "o_aid_none", [MORSE_KEYS.iv]: "o_no", [MORSE_KEYS.gait]: "o_gait_normal", [MORSE_KEYS.mental]: "o_mental_oriented" };
+  it("has the published points for each item", () => {
+    const points = Object.fromEntries([morseGroup(), ...morseClinicianPart()].flatMap((e) => (e.elements ?? [e]))
+      .filter((e) => Array.isArray(e.choices)).map((e) => [e.name, (e.choices as { score: number }[]).map((c) => c.score)]));
+    expect(points).toEqual({
+      [MORSE_KEYS.falls]: [25, 0], [MORSE_KEYS.aid]: [0, 15, 30], [MORSE_KEYS.secondary]: [15, 0], [MORSE_KEYS.iv]: [20, 0],
+      [MORSE_KEYS.gait]: [0, 10, 20], [MORSE_KEYS.mental]: [0, 15],
+    });
+  });
+  const EXAMPLES: [string, Record<string, string>, string][] = [
+    ["Nothing: 0, low risk", {}, "0 (Low risk)"],
+    ["The trial's worked example: 65, high risk", { [MORSE_KEYS.falls]: "o_yes", [MORSE_KEYS.aid]: "o_aid_walker", [MORSE_KEYS.gait]: "o_gait_weak", [MORSE_KEYS.mental]: "o_mental_forgets" }, "65 (High risk)"],
+    ["An IV line only: 20, low risk", { [MORSE_KEYS.iv]: "o_yes" }, "20 (Low risk)"],
+    ["A fall only: 25, moderate risk", { [MORSE_KEYS.falls]: "o_yes" }, "25 (Moderate risk)"],
+    ["A fall and a secondary diagnosis: 40, moderate", { [MORSE_KEYS.falls]: "o_yes", [MORSE_KEYS.secondary]: "o_yes" }, "40 (Moderate risk)"],
+    ["A fall and an IV line: 45, high risk", { [MORSE_KEYS.falls]: "o_yes", [MORSE_KEYS.iv]: "o_yes" }, "45 (High risk)"],
+    ["Furniture and impaired gait: 50", { [MORSE_KEYS.aid]: "o_aid_furniture", [MORSE_KEYS.gait]: "o_gait_impaired" }, "50 (High risk)"],
+    ["Everything: 125", { [MORSE_KEYS.falls]: "o_yes", [MORSE_KEYS.secondary]: "o_yes", [MORSE_KEYS.aid]: "o_aid_furniture", [MORSE_KEYS.iv]: "o_yes", [MORSE_KEYS.gait]: "o_gait_impaired", [MORSE_KEYS.mental]: "o_mental_forgets" }, "125 (High risk)"],
+  ];
+  for (const [name, change, want] of EXAMPLES) {
+    it(name, () => expect(score({ ...none, ...change })).toBe(want));
+  }
+  it("is Incomplete while any item is unanswered", () => {
+    const data: Record<string, unknown> = { ...none };
+    delete data[MORSE_KEYS.gait];
+    expect(score(data)).toBe("Incomplete");
+  });
+  it("in an HQ is the patient's two questions (a fall, a walking aid), with no score", () => {
+    expect(morseGroup().elements!.map((e) => e.name)).toEqual([MORSE_KEYS.falls, MORSE_KEYS.aid]);
+    expect(morseClinicianPart().map((e) => e.name)).toEqual([MORSE_KEYS.secondary, MORSE_KEYS.iv, MORSE_KEYS.gait, MORSE_KEYS.mental, MORSE_KEYS.score]);
+  });
+});
+
+// ---------------------------------------------------------------- VTE (S49)
+// Department of Health, Risk assessment for venous thromboembolism (VTE), 2010 (© Crown copyright;
+// NICE NG89's resources): "Any tick for thrombosis risk should prompt thromboprophylaxis according to
+// NICE guidance"; "Any tick [for bleeding risk] should prompt clinical staff to consider if bleeding
+// risk is sufficient to preclude pharmacological intervention." Age > 60 and Obesity (BMI >30 kg/m²)
+// are ticks of their own.
+describe("the DoH VTE risk assessment, as published", () => {
+  const page = (): ChapterJson => ({ pages: [{ name: "p_1", title: "VTE", elements: [vteGroup(), ...vteClinicianPart()] }] });
+  const allNo = () => Object.fromEntries([...VTE_KEYS.thrombosis, ...VTE_KEYS.bleeding].map((k) => [k, "o_no"]));
+  const run = (age: number | undefined, bmi: number | undefined, yes: string[] = []) => {
+    const data: Record<string, unknown> = { ...allNo(), ...Object.fromEntries(yes.map((k) => [k, "o_yes"])) };
+    if (bmi !== undefined) data[VTE_KEYS.bmi] = bmi;
+    const m = modelFor(page(), "clinician", { name: "Sam Sample", age, sex: "male" });
+    showBands(m);
+    m.data = data;
+    const q = (n: string) => (m.getQuestionByName(n) as unknown as { formatedValue: string }).formatedValue;
+    const out = { score: q(VTE_KEYS.score), bleeding: q(VTE_KEYS.bleedingCount) };
+    m.dispose();
+    return out;
+  };
+  it("lists every risk factor the tool has, in its order: 11 and 8 for thrombosis, 7 and 4 for bleeding", () => {
+    expect(VTE_KEYS.thrombosis).toHaveLength(19 - 2); // age and BMI are the profile's and the BMI item
+    expect(VTE_KEYS.bleeding).toHaveLength(11);
+    const titles = [vteGroup(), ...vteClinicianPart()].flatMap((e) => e.elements ?? [e]).map((e) => e.name);
+    expect(new Set(titles).size).toBe(titles.length);
+  });
+  it("no tick: 0, no thrombosis risk factors", () => expect(run(45, 24).score).toBe("0 (No thrombosis risk factors ticked)"));
+  it("age 61 is over 60; age 60 isn't", () => {
+    expect(run(61, 24).score).toBe("1 (Thrombosis risk: consider thromboprophylaxis)");
+    expect(run(60, 24).score).toBe("0 (No thrombosis risk factors ticked)");
+  });
+  it("a BMI of 30.1 is over 30; 30 isn't", () => {
+    expect(run(45, 30.1).score).toBe("1 (Thrombosis risk: consider thromboprophylaxis)");
+    expect(run(45, 30).score).toBe("0 (No thrombosis risk factors ticked)");
+  });
+  it("counts each thrombosis tick; the bleeding ticks are counted apart", () => {
+    const r = run(65, 32, [VTE_KEYS.thrombosis[0], VTE_KEYS.thrombosis[12], VTE_KEYS.bleeding[2]]);
+    expect(r.score).toBe("4 (Thrombosis risk: consider thromboprophylaxis)");
+    expect(r.bleeding).toBe("Bleeding risk factors: 1");
+  });
+  it("is Incomplete without the age, the BMI or any item", () => {
+    expect(run(undefined, 24).score).toBe("Incomplete");
+    expect(run(45, undefined).score).toBe("Incomplete");
+  });
+  it("in an HQ doesn't ask a patient recorded as male about pregnancy, an oestrogen contraceptive or HRT (verification 1)", () => {
+    const shownTo = (sex: string) => {
+      const m = modelFor({ pages: [{ name: "p_1", title: "Clots", elements: [vteGroup()] }] }, "patient", { name: "Sam Sample", age: 50, sex });
+      const names = m.getAllQuestions(true).map((q) => q.name);
+      m.dispose();
+      return names;
+    };
+    const asked = ["vte_hrt", "vte_contraceptive", "vte_pregnancy"];
+    expect(shownTo("male").filter((n) => asked.includes(n))).toEqual([]);
+    expect(shownTo("male")).toHaveLength(6);
+    for (const sex of ["female", "other", "unknown"]) expect(shownTo(sex)).toEqual(VTE_KEYS.patient);
+  });
+  it("in an HQ is the patient's own risk factors, with no score", () => {
+    const g = vteGroup();
+    expect(g.elements!.every((e) => e.type === "radiogroup")).toBe(true);
+    expect(g.elements!.map((e) => e.name)).toEqual(VTE_KEYS.patient);
+  });
+});
+
+// ---------------------------------------------------------------- Rockwood (S49)
+// The Clinical Frailty Scale, version 2.0 (2020; © Dalhousie University): nine levels, 1 Very Fit
+// to 9 Terminally Ill; 2020 renamed 2 "Fit", 4 "Living with Very Mild Frailty" and 5–8 "Living
+// with…" mild, moderate, severe and very severe frailty. A clinician's judgement: never in an HQ.
+describe("the Clinical Frailty Scale", () => {
+  it("is the nine levels of version 2.0, the level its score", () => {
+    const [level, score] = cfsElements();
+    expect((level.choices as { text: string; score: number }[]).map((c) => [c.score, c.text])).toEqual([
+      [1, "1: Very Fit"], [2, "2: Fit"], [3, "3: Managing Well"], [4, "4: Living with Very Mild Frailty"], [5, "5: Living with Mild Frailty"],
+      [6, "6: Living with Moderate Frailty"], [7, "7: Living with Severe Frailty"], [8, "8: Living with Very Severe Frailty"], [9, "9: Terminally Ill"],
+    ]);
+    const m = modelFor({ pages: [{ name: "p_1", title: "CFS", elements: cfsElements() }] }, "clinician", { name: "Sam Sample", age: 80, sex: "male" });
+    showBands(m);
+    const shownScore = () => (m.getQuestionByName(score.name) as unknown as { formatedValue: string }).formatedValue;
+    m.data = {};
+    expect(shownScore()).toBe("Incomplete");
+    m.data = { [level.name]: "o_cfs_5" };
+    expect(shownScore()).toBe("5 (Living with Mild Frailty)");
+    m.data = { [level.name]: "o_cfs_9" };
+    expect(shownScore()).toBe("9 (Terminally Ill)");
+    m.dispose();
+  });
+  it("can't be inserted in an HQ", () => {
+    expect(READY_SCORES.some((r) => r.id === "rockwood")).toBe(false);
+  });
+});
+
+// S49 verification 2 (Rahul, 13 Nov): questions about a recent time are asked afresh, never copied
+// from an earlier HQ, as the library's "What do you weigh now?" and pregnancy questions.
+describe("the ready-made parts' recent-time questions", () => {
+  const fresh = (g: ReturnType<typeof mustGroup>) => g.elements!.filter((e) => e.alwaysFresh === true).map((e) => e.name);
+  it("are always asked fresh: MUST's weight loss and amount, Morse's fall, VTE's pregnancy", () => {
+    expect(fresh(mustGroup())).toEqual([MUST_KEYS.lost, MUST_KEYS.lostKg]);
+    expect(fresh(morseGroup())).toEqual([MORSE_KEYS.falls]);
+    expect(fresh(vteGroup())).toEqual(["vte_pregnancy"]);
+  });
+});
+
+// S49 verification 3, finding 5: the seeded Demo risk HQ and the e2e copy are written from this
+// file by hand; a wording change here without regenerating them would seed a "changed" ready-made part.
+describe("the HQ files holding ready-made parts", () => {
+  for (const file of ["../../../apps/api/cmd/seed/demo-risk-hq.json", "../../../apps/api/cmd/seed/demo-fitness-hq.json", "../../../e2e/data/risk-hq.json", "../../../e2e/data/fitness-hq.json"]) {
+    it(`${file.split("/").pop()} holds them as ready.ts builds them`, () => {
+      const hq = JSON.parse(readFileSync(new URL(file, import.meta.url), "utf8")) as { chapters: { content: ChapterJson }[] };
+      for (const c of hq.chapters) expect(readyScoreProblems(c.content)).toEqual([]);
     });
   }
 });

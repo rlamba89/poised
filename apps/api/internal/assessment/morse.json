@@ -1,0 +1,176 @@
+{
+  "pages": [
+    {
+      "name": "p_morse",
+      "title": "Morse Fall Scale",
+      "elements": [
+        {
+          "type": "panel",
+          "name": "morse",
+          "title": "Falls",
+          "readyScore": "morse",
+          "elements": [
+            {
+              "type": "radiogroup",
+              "name": "morse_falls",
+              "title": "Have you had a fall in the last 3 months?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 25
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "type": "radiogroup",
+              "name": "morse_aid",
+              "title": "Do you use anything to help you walk?",
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_aid_none",
+                  "text": "Nothing",
+                  "score": 0
+                },
+                {
+                  "value": "o_aid_walker",
+                  "text": "Crutches, a stick or a walking frame",
+                  "score": 15
+                },
+                {
+                  "value": "o_aid_furniture",
+                  "text": "I hold on to furniture",
+                  "score": 30
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "morse_secondary",
+          "title": "Secondary diagnosis: does the patient have more than one medical diagnosis?",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 15
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "morse_iv",
+          "title": "IV therapy: does the patient have an IV line or a heparin (saline) lock?",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 20
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "morse_gait",
+          "title": "Gait",
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_gait_normal",
+              "text": "Normal, on bed rest or in a wheelchair",
+              "score": 0
+            },
+            {
+              "value": "o_gait_weak",
+              "text": "Weak",
+              "score": 10
+            },
+            {
+              "value": "o_gait_impaired",
+              "text": "Impaired",
+              "score": 20
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "morse_mental",
+          "title": "Mental status",
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_mental_oriented",
+              "text": "Knows their own ability",
+              "score": 0
+            },
+            {
+              "value": "o_mental_forgets",
+              "text": "Overestimates or forgets their limits",
+              "score": 15
+            }
+          ]
+        },
+        {
+          "type": "expression",
+          "name": "morse_score",
+          "title": "Morse Fall Scale score",
+          "calcKind": "score",
+          "expression": "iif(allAnswered('morse_falls', 'morse_secondary', 'morse_aid', 'morse_iv', 'morse_gait', 'morse_mental'), score('morse_falls', 'morse_secondary', 'morse_aid', 'morse_iv', 'morse_gait', 'morse_mental'), '')",
+          "bands": [
+            {
+              "id": "b_low",
+              "label": "Low risk",
+              "max": 24
+            },
+            {
+              "id": "b_moderate",
+              "label": "Moderate risk",
+              "max": 44
+            },
+            {
+              "id": "b_high",
+              "label": "High risk"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "labels": {
+    "morse_falls": "History of falling",
+    "morse_secondary": "Secondary diagnosis",
+    "morse_aid": "Ambulatory aid",
+    "morse_iv": "IV or heparin lock",
+    "morse_gait": "Gait",
+    "morse_mental": "Mental status"
+  }
+}

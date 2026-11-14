@@ -134,18 +134,15 @@ const HEIGHT = "height";
 const WEIGHT = "weight";
 
 /**
- * The POA Summary's "Patient reported BMI" (S28; Rahul, 24 Oct): from the first Question Set, in
- * order, whose answers give a height and a weight, either a BMI question's or the library's height
- * and weight questions. `answersOf` says whose answers each set's are: the patient's until the set is
- * validated, then the clinician's. Rounded to one decimal place, as the BMI question shows it.
- *
- * Only answers that are shown count (S29; Rahul, 25 Oct): a set, page, group or question a condition
- * hides, for the answers in use, is skipped, though its answer is still held (as for disclosures).
- * The clinician's view of each set decides what is shown, as on the validated summary.
+ * The patient reported BMI and the weight it was worked out from (S49: MUST's weight): the first
+ * height and weight the patient gave, in a BMI question or the separate height and weight questions,
+ * in a set and question shown. Without a height anywhere, the first weight alone (no BMI; S49
+ * verification 1, finding 3). Undefined without a weight.
  */
-export function reportedBmi(sets: SetInput[], answersOf: (setId: string) => Answers | undefined, patient: SamplePatient): number | undefined {
+export function reportedBody(sets: SetInput[], answersOf: (setId: string) => Answers | undefined, patient: SamplePatient): { bmi?: number; weight: number } | undefined {
   registerClinicalProperties();
   const answers = Object.fromEntries(sets.map((s) => [s.id, answersOf(s.id)]));
+  let weightOnly: number | undefined;
   for (const set of shownSets(sets, answers, "clinician", patient)) {
     const data = answers[set.id] ?? {};
     const model = modelFor(set.content, "clinician", patient);
@@ -162,8 +159,23 @@ export function reportedBmi(sets: SetInput[], answersOf: (setId: string) => Answ
       const cm = Number(h);
       const kg = Number(w);
       const bmi = h !== undefined && h !== "" && w !== undefined && w !== "" ? bmiOf(cm, kg) : undefined;
-      if (bmi !== undefined) return bmi;
+      if (bmi !== undefined) return { bmi, weight: kg };
+      if (weightOnly === undefined && w !== undefined && w !== "" && Number.isFinite(kg) && kg > 0) weightOnly = kg;
     }
   }
-  return undefined;
+  return weightOnly === undefined ? undefined : { weight: weightOnly };
+}
+
+/**
+ * The POA Summary's "Patient reported BMI" (S28; Rahul, 24 Oct): from the first Question Set, in
+ * order, whose answers give a height and a weight, either a BMI question's or the library's height
+ * and weight questions. `answersOf` says whose answers each set's are: the patient's until the set is
+ * validated, then the clinician's. Rounded to one decimal place, as the BMI question shows it.
+ *
+ * Only answers that are shown count (S29; Rahul, 25 Oct): a set, page, group or question a condition
+ * hides, for the answers in use, is skipped, though its answer is still held (as for disclosures).
+ * The clinician's view of each set decides what is shown, as on the validated summary.
+ */
+export function reportedBmi(sets: SetInput[], answersOf: (setId: string) => Answers | undefined, patient: SamplePatient): number | undefined {
+  return reportedBody(sets, answersOf, patient)?.bmi;
 }

@@ -42,7 +42,8 @@ func TestAllFromTheList(t *testing.T) {
 			t.Errorf("%s has no content", d.ID)
 		}
 	}
-	if strings.Join(ids, ",") != "stopbang,dasi,prisma7,apfel" || strings.Join(names, ",") != "STOP-Bang,DASI,PRISMA-7,Apfel PONV" {
+	if strings.Join(ids, ",") != "stopbang,dasi,prisma7,apfel,must,morse,vte,rockwood" ||
+		strings.Join(names, ",") != "STOP-Bang,DASI,PRISMA-7,Apfel PONV,MUST,Morse Fall Scale,VTE risk,Clinical Frailty Scale" {
 		t.Errorf("All = %v %v", ids, names)
 	}
 }
@@ -169,5 +170,73 @@ func TestProfileProblem(t *testing.T) {
 	// A record of Other or Not known can't back a male or female sex.
 	if got := ProfileProblem(map[string]json.RawMessage{"patientSex": json.RawMessage(`"male"`)}, 46, "other"); got == "" {
 		t.Error("male accepted for a patient recorded as Other")
+	}
+}
+
+// S49: MUST's numbers (the BMI and today's weight may be the observations'; the weight lost the
+// HQ's, 0 when the patient said No), VTE's 30 items and the age, Rockwood's one level.
+func TestS49Assessments(t *testing.T) {
+	raw := func(s string) map[string]json.RawMessage {
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(s), &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	src := func(s string) map[string]string {
+		var m map[string]string
+		_ = json.Unmarshal([]byte(s), &m)
+		return m
+	}
+	must, _ := Lookup("must")
+	mustData := raw(`{"must_bmi": 19.5, "must_weight": 64, "must_wtloss_kg": 0, "must_acute": "o_no"}`)
+	mustSources := src(`{"must_bmi": "observation", "must_weight": "observation", "must_wtloss_kg": "hq", "must_acute": "clinician"}`)
+	if got := Check(must.Content, mustData, mustSources); got != "" {
+		t.Errorf("MUST: %q", got)
+	}
+	if got := Unanswered(must.Content, mustData); got != "" {
+		t.Errorf("MUST answered: %q", got)
+	}
+	for _, c := range []struct{ name, data, sources, want string }{
+		{"a weight of 0", `{"must_weight": 0}`, `{"must_weight": "observation"}`, "Weight now: a number from 1 to 400."},
+		{"a negative weight lost", `{"must_wtloss_kg": -1}`, `{"must_wtloss_kg": "hq"}`, "Weight lost: a number from 0 to 100."},
+		{"the HQ's Yes/No isn't an item", `{"must_wtloss": "o_no"}`, `{"must_wtloss": "hq"}`, "doesn't belong"},
+		{"the percentage isn't an answer", `{"must_wtloss_pct": 5}`, `{"must_wtloss_pct": "clinician"}`, "doesn't belong"},
+	} {
+		if got := Check(must.Content, raw(c.data), src(c.sources)); !strings.Contains(got, c.want) {
+			t.Errorf("MUST, %s: %q, want %q", c.name, got, c.want)
+		}
+	}
+	delete(mustData, "must_wtloss_kg")
+	if got := Unanswered(must.Content, mustData); got != "Weight lost" {
+		t.Errorf("MUST without the weight lost: %q", got)
+	}
+
+	vte, _ := Lookup("vte")
+	if n := len(questionList(vte.Content)); n != 29 {
+		t.Errorf("VTE has %d questions, want 29 (and the age)", n)
+	}
+	every := map[string]json.RawMessage{}
+	for _, el := range questionList(vte.Content) {
+		every[el.Name] = json.RawMessage(`"o_no"`)
+	}
+	every["vte_bmi"] = json.RawMessage(`31.2`)
+	if got := Unanswered(vte.Content, every); got != "Age" {
+		t.Errorf("VTE without the age: %q", got)
+	}
+	every["patientAge"] = json.RawMessage(`64`)
+	if got := Unanswered(vte.Content, every); got != "" {
+		t.Errorf("VTE answered: %q", got)
+	}
+
+	cfs, _ := Lookup("rockwood")
+	if got := Unanswered(cfs.Content, map[string]json.RawMessage{}); got != "Level" {
+		t.Errorf("Rockwood without a level: %q", got)
+	}
+	if got := Check(cfs.Content, raw(`{"cfs_level": "o_cfs_10"}`), src(`{"cfs_level": "clinician"}`)); got == "" {
+		t.Error("a tenth level accepted")
+	}
+	if got := Check(cfs.Content, raw(`{"cfs_level": "o_cfs_5"}`), src(`{"cfs_level": "clinician"}`)); got != "" {
+		t.Errorf("Rockwood level 5: %q", got)
 	}
 }

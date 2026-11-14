@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { assessmentAnswers, assessmentContent, assessmentResult, DASI_KEYS, STOP_BANG_BMI, STOP_BANG_KEYS as K, type Reading } from "@poised/clinical";
+import {
+  assessmentAnswers, assessmentContent, assessmentResult, CFS_KEYS, DASI_KEYS, MORSE_KEYS, MUST_KEYS, mustGroup, STOP_BANG_BMI, STOP_BANG_KEYS as K, type Reading,
+} from "@poised/clinical";
 import { formatDateTime } from "@/lib/format";
-import { bmiInput, cardNotes, changedItems, confirmText, sinceConfirmed, filledText, inputsState, patientOn, scoreDay, withoutInvalid, poaLines, prefillFrom, saveRequest, shownItems, sourceText, valueText, type AssessmentRow, type AssessmentsView } from "./assessments";
+import { boxPlaceholder, boxTyped, numberInput, cardHints, cardNotes, changedItems, confirmText, sinceConfirmed, filledText, inputsState, patientOn, scoreDay, withoutInvalid, poaLines, prefillFrom, saveRequest, shownItems, sourceText, valueText, type AssessmentRow, type AssessmentsView } from "./assessments";
 import type { EpisodeHQ } from "./hq";
 import type { Episode } from "./types";
 
@@ -103,22 +105,39 @@ describe("Confirm and the POA Summary", () => {
 describe("the BMI box (report 1)", () => {
   const b = { min: 5, max: 150 };
   it("takes a number with at most one decimal place, a comma allowed", () => {
-    expect(bmiInput("36.5", b)).toEqual({ value: 36.5 });
-    expect(bmiInput(" 36,5 ", b)).toEqual({ value: 36.5 });
-    expect(bmiInput("40", b)).toEqual({ value: 40 });
+    expect(numberInput("36.5", b)).toEqual({ value: 36.5 });
+    expect(numberInput(" 36,5 ", b)).toEqual({ value: 36.5 });
+    expect(numberInput("40", b)).toEqual({ value: 40 });
   });
   it("says what's wrong with anything else, and gives no value", () => {
-    expect(bmiInput("abc", b)).toEqual({ error: "A number, one decimal place" });
-    expect(bmiInput("36.55", b)).toEqual({ error: "A number, one decimal place" });
-    expect(bmiInput("-5", b)).toEqual({ error: "A number, one decimal place" });
+    expect(numberInput("abc", b)).toEqual({ error: "A number, one decimal place" });
+    expect(numberInput("36.55", b)).toEqual({ error: "A number, one decimal place" });
+    expect(numberInput("-5", b)).toEqual({ error: "A number, one decimal place" });
   });
   it("says the limits for a number outside them", () => {
-    expect(bmiInput("2", b)).toEqual({ error: "Between 5 and 150" });
-    expect(bmiInput("151", b)).toEqual({ error: "Between 5 and 150" });
-    expect(bmiInput("150", b)).toEqual({ value: 150 });
+    expect(numberInput("2", b)).toEqual({ error: "Between 5 and 150" });
+    expect(numberInput("151", b)).toEqual({ error: "Between 5 and 150" });
+    expect(numberInput("150", b)).toEqual({ value: 150 });
   });
   it("an empty box is neither a value nor a mistake", () => {
-    expect(bmiInput("  ", b)).toEqual({});
+    expect(numberInput("  ", b)).toEqual({});
+  });
+});
+describe("what a number box shows (S49 test report 7, F-1)", () => {
+  const bmi = { key: "bmi", letter: "1", label: "BMI", kind: "number", min: 5, max: 150, measure: "bmi" } as const;
+  it("keeps what the clinician typed while the item holds it", () => {
+    expect(boxTyped("20.8", { ...bmi, value: 20.8, source: "observation" })).toBe("20.8");
+    expect(boxTyped("36", { ...bmi, value: 36, source: "clinician" })).toBe("36");
+  });
+  it("drops a value typed earlier once the pairing rule has emptied the item: the box is empty", () => {
+    expect(boxTyped("20.8", { ...bmi, value: undefined, source: undefined })).toBeNull();
+  });
+  it("keeps a mistake or an emptied box, which the item never held", () => {
+    expect(boxTyped("1", { ...bmi, value: undefined, source: undefined })).toBe("1");
+    expect(boxTyped("", { ...bmi, value: undefined, source: undefined })).toBe("");
+  });
+  it("not typed in: nothing", () => {
+    expect(boxTyped(null, { ...bmi, value: 20.8, source: "observation" })).toBeNull();
   });
 });
 
@@ -181,7 +200,7 @@ describe("whether the card's inputs are in (verification 1, finding 2)", () => {
   });
   it("says which didn't load", () => {
     expect(inputsState(loadedHq, { view: null, error: "Server error" })).toEqual({
-      ready: false, problem: "The observations didn't load, so the hospital BMI can't be checked. Reload the page to save or confirm.",
+      ready: false, problem: "The observations didn't load, so the hospital's readings can't be checked. Reload the page to save or confirm.",
     });
     expect(inputsState({ hq: null, error: "Server error" }, { view, error: "" })).toEqual({
       ready: false, problem: "The health questionnaire didn't load, so its answers can't be checked. Reload the page to save or confirm.",
@@ -284,5 +303,102 @@ describe("the pre-fill's HQ part is worked out once (S47 verification 4)", () =>
     expect(prefillFrom({ ...hq }, episode, readings, true).hq).not.toBe(a);
     expect(prefillFrom(hq, { ...episode, patientSubmittedAt: null }, readings, true).hq).not.toBe(a);
     expect(prefillFrom(hq, { ...episode, dateOfBirth: "1970-03-01" }, readings, true).hq).not.toBe(a);
+  });
+});
+
+describe("MUST, Morse, VTE and the Clinical Frailty Scale on the card (S49)", () => {
+  const must = assessmentContent("must")!;
+  const mustHq: EpisodeHQ = {
+    ...hq,
+    chapters: [{ id: "s1", name: "Weight", description: "", icon: "", audience: "patient", content: { pages: [{ name: "p1", elements: [mustGroup()] }] } }],
+    patient: { s1: { [MUST_KEYS.lost]: "o_yes", [MUST_KEYS.lostKg]: 6 } },
+  };
+  const mustRow = (o: Partial<AssessmentRow> = {}) => row({ assessment: "must", name: "MUST", content: must, ...o });
+  it("MUST takes the hospital BMI and weight from the readings, and the weight lost from the HQ", () => {
+    const items = shownItems(mustRow(), prefillFrom(mustHq, episode, readings, true), {});
+    expect(items.map((i) => [i.value ?? null, sourceText(i)])).toEqual([[36.4, "Hospital BMI"], [105.2, "Hospital weight"], [6, "HQ"], [null, "Missing"]]);
+  });
+  it("a corrected weight changes MUST's BMI and weight before Confirm", () => {
+    const corrected = [reading("height", 170), { ...reading("weight", 105.2), supersededBy: "w2" }, { ...reading("weight", 60), id: "w2" }];
+    const items = shownItems(mustRow(), prefillFrom(mustHq, episode, corrected, true), {});
+    expect(items.slice(0, 2).map((i) => i.value)).toEqual([20.8, 60]);
+  });
+  it("a confirmed MUST says when the hospital weight has changed since", () => {
+    const data = { [MUST_KEYS.bmi]: 36.4, [MUST_KEYS.weight]: 105.2, [MUST_KEYS.lostKg]: 6, [MUST_KEYS.acute]: "o_no" };
+    const sources = { [MUST_KEYS.bmi]: "observation", [MUST_KEYS.weight]: "observation", [MUST_KEYS.lostKg]: "hq", [MUST_KEYS.acute]: "clinician" } as const;
+    const confirmed = mustRow({ data, sources, revision: 1, confirmedAt: "2026-11-05T10:00:00Z" });
+    const from = prefillFrom(mustHq, episode, [reading("height", 170), reading("weight", 100)], true);
+    expect(sinceConfirmed(shownItems(confirmed, from, {}), shownItems(mustRow(), from, {}))).toEqual([
+      "The hospital BMI is now 34.6 (36.4 when confirmed).", "The hospital weight is now 100 (105.2 when confirmed).",
+    ]);
+    const lessLost = { ...mustHq, patient: { s1: { [MUST_KEYS.lost]: "o_no" } } };
+    expect(sinceConfirmed(shownItems(confirmed, prefillFrom(lessLost, episode, readings, true), {}), shownItems(mustRow(), prefillFrom(lessLost, episode, readings, true), {})))
+      .toEqual(["The HQ now gives 0 kg for Unplanned weight loss in the past 3–6 months (6 kg when confirmed)."]);
+  });
+  it("a hospital weight without a height: the weight, and the BMI left for the clinician (verification 1)", () => {
+    const weightOnly = [reading("weight", 60)];
+    const items = shownItems(mustRow(), prefillFrom(mustHq, episode, weightOnly, true), {});
+    expect(items.slice(0, 2).map((i) => [i.value ?? null, sourceText(i)])).toEqual([[null, "Missing"], [60, "Hospital weight"]]);
+    const data = { [MUST_KEYS.bmi]: 36.4, [MUST_KEYS.weight]: 105.2, [MUST_KEYS.lostKg]: 6, [MUST_KEYS.acute]: "o_no" };
+    const sources = { [MUST_KEYS.bmi]: "observation", [MUST_KEYS.weight]: "observation", [MUST_KEYS.lostKg]: "hq", [MUST_KEYS.acute]: "clinician" } as const;
+    const confirmed = mustRow({ data, sources, revision: 1, confirmedAt: "2026-11-05T10:00:00Z" });
+    const from = prefillFrom(mustHq, episode, weightOnly, true);
+    expect(sinceConfirmed(shownItems(confirmed, from, {}), shownItems(mustRow(), from, {}))).toEqual([
+      "The hospital has a weight but no height now (BMI 36.4 when confirmed).", "The hospital weight is now 60 (105.2 when confirmed).",
+    ]);
+  });
+  it("confirmed on the patient's pair, then a hospital weight alone: says the hospital has no height, not that there's no BMI (verification 3)", () => {
+    const withBody: EpisodeHQ = {
+      ...mustHq,
+      chapters: [{ ...mustHq.chapters[0], content: { pages: [{ name: "p1", elements: [mustGroup(), { type: "bmi", name: "q_bmi", title: "Height and weight" }] }] } }],
+      patient: { s1: { [MUST_KEYS.lost]: "o_no", q_bmi: { height: 165, weight: 70 } } },
+    };
+    const data = { [MUST_KEYS.bmi]: 25.7, [MUST_KEYS.weight]: 70, [MUST_KEYS.lostKg]: 0, [MUST_KEYS.acute]: "o_no" };
+    const sources = { [MUST_KEYS.bmi]: "hq", [MUST_KEYS.weight]: "hq", [MUST_KEYS.lostKg]: "hq", [MUST_KEYS.acute]: "clinician" } as const;
+    const confirmed = mustRow({ data, sources, revision: 1, confirmedAt: "2026-11-05T10:00:00Z" });
+    const from = prefillFrom(withBody, episode, [reading("weight", 66)], true);
+    expect(sinceConfirmed(shownItems(confirmed, from, {}), shownItems(mustRow(), from, {}))).toEqual([
+      "The hospital has a weight but no height now (BMI 25.7 when confirmed).", "The hospital weight is now 66 (Patient reported weight 70 when confirmed).",
+    ]);
+  });
+  it("says the readings can't be checked when they didn't load", () => {
+    expect(inputsState({ hq, error: "" }, { view: null, error: "boom" }).problem).toBe(
+      "The observations didn't load, so the hospital's readings can't be checked. Reload the page to save or confirm.");
+  });
+  it("a weight lost of 0 is a value, and the box says the item's limits", () => {
+    expect(numberInput("0", { min: 0, max: 100 })).toEqual({ value: 0 });
+    expect(numberInput("101", { min: 0, max: 100 })).toEqual({ error: "Between 0 and 100" });
+    expect(numberInput("0", { min: 5, max: 150 })).toEqual({ error: "Between 5 and 150" });
+  });
+  it("a choice of several shows the option's words", () => {
+    const morse = shownItems(row({ assessment: "morse", content: assessmentContent("morse")! }), prefillFrom(hq, episode, readings, true), { [MORSE_KEYS.aid]: "o_aid_walker" });
+    expect(valueText(morse[2])).toBe("Crutches, a stick or a walking frame");
+  });
+  it("the POA Summary gives each confirmed result", () => {
+    const cfs = row({ assessment: "rockwood", name: "Clinical Frailty Scale", content: assessmentContent("rockwood")!, data: { [CFS_KEYS.level]: "o_cfs_4" }, sources: {}, revision: 1, confirmedAt: "2026-11-05T10:00:00Z" });
+    expect(poaLines({ assessments: [cfs], available: [], obsPrecedence: true }, episode, "")).toEqual([{ name: "Clinical Frailty Scale", text: "4 (Living with Very Mild Frailty)" }]);
+  });
+  describe("the Clinical Frailty Scale's hints", () => {
+    const cfs = row({ id: "f9", assessment: "rockwood", name: "Clinical Frailty Scale", content: assessmentContent("rockwood")! });
+    const dasiData = Object.fromEntries(DASI_KEYS.items.map((k) => [k, "o_no"]));
+    const dasi = row({ id: "f2", assessment: "dasi", name: "DASI", content: assessmentContent("dasi")!, data: dasiData, sources: {}, revision: 1, confirmedAt: "2026-11-05T10:00:00Z" });
+    const prisma = row({ id: "f3", assessment: "prisma7", name: "PRISMA-7", content: assessmentContent("prisma7")!, data: {}, sources: {}, revision: 1 });
+    it("are DASI's and PRISMA-7's results once confirmed", () => {
+      expect(cardHints(cfs, { assessments: [cfs, dasi, prisma], available: [], obsPrecedence: true }, episode)).toEqual([
+        `DASI: 0 (Poor functional capacity), 2.7 METs (confirmed ${formatDateTime("2026-11-05T10:00:00Z")})`,
+      ]);
+    });
+    it("none when neither is confirmed, and none on other assessments", () => {
+      expect(cardHints(cfs, { assessments: [cfs, prisma], available: [], obsPrecedence: true }, episode)).toEqual([]);
+      expect(cardHints(dasi, { assessments: [cfs, dasi], available: [], obsPrecedence: true }, episode)).toEqual([]);
+    });
+  });
+});
+
+describe("a number box's placeholder (S49 verification 2)", () => {
+  it("is BMI for a BMI, else the unit its wording ends with, else nothing", () => {
+    const items = shownItems(row({ assessment: "must", content: assessmentContent("must")! }), prefillFrom(hq, episode, readings, true), {});
+    expect(items.slice(0, 3).map(boxPlaceholder)).toEqual(["BMI", "kg", "kg"]);
+    expect(boxPlaceholder({ key: "x", letter: "1", label: "Peak flow", kind: "number", title: "Peak flow" })).toBe("");
   });
 });

@@ -3,7 +3,7 @@
 // confirmed. Types, the request bodies and the words; the card is AssessmentsPanel.tsx.
 import { useCallback, useEffect, useState } from "react";
 import {
-  assessmentAnswers, assessmentItems, assessmentResult, countingHqAnswers, hospitalBmi, patientVariables, withDraft,
+  assessmentAnswers, assessmentHints, assessmentItems, assessmentResult, countingHqAnswers, hospitalBmi, latest, patientVariables, withDraft,
   type Answers, type AssessmentItem, type ChapterJson, type ItemSource, type PrefillFrom, type Reading,
 } from "@poised/clinical";
 import { api, ApiError } from "@/lib/api";
@@ -80,6 +80,7 @@ export function prefillFrom(hq: EpisodeHQ | null, e: Episode, readings: Reading[
     hq: hqPart(hq, e),
     patient: patientOn(e, at),
     hospitalBmi: readings ? hospitalBmi(readings)?.bmi : undefined,
+    hospitalWeight: readings ? (latest(readings, "weight")?.value ?? undefined) : undefined,
     obsPrecedence,
   };
 }
@@ -139,7 +140,7 @@ export function inputsState(
 ): { ready: boolean; problem?: string } {
   if (hq.error) return { ready: false, problem: "The health questionnaire didn't load, so its answers can't be checked. Reload the page to save or confirm." };
   if (obs.view !== "off" && obs.error) {
-    return { ready: false, problem: "The observations didn't load, so the hospital BMI can't be checked. Reload the page to save or confirm." };
+    return { ready: false, problem: "The observations didn't load, so the hospital's readings can't be checked. Reload the page to save or confirm." };
   }
   return { ready: !!hq.hq && obs.view !== null };
 }
@@ -165,33 +166,54 @@ export const saveRequest = (row: AssessmentRow, items: AssessmentItem[]) => ({ .
 
 export const SOURCE_LABELS: Record<ItemSource, string> = { hq: "HQ", observation: "Observation", profile: "Profile", clinician: "Clinician" };
 
+/** A measured number's name: "BMI" or "weight". */
+const measureName = (i: AssessmentItem) => (i.measure === "weight" ? "weight" : "BMI");
+
 /** Where the value came from, in words. */
 export function sourceText(i: AssessmentItem): string {
   if (!i.source) return "Missing";
-  if (i.kind === "number") return i.source === "observation" ? "Hospital BMI" : i.source === "hq" ? "Patient reported BMI" : "Entered by clinician";
+  if (i.kind === "number" && i.source === "clinician") return "Entered by clinician";
+  if (i.measure) return i.source === "observation" ? `Hospital ${measureName(i)}` : `Patient reported ${measureName(i)}`;
   return SOURCE_LABELS[i.source];
 }
 
 /** The value in words: Yes or No, a BMI, an age, a sex. */
 export function valueText(i: AssessmentItem): string {
   if (!i.source) return "—";
-  if (i.kind === "yesNo") return i.options?.find((o) => o.value === i.value)?.text ?? String(i.value);
+  if (i.kind === "choice") return i.options?.find((o) => o.value === i.value)?.text ?? String(i.value);
   if (i.key === "patientSex") return i.value === "male" ? "Male" : "Female";
   return String(i.value);
 }
 
 /**
+ * A number box's placeholder: "BMI" for a BMI, else the unit its wording ends with ("Weight now
+ * (kg)" → "kg"), else nothing (S49 verification 2: not "kg" for every other number).
+ */
+export const boxPlaceholder = (i: AssessmentItem): string =>
+  i.measure === "bmi" ? "BMI" : (/\(([^()]+)\)\s*$/.exec(i.title ?? "")?.[1] ?? "");
+
+/**
  * What's typed in a number item's box: a value (at most one decimal place, a comma allowed, within
  * the item's limits), a mistake to show under the box, or neither while it's empty.
  */
-export function bmiInput(text: string, limits: { min?: number; max?: number }): { value?: number; error?: string } {
+export function numberInput(text: string, limits: { min?: number; max?: number }): { value?: number; error?: string } {
   const t = text.trim();
   if (!t) return {};
   if (!/^\d+([.,]\d)?$/.test(t)) return { error: "A number, one decimal place" };
   const n = Number(t.replace(",", "."));
-  const { min = 0, max = Infinity } = limits;
-  if (n < min || n > max || n <= 0) return { error: `Between ${min} and ${max}` };
+  // Above 0 unless the item's limits allow 0 (MUST's weight lost, S49).
+  const { min, max = Infinity } = limits;
+  if ((min === undefined ? n <= 0 : n < min) || n > max) return { error: `Between ${min ?? 0} and ${max}` };
   return { value: n };
+}
+
+/**
+ * What a number box keeps of what the clinician typed (null: the box shows the item's value, or is
+ * empty). A value they typed that the item no longer holds is one the MUST pairing rule has since
+ * emptied, so the box goes empty with it (S49 test report 7, F-1); a mistake or an emptied box stays.
+ */
+export function boxTyped(typed: string | null, i: AssessmentItem): string | null {
+  return typed !== null && !i.source && numberInput(typed, i).value !== undefined ? null : typed;
 }
 
 /**
@@ -209,8 +231,8 @@ export function filledText(items: AssessmentItem[], readOnly: boolean): string {
   return `${head}: answer the ${missing === 1 ? "item" : `${missing} items`} highlighted.`;
 }
 
-/** How a BMI's source reads in a sentence. */
-const bmiName = (i: AssessmentItem) => (i.source === "observation" ? "hospital BMI" : "patient reported BMI");
+/** How a measurement's source reads in a sentence: "hospital BMI", "patient reported weight". */
+const sourceName = (i: AssessmentItem) => `${i.source === "observation" ? "hospital" : "patient reported"} ${measureName(i)}`;
 
 /**
  * What a confirmed assessment used that has changed since (S47 answers 6), one sentence each, e.g.
@@ -225,11 +247,20 @@ export function sinceConfirmed(confirmed: AssessmentItem[], fresh: AssessmentIte
     const now = fresh.find((i) => i.key === was.key);
     if (!now || !was.source || was.source === "clinician" || (now.value === was.value && now.source === was.source)) continue;
     const then = valueText(was);
-    if (was.kind === "number") {
-      if (!now.source) out.push(`There's no BMI now (${then} when confirmed).`);
-      else if (now.source === was.source) out.push(`The ${bmiName(now)} is now ${valueText(now)} (${then} when confirmed).`);
-      else out.push(`The ${bmiName(now)} is now ${valueText(now)} (${sourceText(was)} ${then} when confirmed).`);
-    } else if (was.kind === "yesNo") {
+    if (was.measure) {
+      // A BMI left for the clinician beside a hospital weight (the pair rule): the hospital has no height (verification 3).
+      const hospitalWeightOnly = was.measure === "bmi" && fresh.some((i) => i.measure === "weight" && i.source === "observation");
+      if (!now.source && hospitalWeightOnly) out.push(`The hospital has a weight but no height now (BMI ${then} when confirmed).`);
+      else if (!now.source) out.push(`There's no ${measureName(was)} now (${then} when confirmed).`);
+      else if (now.source === was.source) out.push(`The ${sourceName(now)} is now ${valueText(now)} (${then} when confirmed).`);
+      else out.push(`The ${sourceName(now)} is now ${valueText(now)} (${sourceText(was)} ${then} when confirmed).`);
+    } else if (was.kind === "number") {
+      // MUST's weight lost: "The HQ now gives 3 kg for Unplanned weight loss… (0 kg when confirmed)." (verification 5, finding 3)
+      const unit = boxPlaceholder(was);
+      const label = unit ? was.label.replace(/\s*\([^()]+\)\s*$/, "") : was.label;
+      const n = (i: AssessmentItem) => (unit ? `${valueText(i)} ${unit}` : valueText(i));
+      out.push(now.source ? `The HQ now gives ${n(now)} for ${label} (${n(was)} when confirmed).` : `The HQ no longer answers ${label} (${n(was)} when confirmed).`);
+    } else if (was.kind !== "profile") {
       out.push(now.source ? `The HQ now says ${valueText(now)} to ${was.label} (${then} when confirmed).` : `The HQ no longer answers ${was.label} (${then} when confirmed).`);
     } else if (was.key === "patientAge") {
       out.push(now.source ? `The patient's record now gives an age of ${valueText(now)} that day (${then} when confirmed).` : `The patient's record has no date of birth now (${then} when confirmed).`);
@@ -238,6 +269,19 @@ export function sinceConfirmed(confirmed: AssessmentItem[], fresh: AssessmentIte
     }
   }
   return out;
+}
+
+/**
+ * The card's hints (S49): the confirmed results of the assessments this one shows beside it (the
+ * Clinical Frailty Scale: DASI's and PRISMA-7's), each as confirmed, e.g. "DASI: 34 (Poor functional
+ * capacity), 6.9 METs (confirmed 5 Nov 2026, 10:00)". None until one is confirmed.
+ */
+export function cardHints(row: AssessmentRow, view: AssessmentsView, e: Episode): string[] {
+  return assessmentHints(row.assessment).flatMap((id) => {
+    const a = view.assessments.find((x) => x.assessment === id);
+    if (!a?.confirmedAt || !a.data) return [];
+    return [`${a.name}: ${assessmentResult(a.content, a.data, patientOn(e, a.confirmedAt)).text} (confirmed ${formatDateTime(a.confirmedAt)})`];
+  });
 }
 
 /** Who confirmed it and when, or that it isn't. */

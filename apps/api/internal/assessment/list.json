@@ -14,5 +14,21 @@
   {
     "id": "apfel",
     "name": "Apfel PONV"
+  },
+  {
+    "id": "must",
+    "name": "MUST"
+  },
+  {
+    "id": "morse",
+    "name": "Morse Fall Scale"
+  },
+  {
+    "id": "vte",
+    "name": "VTE risk"
+  },
+  {
+    "id": "rockwood",
+    "name": "Clinical Frailty Scale"
   }
 ]

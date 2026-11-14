@@ -6,11 +6,11 @@
 // or archived episode's assessments are shown, not changed. With assessments off it isn't shown.
 import { useMemo, useState } from "react";
 import { Alert, Badge, Button, Card, Group, Select, Stack, Table, Text, TextInput, Title } from "@mantine/core";
-import { assessmentAnswers, assessmentItems, assessmentResult, withDraft, type Answers, type AssessmentItem, type Reading } from "@poised/clinical";
+import { assessmentAnswers, assessmentItems, assessmentResult, draftAfter, shownWithout, withDraft, type Answers, type AssessmentItem, type Reading } from "@poised/clinical";
 import { api } from "@/lib/api";
 import { isStale, SaveError } from "./StatusControl";
 import {
-  bmiInput, cardNotes, changedItems, confirmText, filledText, withoutInvalid, scoreDay, prefillFrom, saveRequest, shownItems, sourceText, valueText, type AssessmentRow, type AssessmentsView, sinceConfirmed,
+  boxPlaceholder, boxTyped, numberInput, cardHints, cardNotes, changedItems, confirmText, filledText, withoutInvalid, scoreDay, prefillFrom, saveRequest, shownItems, sourceText, valueText, type AssessmentRow, type AssessmentsView, sinceConfirmed,
 } from "./assessments";
 import type { EpisodeHQ } from "./hq";
 import type { Episode } from "./types";
@@ -112,7 +112,8 @@ function Assessment({ path, episode, row, view, hq, readings, readOnly, inputs, 
     [changed, from, drafted, row, draft, invalid],
   );
   const result = useMemo(() => assessmentResult(row.content, assessmentAnswers(items).data, from.patient), [row.content, items, from.patient]);
-  const complete = result.score !== undefined;
+  // Complete once there's a result and no item is missing (VTE's bleeding items aren't its first result's, verification 2).
+  const complete = result.score !== undefined && !items.some((i) => !i.source);
   const missing = items.some((i) => !i.source);
   // S47 answers 6: what it used that has changed since Confirm, against a fresh pre-fill (the record
   // as of the day of Confirm). Shown only while it's shown as confirmed.
@@ -121,6 +122,7 @@ function Assessment({ path, episode, row, view, hq, readings, readOnly, inputs, 
     [row.confirmedAt, row.content, changed, base, shownFrom],
   );
   const undo = () => { setDraft({}); setInvalid({}); setResets((n) => n + 1); };
+  const hints = useMemo(() => cardHints(row, view, episode), [row, view, episode]);
 
   const send = async (confirm: boolean) => {
     setSaving(true);
@@ -152,18 +154,25 @@ function Assessment({ path, episode, row, view, hq, readings, readOnly, inputs, 
       <Text size="sm" c={missing ? "orange.8" : "dimmed"} mb="xs" data-testid="assessment-filled">
         {filledText(items, readOnly)}
       </Text>
+      {hints.length > 0 && (
+        <Alert color="blue" variant="light" py={6} mb="xs" data-testid="assessment-hints">
+          <Text size="xs" fw={600}>For reference</Text>
+          {hints.map((h) => <Text key={h} size="sm">{h}</Text>)}
+        </Alert>
+      )}
       <Table verticalSpacing={4}>
         <Table.Tbody>
-          {items.map((i, n) => (
+          {items.map((i) => (
             <Table.Tr key={i.key} data-testid={`item-${i.letter}`} data-missing={i.source ? "false" : "true"} bg={i.source ? undefined : "orange.0"}>
               <Table.Td w={30}><Text fw={700}>{i.letter}</Text></Table.Td>
               <Table.Td>
                 <Text size="sm" fw={600}>{i.label}</Text>
-                {i.title && <Text size="xs" c="dimmed">{i.title}</Text>}
+                {i.title && i.title !== i.label && <Text size="xs" c="dimmed">{i.title}</Text>}
               </Table.Td>
-              <Table.Td w={180}>
-                <ItemValue key={`${i.key}:${resets}`} item={i} readOnly={readOnly} had={!!base[n].source} invalid={!!invalid[i.key]}
-                  onChange={(v) => setDraft((d) => ({ ...d, [i.key]: v }))}
+              {/* A menu needs room for its longest choice ("8: Living with Very Severe Frailty", report 1). */}
+              <Table.Td w={(i.options ?? []).length > 2 && !readOnly ? 270 : 200}>
+                <ItemValue key={`${i.key}:${resets}`} item={i} readOnly={readOnly} had={!!(i.measure ? shownWithout(row.content, base, draft, i.key) : base.find((b) => b.key === i.key))?.source} invalid={!!invalid[i.key]}
+                  onChange={(v) => setDraft((d) => draftAfter(row.content, base, d, i.key, v))}
                   onInvalid={(no) => setInvalid((x) => ({ ...x, [i.key]: no }))} />
               </Table.Td>
               {/* Wide enough for the longest source, so the answers don't move as a source changes. */}
@@ -205,9 +214,11 @@ function Assessment({ path, episode, row, view, hq, readings, readOnly, inputs, 
   );
 }
 
-/** Yes and No buttons, a BMI box, or the profile's value (not changed here). */
+/** Yes and No buttons (a menu for more than two options), a number box, or the profile's value (not changed here). */
 /**
- * `had`: the item had a value before this screen's changes (saved or pre-filled). Emptying its box
+ * `had`: the box showed a value before the clinician typed in it (saved or pre-filled; not one the
+ * MUST pairing rule emptied, S49 verification 5). Only a BMI or weight depends on the other boxes,
+ * so only those rows work it out from the draft (verification 6, finding 2). Emptying its box
  * then needs a value ("Enter a BMI"); emptying a box that started empty leaves the item missing.
  */
 function ItemValue({ item: i, readOnly, had, invalid, onChange, onInvalid }: {
@@ -215,23 +226,32 @@ function ItemValue({ item: i, readOnly, had, invalid, onChange, onInvalid }: {
 }) {
   // What the clinician typed, while they're typing; otherwise the item's value, which follows a
   // reading recorded meanwhile.
-  const [typed, setTyped] = useState<string | null>(null);
+  const [typing, setTyped] = useState<string | null>(null);
+  const typed = boxTyped(typing, i);
   const text = typed ?? (i.source ? String(i.value) : "");
   if (i.kind === "profile" || readOnly) return <Text size="sm">{valueText(i)}</Text>;
   if (i.kind === "number") {
-    const typedNow = typed === null ? {} : bmiInput(typed, i);
+    const typedNow = typed === null ? {} : numberInput(typed, i);
+    const what = boxPlaceholder(i);
     return (
-      <TextInput size="xs" aria-label={`${i.letter}: ${i.label}`} value={text} placeholder="BMI"
+      <TextInput size="xs" aria-label={`${i.letter}: ${i.label}`} value={text} placeholder={what}
         onChange={(e) => {
           const t = e.currentTarget.value;
           setTyped(t);
-          const { value } = bmiInput(t, i);
+          const { value } = numberInput(t, i);
           if (value !== undefined) onChange(value);
           else if (!t.trim() && !had) onChange(undefined); // back to missing, as it started
           // Emptying a box that showed a value isn't an answer either: Undo changes brings it back.
           onInvalid(value === undefined && (!!t.trim() || had));
         }}
-        error={typedNow.error ?? (invalid && typed !== null && !typed.trim() ? "Enter a BMI" : undefined)} />
+        error={typedNow.error ?? (invalid && typed !== null && !typed.trim() ? (what === "BMI" ? "Enter a BMI" : "Enter a number") : undefined)} />
+    );
+  }
+  if ((i.options ?? []).length > 2) {
+    return (
+      <Select size="xs" aria-label={`${i.letter}: ${i.label}`} placeholder="Choose" value={i.source ? String(i.value) : null}
+        data={(i.options ?? []).map((o) => ({ value: o.value, label: o.text }))} allowDeselect={false}
+        onChange={(v) => v && onChange(v)} comboboxProps={{ width: 300, position: "bottom-end" }} />
     );
   }
   return (

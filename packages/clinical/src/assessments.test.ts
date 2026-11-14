@@ -4,11 +4,14 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import goStopBang from "../../../apps/api/internal/assessment/stopbang.json";
 import {
-  ASSESSMENTS, assessmentAnswers, assessmentContent, assessmentItems, assessmentResult, countingHqAnswers, filledCount, STOP_BANG_BMI,
-  withDraft, type PrefillFrom,
+  ASSESSMENTS, assessmentAnswers, assessmentContent, assessmentHints, assessmentItems, assessmentResult, countingHqAnswers, filledCount, STOP_BANG_BMI,
+  draftAfter, shownWithout, withDraft, type PrefillFrom,
 } from "./assessments";
 import type { ChapterJson } from "./doc";
-import { APFEL_KEYS, apfelGroup, DASI_KEYS, dasiGroup, insertReadyScore, PRISMA7_KEYS, prisma7Group, STOP_BANG_KEYS as K, stopBangGroup } from "./ready";
+import {
+  APFEL_KEYS, apfelGroup, CFS_KEYS, DASI_KEYS, dasiGroup, insertReadyScore, MORSE_KEYS, morseGroup, MUST_KEYS, mustGroup, PRISMA7_KEYS, prisma7Group, STOP_BANG_KEYS as K,
+  stopBangGroup, VTE_KEYS, vteGroup,
+} from "./ready";
 
 const content = assessmentContent("stopbang")!;
 
@@ -264,9 +267,10 @@ const hqWith = (elements: ChapterJson["pages"] extends (infer P)[] | undefined ?
 const yesTo = (keys: string[], yes: string[]) => Object.fromEntries(keys.map((k) => [k, yes.includes(k) ? "o_yes" : "o_no"]));
 
 describe("the assessments offered (S48)", () => {
-  it("are STOP-Bang, DASI, PRISMA-7 and Apfel PONV, in that order", () => {
+  it("are STOP-Bang, DASI, PRISMA-7, Apfel PONV, MUST, Morse, VTE and the Clinical Frailty Scale, in the plan's order (S49)", () => {
     expect(ASSESSMENTS).toEqual([
       { id: "stopbang", name: "STOP-Bang" }, { id: "dasi", name: "DASI" }, { id: "prisma7", name: "PRISMA-7" }, { id: "apfel", name: "Apfel PONV" },
+      { id: "must", name: "MUST" }, { id: "morse", name: "Morse Fall Scale" }, { id: "vte", name: "VTE risk" }, { id: "rockwood", name: "Clinical Frailty Scale" },
     ]);
   });
   it("each is what Go stores, and so is the list (regenerate with `npm run assessments -w packages/clinical`)", () => {
@@ -333,5 +337,290 @@ describe("Apfel PONV on an episode", () => {
     const items = withDraft(apfel, assessmentItems(apfel, from), { [APFEL_KEYS.opioids]: "o_yes" });
     expect(items[3]).toMatchObject({ source: "clinician", yes: true });
     expect(assessmentResult(apfel, assessmentAnswers(items).data, from.patient).text).toBe("4 (PONV risk about 79%)");
+  });
+});
+
+// ---------------------------------------------------------------- S49
+
+const WEIGHT_LOSS = { [MUST_KEYS.lost]: "o_yes", [MUST_KEYS.lostKg]: 6 };
+
+describe("MUST on an episode (S49)", () => {
+  const must = assessmentContent("must")!;
+  const at = (answers: Record<string, unknown>, o: Partial<PrefillFrom> = {}): PrefillFrom => ({ ...hqWith([mustGroup()], answers), ...o });
+  it("fills 3 of 4: the hospital BMI and weight from the observations, the weight lost from the HQ; the acute disease effect is the clinician's", () => {
+    const items = assessmentItems(must, at(WEIGHT_LOSS, { hospitalBmi: 21.5, hospitalWeight: 64 }));
+    expect(items.map((i) => [i.letter, i.key, i.kind, i.source ?? null, i.value ?? null])).toEqual([
+      ["1", MUST_KEYS.bmi, "number", "observation", 21.5],
+      ["2", MUST_KEYS.weight, "number", "observation", 64],
+      ["3", MUST_KEYS.lostKg, "number", "hq", 6],
+      ["4", MUST_KEYS.acute, "choice", null, null],
+    ]);
+    expect(items.map((i) => i.measure ?? null)).toEqual(["bmi", "weight", null, null]);
+  });
+  it("a No in the HQ is 0 kg lost; the amount isn't asked then", () => {
+    const items = assessmentItems(must, at({ [MUST_KEYS.lost]: "o_no", [MUST_KEYS.lostKg]: 12 }, { hospitalBmi: 21.5, hospitalWeight: 64 }));
+    expect(items[2]).toMatchObject({ value: 0, source: "hq" });
+  });
+  it("a Yes without how much, or no answer, is missing", () => {
+    expect(assessmentItems(must, at({ [MUST_KEYS.lost]: "o_yes" }))[2].source).toBeUndefined();
+    expect(assessmentItems(must, at({}))[2].source).toBeUndefined();
+  });
+  it("the weight follows the precedence as the BMI does: the patient's own when the trust says so", () => {
+    const set = { pages: [{ name: "p_1", title: "Set", elements: [mustGroup(), { type: "bmi", name: "q_bmi", title: "Height and weight" }] }] };
+    const from: PrefillFrom = {
+      hq: { sets: [{ id: "s1", name: "Set", content: set }], answers: { s1: { ...WEIGHT_LOSS, q_bmi: { height: 170, weight: 70 } } }, patient: { name: "Pat", age: 70, sex: "female" } },
+      patient: { name: "Pat", age: 70, sex: "female" }, hospitalBmi: 21.5, hospitalWeight: 64, obsPrecedence: false,
+    };
+    const items = assessmentItems(must, from);
+    expect(items.slice(0, 2).map((i) => [i.value, i.source])).toEqual([[24.2, "hq"], [70, "hq"]]);
+    expect(assessmentItems(must, { ...from, obsPrecedence: true }).slice(0, 2).map((i) => [i.value, i.source])).toEqual([[21.5, "observation"], [64, "observation"]]);
+  });
+  describe("the BMI and the weight come from one source (S49 verification 1, Rahul's answer 1)", () => {
+    const set = { pages: [{ name: "p_1", title: "Set", elements: [mustGroup(), { type: "bmi", name: "q_bmi", title: "Height and weight" }] }] };
+    const patient = { name: "Pat", age: 70, sex: "female" };
+    const with_ = (o: Partial<PrefillFrom>, body: Record<string, unknown> = { q_bmi: { height: 165, weight: 70 } }): PrefillFrom => ({
+      hq: { sets: [{ id: "s1", name: "Set", content: set }], answers: { s1: { ...WEIGHT_LOSS, ...body } }, patient }, patient, obsPrecedence: true, ...o,
+    });
+    const pair = (from: PrefillFrom) => assessmentItems(must, from).slice(0, 2).map((i) => [i.value ?? null, i.source ?? null]);
+    it("on: a hospital weight without a height fills the weight and leaves the BMI for the clinician, never the patient's own BMI", () => {
+      expect(pair(with_({ hospitalWeight: 60 }))).toEqual([[null, null], [60, "observation"]]);
+    });
+    it("off: the patient's own pair, whatever the hospital has", () => {
+      expect(pair(with_({ hospitalWeight: 60, obsPrecedence: false }))).toEqual([[25.7, "hq"], [70, "hq"]]);
+    });
+    it("off, with no height or weight from the patient: the hospital's, the BMI missing without a height", () => {
+      expect(pair(with_({ hospitalWeight: 60, obsPrecedence: false }, {}))).toEqual([[null, null], [60, "observation"]]);
+    });
+    it("on, with neither from the hospital: the patient's pair", () => {
+      expect(pair(with_({}))).toEqual([[25.7, "hq"], [70, "hq"]]);
+    });
+    it("a patient's weight without a height is still their weight (verification 1, finding 3)", () => {
+      const weightOnly = { pages: [{ name: "p_1", title: "Set", elements: [mustGroup(), { type: "text", inputType: "number", name: "weight", title: "Weight" }] }] };
+      const from: PrefillFrom = { hq: { sets: [{ id: "s1", name: "Set", content: weightOnly }], answers: { s1: { ...WEIGHT_LOSS, weight: 68 } }, patient }, patient, obsPrecedence: true };
+      expect(pair(from)).toEqual([[null, null], [68, "hq"]]);
+    });
+    it("off: a patient's weight without a height gives way to the hospital's full pair, but beats a hospital weight alone (verification 2, Rahul)", () => {
+      const weightOnly = { pages: [{ name: "p_1", title: "Set", elements: [mustGroup(), { type: "text", inputType: "number", name: "weight", title: "Weight" }] }] };
+      const from: PrefillFrom = { hq: { sets: [{ id: "s1", name: "Set", content: weightOnly }], answers: { s1: { ...WEIGHT_LOSS, weight: 68 } }, patient }, patient, hospitalWeight: 60, obsPrecedence: false };
+      expect(pair(from)).toEqual([[null, null], [68, "hq"]]);
+      expect(pair({ ...from, hospitalBmi: 20.8 })).toEqual([[20.8, "observation"], [60, "observation"]]);
+    });
+    it("STOP-Bang, with a BMI only, still takes the patient's BMI when the hospital has no height", () => {
+      const sb = assessmentItems(content, from({ hospitalBmi: undefined }));
+      expect(item(sb, STOP_BANG_BMI)).toMatchObject({ value: 30, source: "hq" });
+    });
+  });
+  it("a corrected weight changes the BMI and the weight before Confirm, but not once confirmed", () => {
+    const items = assessmentItems(must, at(WEIGHT_LOSS, { hospitalBmi: 21.5, hospitalWeight: 64 }));
+    const saved = { ...assessmentAnswers(withDraft(must, items, { [MUST_KEYS.acute]: "o_no" })), confirmed: false };
+    const corrected = assessmentItems(must, at(WEIGHT_LOSS, { hospitalBmi: 18.4, hospitalWeight: 55 }), saved);
+    expect(corrected.slice(0, 2).map((i) => i.value)).toEqual([18.4, 55]);
+    expect(corrected[3]).toMatchObject({ value: "o_no", source: "clinician" });
+    const confirmed = assessmentItems(must, at(WEIGHT_LOSS, { hospitalBmi: 18.4, hospitalWeight: 55 }), { ...saved, confirmed: true });
+    expect(confirmed.slice(0, 2).map((i) => i.value)).toEqual([21.5, 64]);
+  });
+  it("gives the score, its band and the weight lost", () => {
+    const items = withDraft(must, assessmentItems(must, at(WEIGHT_LOSS, { hospitalBmi: 19.5, hospitalWeight: 64 })), { [MUST_KEYS.acute]: "o_no" });
+    expect(items.map((i) => i.yes)).toEqual([true, undefined, undefined, false]); // a BMI of 20 or less scores; the weights only together
+    expect(assessmentResult(must, assessmentAnswers(items).data, { name: "Pat" }).text).toBe("2 (High risk), 8.6% of body weight lost");
+  });
+  it("names its items for Go's messages", () => {
+    expect(must.labels).toEqual({ [MUST_KEYS.bmi]: "BMI", [MUST_KEYS.weight]: "Weight now", [MUST_KEYS.lostKg]: "Weight lost", [MUST_KEYS.acute]: "Acute disease effect" });
+  });
+});
+
+describe("MUST: a typed weight or BMI leaves the other one for the clinician (S49 verification 3, Rahul 13 Nov)", () => {
+  const must = assessmentContent("must")!;
+  const at = (o: Partial<PrefillFrom> = {}): PrefillFrom => ({ ...hqWith([mustGroup()], { [MUST_KEYS.lost]: "o_yes", [MUST_KEYS.lostKg]: 2 }), hospitalBmi: 20.8, hospitalWeight: 60, ...o });
+  const pair = (items: ReturnType<typeof assessmentItems>) => items.slice(0, 2).map((i) => [i.value ?? null, i.source ?? null]);
+  it("a weight typed on the card: the pre-filled BMI is Missing, and the score Incomplete", () => {
+    const items = withDraft(must, assessmentItems(must, at()), { [MUST_KEYS.weight]: 50, [MUST_KEYS.acute]: "o_no" });
+    expect(pair(items)).toEqual([[null, null], [50, "clinician"]]);
+    expect(assessmentResult(must, assessmentAnswers(items).data, { name: "Pat" }).text).toBe("Incomplete");
+  });
+  it("a BMI typed on the card: the pre-filled weight is Missing", () => {
+    expect(pair(withDraft(must, assessmentItems(must, at()), { [MUST_KEYS.bmi]: 17.3 }))).toEqual([[17.3, "clinician"], [null, null]]);
+  });
+  it("both typed: both kept", () => {
+    expect(pair(withDraft(must, assessmentItems(must, at()), { [MUST_KEYS.bmi]: 17.3, [MUST_KEYS.weight]: 50 }))).toEqual([[17.3, "clinician"], [50, "clinician"]]);
+  });
+  it("a saved clinician's weight, filled afresh: the BMI stays Missing", () => {
+    const saved = { data: { [MUST_KEYS.weight]: 50, [MUST_KEYS.bmi]: 20.8 }, sources: { [MUST_KEYS.weight]: "clinician", [MUST_KEYS.bmi]: "observation" } as const, confirmed: false };
+    expect(pair(assessmentItems(must, at(), saved))).toEqual([[null, null], [50, "clinician"]]);
+  });
+  it("a confirmed card shows exactly what was confirmed, on the card too (verification 4, finding 2)", () => {
+    const saved = { data: { [MUST_KEYS.weight]: 50, [MUST_KEYS.bmi]: 17.3 }, sources: { [MUST_KEYS.weight]: "clinician", [MUST_KEYS.bmi]: "observation" } as const, confirmed: true };
+    const items = assessmentItems(must, at(), saved);
+    expect(pair(items)).toEqual([[17.3, "observation"], [50, "clinician"]]);
+    expect(pair(withDraft(must, items, {}))).toEqual([[17.3, "observation"], [50, "clinician"]]);
+    expect(pair(withDraft(must, items, { [MUST_KEYS.acute]: "o_yes" }))).toEqual([[17.3, "observation"], [50, "clinician"]]);
+  });
+  describe("the hospital's own number typed back after the other was typed is the clinician's (verification 4, finding 1)", () => {
+    it("a BMI typed, then the hospital's weight typed back", () => {
+      const items = withDraft(must, assessmentItems(must, at()), { [MUST_KEYS.bmi]: 30, [MUST_KEYS.weight]: 60, [MUST_KEYS.acute]: "o_no" });
+      expect(pair(items)).toEqual([[30, "clinician"], [60, "clinician"]]);
+      expect(assessmentResult(must, assessmentAnswers(items).data, { name: "Pat" }).text).not.toBe("Incomplete");
+    });
+    it("a weight typed, then the pre-filled BMI typed back", () => {
+      expect(pair(withDraft(must, assessmentItems(must, at()), { [MUST_KEYS.weight]: 61, [MUST_KEYS.bmi]: 20.8 }))).toEqual([[20.8, "clinician"], [61, "clinician"]]);
+    });
+    it("a hospital weight with no height: the BMI typed keeps the hospital's weight (verification 5, Rahul 13 Nov)", () => {
+      const items = assessmentItems(must, at({ hospitalBmi: undefined }));
+      expect(pair(items)).toEqual([[null, null], [60, "observation"]]);
+      expect(pair(withDraft(must, items, { [MUST_KEYS.bmi]: 20.8 }))).toEqual([[20.8, "clinician"], [60, "observation"]]);
+      // Saved, then filled afresh: still the hospital's weight beside the clinician's BMI.
+      const saved = { ...assessmentAnswers(withDraft(must, items, { [MUST_KEYS.bmi]: 20.8 })), confirmed: false };
+      expect(pair(assessmentItems(must, at({ hospitalBmi: undefined }), saved))).toEqual([[20.8, "clinician"], [60, "observation"]]);
+      // A weight typed over it is the clinician's, the BMI kept.
+      expect(pair(withDraft(must, items, { [MUST_KEYS.bmi]: 20.8, [MUST_KEYS.weight]: 58 }))).toEqual([[20.8, "clinician"], [58, "clinician"]]);
+    });
+    it("the pre-filled number typed back with the other untouched stays where it came from", () => {
+      expect(pair(withDraft(must, assessmentItems(must, at()), { [MUST_KEYS.weight]: 60 }))).toEqual([[20.8, "observation"], [60, "observation"]]);
+    });
+  });
+  describe("a box typed in and put back counts as untouched (verification 5, finding 1)", () => {
+    const type = (items: ReturnType<typeof assessmentItems>, steps: [string, unknown][]) =>
+      steps.reduce((d, [k, v]) => draftAfter(must, items, d, k, v), {} as Record<string, unknown>);
+    it("a BMI typed and typed back, then a weight: the BMI is Missing", () => {
+      const items = assessmentItems(must, at());
+      const back = type(items, [[MUST_KEYS.bmi, 36], [MUST_KEYS.bmi, 20.8]]);
+      expect(back).toEqual({});
+      expect(pair(withDraft(must, items, type(items, [[MUST_KEYS.bmi, 36], [MUST_KEYS.bmi, 20.8], [MUST_KEYS.weight, 50]])))).toEqual([[null, null], [50, "clinician"]]);
+    });
+    it("the mirror: a weight typed and typed back, then a BMI: the weight is Missing", () => {
+      const items = assessmentItems(must, at());
+      expect(pair(withDraft(must, items, type(items, [[MUST_KEYS.weight, 61], [MUST_KEYS.weight, 60], [MUST_KEYS.bmi, 17.3]])))).toEqual([[17.3, "clinician"], [null, null]]);
+    });
+    it("verification 4's cases are unchanged: the other typed first, then the hospital's number typed back", () => {
+      const items = assessmentItems(must, at());
+      expect(pair(withDraft(must, items, type(items, [[MUST_KEYS.weight, 61], [MUST_KEYS.bmi, 20.8]])))).toEqual([[20.8, "clinician"], [61, "clinician"]]);
+      expect(pair(withDraft(must, items, type(items, [[MUST_KEYS.bmi, 30], [MUST_KEYS.weight, 60]])))).toEqual([[30, "clinician"], [60, "clinician"]]);
+    });
+    it("a box emptied goes back to as shown", () => {
+      const items = assessmentItems(must, at());
+      expect(type(items, [[MUST_KEYS.bmi, 36], [MUST_KEYS.bmi, undefined]])).toEqual({});
+    });
+    it("the other box put back as well: weight 61, BMI 20.8, weight 60 back, then weight 50: the BMI is Missing (verification 6)", () => {
+      const items = assessmentItems(must, at());
+      const back = type(items, [[MUST_KEYS.weight, 61], [MUST_KEYS.bmi, 20.8], [MUST_KEYS.weight, 60]]);
+      expect(back).toEqual({});
+      expect(pair(withDraft(must, items, back))).toEqual([[20.8, "observation"], [60, "observation"]]);
+      expect(pair(withDraft(must, items, type(items, [[MUST_KEYS.weight, 61], [MUST_KEYS.bmi, 20.8], [MUST_KEYS.weight, 60], [MUST_KEYS.weight, 50]])))).toEqual([[null, null], [50, "clinician"]]);
+    });
+    it("the mirror: BMI 36, weight 60, BMI 20.8 back, then BMI 25: the weight is Missing (verification 6)", () => {
+      const items = assessmentItems(must, at());
+      expect(type(items, [[MUST_KEYS.bmi, 36], [MUST_KEYS.weight, 60], [MUST_KEYS.bmi, 20.8]])).toEqual({});
+      expect(pair(withDraft(must, items, type(items, [[MUST_KEYS.bmi, 36], [MUST_KEYS.weight, 60], [MUST_KEYS.bmi, 20.8], [MUST_KEYS.bmi, 25]])))).toEqual([[25, "clinician"], [null, null]]);
+    });
+    it("shownWithout: a box the pairing rule emptied showed nothing; a pre-filled one its value (finding 2)", () => {
+      const items = assessmentItems(must, at());
+      expect(shownWithout(must, items, { [MUST_KEYS.weight]: 50 }, MUST_KEYS.bmi)?.source).toBeUndefined();
+      expect(shownWithout(must, items, {}, MUST_KEYS.bmi)).toMatchObject({ value: 20.8, source: "observation" });
+      expect(shownWithout(must, items, { [MUST_KEYS.bmi]: 36 }, MUST_KEYS.bmi)).toMatchObject({ value: 20.8, source: "observation" });
+    });
+  });
+  it("a card with a BMI only (STOP-Bang) is as before", () => {
+    const items = withDraft(content, assessmentItems(content, from({ hospitalBmi: 36.4 })), { [K.neck]: "o_no" });
+    expect(item(items, STOP_BANG_BMI)).toMatchObject({ value: 36.4, source: "observation" });
+  });
+});
+
+describe("VTE is Incomplete while any item is missing, either result's (S49 verification 2, finding 1)", () => {
+  const vte = assessmentContent("vte")!;
+  const all = (except: string) => ({
+    ...Object.fromEntries([...VTE_KEYS.thrombosis, ...VTE_KEYS.bleeding].filter((k) => k !== except).map((k) => [k, "o_no"])),
+    [VTE_KEYS.bmi]: 24, patientAge: 70,
+  });
+  it("a bleeding item empty: Incomplete, though every thrombosis item is answered", () => {
+    expect(assessmentResult(vte, all("vte_active_bleeding"), { name: "Pat", age: 70 })).toEqual({ text: "Incomplete" });
+  });
+  it("a thrombosis item empty: Incomplete", () => {
+    expect(assessmentResult(vte, all("vte_dehydration"), { name: "Pat", age: 70 })).toEqual({ text: "Incomplete" });
+  });
+  it("every item: both results", () => {
+    expect(assessmentResult(vte, all(""), { name: "Pat", age: 70 }).text).toBe("1 (Thrombosis risk: consider thromboprophylaxis), Bleeding risk factors: 0");
+  });
+});
+
+describe("VTE's questions a man isn't asked (S49 verification 1, Rahul's answer 2)", () => {
+  const vte = assessmentContent("vte")!;
+  const male = { name: "Pat", age: 64, sex: "male" };
+  it("are missing for the clinician, not No, even if an answer is held", () => {
+    const items = assessmentItems(vte, hqWith([vteGroup()], yesTo(VTE_KEYS.patient, ["vte_hrt", "vte_pregnancy"]), male));
+    const of = (k: string) => items.find((i) => i.key === k)!;
+    for (const k of ["vte_pregnancy", "vte_contraceptive", "vte_hrt"]) expect(of(k).source).toBeUndefined();
+    expect(of("vte_cancer")).toMatchObject({ value: "o_no", source: "hq" });
+  });
+  it("count on the card when the clinician ticks them: the assessment asks them of everyone", () => {
+    const items = withDraft(vte, assessmentItems(vte, { ...hqWith([vteGroup()], yesTo(VTE_KEYS.patient, []), male), hospitalBmi: 24 }),
+      Object.fromEntries([...VTE_KEYS.thrombosis, ...VTE_KEYS.bleeding].filter((k) => !VTE_KEYS.patient.includes(k) || ["vte_pregnancy", "vte_contraceptive", "vte_hrt"].includes(k))
+        .map((k) => [k, k === "vte_hrt" ? "o_yes" : "o_no"])));
+    expect(assessmentResult(vte, assessmentAnswers(items).data, male).text).toBe("2 (Thrombosis risk: consider thromboprophylaxis), Bleeding risk factors: 0");
+  });
+});
+
+describe("the Morse Fall Scale on an episode (S49)", () => {
+  const morse = assessmentContent("morse")!;
+  it("fills the patient's two items from the HQ; the clinician's four are missing", () => {
+    const items = assessmentItems(morse, hqWith([morseGroup()], { [MORSE_KEYS.falls]: "o_yes", [MORSE_KEYS.aid]: "o_aid_walker" }));
+    expect(items.map((i) => [i.letter, i.label, i.source ?? null])).toEqual([
+      ["1", "History of falling", "hq"], ["2", "Secondary diagnosis", null], ["3", "Ambulatory aid", "hq"], ["4", "IV or heparin lock", null],
+      ["5", "Gait", null], ["6", "Mental status", null],
+    ]);
+    expect(items[2]).toMatchObject({ kind: "choice", value: "o_aid_walker", yes: true });
+    expect(items[2].options!.map((o) => o.text)).toEqual(["Nothing", "Crutches, a stick or a walking frame", "I hold on to furniture"]);
+  });
+  it("with the clinician's answers gives the trial's worked example: 65, high risk", () => {
+    const items = withDraft(morse, assessmentItems(morse, hqWith([morseGroup()], { [MORSE_KEYS.falls]: "o_yes", [MORSE_KEYS.aid]: "o_aid_walker" })), {
+      [MORSE_KEYS.secondary]: "o_no", [MORSE_KEYS.iv]: "o_no", [MORSE_KEYS.gait]: "o_gait_weak", [MORSE_KEYS.mental]: "o_mental_forgets",
+    });
+    expect(items.map((i) => i.yes)).toEqual([true, false, true, false, true, true]);
+    expect(assessmentResult(morse, assessmentAnswers(items).data, { name: "Pat" }).text).toBe("65 (High risk)");
+  });
+});
+
+describe("VTE on an episode (S49)", () => {
+  const vte = assessmentContent("vte")!;
+  it("has the tool's 30 risk factors: thrombosis T1–T19, bleeding B1–B11", () => {
+    const items = assessmentItems(vte, hqWith([vteGroup()], {}));
+    expect(items.map((i) => i.letter)).toEqual([...Array.from({ length: 19 }, (_, n) => `T${n + 1}`), ...Array.from({ length: 11 }, (_, n) => `B${n + 1}`)]);
+    expect(items[1]).toMatchObject({ key: "patientAge", label: "Age over 60" });
+    expect(items[4]).toMatchObject({ key: VTE_KEYS.bmi, label: "Obesity (BMI over 30)", measure: "bmi" });
+  });
+  it("pre-fills the patient's own risk factors from the HQ, the age from the record and the BMI from the observations", () => {
+    const answers = { ...yesTo(VTE_KEYS.patient, ["vte_hrt", "vte_anticoagulant"]) };
+    const items = assessmentItems(vte, { ...hqWith([vteGroup()], answers, { name: "Pat", age: 64, sex: "female" }), hospitalBmi: 31.2 });
+    const filled = items.filter((i) => i.source);
+    expect(Object.fromEntries(filled.map((i) => [i.key, i.source]))).toEqual({
+      patientAge: "profile", [VTE_KEYS.bmi]: "observation", ...Object.fromEntries(VTE_KEYS.patient.map((k) => [k, "hq"])),
+    });
+    expect(filled.filter((i) => i.yes).map((i) => i.key)).toEqual(["patientAge", VTE_KEYS.bmi, "vte_hrt", "vte_anticoagulant"]);
+    expect(filledCount(items)).toBe(2 + 9);
+  });
+  it("with every other item No: 3 thrombosis ticks, 1 bleeding", () => {
+    const answers = yesTo(VTE_KEYS.patient, ["vte_hrt", "vte_anticoagulant"]);
+    const from = { ...hqWith([vteGroup()], answers, { name: "Pat", age: 64, sex: "female" }), hospitalBmi: 31.2 };
+    const rest = Object.fromEntries([...VTE_KEYS.thrombosis, ...VTE_KEYS.bleeding].filter((k) => !VTE_KEYS.patient.includes(k)).map((k) => [k, "o_no"]));
+    const items = withDraft(vte, assessmentItems(vte, from), rest);
+    expect(assessmentResult(vte, assessmentAnswers(items).data, from.patient).text).toBe("3 (Thrombosis risk: consider thromboprophylaxis), Bleeding risk factors: 1");
+  });
+});
+
+describe("the Clinical Frailty Scale on an episode (S49)", () => {
+  const cfs = assessmentContent("rockwood")!;
+  it("is one item, the clinician's: the level, from nine", () => {
+    const items = assessmentItems(cfs, hqWith([], {}));
+    expect(items.map((i) => [i.letter, i.label, i.kind, i.source ?? null])).toEqual([["1", "Level", "choice", null]]);
+    expect(items[0].options).toHaveLength(9);
+    const picked = withDraft(cfs, items, { [CFS_KEYS.level]: "o_cfs_6" });
+    expect(assessmentResult(cfs, assessmentAnswers(picked).data, { name: "Pat" }).text).toBe("6 (Living with Moderate Frailty)");
+  });
+  it("shows DASI's and PRISMA-7's results as hints; the others have none", () => {
+    expect(assessmentHints("rockwood")).toEqual(["dasi", "prisma7"]);
+    expect(assessmentHints("must")).toEqual([]);
+  });
+  it("is never filled from an HQ, whatever it holds", () => {
+    const items = assessmentItems(cfs, hqWith([{ type: "radiogroup", name: CFS_KEYS.level, title: "Level?", choices: [{ value: "o_cfs_2", text: "2" }] }], { [CFS_KEYS.level]: "o_cfs_2" }));
+    expect(items[0].source).toBeUndefined();
   });
 });

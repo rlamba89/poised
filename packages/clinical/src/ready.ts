@@ -310,8 +310,344 @@ export function apfelClinicianPart(): ElementJson[] {
   ];
 }
 
-/** The ready-made scores an author can insert. */
-export const READY_SCORES: ReadyScore[] = [STOP_BANG, DASI, PRISMA_7, APFEL];
+// ---------------------------------------------------------------- MUST (S49)
+
+export const MUST: ReadyScore = {
+  id: "must",
+  name: "MUST",
+  source:
+    "'Malnutrition Universal Screening Tool' ('MUST'), BAPEN: Step 1 BMI (>20 = 0, 18.5–20 = 1, <18.5 = 2), Step 2 unplanned weight loss in the past 3–6 months " +
+    "(<5% = 0, 5–10% = 1, >10% = 2), Step 3 acute disease effect (2), Step 4 overall risk: 0 Low, 1 Medium, 2 or more High. " +
+    "The 'Malnutrition Universal Screening Tool' ('MUST') is reproduced here with the kind permission of BAPEN (British Association for Parenteral and Enteral Nutrition). " +
+    "For further information on 'MUST' see www.bapen.org.uk.",
+  licence: "© BAPEN. Commercial use (an electronic patient record or app) needs BAPEN's permission, a signed licence and a fee before go-live.",
+  needsBmi: false,
+  note: "In an HQ it's the patient's weight-loss questions only, with no score: the BMI and today's weight are the observations', and the acute disease effect the clinician's, so the score is the MUST assessment's, on the episode.",
+  build: () => mustGroup(),
+};
+
+/** MUST's keys: the patient's two questions, the assessment's items, the weight lost as a percentage, and the score. */
+export const MUST_KEYS = {
+  group: "must", lost: "must_wtloss", lostKg: "must_wtloss_kg", bmi: "must_bmi", weight: "must_weight", acute: "must_acute",
+  pct: "must_wtloss_pct", score: "must_score",
+};
+
+const number = (name: string, title: string, min: number, max: number, more: Partial<ElementJson> = {}): ElementJson => ({
+  type: "text", name, title, inputType: "number", min, max, isRequired: true, ...more,
+});
+
+/**
+ * MUST's patient part, as an HQ has it (S49 answers 3): whether they've lost weight without trying
+ * in the last 3–6 months and, if so, about how much. No score: the BMI and today's weight are the
+ * observations' and the acute disease effect the clinician's (mustClinicianPart).
+ */
+export function mustGroup(): ElementJson {
+  return {
+    type: "panel",
+    name: MUST_KEYS.group,
+    title: "Weight loss",
+    readyScore: MUST.id,
+    elements: [
+      { ...yesNoPoints(MUST_KEYS.lost, "Have you lost weight without trying in the last 3 to 6 months?", 0), alwaysFresh: true },
+      number(MUST_KEYS.lostKg, "About how much weight have you lost without trying (kg)?", 0, 100, { visibleIf: `{${MUST_KEYS.lost}} = 'o_yes'`, alwaysFresh: true }),
+    ],
+  };
+}
+
+/**
+ * The MUST assessment's items and score: the BMI and today's weight (the observations' or the
+ * patient's, S47's precedence), the weight lost in kg (the HQ's: 0 when they said No), and the
+ * clinician's acute disease effect, worded as BAPEN requires. The weight lost is a percentage of the
+ * weight before (today's plus what was lost), to one decimal place, and scored as shown. Incomplete
+ * while any of the four is missing.
+ */
+export function mustClinicianPart(): ElementJson[] {
+  const { bmi, weight, lostKg, acute } = MUST_KEYS;
+  const pct = `round({${lostKg}} * 100 / ({${weight}} + {${lostKg}}), 1)`;
+  return [
+    number(bmi, "BMI (kg/m²)", 5, 150),
+    number(weight, "Weight now (kg)", 1, 400),
+    number(lostKg, "Unplanned weight loss in the past 3–6 months (kg)", 0, 100),
+    yesNoPoints(acute, "Acute disease effect: is the patient acutely ill and there has been or is likely to be no nutritional intake for >5 days?", 2),
+    {
+      type: "expression",
+      name: MUST_KEYS.pct,
+      title: "Weight lost",
+      calcKind: "custom",
+      expression: `iif({${weight}} notempty and {${lostKg}} notempty, ${pct}, '')`,
+      format: "{0}% of body weight lost",
+    },
+    {
+      type: "expression",
+      name: MUST_KEYS.score,
+      title: "MUST score",
+      calcKind: "score",
+      expression:
+        `iif(${ALL_ANSWERED}('${bmi}', '${weight}', '${lostKg}', '${acute}'), ` +
+        `iif({${bmi}} < 18.5, 2, iif({${bmi}} <= 20, 1, 0)) + iif(${pct} > 10, 2, iif(${pct} >= 5, 1, 0)) + score('${acute}'), '')`,
+      bands: [
+        { id: "b_low", label: "Low risk", max: 0 },
+        { id: "b_medium", label: "Medium risk", max: 1 },
+        { id: "b_high", label: "High risk" },
+      ],
+    },
+  ];
+}
+
+// ---------------------------------------------------------------- Morse Fall Scale (S49)
+
+export const MORSE: ReadyScore = {
+  id: "morse",
+  name: "Morse Fall Scale",
+  source:
+    "Morse Fall Scale: history of falling 25, secondary diagnosis 15, ambulatory aid 0/15/30, IV or heparin lock 20, gait 0/10/20, mental status 0/15 (0–125). " +
+    "Morse JM, Morse RM, Tylko SJ. Development of a scale to identify the fall-prone patient. Can J Aging 1989;8(4):366–77; " +
+    "as in Dykes PC et al. JAMA 2010;304(17):1912–8. Bands: low 0–24, moderate 25–44, high 45 or more (Morse leaves the cut-offs to each hospital).",
+  licence: "© Janice Morse. Free of charge, but the author's permission is needed before go-live.",
+  needsBmi: false,
+  note: "In an HQ it's the patient's two questions only (a fall, a walking aid), with no score: the other four items are the clinician's, so the score is the Morse assessment's, on the episode.",
+  build: () => morseGroup(),
+};
+
+/** The Morse Fall Scale's keys, in the published order of its items, and the score. */
+export const MORSE_KEYS = {
+  group: "morse", falls: "morse_falls", secondary: "morse_secondary", aid: "morse_aid", iv: "morse_iv", gait: "morse_gait",
+  mental: "morse_mental", score: "morse_score",
+};
+
+const choiceOf = (name: string, title: string, choices: [value: string, text: string, score: number][]): ElementJson => ({
+  type: "radiogroup", name, title, colCount: 0, isRequired: true, choices: choices.map(([value, text, score]) => ({ value, text, score })),
+});
+
+/** Morse's patient part, as an HQ has it: a fall in the last 3 months, and what they use to walk. No score. */
+export function morseGroup(): ElementJson {
+  return {
+    type: "panel",
+    name: MORSE_KEYS.group,
+    title: "Falls",
+    readyScore: MORSE.id,
+    elements: [
+      { ...yesNoPoints(MORSE_KEYS.falls, "Have you had a fall in the last 3 months?", 25), alwaysFresh: true },
+      choiceOf(MORSE_KEYS.aid, "Do you use anything to help you walk?", [
+        ["o_aid_none", "Nothing", 0],
+        ["o_aid_walker", "Crutches, a stick or a walking frame", 15],
+        ["o_aid_furniture", "I hold on to furniture", 30],
+      ]),
+    ],
+  };
+}
+
+/**
+ * The rest of the Morse Fall Scale, for the assessment: the clinician's four items and the score
+ * (0–125). Incomplete while any of the six is unanswered.
+ */
+export function morseClinicianPart(): ElementJson[] {
+  const { falls, secondary, aid, iv, gait, mental } = MORSE_KEYS;
+  return [
+    yesNoPoints(secondary, "Secondary diagnosis: does the patient have more than one medical diagnosis?", 15),
+    yesNoPoints(iv, "IV therapy: does the patient have an IV line or a heparin (saline) lock?", 20),
+    choiceOf(gait, "Gait", [["o_gait_normal", "Normal, on bed rest or in a wheelchair", 0], ["o_gait_weak", "Weak", 10], ["o_gait_impaired", "Impaired", 20]]),
+    choiceOf(mental, "Mental status", [["o_mental_oriented", "Knows their own ability", 0], ["o_mental_forgets", "Overestimates or forgets their limits", 15]]),
+    {
+      type: "expression",
+      name: MORSE_KEYS.score,
+      title: "Morse Fall Scale score",
+      calcKind: "score",
+      expression: formatScore({ kind: "score", questions: [falls, secondary, aid, iv, gait, mental] }),
+      bands: [
+        { id: "b_low", label: "Low risk", max: 24 },
+        { id: "b_moderate", label: "Moderate risk", max: 44 },
+        { id: "b_high", label: "High risk" },
+      ],
+    },
+  ];
+}
+
+// ---------------------------------------------------------------- VTE (S49)
+
+export const VTE: ReadyScore = {
+  id: "vte",
+  name: "VTE risk",
+  source:
+    "Department of Health, Risk assessment for venous thromboembolism (VTE), 2010 (NICE NG89's resources), for surgical patients: " +
+    "each thrombosis and bleeding risk factor ticked; any tick for thrombosis risk should prompt thromboprophylaxis according to NICE guidance, and any tick for " +
+    "bleeding risk should prompt clinical staff to consider if bleeding risk is sufficient to preclude pharmacological intervention.",
+  licence: "© Crown copyright 2010; reusable free under the Open Government Licence (attribution).",
+  needsBmi: false,
+  note: "In an HQ it's the patient's own risk factors only, with no result: the age and BMI come from the record and the observations, and the admission's risk factors are the clinician's, on the episode.",
+  build: () => vteGroup(),
+};
+
+// The tool's risk factors, in its order: its key, its title, the short label the card and Go's
+// messages use, and whether the patient answers it in the HQ (our wording, for a patient; otherwise
+// the clinician's, worded as the form words them). Age > 60 and obesity are their own items.
+type VteFactor = [key: string, title: string, label: string, patient?: true];
+const VTE_THROMBOSIS_PATIENT: VteFactor[] = [
+  ["vte_cancer", "Do you have cancer, or are you having treatment for cancer?", "Active cancer or cancer treatment", true],
+  ["vte_dehydration", "Dehydration", "Dehydration"],
+  ["vte_thrombophilia", "Have you been told you have a condition that makes your blood clot more easily (thrombophilia)?", "Known thrombophilias", true],
+  ["vte_comorbidity", "One or more significant medical comorbidities (eg heart disease; metabolic, endocrine or respiratory pathologies; acute infectious diseases; inflammatory conditions)", "Significant medical comorbidities"],
+  ["vte_history", "Have you, or a parent, brother, sister or child of yours, ever had a blood clot in a leg or lung (DVT or pulmonary embolism)?", "Personal or family history of VTE", true],
+  ["vte_hrt", "Are you taking hormone replacement therapy (HRT)?", "Hormone replacement therapy", true],
+  ["vte_contraceptive", "Are you using a contraceptive that contains oestrogen (such as the combined pill, patch or ring)?", "Oestrogen-containing contraceptive", true],
+  ["vte_varicose", "Do you have varicose veins that have been red, hot and painful (phlebitis)?", "Varicose veins with phlebitis", true],
+  ["vte_pregnancy", "Are you pregnant, or have you had a baby in the last 6 weeks?", "Pregnancy or under 6 weeks post partum", true],
+];
+const VTE_THROMBOSIS_ADMISSION: VteFactor[] = [
+  ["vte_mobility", "Significantly reduced mobility for 3 days or more", "Reduced mobility for 3 days or more"],
+  ["vte_hip_knee", "Hip or knee replacement", "Hip or knee replacement"],
+  ["vte_hip_fracture", "Hip fracture", "Hip fracture"],
+  ["vte_time_90", "Total anaesthetic + surgical time > 90 minutes", "Anaesthetic + surgical time over 90 minutes"],
+  ["vte_pelvis_60", "Surgery involving pelvis or lower limb with a total anaesthetic + surgical time > 60 minutes", "Pelvis or lower limb surgery over 60 minutes"],
+  ["vte_acute_surgical", "Acute surgical admission with inflammatory or intra-abdominal condition", "Acute surgical admission (inflammatory or intra-abdominal)"],
+  ["vte_critical_care", "Critical care admission", "Critical care admission"],
+  ["vte_surgery_mobility", "Surgery with significant reduction in mobility", "Surgery with significant reduction in mobility"],
+];
+const VTE_BLEEDING: VteFactor[] = [
+  ["vte_active_bleeding", "Active bleeding", "Active bleeding"],
+  ["vte_acquired_bleeding", "Acquired bleeding disorders (such as acute liver failure)", "Acquired bleeding disorders"],
+  ["vte_anticoagulant", "Do you take medicine to thin your blood (an anticoagulant, such as warfarin, apixaban or rivaroxaban)?", "Anticoagulants", true],
+  ["vte_stroke", "Acute stroke", "Acute stroke"],
+  ["vte_platelets", "Thrombocytopaenia (platelets < 75×10⁹/l)", "Thrombocytopaenia"],
+  ["vte_hypertension", "Uncontrolled systolic hypertension (230/120 mmHg or higher)", "Uncontrolled systolic hypertension"],
+  ["vte_inherited_bleeding", "Do you have an inherited bleeding disorder, such as haemophilia or von Willebrand disease?", "Inherited bleeding disorders", true],
+  ["vte_neuro_spinal_eye", "Neurosurgery, spinal surgery or eye surgery", "Neurosurgery, spinal or eye surgery"],
+  ["vte_high_bleeding", "Other procedure with high bleeding risk", "Other procedure with high bleeding risk"],
+  ["vte_lp_next_12h", "Lumbar puncture/epidural/spinal anaesthesia expected within the next 12 hours", "Spinal or epidural in the next 12 hours"],
+  ["vte_lp_last_4h", "Lumbar puncture/epidural/spinal anaesthesia within the previous 4 hours", "Spinal or epidural in the previous 4 hours"],
+];
+const VTE_ALL = [...VTE_THROMBOSIS_PATIENT, ...VTE_THROMBOSIS_ADMISSION, ...VTE_BLEEDING];
+
+/** The questions the HQ doesn't ask a patient recorded as male (S49 verification 1, Rahul's answer 2). */
+const VTE_NOT_MALE = new Set(["vte_hrt", "vte_contraceptive", "vte_pregnancy"]);
+
+/** The question about a recent time, asked afresh, never copied from an earlier HQ (S49 verification 2, Rahul). */
+const VTE_FRESH = new Set(["vte_pregnancy"]);
+
+/**
+ * The VTE assessment's keys: the thrombosis risk factors (besides the age and BMI), the bleeding
+ * ones, those the patient answers in the HQ, the BMI item, the score and the bleeding count.
+ */
+export const VTE_KEYS = {
+  group: "vte",
+  thrombosis: [...VTE_THROMBOSIS_PATIENT, ...VTE_THROMBOSIS_ADMISSION].map(([k]) => k),
+  bleeding: VTE_BLEEDING.map(([k]) => k),
+  patient: VTE_ALL.filter(([, , , p]) => p).map(([k]) => k),
+  bmi: "vte_bmi",
+  score: "vte_score",
+  bleedingCount: "vte_bleeding",
+};
+
+/**
+ * The VTE items in the form's order, each [key, short label]: thrombosis (the age second and the
+ * BMI fifth, where the form has them), then bleeding. One list, so the card can't drift from the keys.
+ */
+export const VTE_ITEMS: { thrombosis: [string, string][]; bleeding: [string, string][] } = {
+  // The age goes after active cancer and the BMI after known thrombophilias, as on the form.
+  thrombosis: [...VTE_THROMBOSIS_PATIENT, ...VTE_THROMBOSIS_ADMISSION].flatMap(([k, , label]): [string, string][] => [
+    [k, label],
+    ...(k === "vte_cancer" ? [["patientAge", "Age over 60"] as [string, string]] : []),
+    ...(k === "vte_thrombophilia" ? [[VTE_KEYS.bmi, "Obesity (BMI over 30)"] as [string, string]] : []),
+  ]),
+  bleeding: VTE_BLEEDING.map(([k, , label]): [string, string] => [k, label]),
+};
+
+/**
+ * VTE's patient part, as an HQ has it: their own risk factors, Yes or No. No result. Pregnancy, an
+ * oestrogen contraceptive and HRT aren't asked of a patient recorded as male (verification 1); the
+ * assessment asks the clinician them (its copy has no such conditions: `withoutConditions` in assessments.ts).
+ */
+export function vteGroup(): ElementJson {
+  return {
+    type: "panel",
+    name: VTE_KEYS.group,
+    title: "Blood clots",
+    readyScore: VTE.id,
+    elements: VTE_ALL.filter(([, , , p]) => p).map(([k, title]) => ({
+      ...yesNoPoints(k, title, 1),
+      ...(VTE_NOT_MALE.has(k) ? { visibleIf: "{patientSex} <> 'male'" } : {}),
+      ...(VTE_FRESH.has(k) ? { alwaysFresh: true } : {}),
+    })),
+  };
+}
+
+/**
+ * The rest of the VTE assessment: the BMI, the clinician's risk factors, and the result: the number
+ * of thrombosis ticks (age over 60 and a BMI over 30 included), any one of them "Thrombosis risk:
+ * consider thromboprophylaxis", and the number of bleeding ticks. Incomplete while any is missing.
+ */
+export function vteClinicianPart(): ElementJson[] {
+  const form: ScoreForm = {
+    kind: "score",
+    questions: VTE_KEYS.thrombosis,
+    lines: [
+      { points: 1, rule: { left: "patientAge", op: "gt", value: 60 } },
+      { points: 1, rule: { left: VTE_KEYS.bmi, op: "gt", value: 30 } },
+    ],
+  };
+  const bleeding = VTE_KEYS.bleeding.map((k) => `'${k}'`).join(", ");
+  return [
+    number(VTE_KEYS.bmi, "BMI (kg/m²)", 5, 150),
+    ...VTE_ALL.filter(([, , , p]) => !p).map(([k, title]) => yesNoPoints(k, title, 1)),
+    {
+      type: "expression",
+      name: VTE_KEYS.score,
+      title: "Thrombosis risk factors",
+      calcKind: "score",
+      expression: formatScore(form),
+      bands: [
+        { id: "b_none", label: "No thrombosis risk factors ticked", max: 0 },
+        { id: "b_risk", label: "Thrombosis risk: consider thromboprophylaxis" },
+      ],
+    },
+    {
+      type: "expression",
+      name: VTE_KEYS.bleedingCount,
+      title: "Bleeding risk factors",
+      calcKind: "custom",
+      expression: `iif(${ALL_ANSWERED}(${bleeding}), score(${bleeding}), '')`,
+      format: "Bleeding risk factors: {0}",
+    },
+  ];
+}
+
+// ---------------------------------------------------------------- Rockwood CFS (S49)
+
+// The Clinical Frailty Scale (an assessment only: never in an HQ, so no ReadyScore): version 2.0
+// (2020), nine levels, 1 Very Fit to 9 Terminally Ill, scored from the person's baseline (about two
+// weeks before). Rockwood K et al. CMAJ 2005;173(5):489–95; Geriatric Medicine Research, Dalhousie
+// University. © Dalhousie University: a software vendor may need its licence (asked through its
+// permission portal) before go-live.
+
+/** The Clinical Frailty Scale's keys: the level and its score. */
+export const CFS_KEYS = { level: "cfs_level", score: "cfs_score" };
+
+const CFS_LEVELS = [
+  "Very Fit", "Fit", "Managing Well", "Living with Very Mild Frailty", "Living with Mild Frailty", "Living with Moderate Frailty",
+  "Living with Severe Frailty", "Living with Very Severe Frailty", "Terminally Ill",
+];
+
+/**
+ * The Clinical Frailty Scale (Rockwood): the clinician picks the level, a clinical judgement, so it
+ * is never in an HQ (it isn't in READY_SCORES). The score is the level, banded by its name.
+ */
+export function cfsElements(): ElementJson[] {
+  return [
+    choiceOf(CFS_KEYS.level, "Clinical Frailty Scale level, from the patient's usual state (about two weeks before)",
+      CFS_LEVELS.map((label, i) => [`o_cfs_${i + 1}`, `${i + 1}: ${label}`, i + 1])),
+    {
+      type: "expression",
+      name: CFS_KEYS.score,
+      title: "Clinical Frailty Scale",
+      calcKind: "score",
+      expression: formatScore({ kind: "score", questions: [CFS_KEYS.level] }),
+      bands: CFS_LEVELS.map((label, i) => ({ id: `b_cfs_${i + 1}`, label, ...(i < 8 ? { max: i + 1 } : {}) })),
+    },
+  ];
+}
+
+/** The ready-made scores an author can insert (MUST, Morse and VTE as the patient's parts only, S49). */
+export const READY_SCORES: ReadyScore[] = [STOP_BANG, DASI, PRISMA_7, APFEL, MUST, MORSE, VTE];
 
 /**
  * The ready-made scores whose sex point a sex of Other can't decide (S44c), so it's Incomplete, as

@@ -1,0 +1,94 @@
+{
+  "pages": [
+    {
+      "name": "p_must",
+      "title": "MUST",
+      "elements": [
+        {
+          "type": "text",
+          "name": "must_bmi",
+          "title": "BMI (kg/m²)",
+          "inputType": "number",
+          "min": 5,
+          "max": 150,
+          "isRequired": true
+        },
+        {
+          "type": "text",
+          "name": "must_weight",
+          "title": "Weight now (kg)",
+          "inputType": "number",
+          "min": 1,
+          "max": 400,
+          "isRequired": true
+        },
+        {
+          "type": "text",
+          "name": "must_wtloss_kg",
+          "title": "Unplanned weight loss in the past 3–6 months (kg)",
+          "inputType": "number",
+          "min": 0,
+          "max": 100,
+          "isRequired": true
+        },
+        {
+          "type": "radiogroup",
+          "name": "must_acute",
+          "title": "Acute disease effect: is the patient acutely ill and there has been or is likely to be no nutritional intake for >5 days?",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 2
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "expression",
+          "name": "must_wtloss_pct",
+          "title": "Weight lost",
+          "calcKind": "custom",
+          "expression": "iif({must_weight} notempty and {must_wtloss_kg} notempty, round({must_wtloss_kg} * 100 / ({must_weight} + {must_wtloss_kg}), 1), '')",
+          "format": "{0}% of body weight lost"
+        },
+        {
+          "type": "expression",
+          "name": "must_score",
+          "title": "MUST score",
+          "calcKind": "score",
+          "expression": "iif(allAnswered('must_bmi', 'must_weight', 'must_wtloss_kg', 'must_acute'), iif({must_bmi} < 18.5, 2, iif({must_bmi} <= 20, 1, 0)) + iif(round({must_wtloss_kg} * 100 / ({must_weight} + {must_wtloss_kg}), 1) > 10, 2, iif(round({must_wtloss_kg} * 100 / ({must_weight} + {must_wtloss_kg}), 1) >= 5, 1, 0)) + score('must_acute'), '')",
+          "bands": [
+            {
+              "id": "b_low",
+              "label": "Low risk",
+              "max": 0
+            },
+            {
+              "id": "b_medium",
+              "label": "Medium risk",
+              "max": 1
+            },
+            {
+              "id": "b_high",
+              "label": "High risk"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "labels": {
+    "must_bmi": "BMI",
+    "must_weight": "Weight now",
+    "must_wtloss_kg": "Weight lost",
+    "must_acute": "Acute disease effect"
+  }
+}

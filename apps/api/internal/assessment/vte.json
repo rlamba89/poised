@@ -1,0 +1,645 @@
+{
+  "pages": [
+    {
+      "name": "p_vte",
+      "title": "VTE risk",
+      "elements": [
+        {
+          "type": "panel",
+          "name": "vte",
+          "title": "Blood clots",
+          "readyScore": "vte",
+          "elements": [
+            {
+              "type": "radiogroup",
+              "name": "vte_cancer",
+              "title": "Do you have cancer, or are you having treatment for cancer?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "type": "radiogroup",
+              "name": "vte_thrombophilia",
+              "title": "Have you been told you have a condition that makes your blood clot more easily (thrombophilia)?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "type": "radiogroup",
+              "name": "vte_history",
+              "title": "Have you, or a parent, brother, sister or child of yours, ever had a blood clot in a leg or lung (DVT or pulmonary embolism)?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "type": "radiogroup",
+              "name": "vte_hrt",
+              "title": "Are you taking hormone replacement therapy (HRT)?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "type": "radiogroup",
+              "name": "vte_contraceptive",
+              "title": "Are you using a contraceptive that contains oestrogen (such as the combined pill, patch or ring)?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "type": "radiogroup",
+              "name": "vte_varicose",
+              "title": "Do you have varicose veins that have been red, hot and painful (phlebitis)?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "type": "radiogroup",
+              "name": "vte_pregnancy",
+              "title": "Are you pregnant, or have you had a baby in the last 6 weeks?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "type": "radiogroup",
+              "name": "vte_anticoagulant",
+              "title": "Do you take medicine to thin your blood (an anticoagulant, such as warfarin, apixaban or rivaroxaban)?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "type": "radiogroup",
+              "name": "vte_inherited_bleeding",
+              "title": "Do you have an inherited bleeding disorder, such as haemophilia or von Willebrand disease?",
+              "yesNo": true,
+              "colCount": 0,
+              "isRequired": true,
+              "choices": [
+                {
+                  "value": "o_yes",
+                  "text": "Yes",
+                  "score": 1
+                },
+                {
+                  "value": "o_no",
+                  "text": "No",
+                  "score": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "name": "vte_bmi",
+          "title": "BMI (kg/m²)",
+          "inputType": "number",
+          "min": 5,
+          "max": 150,
+          "isRequired": true
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_dehydration",
+          "title": "Dehydration",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_comorbidity",
+          "title": "One or more significant medical comorbidities (eg heart disease; metabolic, endocrine or respiratory pathologies; acute infectious diseases; inflammatory conditions)",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_mobility",
+          "title": "Significantly reduced mobility for 3 days or more",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_hip_knee",
+          "title": "Hip or knee replacement",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_hip_fracture",
+          "title": "Hip fracture",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_time_90",
+          "title": "Total anaesthetic + surgical time > 90 minutes",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_pelvis_60",
+          "title": "Surgery involving pelvis or lower limb with a total anaesthetic + surgical time > 60 minutes",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_acute_surgical",
+          "title": "Acute surgical admission with inflammatory or intra-abdominal condition",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_critical_care",
+          "title": "Critical care admission",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_surgery_mobility",
+          "title": "Surgery with significant reduction in mobility",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_active_bleeding",
+          "title": "Active bleeding",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_acquired_bleeding",
+          "title": "Acquired bleeding disorders (such as acute liver failure)",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_stroke",
+          "title": "Acute stroke",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_platelets",
+          "title": "Thrombocytopaenia (platelets < 75×10⁹/l)",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_hypertension",
+          "title": "Uncontrolled systolic hypertension (230/120 mmHg or higher)",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_neuro_spinal_eye",
+          "title": "Neurosurgery, spinal surgery or eye surgery",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_high_bleeding",
+          "title": "Other procedure with high bleeding risk",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_lp_next_12h",
+          "title": "Lumbar puncture/epidural/spinal anaesthesia expected within the next 12 hours",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "radiogroup",
+          "name": "vte_lp_last_4h",
+          "title": "Lumbar puncture/epidural/spinal anaesthesia within the previous 4 hours",
+          "yesNo": true,
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_yes",
+              "text": "Yes",
+              "score": 1
+            },
+            {
+              "value": "o_no",
+              "text": "No",
+              "score": 0
+            }
+          ]
+        },
+        {
+          "type": "expression",
+          "name": "vte_score",
+          "title": "Thrombosis risk factors",
+          "calcKind": "score",
+          "expression": "iif(allAnswered('vte_cancer', 'vte_dehydration', 'vte_thrombophilia', 'vte_comorbidity', 'vte_history', 'vte_hrt', 'vte_contraceptive', 'vte_varicose', 'vte_pregnancy', 'vte_mobility', 'vte_hip_knee', 'vte_hip_fracture', 'vte_time_90', 'vte_pelvis_60', 'vte_acute_surgical', 'vte_critical_care', 'vte_surgery_mobility', 'patientAge', 'vte_bmi'), score('vte_cancer', 'vte_dehydration', 'vte_thrombophilia', 'vte_comorbidity', 'vte_history', 'vte_hrt', 'vte_contraceptive', 'vte_varicose', 'vte_pregnancy', 'vte_mobility', 'vte_hip_knee', 'vte_hip_fracture', 'vte_time_90', 'vte_pelvis_60', 'vte_acute_surgical', 'vte_critical_care', 'vte_surgery_mobility') + iif({patientAge} > 60, 1, 0) + iif({vte_bmi} > 30, 1, 0), '')",
+          "bands": [
+            {
+              "id": "b_none",
+              "label": "No thrombosis risk factors ticked",
+              "max": 0
+            },
+            {
+              "id": "b_risk",
+              "label": "Thrombosis risk: consider thromboprophylaxis"
+            }
+          ]
+        },
+        {
+          "type": "expression",
+          "name": "vte_bleeding",
+          "title": "Bleeding risk factors",
+          "calcKind": "custom",
+          "expression": "iif(allAnswered('vte_active_bleeding', 'vte_acquired_bleeding', 'vte_anticoagulant', 'vte_stroke', 'vte_platelets', 'vte_hypertension', 'vte_inherited_bleeding', 'vte_neuro_spinal_eye', 'vte_high_bleeding', 'vte_lp_next_12h', 'vte_lp_last_4h'), score('vte_active_bleeding', 'vte_acquired_bleeding', 'vte_anticoagulant', 'vte_stroke', 'vte_platelets', 'vte_hypertension', 'vte_inherited_bleeding', 'vte_neuro_spinal_eye', 'vte_high_bleeding', 'vte_lp_next_12h', 'vte_lp_last_4h'), '')",
+          "format": "Bleeding risk factors: {0}"
+        }
+      ]
+    }
+  ],
+  "labels": {
+    "vte_cancer": "Active cancer or cancer treatment",
+    "patientAge": "Age",
+    "vte_dehydration": "Dehydration",
+    "vte_thrombophilia": "Known thrombophilias",
+    "vte_bmi": "BMI",
+    "vte_comorbidity": "Significant medical comorbidities",
+    "vte_history": "Personal or family history of VTE",
+    "vte_hrt": "Hormone replacement therapy",
+    "vte_contraceptive": "Oestrogen-containing contraceptive",
+    "vte_varicose": "Varicose veins with phlebitis",
+    "vte_pregnancy": "Pregnancy or under 6 weeks post partum",
+    "vte_mobility": "Reduced mobility for 3 days or more",
+    "vte_hip_knee": "Hip or knee replacement",
+    "vte_hip_fracture": "Hip fracture",
+    "vte_time_90": "Anaesthetic + surgical time over 90 minutes",
+    "vte_pelvis_60": "Pelvis or lower limb surgery over 60 minutes",
+    "vte_acute_surgical": "Acute surgical admission (inflammatory or intra-abdominal)",
+    "vte_critical_care": "Critical care admission",
+    "vte_surgery_mobility": "Surgery with significant reduction in mobility",
+    "vte_active_bleeding": "Active bleeding",
+    "vte_acquired_bleeding": "Acquired bleeding disorders",
+    "vte_anticoagulant": "Anticoagulants",
+    "vte_stroke": "Acute stroke",
+    "vte_platelets": "Thrombocytopaenia",
+    "vte_hypertension": "Uncontrolled systolic hypertension",
+    "vte_inherited_bleeding": "Inherited bleeding disorders",
+    "vte_neuro_spinal_eye": "Neurosurgery, spinal or eye surgery",
+    "vte_high_bleeding": "Other procedure with high bleeding risk",
+    "vte_lp_next_12h": "Spinal or epidural in the next 12 hours",
+    "vte_lp_last_4h": "Spinal or epidural in the previous 4 hours"
+  }
+}

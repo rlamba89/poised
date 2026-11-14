@@ -15,9 +15,11 @@
 import type { Question } from "survey-core";
 import { allElements, textOf, type ChapterJson, type ElementJson } from "./doc";
 import { registerClinicalProperties } from "./properties";
-import { reportedBmi } from "./poa";
+import { reportedBody } from "./poa";
 import {
-  APFEL, APFEL_KEYS, apfelClinicianPart, apfelGroup, DASI, DASI_KEYS, dasiGroup, PRISMA_7, PRISMA7_KEYS, prisma7Group, STOP_BANG, STOP_BANG_KEYS as K, stopBangGroup,
+  APFEL, APFEL_KEYS, apfelClinicianPart, apfelGroup, CFS_KEYS, cfsElements, DASI, DASI_KEYS, dasiGroup, MORSE, MORSE_KEYS, morseClinicianPart, morseGroup, MUST,
+  MUST_KEYS, mustClinicianPart, PRISMA_7, PRISMA7_KEYS, prisma7Group, STOP_BANG, STOP_BANG_KEYS as K, stopBangGroup, VTE, VTE_ITEMS, VTE_KEYS, vteClinicianPart,
+  vteGroup,
 } from "./ready";
 import { hqSets, type Answers } from "./respondent";
 import { modelFor, type SamplePatient } from "./testcases";
@@ -34,9 +36,11 @@ export type AssessmentItem = {
   key: string;
   letter: string;
   label: string;
-  /** yesNo: an option answer; number: a measurement; profile: from the patient's record (frozen at Confirm). */
-  kind: "yesNo" | "number" | "profile";
-  /** The question's wording, for yes/no and number items. */
+  /** choice: an option answer (Yes or No, or one of several); number: a measurement; profile: from the patient's record (frozen at Confirm). */
+  kind: "choice" | "number" | "profile";
+  /** A number item the observations fill: the BMI or the weight (the hospital's, or the patient's own, as the trust says). */
+  measure?: "bmi" | "weight";
+  /** The question's wording, for choice and number items. */
   title?: string;
   options?: { value: string; text: string }[];
   /** A number item's limits, as the question sets them (Go refuses a value outside them). */
@@ -49,12 +53,23 @@ export type AssessmentItem = {
 };
 
 type ItemDef = {
-  key: string; letter: string; label: string; kind: AssessmentItem["kind"]; scores: (v: unknown) => boolean;
+  key: string; letter: string; label: string; kind: AssessmentItem["kind"];
+  /** Whether a value scores the item's point; none for an item that scores nothing alone (MUST's weight). */
+  scores?: (v: unknown) => boolean;
   /** What Go's messages call it, if not its label ("BMI: a number from 5 to 150."). */
   short?: string;
+  measure?: AssessmentItem["measure"];
+  /** Read from the HQ by other keys (S49: MUST's weight lost, from "lost weight?" and "how much"), else by its own key. */
+  fromHq?: { keys: string[]; value: (asked: Answers) => unknown };
+  /** Never pre-filled from an HQ: a clinician's judgement (the Clinical Frailty Scale). */
+  noHq?: true;
 };
 const isYes = (v: unknown): boolean => v === "o_yes";
-const yesNo = (key: string, letter: string, label: string, scores: (v: unknown) => boolean = isYes): ItemDef => ({ key, letter, label, kind: "yesNo", scores });
+const yesNo = (key: string, letter: string, label: string, scores: (v: unknown) => boolean = isYes): ItemDef => ({ key, letter, label, kind: "choice", scores });
+/** A choice whose answer scores unless it's the first option (the one worth 0). */
+const choice = (key: string, letter: string, label: string, zero: string): ItemDef => ({ key, letter, label, kind: "choice", scores: (v) => v !== zero });
+const measured = (key: string, letter: string, label: string, measure: "bmi" | "weight", scores?: (v: unknown) => boolean, short?: string): ItemDef =>
+  ({ key, letter, label, kind: "number", measure, scores, short });
 const profile = (key: "patientAge" | "patientSex", letter: string, label: string, scores: (v: unknown) => boolean): ItemDef =>
   ({ key, letter, label, kind: "profile", scores, short: key === "patientAge" ? "Age" : "Sex" });
 
@@ -62,13 +77,25 @@ const profile = (key: "patientAge" | "patientSex", letter: string, label: string
  * An assessment: its id and name, its locked content (built from the ready-made score in ready.ts,
  * so the HQ and the assessment share wording, points and keys), and its items in the published order.
  */
-type AssessmentDef = { id: string; name: string; elements: () => ElementJson[]; items: ItemDef[] };
+type AssessmentDef = {
+  id: string; name: string; elements: () => ElementJson[]; items: ItemDef[];
+  /** Other assessments whose confirmed results the card shows as hints (Rockwood: DASI and PRISMA-7, S49). */
+  hints?: string[];
+};
 
 const DASI_LABELS = [
   "Self-care", "Walk indoors", "Walk a block or two", "Stairs or a hill", "Run a short distance", "Light housework", "Moderate housework",
   "Heavy housework", "Yardwork", "Sexual relations", "Moderate recreation", "Strenuous sports",
 ];
 const PRISMA7_LABELS = ["Health limits activities", "Needs regular help", "Health keeps them at home", "Someone close to count on", "Stick, walker or wheelchair"];
+
+/**
+ * A ready-made HQ part as an assessment holds it: its questions without the HQ's conditions (the
+ * clinician answers every item) and without "always ask fresh" (pre-fill between HQs only).
+ */
+const withoutConditions = (g: ElementJson): ElementJson => ({
+  ...g, elements: (g.elements ?? []).map(({ visibleIf: _if, alwaysFresh: _fresh, ...e }) => e),
+});
 
 const DEFS: AssessmentDef[] = [
   {
@@ -84,7 +111,7 @@ const DEFS: AssessmentDef[] = [
       yesNo(K.tired, "T", "Tired"),
       yesNo(K.observed, "O", "Observed stopping breathing"),
       yesNo(K.pressure, "P", "High blood pressure"),
-      { key: STOP_BANG_BMI, letter: "B", label: "BMI over 35", short: "BMI", kind: "number", scores: (v) => Number(v) > 35 },
+      measured(STOP_BANG_BMI, "B", "BMI over 35", "bmi", (v) => Number(v) > 35, "BMI"),
       profile("patientAge", "A", "Age over 50", (v) => Number(v) > 50),
       { ...yesNo(K.neck, "N", "Neck large"), short: "Neck" },
       profile("patientSex", "G", "Gender male", (v) => v === "male"),
@@ -118,10 +145,64 @@ const DEFS: AssessmentDef[] = [
       yesNo(APFEL_KEYS.opioids, "4", "Opioids after surgery"),
     ],
   },
+  {
+    id: MUST.id,
+    name: MUST.name,
+    // S49 answers 3: the BMI and today's weight from the observations, the weight lost from the HQ.
+    elements: () => mustClinicianPart(),
+    items: [
+      measured(MUST_KEYS.bmi, "1", "BMI", "bmi", (v) => Number(v) <= 20),
+      measured(MUST_KEYS.weight, "2", "Weight now", "weight"),
+      {
+        key: MUST_KEYS.lostKg, letter: "3", label: "Unplanned weight loss in the past 3–6 months (kg)", short: "Weight lost", kind: "number",
+        // A No is none lost; a Yes needs how much (shown only then).
+        fromHq: { keys: [MUST_KEYS.lost, MUST_KEYS.lostKg], value: (a) => (a[MUST_KEYS.lost] === "o_no" ? 0 : a[MUST_KEYS.lost] === "o_yes" ? a[MUST_KEYS.lostKg] : undefined) },
+      },
+      yesNo(MUST_KEYS.acute, "4", "Acute disease effect"),
+    ],
+  },
+  {
+    id: MORSE.id,
+    name: MORSE.name,
+    elements: () => [withoutConditions(morseGroup()), ...morseClinicianPart()],
+    items: [
+      yesNo(MORSE_KEYS.falls, "1", "History of falling"),
+      yesNo(MORSE_KEYS.secondary, "2", "Secondary diagnosis"),
+      choice(MORSE_KEYS.aid, "3", "Ambulatory aid", "o_aid_none"),
+      yesNo(MORSE_KEYS.iv, "4", "IV or heparin lock"),
+      choice(MORSE_KEYS.gait, "5", "Gait", "o_gait_normal"),
+      choice(MORSE_KEYS.mental, "6", "Mental status", "o_mental_oriented"),
+    ],
+  },
+  {
+    id: VTE.id,
+    name: VTE.name,
+    // The patient's part as the HQ has it (vteGroup), then the clinician's, worded as the tool words
+    // them. Without the HQ's conditions: the clinician answers every item, a man's HRT too, and it counts.
+    elements: () => [withoutConditions(vteGroup()), ...vteClinicianPart()],
+    items: [
+      ...VTE_ITEMS.thrombosis.map(([key, label], n): ItemDef =>
+        key === "patientAge" ? profile("patientAge", `T${n + 1}`, label, (v) => Number(v) > 60)
+          : key === VTE_KEYS.bmi ? measured(key, `T${n + 1}`, label, "bmi", (v) => Number(v) > 30, "BMI")
+            : yesNo(key, `T${n + 1}`, label)),
+      ...VTE_ITEMS.bleeding.map(([key, label], n) => yesNo(key, `B${n + 1}`, label)),
+    ],
+  },
+  {
+    id: "rockwood",
+    name: "Clinical Frailty Scale",
+    // A clinician's judgement (never in an HQ), with DASI's and PRISMA-7's confirmed results as hints.
+    elements: () => cfsElements(),
+    items: [{ key: CFS_KEYS.level, letter: "1", label: "Level", kind: "choice", noHq: true }],
+    hints: [DASI.id, PRISMA_7.id],
+  },
 ];
 
 /** The assessments a clinician can add to an episode, in the order they're offered. */
 export const ASSESSMENTS: { id: string; name: string }[] = DEFS.map(({ id, name }) => ({ id, name }));
+
+/** The assessments whose confirmed results an assessment's card shows as hints (Rockwood's: DASI and PRISMA-7). */
+export const assessmentHints = (id: string): string[] => DEFS.find((d) => d.id === id)?.hints ?? [];
 
 /**
  * An assessment's locked SurveyJS JSON, or undefined for one Preopsis hasn't. `labels` gives what
@@ -153,6 +234,8 @@ export type PrefillFrom = {
   patient: SamplePatient;
   /** The hospital BMI, if the episode has one (hospitalBmi in observations.ts). */
   hospitalBmi?: number;
+  /** The latest weight that counts on the episode, if any (S49: MUST). */
+  hospitalWeight?: number;
   /** The trust's observations.precedence: the hospital BMI first (on), or the patient's own (off). */
   obsPrecedence: boolean;
 };
@@ -192,17 +275,22 @@ function hqValues(from: PrefillFrom["hq"], keys: string[]): Answers {
  * HQ, its answers and the patient are unchanged) and set of keys: every survey it takes is built
  * once, not again on each keystroke or for each card (S47 verifications 2–4).
  */
-const hqParts = new WeakMap<PrefillFrom["hq"], Map<string, { asked: Answers; reported?: number }>>();
-function hqPart(hq: PrefillFrom["hq"], keys: string[]): { asked: Answers; reported?: number } {
+const hqParts = new WeakMap<PrefillFrom["hq"], Map<string, Answers>>();
+function hqPart(hq: PrefillFrom["hq"], keys: string[]): Answers {
   let byKeys = hqParts.get(hq);
   if (!byKeys) hqParts.set(hq, (byKeys = new Map()));
   const k = keys.join(",");
-  let part = byKeys.get(k);
-  if (!part) {
-    part = { asked: hqValues(hq, keys), reported: reportedBmi(hq.sets, (id) => hq.answers[id], hq.patient) };
-    byKeys.set(k, part);
-  }
-  return part;
+  let asked = byKeys.get(k);
+  if (!asked) byKeys.set(k, (asked = keys.length ? hqValues(hq, keys) : {})); // the Frailty Scale asks for none
+  return asked;
+}
+
+/** The patient's own BMI and weight from the HQ, worked out once per HQ, and only for a card that measures (verification 1, finding 6). */
+const reportedParts = new WeakMap<PrefillFrom["hq"], { body?: ReturnType<typeof reportedBody> }>();
+function reportedPart(hq: PrefillFrom["hq"]): ReturnType<typeof reportedBody> {
+  let part = reportedParts.get(hq);
+  if (!part) reportedParts.set(hq, (part = { body: reportedBody(hq.sets, (id) => hq.answers[id], hq.patient) }));
+  return part.body;
 }
 
 const optionsOf = (el: ElementJson | undefined) =>
@@ -217,23 +305,53 @@ const optionsOf = (el: ElementJson | undefined) =>
 export function assessmentItems(content: ChapterJson, from: PrefillFrom, saved?: SavedAssessment): AssessmentItem[] {
   const els = new Map(allElements(content).map(({ el }) => [el.name, el]));
   const defs = itemsOf(content);
-  const { asked, reported } = hqPart(from.hq, defs.filter((d) => d.kind === "yesNo").map((d) => d.key));
-  // A BMI outside the question's limits isn't used (Go would refuse it): the other one, else missing.
-  const bmiEl = els.get(STOP_BANG_BMI);
-  const fits = (v: number | undefined) =>
-    v !== undefined && (typeof bmiEl?.min !== "number" || v >= bmiEl.min) && (typeof bmiEl?.max !== "number" || v <= bmiEl.max) ? v : undefined;
-  const own = fits(reported);
-  const hospital = fits(from.hospitalBmi);
-  const bmi: Pick<AssessmentItem, "value" | "source"> =
-    hospital !== undefined && (from.obsPrecedence || own === undefined) ? { value: hospital, source: "observation" }
+  const hqKeys = defs.flatMap((d) => (d.noHq || d.kind === "profile" || d.measure ? [] : (d.fromHq?.keys ?? [d.key])));
+  const asked = hqPart(from.hq, hqKeys);
+  const reported = defs.some((d) => d.measure) ? reportedPart(from.hq) : undefined;
+  // A value outside the question's limits isn't used (Go would refuse it): the other one, else missing.
+  const fits = (key: string, v: unknown) => {
+    const el = els.get(key);
+    const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+    return Number.isFinite(n) && (typeof el?.min !== "number" || n >= el.min) && (typeof el?.max !== "number" || n <= el.max) ? n : undefined;
+  };
+  /**
+   * A measurement: the hospital's or the patient's own, as the trust's precedence says. A card with a
+   * BMI and a weight (MUST) takes both from one source (verification 1, Rahul's answer 1): the
+   * hospital's whenever it has a weight, so a BMI the hospital can't work out (no height) is left
+   * for the clinician, never the patient's own BMI beside the hospital's weight.
+   */
+  const keyOf = (m: "bmi" | "weight") => defs.find((d) => d.measure === m)?.key;
+  const paired = !!keyOf("bmi") && !!keyOf("weight");
+  const hospitalOf = (m: "bmi" | "weight") => (m === "bmi" ? from.hospitalBmi : from.hospitalWeight);
+  const pairSource = (): "observation" | "hq" | undefined => {
+    const hospital = fits(keyOf("weight")!, from.hospitalWeight) !== undefined;
+    const own = fits(keyOf("weight")!, reported?.weight) !== undefined;
+    if (from.obsPrecedence) return hospital ? "observation" : own ? "hq" : undefined;
+    // Off: the patient's, unless only the hospital's gives a BMI (verification 2, Rahul 13 Nov).
+    const whole = (bmi: number | undefined) => fits(keyOf("bmi")!, bmi) !== undefined;
+    if (own && hospital && !whole(reported?.bmi) && whole(from.hospitalBmi)) return "observation";
+    return own ? "hq" : hospital ? "observation" : undefined;
+  };
+  const pair = paired ? pairSource() : undefined;
+  const measurement = (key: string, measure: "bmi" | "weight"): Pick<AssessmentItem, "value" | "source"> => {
+    const own = fits(key, reported?.[measure]);
+    const hospital = fits(key, hospitalOf(measure));
+    if (paired) {
+      const v = pair === "observation" ? hospital : pair === "hq" ? own : undefined;
+      return v === undefined ? {} : { value: v, source: pair };
+    }
+    return hospital !== undefined && (from.obsPrecedence || own === undefined) ? { value: hospital, source: "observation" }
       : own !== undefined ? { value: own, source: "hq" } : {};
-  return defs.map((d) => {
+  };
+  const items = defs.map((d) => {
     const item = itemOf(d);
-    return item.source ? { ...item, yes: d.scores(item.value) } : item;
+    return item.source && d.scores ? { ...item, yes: d.scores(item.value) } : item;
   });
-  function itemOf({ scores: _scores, ...d }: ItemDef): AssessmentItem {
+  // A measure the clinician typed where the pre-fill has nothing keeps the other (verification 5, Rahul).
+  return saved?.confirmed ? items : unpaired(items, (i) => !!i.measure && measurement(i.key, i.measure).source === undefined);
+  function itemOf({ scores: _scores, fromHq, noHq, ...d }: ItemDef): AssessmentItem {
     const el = els.get(d.key);
-    const base: AssessmentItem = { ...d, title: el ? textOf(el.title) : undefined, options: d.kind === "yesNo" ? optionsOf(el) : undefined };
+    const base: AssessmentItem = { ...d, title: el ? textOf(el.title) : undefined, options: d.kind === "choice" ? optionsOf(el) : undefined };
     if (d.kind === "number") Object.assign(base, { min: el?.min as number | undefined, max: el?.max as number | undefined });
     if (d.kind === "profile") {
       // Frozen at Confirm (S47 answers 7); one confirmed before they were stored reads the record.
@@ -244,24 +362,92 @@ export function assessmentItems(content: ChapterJson, from: PrefillFrom, saved?:
     }
     const keep = saved && !empty(saved.data[d.key]) && (saved.confirmed || saved.sources[d.key] === "clinician");
     if (keep) return { ...base, value: saved.data[d.key], source: saved.sources[d.key] ?? "clinician" };
-    if (d.kind === "number") return { ...base, ...bmi };
-    const v = asked[d.key];
+    if (noHq) return base;
+    if (d.measure) return { ...base, ...measurement(d.key, d.measure) };
+    const v = fromHq ? fromHq.value(asked) : asked[d.key];
+    if (d.kind === "number") {
+      const n = fits(d.key, v);
+      return n === undefined ? base : { ...base, value: n, source: "hq" };
+    }
     return base.options?.some((o) => o.value === v) ? { ...base, value: v, source: "hq" } : base;
   }
 }
 
 /**
  * The items with the clinician's changes on this screen (`draft`, by key) in place: each changed
- * one is the clinician's. A change back to the value shown keeps where that came from. A profile
- * item can't be changed.
+ * one is the clinician's. A change back to the value shown keeps where that came from, except on a
+ * card with a BMI and a weight (MUST) once the other is the clinician's: then a number typed in
+ * this box is the clinician's too, even the pre-filled one typed back (S49 verification 4,
+ * finding 1). A profile item can't be changed. The one-body rule (`unpaired`) runs only when a
+ * BMI or weight changed here, so an unchanged confirmed card shows as confirmed (finding 2).
  */
 export function withDraft(content: ChapterJson, items: AssessmentItem[], draft: Answers): AssessmentItem[] {
   const defs = itemsOf(content);
-  return items.map((i) => {
+  const typed = (i: AssessmentItem) => i.kind !== "profile" && i.key in draft && !empty(draft[i.key]);
+  const changed = (i: AssessmentItem) => typed(i) && draft[i.key] !== i.value;
+  const measures = items.filter((i) => i.measure);
+  const otherIsClinicians = (i: AssessmentItem) =>
+    measures.length === 2 && measures.some((o) => o !== i && (o.source === "clinician" || changed(o)));
+  const out = items.map((i) => {
     const d = defs.find((x) => x.key === i.key);
-    if (!d || i.kind === "profile" || !(i.key in draft) || empty(draft[i.key]) || draft[i.key] === i.value) return i;
-    return { ...i, value: draft[i.key], source: "clinician", yes: d.scores(draft[i.key]) };
+    if (!d || !(changed(i) || (typed(i) && i.measure && otherIsClinicians(i)))) return i;
+    return { ...i, value: draft[i.key], source: "clinician" as const, yes: d.scores?.(draft[i.key]) };
   });
+  return out.some((o, n) => o !== items[n] && o.measure) ? unpaired(out, (i) => !items.find((x) => x.key === i.key)?.source) : out;
+}
+
+/**
+ * An item as it shows with every change on this screen but its own (`key`): what its box showed
+ * before the clinician typed in it. A box the pairing rule emptied showed nothing (verification 5,
+ * finding 2).
+ */
+export function shownWithout(content: ChapterJson, items: AssessmentItem[], draft: Answers, key: string): AssessmentItem | undefined {
+  const { [key]: _mine, ...rest } = draft;
+  return withDraft(content, items, rest).find((i) => i.key === key);
+}
+
+/**
+ * The screen's changes after one more (`value` in `key`'s box; undefined for an emptied box). Any
+ * box whose key changes nothing on the card (every item shows the same value, from the same place,
+ * without it) drops its key, so a box typed in and put back counts as untouched (S49 verification
+ * 5, finding 1), and so does one typed in earlier that putting the other box back has made
+ * untouched again (verification 6): the draft keeps what was changed, not every box typed in.
+ */
+export function draftAfter(content: ChapterJson, items: AssessmentItem[], draft: Answers, key: string, value: unknown): Answers {
+  const { [key]: _old, ...rest } = draft;
+  let out: Answers = empty(value) ? rest : { ...rest, [key]: value };
+  const same = (a: AssessmentItem[], b: AssessmentItem[]) => a.every((x, n) => x.value === b[n].value && x.source === b[n].source);
+  for (let dropped = true; dropped; ) {
+    dropped = false;
+    const shown = withDraft(content, items, out);
+    for (const k of Object.keys(out)) {
+      const { [k]: _k, ...without } = out;
+      if (same(shown, withDraft(content, items, without))) {
+        out = without;
+        dropped = true;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * On a card with both a BMI and a weight (MUST), one the clinician entered leaves the other, if
+ * pre-filled, Missing for them to enter: a BMI and a weight on one card always describe one body
+ * (S49 verification 3, Rahul 13 Nov; the pre-fill's own rule is the pair's source). Both entered:
+ * both kept. One entered in a box the pre-fill left empty (`filledGap`: the hospital's weight with
+ * no height, so the BMI is the clinician's) keeps the other (verification 5, Rahul 13 Nov). A card
+ * with a BMI only is unchanged.
+ */
+function unpaired(items: AssessmentItem[], filledGap: (i: AssessmentItem) => boolean): AssessmentItem[] {
+  const bmi = items.find((i) => i.measure === "bmi");
+  const weight = items.find((i) => i.measure === "weight");
+  if (!bmi || !weight) return items;
+  const typed = (i: AssessmentItem) => i.source === "clinician";
+  const clears = (mine: AssessmentItem, other: AssessmentItem) => typed(mine) && !filledGap(mine) && !!other.source && !typed(other);
+  const other = clears(weight, bmi) ? bmi : clears(bmi, weight) ? weight : undefined;
+  return other ? items.map((i) => (i === other ? { ...i, value: undefined, source: undefined, yes: undefined } : i)) : items;
 }
 
 /** How many items have a value. */
@@ -307,12 +493,14 @@ export function assessmentResult(content: ChapterJson, data: Answers, patient: S
   // Its other Calculations, as they show (DASI's "6.9 METs"), after the score.
   const extras = allElements(content)
     .filter(({ el }) => el.type === "expression" && el.name !== calc.name)
-    .map(({ el }) => m.getQuestionByName(el.name) as unknown as { value: unknown; formatedValue: string })
-    .filter((x) => x && !empty(x.value))
-    .map((x) => x.formatedValue);
+    .map(({ el }) => m.getQuestionByName(el.name) as unknown as { value: unknown; formatedValue: string } | null)
+    .filter((x) => !!x)
+    .map((x) => ({ value: x.value, formatedValue: x.formatedValue })); // read before the model goes (verification 4, finding 3)
   m.dispose();
-  if (empty(value)) return { text: INCOMPLETE };
+  // Incomplete while any result is: VTE's bleeding count has inputs its first result hasn't
+  // (S49 verification 2, finding 1).
+  if (empty(value) || extras.some((x) => empty(x.value))) return { text: INCOMPLETE };
   const score = Number(value);
-  const text = [band ? `${score} (${band.label})` : String(score), ...extras].join(", ");
+  const text = [band ? `${score} (${band.label})` : String(score), ...extras.map((x) => x.formatedValue)].join(", ");
   return band ? { score, band: band.label, text } : { score, text };
 }

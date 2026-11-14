@@ -1,0 +1,120 @@
+{
+  "pages": [
+    {
+      "name": "p_rockwood",
+      "title": "Clinical Frailty Scale",
+      "elements": [
+        {
+          "type": "radiogroup",
+          "name": "cfs_level",
+          "title": "Clinical Frailty Scale level, from the patient's usual state (about two weeks before)",
+          "colCount": 0,
+          "isRequired": true,
+          "choices": [
+            {
+              "value": "o_cfs_1",
+              "text": "1: Very Fit",
+              "score": 1
+            },
+            {
+              "value": "o_cfs_2",
+              "text": "2: Fit",
+              "score": 2
+            },
+            {
+              "value": "o_cfs_3",
+              "text": "3: Managing Well",
+              "score": 3
+            },
+            {
+              "value": "o_cfs_4",
+              "text": "4: Living with Very Mild Frailty",
+              "score": 4
+            },
+            {
+              "value": "o_cfs_5",
+              "text": "5: Living with Mild Frailty",
+              "score": 5
+            },
+            {
+              "value": "o_cfs_6",
+              "text": "6: Living with Moderate Frailty",
+              "score": 6
+            },
+            {
+              "value": "o_cfs_7",
+              "text": "7: Living with Severe Frailty",
+              "score": 7
+            },
+            {
+              "value": "o_cfs_8",
+              "text": "8: Living with Very Severe Frailty",
+              "score": 8
+            },
+            {
+              "value": "o_cfs_9",
+              "text": "9: Terminally Ill",
+              "score": 9
+            }
+          ]
+        },
+        {
+          "type": "expression",
+          "name": "cfs_score",
+          "title": "Clinical Frailty Scale",
+          "calcKind": "score",
+          "expression": "iif(allAnswered('cfs_level'), score('cfs_level'), '')",
+          "bands": [
+            {
+              "id": "b_cfs_1",
+              "label": "Very Fit",
+              "max": 1
+            },
+            {
+              "id": "b_cfs_2",
+              "label": "Fit",
+              "max": 2
+            },
+            {
+              "id": "b_cfs_3",
+              "label": "Managing Well",
+              "max": 3
+            },
+            {
+              "id": "b_cfs_4",
+              "label": "Living with Very Mild Frailty",
+              "max": 4
+            },
+            {
+              "id": "b_cfs_5",
+              "label": "Living with Mild Frailty",
+              "max": 5
+            },
+            {
+              "id": "b_cfs_6",
+              "label": "Living with Moderate Frailty",
+              "max": 6
+            },
+            {
+              "id": "b_cfs_7",
+              "label": "Living with Severe Frailty",
+              "max": 7
+            },
+            {
+              "id": "b_cfs_8",
+              "label": "Living with Very Severe Frailty",
+              "max": 8
+            },
+            {
+              "id": "b_cfs_9",
+              "label": "Terminally Ill"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "labels": {
+    "cfs_level": "Level"
+  }
+}

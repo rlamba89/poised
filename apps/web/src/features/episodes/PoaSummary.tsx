@@ -396,7 +396,8 @@ function AsaGrades({ episode, grades, path, onSaved, readOnly }: {
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <Group gap="xs" wrap="nowrap" align="baseline" data-testid={`poa-detail-${label}`}>
-      <Text size="sm" fw={600} w={190}>{label}</Text>
+      {/* The label keeps its width, so a long value wraps in its own column (S49 test report 1, F-1). */}
+      <Text size="sm" fw={600} w={190} style={{ flexShrink: 0 }}>{label}</Text>
       <Text size="sm">{value || "—"}</Text>
     </Group>
   );

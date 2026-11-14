@@ -201,9 +201,9 @@ func TestAddAssessment(t *testing.T) {
 			t.Error("the old episode's form moved off its version")
 		}
 	})
-	t.Run("DASI, PRISMA-7 and Apfel PONV (S48): each its own platform questionnaire, all four on one episode", func(t *testing.T) {
+	t.Run("every assessment (S48, S49): each its own platform questionnaire, all eight on one episode", func(t *testing.T) {
 		e := asmEpisode(t, w)
-		for _, id := range []string{"stopbang", "dasi", "prisma7", "apfel"} {
+		for _, id := range []string{"stopbang", "dasi", "prisma7", "apfel", "must", "morse", "vte", "rockwood"} {
 			addAssessment(t, w, e, id)
 		}
 		v := listAssessments(t, w.clinician, w.a, e)
@@ -211,12 +211,12 @@ func TestAddAssessment(t *testing.T) {
 		for _, a := range v.Assessments {
 			names = append(names, a.Name)
 		}
-		if strings.Join(names, ",") != "STOP-Bang,DASI,PRISMA-7,Apfel PONV" || len(v.Available) != 0 {
+		if strings.Join(names, ",") != "STOP-Bang,DASI,PRISMA-7,Apfel PONV,MUST,Morse Fall Scale,VTE risk,Clinical Frailty Scale" || len(v.Available) != 0 {
 			t.Errorf("listed %v, still to add %+v", names, v.Available)
 		}
 		if n := count(t, w.db, `SELECT count(DISTINCT q.id) FROM episode_forms f JOIN questionnaire_versions v ON v.id = f.version_id
-			JOIN questionnaires q ON q.id = v.questionnaire_id WHERE f.episode_id = $1 AND q.org_id IS NULL`, e.ID); n != 4 {
-			t.Errorf("%d platform questionnaires, want 4", n)
+			JOIN questionnaires q ON q.id = v.questionnaire_id WHERE f.episode_id = $1 AND q.org_id IS NULL`, e.ID); n != 8 {
+			t.Errorf("%d platform questionnaires, want 8", n)
 		}
 	})
 	t.Run("a version with the same content is reused, not only the latest (S47 verification 4: two builds at once)", func(t *testing.T) {
@@ -248,6 +248,23 @@ func TestAddAssessment(t *testing.T) {
 		addAssessment(t, w, e, "prisma7")
 		if a := listAssessments(t, w.clinician, w.a, e).Assessments[0]; a.Name != "PRISMA-7" {
 			t.Errorf("name %q", a.Name)
+		}
+	})
+	t.Run("each form keeps its own version's name: a rename shows on new forms only (S48 verification 1, Rahul 7 Nov)", func(t *testing.T) {
+		w := newClinic(t)
+		old := asmEpisode(t, w)
+		addAssessment(t, w, old, "prisma7")
+		// Version 1 as it would be had it been published under an older name, with other content.
+		sqlExec(t, w, `UPDATE questionnaires SET name = 'PRISMA 7 (old name)' WHERE assessment = 'prisma7'`)
+		sqlExec(t, w, `UPDATE chapters SET name = 'PRISMA 7 (old name)', content = '{"pages": []}' WHERE version_id IN (SELECT v.id
+			FROM questionnaire_versions v JOIN questionnaires q ON q.id = v.questionnaire_id WHERE q.assessment = 'prisma7')`)
+		e := asmEpisode(t, w)
+		addAssessment(t, w, e, "prisma7")
+		if a := listAssessments(t, w.clinician, w.a, old).Assessments[0]; a.Name != "PRISMA 7 (old name)" {
+			t.Errorf("the old episode's name %q, want its own version's", a.Name)
+		}
+		if a := listAssessments(t, w.clinician, w.a, e).Assessments[0]; a.Name != "PRISMA-7" {
+			t.Errorf("the new episode's name %q", a.Name)
 		}
 	})
 	t.Run("twice on one episode: 409, one form", func(t *testing.T) {
@@ -349,7 +366,8 @@ func TestListAssessments(t *testing.T) {
 		for _, a := range v.Available {
 			offered = append(offered, a.ID+":"+a.Name)
 		}
-		if len(v.Assessments) != 0 || strings.Join(offered, ",") != "stopbang:STOP-Bang,dasi:DASI,prisma7:PRISMA-7,apfel:Apfel PONV" {
+		if len(v.Assessments) != 0 || strings.Join(offered, ",") != "stopbang:STOP-Bang,dasi:DASI,prisma7:PRISMA-7,apfel:Apfel PONV,"+
+			"must:MUST,morse:Morse Fall Scale,vte:VTE risk,rockwood:Clinical Frailty Scale" {
 			t.Errorf("%+v", v)
 		}
 		if v.ObsPrecedence == nil || !*v.ObsPrecedence {
@@ -510,6 +528,60 @@ func TestSaveAndConfirmAssessment(t *testing.T) {
 		delete(three, "patientAge")
 		three["apfel_ponv"] = [2]any{"o_yes", "observation"}
 		refused(t, w.clinician.Do("PUT", asmPath(w.a, e, "/"+apfel.String()), answers(2, three)), http.StatusBadRequest)
+	})
+	t.Run("Confirm MUST, VTE and the Clinical Frailty Scale (S49): the observations' numbers, the HQ's 0 kg, the age VTE names", func(t *testing.T) {
+		e := asmEpisode(t, w) // 62, male
+		must := addAssessment(t, w, e, "must")
+		four := map[string][2]any{"must_bmi": {19.5, "observation"}, "must_weight": {64, "observation"}, "must_wtloss_kg": {0, "hq"}}
+		r := w.clinician.Do("POST", asmPath(w.a, e, "/"+must.String()+"/confirm"), answers(0, four))
+		refused(t, r, http.StatusBadRequest)
+		if r.Message() != "Answer every item before confirming: Acute disease effect has no answer." {
+			t.Errorf("message %q", r.Message())
+		}
+		four["must_acute"] = [2]any{"o_no", "clinician"}
+		w.clinician.Do("POST", asmPath(w.a, e, "/"+must.String()+"/confirm"), answers(0, four)).Want(t, http.StatusOK)
+		if row, _ := asmRowOf(t, w, must); row.ValidatedAt == nil || row.Sources["must_weight"] != "observation" || row.Data["must_wtloss_kg"] != float64(0) {
+			t.Errorf("MUST row %+v", row)
+		}
+
+		vte := addAssessment(t, w, e, "vte")
+		var content struct {
+			Pages []struct{ Elements []struct{ Name, Type string; Elements []struct{ Name, Type string } } }
+		}
+		for _, a := range listAssessments(t, w.clinician, w.a, e).Assessments {
+			if a.Assessment == "vte" {
+				_ = json.Unmarshal(a.Content, &content)
+			}
+		}
+		items := map[string][2]any{"vte_bmi": {31.2, "observation"}}
+		for _, el := range content.Pages[0].Elements {
+			for _, q := range append([]struct{ Name, Type string }{{el.Name, el.Type}}, el.Elements...) {
+				if q.Type == "radiogroup" {
+					items[q.Name] = [2]any{"o_no", "clinician"}
+				}
+			}
+		}
+		if len(items) != 29 {
+			t.Fatalf("%d VTE items, want 29", len(items))
+		}
+		r = w.clinician.Do("POST", asmPath(w.a, e, "/"+vte.String()+"/confirm"), answers(0, items))
+		refused(t, r, http.StatusBadRequest)
+		if r.Message() != "Answer every item before confirming: Age has no answer." {
+			t.Errorf("message %q", r.Message())
+		}
+		items["patientAge"] = [2]any{62, "profile"}
+		w.clinician.Do("POST", asmPath(w.a, e, "/"+vte.String()+"/confirm"), answers(0, items)).Want(t, http.StatusOK)
+
+		cfs := addAssessment(t, w, e, "rockwood")
+		refused(t, w.clinician.Do("POST", asmPath(w.a, e, "/"+cfs.String()+"/confirm"), answers(0, map[string][2]any{})), http.StatusBadRequest)
+		refused(t, w.clinician.Do("POST", asmPath(w.a, e, "/"+cfs.String()+"/confirm"),
+			answers(0, map[string][2]any{"cfs_level": {"o_cfs_5", "clinician"}, "patientAge": {62, "profile"}})), http.StatusBadRequest) // it names no age
+		w.clinician.Do("POST", asmPath(w.a, e, "/"+cfs.String()+"/confirm"), answers(0, map[string][2]any{"cfs_level": {"o_cfs_5", "clinician"}})).Want(t, http.StatusOK)
+		for _, f := range []uuid.UUID{vte, cfs} {
+			if row, _ := asmRowOf(t, w, f); row.ValidatedAt == nil {
+				t.Errorf("%s not confirmed", f)
+			}
+		}
 	})
 	t.Run("a stale revision is 409, and nothing changes", func(t *testing.T) {
 		e := asmEpisode(t, w)
