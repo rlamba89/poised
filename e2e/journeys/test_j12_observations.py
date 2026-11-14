@@ -799,6 +799,17 @@ def test_must_with_a_hospital_weight_but_no_height_keeps_the_weight_when_the_bmi
     expect(must.get_by_test_id("item-1").get_by_test_id("item-source")).to_have_text("Entered by clinician")
     expect(must.get_by_test_id("item-2").get_by_test_id("item-source")).to_have_text("Hospital weight")
     expect(must.get_by_test_id("item-2").get_by_role("textbox")).to_have_value("60")
+    # Saved, reloaded, then that BMI changed: the hospital's weight still stays beside it (S49a).
+    must.get_by_role("button", name="Save").click()
+    expect(must.get_by_test_id("assessment-confirmed")).to_have_text("Not confirmed")
+    page.reload()
+    must = page.get_by_test_id("assessment-must")
+    expect(must.get_by_test_id("item-1").get_by_role("textbox")).to_have_value("20.8")
+    expect(must.get_by_test_id("item-2").get_by_test_id("item-source")).to_have_text("Hospital weight")
+    must.get_by_role("textbox", name="1: BMI").fill("22")
+    expect(must.get_by_test_id("item-1").get_by_test_id("item-source")).to_have_text("Entered by clinician")
+    expect(must.get_by_test_id("item-2").get_by_test_id("item-source")).to_have_text("Hospital weight")
+    expect(must.get_by_test_id("item-2").get_by_role("textbox")).to_have_value("60")
 
 
 def test_a_long_result_lines_up_on_the_poa_summary(page: Page, as_user, patient_link):

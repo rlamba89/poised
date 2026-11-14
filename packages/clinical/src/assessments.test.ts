@@ -474,6 +474,24 @@ describe("MUST: a typed weight or BMI leaves the other one for the clinician (S4
       // A weight typed over it is the clinician's, the BMI kept.
       expect(pair(withDraft(must, items, { [MUST_KEYS.bmi]: 20.8, [MUST_KEYS.weight]: 58 }))).toEqual([[20.8, "clinician"], [58, "clinician"]]);
     });
+    it("that saved BMI changed keeps the hospital's weight, on the screen and after a reload (S49a, verification 7 finding 1)", () => {
+      const from = at({ hospitalBmi: undefined });
+      const saved = { ...assessmentAnswers(withDraft(must, assessmentItems(must, from), { [MUST_KEYS.bmi]: 20.8 })), confirmed: false };
+      const reloaded = assessmentItems(must, from, saved);
+      const changed = withDraft(must, reloaded, { [MUST_KEYS.bmi]: 22 });
+      expect(pair(changed)).toEqual([[22, "clinician"], [60, "observation"]]);
+      // Saved and reloaded again: the screen and the reload agree.
+      const again = { ...assessmentAnswers(changed), confirmed: false };
+      expect(pair(assessmentItems(must, from, again))).toEqual(pair(changed));
+      // Through draftAfter, as the card types it.
+      expect(pair(withDraft(must, reloaded, draftAfter(must, reloaded, {}, MUST_KEYS.bmi, 22)))).toEqual([[22, "clinician"], [60, "observation"]]);
+    });
+    it("a saved BMI typed over the hospital's own BMI, changed: the weight stays Missing (the gap is the pre-fill's, not the saved row's)", () => {
+      const saved = { ...assessmentAnswers(withDraft(must, assessmentItems(must, at()), { [MUST_KEYS.bmi]: 17.3 })), confirmed: false };
+      const reloaded = assessmentItems(must, at(), saved);
+      expect(pair(reloaded)).toEqual([[17.3, "clinician"], [null, null]]);
+      expect(pair(withDraft(must, reloaded, { [MUST_KEYS.bmi]: 18 }))).toEqual([[18, "clinician"], [null, null]]);
+    });
     it("the pre-filled number typed back with the other untouched stays where it came from", () => {
       expect(pair(withDraft(must, assessmentItems(must, at()), { [MUST_KEYS.weight]: 60 }))).toEqual([[20.8, "observation"], [60, "observation"]]);
     });

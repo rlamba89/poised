@@ -40,6 +40,13 @@ export type AssessmentItem = {
   kind: "choice" | "number" | "profile";
   /** A number item the observations fill: the BMI or the weight (the hospital's, or the patient's own, as the trust says). */
   measure?: "bmi" | "weight";
+  /**
+   * A measure the pre-fill has no value for (MUST's BMI where the hospital has a weight but no
+   * height): one the clinician types here fills a gap, so it keeps the other measure beside it
+   * (S49 verification 5, Rahul 13 Nov). Worked out once, from the pre-fill alone, so a saved typed
+   * value changed later still fills the gap (S49a).
+   */
+  fillsGap?: true;
   /** The question's wording, for choice and number items. */
   title?: string;
   options?: { value: string; text: string }[];
@@ -345,10 +352,10 @@ export function assessmentItems(content: ChapterJson, from: PrefillFrom, saved?:
   };
   const items = defs.map((d) => {
     const item = itemOf(d);
-    return item.source && d.scores ? { ...item, yes: d.scores(item.value) } : item;
+    const scored = item.source && d.scores ? { ...item, yes: d.scores(item.value) } : item;
+    return d.measure && measurement(d.key, d.measure).source === undefined ? { ...scored, fillsGap: true as const } : scored;
   });
-  // A measure the clinician typed where the pre-fill has nothing keeps the other (verification 5, Rahul).
-  return saved?.confirmed ? items : unpaired(items, (i) => !!i.measure && measurement(i.key, i.measure).source === undefined);
+  return saved?.confirmed ? items : unpaired(items);
   function itemOf({ scores: _scores, fromHq, noHq, ...d }: ItemDef): AssessmentItem {
     const el = els.get(d.key);
     const base: AssessmentItem = { ...d, title: el ? textOf(el.title) : undefined, options: d.kind === "choice" ? optionsOf(el) : undefined };
@@ -393,7 +400,7 @@ export function withDraft(content: ChapterJson, items: AssessmentItem[], draft: 
     if (!d || !(changed(i) || (typed(i) && i.measure && otherIsClinicians(i)))) return i;
     return { ...i, value: draft[i.key], source: "clinician" as const, yes: d.scores?.(draft[i.key]) };
   });
-  return out.some((o, n) => o !== items[n] && o.measure) ? unpaired(out, (i) => !items.find((x) => x.key === i.key)?.source) : out;
+  return out.some((o, n) => o !== items[n] && o.measure) ? unpaired(out) : out;
 }
 
 /**
@@ -436,16 +443,16 @@ export function draftAfter(content: ChapterJson, items: AssessmentItem[], draft:
  * On a card with both a BMI and a weight (MUST), one the clinician entered leaves the other, if
  * pre-filled, Missing for them to enter: a BMI and a weight on one card always describe one body
  * (S49 verification 3, Rahul 13 Nov; the pre-fill's own rule is the pair's source). Both entered:
- * both kept. One entered in a box the pre-fill left empty (`filledGap`: the hospital's weight with
- * no height, so the BMI is the clinician's) keeps the other (verification 5, Rahul 13 Nov). A card
- * with a BMI only is unchanged.
+ * both kept. One entered in a box the pre-fill left empty (`fillsGap`: the hospital's weight with
+ * no height, so the BMI is the clinician's) keeps the other (verification 5, Rahul 13 Nov), saved
+ * or not (S49a). A card with a BMI only is unchanged.
  */
-function unpaired(items: AssessmentItem[], filledGap: (i: AssessmentItem) => boolean): AssessmentItem[] {
+function unpaired(items: AssessmentItem[]): AssessmentItem[] {
   const bmi = items.find((i) => i.measure === "bmi");
   const weight = items.find((i) => i.measure === "weight");
   if (!bmi || !weight) return items;
   const typed = (i: AssessmentItem) => i.source === "clinician";
-  const clears = (mine: AssessmentItem, other: AssessmentItem) => typed(mine) && !filledGap(mine) && !!other.source && !typed(other);
+  const clears = (mine: AssessmentItem, other: AssessmentItem) => typed(mine) && !mine.fillsGap && !!other.source && !typed(other);
   const other = clears(weight, bmi) ? bmi : clears(bmi, weight) ? weight : undefined;
   return other ? items.map((i) => (i === other ? { ...i, value: undefined, source: undefined, yes: undefined } : i)) : items;
 }
