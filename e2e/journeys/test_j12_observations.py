@@ -882,3 +882,33 @@ def test_a_man_is_not_asked_about_pregnancy_contraception_or_hrt(phone: BrowserC
                      "Are you using a contraceptive that contains oestrogen (such as the combined pill, patch or ring)?"]:
         expect(patient.get_by_text(question)).to_have_count(0)
     assert patient.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+
+def test_an_assessment_cards_menu_opens_under_its_box(page: Page, as_user):
+    """S49 test report 6 (exploring 3), S49a: the Morse card's Gait list opened about 115 px right of
+    its box. Each card's list now opens lined up with its box, still wide enough for the Frailty
+    Scale's longest level."""
+    hq = as_user("Alex Author").published_hq("risk-hq.json", f"E2E J12 menus {unique()}")
+    episode = as_user("Cara Clinician").episode(hq, f"J12 menus {unique()}")
+    base = sign_in(page.context, "Cara Clinician")
+    page.set_viewport_size({"width": 1456, "height": 900})
+    page.goto(f"{base}/episodes/{episode['id']}")
+    for name, test_id, label, longest in [
+        ("Morse Fall Scale", "morse", "Gait", None),
+        ("Clinical Frailty Scale", "rockwood", "Level", "8: Living with Very Severe Frailty"),
+    ]:
+        card = add_assessment(page, name, test_id)
+        box = card.get_by_label(label)
+        box.click()
+        menu = page.get_by_role("listbox")
+        expect(menu).to_be_visible()
+        b, m = box.bounding_box(), menu.bounding_box()
+        assert b and m
+        # Lined up: the options start within the dropdown's own padding (5 px) of the box's edge.
+        assert abs(m["x"] - b["x"]) <= 6, f"{name}: the list starts at {m['x']}, its box at {b['x']}"
+        assert m["width"] >= b["width"] - 12, f"{name}: the list is narrower than its box"
+        if longest:
+            option = page.get_by_role("option", name=longest)
+            assert option.evaluate("e => e.scrollWidth <= e.clientWidth"), "the longest level is cut short"
+        page.keyboard.press("Escape")
+        expect(menu).to_have_count(0)

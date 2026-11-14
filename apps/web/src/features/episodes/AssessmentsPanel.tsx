@@ -251,7 +251,10 @@ function ItemValue({ item: i, readOnly, had, invalid, onChange, onInvalid }: {
     return (
       <Select size="xs" aria-label={`${i.letter}: ${i.label}`} placeholder="Choose" value={i.source ? String(i.value) : null}
         data={(i.options ?? []).map((o) => ({ value: o.value, label: o.text }))} allowDeselect={false}
-        onChange={(v) => v && onChange(v)} comboboxProps={{ width: 300, position: "bottom-end" }} />
+        onChange={(v) => v && onChange(v)}
+        // The list opens lined up under its box, as wide as it, and never narrower than the Frailty
+        // Scale's longest level needs (S49 report 1, exploring 2; S49a: it had opened about 115 px to the right).
+        comboboxProps={{ width: "target", position: "bottom-start" }} styles={{ dropdown: { minWidth: 300 } }} />
     );
   }
   return (
