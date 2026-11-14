@@ -286,10 +286,35 @@ describe("DASI, PRISMA-7 and Apfel on the card and the POA Summary (S48)", () =>
     expect(cardNotes(dasiItems, undefined)).toEqual([]);
     const unknownSex = { ...episode, sex: "unknown" } as Episode;
     const apfel = shownItems(row({ assessment: "apfel", content: assessmentContent("apfel")! }), prefillFrom(hq, unknownSex, readings, true), {});
-    expect(cardNotes(apfel, undefined)).toEqual(["The patient's record doesn't say male or female, so the score stays Incomplete, as in the HQ."]);
+    expect(cardNotes(apfel, undefined)).toEqual([]); // the headline says it (S49a)
     const stopBang = shownItems(row(), prefillFrom(hq, episode, readings, true), {});
     expect(cardNotes(stopBang, undefined)).toEqual(["The age is the patient's today."]);
     expect(cardNotes(stopBang, "2026-11-05T10:00:00Z")).toEqual(["The age is the patient's on the day it was confirmed (66)."]);
+  });
+});
+
+describe("the record's sex is Other or Not known (S48 test report 1; S49a)", () => {
+  const noSex = "The patient's record has no male or female sex, so this score can't be worked out.";
+  for (const sex of ["other", "unknown"]) {
+    const patient = { ...episode, sex } as Episode;
+    it(`${sex}: the headline says so on PRISMA-7, Apfel and STOP-Bang, not "answer the item highlighted"`, () => {
+      for (const id of ["prisma7", "apfel", "stopbang"]) {
+        const items = shownItems(row({ assessment: id, content: assessmentContent(id)! }), prefillFrom(hq, patient, readings, true), {});
+        expect(filledText(items, false), id).toContain(noSex);
+        expect(filledText(items, true), id).toContain(noSex);
+      }
+    });
+  }
+  it("with the sex the only item missing, nothing else is asked for", () => {
+    const items = shownItems(row(), prefillFrom(hq, { ...episode, sex: "other" } as Episode, readings, true), { [K.neck]: "o_no" });
+    expect(filledText(items, false)).toBe(`7 of 8 filled. ${noSex}`);
+  });
+  it("other items missing are still asked for, the sex not counted", () => {
+    const items = shownItems(row(), prefillFrom(hq, { ...episode, sex: "unknown" } as Episode, readings, true), {});
+    expect(filledText(items, false)).toBe(`6 of 8 filled: answer the item highlighted. ${noSex}`);
+  });
+  it("male or female: as before", () => {
+    expect(filledText(shownItems(row(), prefillFrom(hq, episode, readings, true), {}), false)).toBe("7 of 8 filled: answer the item highlighted.");
   });
 });
 

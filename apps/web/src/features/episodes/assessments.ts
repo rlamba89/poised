@@ -109,17 +109,14 @@ function hqPart(hq: EpisodeHQ | null, e: Episode): PrefillFrom["hq"] {
 }
 
 /**
- * The card's notes on the age and sex, for an assessment that uses them: which day's age it is
- * (`day`: the day it was confirmed, while shown as confirmed and unchanged; else today), and why the
- * score stays Incomplete when the record doesn't say male or female.
+ * The card's notes on the age, for an assessment that uses it: which day's age it is (`day`: the
+ * day it was confirmed, while shown as confirmed and unchanged; else today). A record with no male
+ * or female sex is said in the headline (filledText, S49a).
  */
 export function cardNotes(items: AssessmentItem[], day: string | undefined): string[] {
   const out: string[] = [];
   const age = items.find((i) => i.key === "patientAge");
   if (age) out.push(`The age is the patient's ${day ? `on the day it was confirmed (${age.source ? String(age.value) : "not known"})` : "today"}.`);
-  if (items.some((i) => i.key === "patientSex" && !i.source)) {
-    out.push("The patient's record doesn't say male or female, so the score stays Incomplete, as in the HQ.");
-  }
   return out;
 }
 
@@ -223,12 +220,18 @@ export function boxTyped(typed: string | null, i: AssessmentItem): string | null
 export const withoutInvalid = (items: AssessmentItem[], invalid: Record<string, boolean>): AssessmentItem[] =>
   items.map((i) => (invalid[i.key] ? { ...i, value: undefined, source: undefined, yes: undefined } : i));
 
-/** "7 of 8 filled", asking for the missing items unless they can't be answered (read-only). */
+/**
+ * "7 of 8 filled", asking for the missing items unless they can't be answered (read-only). The sex
+ * can't be answered on the card: where the record says neither male nor female (Other or Not
+ * known), the headline says so instead of asking for it (S49a).
+ */
 export function filledText(items: AssessmentItem[], readOnly: boolean): string {
-  const missing = items.filter((i) => !i.source).length;
-  const head = `${items.length - missing} of ${items.length} filled`;
-  if (!missing || readOnly) return `${head}.`;
-  return `${head}: answer the ${missing === 1 ? "item" : `${missing} items`} highlighted.`;
+  const missing = items.filter((i) => !i.source);
+  const noSex = missing.some((i) => i.key === "patientSex");
+  const ask = missing.filter((i) => i.key !== "patientSex").length;
+  const head = `${items.length - missing.length} of ${items.length} filled`;
+  const words = !ask || readOnly ? `${head}.` : `${head}: answer the ${ask === 1 ? "item" : `${ask} items`} highlighted.`;
+  return noSex ? `${words} The patient's record has no male or female sex, so this score can't be worked out.` : words;
 }
 
 /** How a measurement's source reads in a sentence: "hospital BMI", "patient reported weight". */
