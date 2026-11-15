@@ -7,7 +7,7 @@
 ## Data and storage
 
 - One S3 bucket **per country deployment** (CDK `DataStack`; the bucket name comes from config, A-20), with keys `{org_id}/{episode_id}/{uuid}`.
-- Locally, MinIO in docker-compose.
+- Locally, MinIO in docker-compose. *(15 Nov: MinIO no longer ships images or binaries (October 2025) and is unmaintained; S50's question 1 proposes a local store in Go instead.)*
 - `files`: id, org_id, episode_id, name, content_type, size, visibility hospital|shared, uploaded_by_user, uploaded_by_patient, created_at.
 
 ## Design
@@ -36,5 +36,11 @@
 - **End-to-end:** **J13**. A clinician uploads one hospital-only file and one shared file. The patient (at phone size) sees only the shared one, and uploads a photo. The clinician sees it on the episode and in the POA Summary's files list.
 
 ## Status
+
+**Split 15 Nov 2026** into four sessions ([sessions](../sessions/README.md)):
+- **S50:** storage, the `files` table, the clinician's Files panel and the POA Summary's list; J13 starts.
+- **S51:** the patient's files and the "file shared" message; J13 complete.
+- **S52** (added at the split): the HQ's "Upload a file" question saves into the episode's files, not base64 in the answers (dropped if Rahul keeps it).
+- **S53** (AWS phase): the bucket on QA.
 
 Not started.

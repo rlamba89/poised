@@ -33,6 +33,14 @@ Related:
 
 Format: **decision**, then the reason, then where it's recorded in more detail.
 
+### 15 Nov 2026: plan C8 split into S50–S53
+
+([sessions](sessions/README.md); Rahul asked for the split)
+- **Four sessions:** S50 storage and the clinician's files; S51 the patient's files and the "file shared" message; S52 the HQ's file question; S53 the bucket on AWS (with Rahul there). Their questions are in each brief, with recommendations.
+- **S52 is new, not in the plan.** The HQ's "Upload a file" question stores the file as base64 inside the answers (5 MB) and shows it inside the site, which A-14's mitigation rules out. If Rahul keeps it as it is, S52 is dropped.
+- **Gotcha: MinIO no longer ships images or binaries** (since October 2025; unmaintained since), so the plan's local stand-in is gone. S50's question 1 recommends a local store in Go, like the dev login and the captured messages.
+- **Checked:** the Go AWS SDK signs presigned POSTs (`service/s3`'s `PresignPostObject`, with extra policy conditions, v1.114). The web app's headers have no `connect-src`, so a browser upload straight to S3 isn't blocked.
+
 ### 14 Nov 2026: S49a verification 2 (Verified)
 
 ([verify.md](sessions/S49a-c7-followups/verify.md), verification 2)

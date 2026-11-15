@@ -10,7 +10,7 @@ Plans F1–F4 and C1–C2 split into **17 sessions** (plus S02a, a bug fix). Tog
 
 Each session is small enough for one Claude session, and ends with something a tester can try in a browser.
 
-Plan C3 is split into **S18–S22** (20 Oct), plan C4 into **S23–S26** (21 Oct), plan C5 into **S31–S36** (25 Oct), plan C6 into **S38–S45** (26 Oct), and plan C7 into **S46–S49** (29 Oct). Plans C8–C10 get split the same way when we reach them.
+Plan C3 is split into **S18–S22** (20 Oct), plan C4 into **S23–S26** (21 Oct), plan C5 into **S31–S36** (25 Oct), plan C6 into **S38–S45** (26 Oct), plan C7 into **S46–S49** (29 Oct), and plan C8 into **S50–S53** (15 Nov). Plans C9–C10 get split the same way when we reach them.
 
 ## How a session runs
 
@@ -108,7 +108,7 @@ Then it moves on to the next session. It stops only for your questions or a limi
 
 ### Local phase: now, run in this order
 
-Everything runs on your Mac. Email and SMS are captured, not sent; the dev login stands in for Cognito; MinIO will stand in for S3 (C8). No AWS (decided 12 Oct).
+Everything runs on your Mac. Email and SMS are captured, not sent; the dev login stands in for Cognito; a local store in Go is proposed to stand in for S3 (C8, S50's question 1: MinIO no longer ships images). No AWS (decided 12 Oct).
 
 | ID | Plan | Builds | Needs from you first | Status |
 | --- | --- | --- | --- | --- |
@@ -211,5 +211,16 @@ Split on 29 Oct. S46–S49 run locally like C6, with messages captured. Journey 
 | [S48](S48-dasi-prisma-apfel/brief.md) | C7 | DASI, PRISMA-7 and Apfel, as assessments and as ready-made scores for the HQ, checked against their published sources | Answered 6 Nov ([answers.md](S48-dasi-prisma-apfel/answers.md)) | **Verified** 6 Nov ([verify.md](S48-dasi-prisma-apfel/verify.md); [test report 1](S48-dasi-prisma-apfel/test-report-1.md): 17 of 17 passed; [build notes](S48-dasi-prisma-apfel/build-notes.md)) |
 | [S49](S49-must-falls-vte-rockwood/brief.md) | C7 | MUST, falls risk, VTE and Rockwood (clinician-only, with DASI and PRISMA-7 as hints); C7 done | Answered 7 Nov ([answers.md](S49-must-falls-vte-rockwood/answers.md)) | Tested 8 Nov: report 1, 20 of 21 (F-1 cosmetic, fixed); [test report 2](S49-must-falls-vte-rockwood/test-report-2.md) all passed; verification 1 needed fixes, done; [test report 3](S49-must-falls-vte-rockwood/test-report-3.md) all passed, 13 Nov; verification 2 needed fixes, done; [test report 4](S49-must-falls-vte-rockwood/test-report-4.md) all passed; verification 3 needed fixes, done; [test report 5](S49-must-falls-vte-rockwood/test-report-5.md) all passed, 13 Nov ([build notes](S49-must-falls-vte-rockwood/build-notes.md)); **verification 1 (8 Nov): Needs fixes** ([verify.md](S49-must-falls-vte-rockwood/verify.md): MUST's BMI and weight paired; VTE's pregnancy, contraceptive and HRT questions hidden for male); **verification 2 (13 Nov): Needs fixes** (the VTE card offers Confirm with bleeding items unanswered; a question for Rahul on pre-filling the time-window questions), done; **verification 3 (13 Nov): Needs fixes** (a weight typed on the MUST card keeps the pre-filled BMI; Rahul: clear it), done; **verification 4 (13 Nov): Needs fixes** (on MUST, the hospital's own number typed back after the other can't be entered; a confirmed card's pair on the card), done; [test report 6](S49-must-falls-vte-rockwood/test-report-6.md) all passed, 13 Nov; **verification 5 (13 Nov): Needs fixes** (on MUST, a BMI typed and typed back, then a weight typed, keeps the old BMI; Rahul: a BMI typed where there's no height keeps the hospital's weight), done; [test report 7](S49-must-falls-vte-rockwood/test-report-7.md): 11 of 12 (F-1 minor: a MUST box marked Missing showed its old number), fixed; [test report 8](S49-must-falls-vte-rockwood/test-report-8.md) all passed, 14 Nov; **verification 6 (14 Nov): Needs fixes** (on MUST, a box typed into after the other was put back keeps its key, so BMI 20.8 stays the clinician's beside weight 50 and can be confirmed), done 14 Nov; [test report 9](S49-must-falls-vte-rockwood/test-report-9.md) all passed, 14 Nov; **Verified 14 Nov (verification 7)**; one minor finding in pending.md |
 | [S49a](S49a-c7-followups/brief.md) | C7 | Follow-ups to S49: MUST keeps the hospital weight when a saved typed BMI changes; number boxes with no wheel or spinner; the audit CSV splits long id lists; the record's sex Other or Not known; J7's flaky mobile; the Gait menu's position | Answered 14 Nov (decisions.md) | **Tested 14 Nov:** [test report 1](S49a-c7-followups/test-report-1.md) all passed, 17 of 17 ([build notes](S49a-c7-followups/build-notes.md)); its notes in pending.md; **verification 1 (14 Nov): Needs fixes** ([verify.md](S49a-c7-followups/verify.md): the Audit journey's CSV row count; the Preview's earlier-answers number boxes; UTF-16 cell length), done 14 Nov; [test report 2](S49a-c7-followups/test-report-2.md) all passed, 13 of 13; **Verified 14 Nov (verification 2)**; four minor findings in pending.md |
+
+### Plan C8: files (local, then one AWS session; run in this order)
+
+Split on 15 Nov. S50–S52 run locally like C7, with messages captured and files in a local store (S50's question 1). Journey J13 starts in S50 (the clinician's files) and completes in S51 (the patient's); S52 adds the HQ's file question. S53 is the AWS phase, with Rahul there.
+
+| ID | Plan | Builds | Needs from you first | Status |
+| --- | --- | --- | --- | --- |
+| [S50](S50-file-storage-staff-files/brief.md) | C8 | File storage (a local store; S3 behind the same interface), the `files` table, the clinician's Files panel (hospital only or shared, the type check, 25 MB, download as an attachment, share later, remove with a reason), the POA Summary's Files list; J13 starts | Answer the brief's 4 questions (local storage, removal, the type check, changing visibility) | Not started |
+| [S51](S51-patient-files/brief.md) | C8 | The patient's Files under each episode on their home (phone size): shared files, their own uploads; the "file shared" message; "Uploaded by the patient" for staff; J13 complete | Answer the brief's 3 questions (the message, where, removing their own) | Not started |
+| [S52](S52-hq-file-question/brief.md) | C8 | The HQ's "Upload a file" question saves into the episode's files instead of base64 in the answers (A-14) | Answer the brief's question (dropped if Rahul keeps base64) | Not started |
+| [S53](S53-files-bucket-aws/brief.md) | C8 (AWS phase) | The files bucket on QA: CDK, CORS, permissions; J13 on QA | Nothing to ask; Rahul there | Not started |
 
 **Why this order:** nothing needs AWS until someone outside your laptop has to use the app. Building locally first lets the automatic run go without AWS stops. The cost is that the AWS hosting setup and its near-£0 idle cost are proven later (decided 12 Oct; [decisions.md](../decisions.md)).
